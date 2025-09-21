@@ -57,14 +57,18 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not DEBUG_MODE:
         if not await asyncio.to_thread(database.can_roll, user.id):
             await update.message.reply_text(
-                "You have already rolled for a card today. Try again tomorrow!"
+                "You have already rolled for a card today. Try again tomorrow!",
+                reply_to_message_id=update.message.message_id
             )
             return
 
     try:
         base_images = [f for f in os.listdir(BASE_IMAGE_PATH) if not f.startswith(".")]
         if not base_images:
-            await update.message.reply_text("No base images found to create a card.")
+            await update.message.reply_text(
+                "No base images found to create a card.",
+                reply_to_message_id=update.message.message_id
+            )
             return
 
         chosen_file_name = random.choice(base_images)
@@ -80,14 +84,17 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
         prompt = IMAGE_GENERATOR_INSTRUCTION.format(
-            modification=modifier, name=base_name, color=RARITIES[rarity]["color"]
+            modification=modifier, name=base_name, rarity=rarity, color=RARITIES[rarity]["color"]
         )
 
         base_image_path = os.path.join(BASE_IMAGE_PATH, chosen_file_name)
         image_b64 = await asyncio.to_thread(openai_util.generate_image, prompt, base_image_path)
 
         if not image_b64:
-            await update.message.reply_text("Sorry, I couldn't generate an image at the moment.")
+            await update.message.reply_text(
+                "Sorry, I couldn't generate an image at the moment.",
+                reply_to_message_id=update.message.message_id
+            )
             return
 
         card_id = await asyncio.to_thread(database.add_card, base_name, modifier, rarity, image_b64)
@@ -105,11 +112,15 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
+            reply_to_message_id=update.message.message_id,
         )
 
     except Exception as e:
         logger.error(f"Error in /roll: {e}")
-        await update.message.reply_text("An error occurred while rolling for a card.")
+        await update.message.reply_text(
+            "An error occurred while rolling for a card.",
+            reply_to_message_id=update.message.message_id
+        )
     finally:
         await context.bot.set_message_reaction(
             chat_id=update.effective_chat.id,
@@ -134,7 +145,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             card_title = f"{card[2]} {card[1]}"
             rarity = card[3]
 
-            caption = f"<b>{card_title}</b>\n<b>Rarity: {rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
+            caption = f"<b>{card_title}</b>\n<b>{rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
 
             await query.edit_message_caption(
                 caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
@@ -150,7 +161,8 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     if not cards:
         await update.message.reply_text(
-            "You don't own any cards yet. Use /roll to get your first card!"
+            "You don't own any cards yet. Use /roll to get your first card!",
+            reply_to_message_id=update.message.message_id
         )
         return
 
@@ -199,6 +211,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
+            reply_to_message_id=update.message.message_id,
         )
 
 
@@ -213,7 +226,10 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"R: {stats['rarities']['Rare']}, C: {stats['rarities']['Common']}"
     )
 
-    await update.message.reply_text(message)
+    await update.message.reply_text(
+        message,
+        reply_to_message_id=update.message.message_id
+    )
 
 
 def main() -> None:
