@@ -245,7 +245,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     user = update.effective_user
     cards = await asyncio.to_thread(database.get_user_collection, user.username)
 
-    if not cards:
+    if not cards and not update.callback_query:
         await update.message.reply_text(
             "You don't own any cards yet. Use /roll to get your first card!",
             reply_to_message_id=update.message.message_id,
@@ -271,6 +271,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             current_index = (current_index + 1) % len(cards)
         elif "close" in update.callback_query.data:
             await update.callback_query.delete_message()
+            await update.callback_query.answer()
             return
 
     context.user_data["collection_index"] = current_index
@@ -314,6 +315,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         if message and message.photo:
             new_file_id = message.photo[-1].file_id
             await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+        await update.callback_query.answer()
     else:
         # For new collection requests
         message = await update.message.reply_photo(
