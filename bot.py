@@ -327,6 +327,11 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Initiate a card trade."""
     user1 = update.effective_user
+
+    if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await update.message.reply_text("Only allowed to trade in the group chat.")
+        return
+
     if len(context.args) != 2:
         await update.message.reply_text("Usage: /trade [your_card_id] [other_card_id]")
         return
