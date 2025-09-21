@@ -24,6 +24,9 @@ from settings.constants import (
     CARD_STATUS_UNCLAIMED,
     CARD_STATUS_CLAIMED,
     CARD_STATUS_ATTEMPTED,
+    TRADE_REQUEST_MESSAGE,
+    TRADE_COMPLETE_MESSAGE,
+    TRADE_REJECTED_MESSAGE,
 )
 from utils import database, gemini
 
@@ -321,6 +324,138 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
 
 
+async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Initiate a card trade."""
+    user1 = update.effective_user
+    if len(context.args) != 2:
+        await update.message.reply_text("Usage: /trade [your_card_id] [other_card_id]")
+        return
+
+    try:
+        card_id1 = int(context.args[0])
+        card_id2 = int(context.args[1])
+    except ValueError:
+        await update.message.reply_text("Card IDs must be numbers.")
+        return
+
+    card1 = await asyncio.to_thread(database.get_card, card_id1)
+    card2 = await asyncio.to_thread(database.get_card, card_id2)
+
+    if not card1 or not card2:
+        await update.message.reply_text("One or both card IDs are invalid.")
+        return
+
+    if card1.owner != user1.username:
+        await update.message.reply_text(
+            f"You do not own card <b>{card1.title()}</b>.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    if card2.owner == user1.username:
+        await update.message.reply_text(
+            f"You already own card <b>{card2.title()}</b>.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    user2_username = card2.owner
+
+    keyboard = [
+        [
+            InlineKeyboardButton("Accept", callback_data=f"trade_accept_{card_id1}_{card_id2}"),
+            InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await update.message.reply_text(
+        TRADE_REQUEST_MESSAGE.format(
+            user1_username=user1.username,
+            card1_title=card1.title(),
+            user2_username=user2_username,
+            card2_title=card2.title(),
+        ),
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle trade rejection."""
+    query = update.callback_query
+    await query.answer()
+
+    _, _, card_id1_str, card_id2_str = query.data.split("_")
+    card_id1 = int(card_id1_str)
+    card_id2 = int(card_id2_str)
+
+    user_who_clicked = query.from_user
+
+    card1 = await asyncio.to_thread(database.get_card, card_id1)
+    card2 = await asyncio.to_thread(database.get_card, card_id2)
+
+    if not card1 or not card2:
+        await query.edit_message_text("Trade failed: one of the cards no longer exists.")
+        return
+
+    user1_username = card1.owner
+    user2_username = card2.owner
+
+    if not DEBUG_MODE and user_who_clicked.username != user2_username:
+        await query.answer("You are not the owner of the card being traded for.", show_alert=True)
+        return
+
+    await query.edit_message_text(
+        TRADE_REJECTED_MESSAGE.format(
+            user1_username=user1_username,
+            card1_title=card1.title(),
+            user2_username=user2_username,
+            card2_title=card2.title(),
+        ),
+        parse_mode=ParseMode.HTML,
+    )
+
+
+async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle trade acceptance."""
+    query = update.callback_query
+    await query.answer()
+
+    _, _, card_id1_str, card_id2_str = query.data.split("_")
+    card_id1 = int(card_id1_str)
+    card_id2 = int(card_id2_str)
+
+    user_who_clicked = query.from_user
+
+    card1 = await asyncio.to_thread(database.get_card, card_id1)
+    card2 = await asyncio.to_thread(database.get_card, card_id2)
+
+    if not card1 or not card2:
+        await query.edit_message_text("Trade failed: one of the cards no longer exists.")
+        return
+
+    user1_username = card1.owner
+    user2_username = card2.owner
+
+    if not DEBUG_MODE and user_who_clicked.username != user2_username:
+        await query.answer("You are not the owner of the card being traded for.", show_alert=True)
+        return
+
+    success = await asyncio.to_thread(database.swap_card_owners, card_id1, card_id2)
+
+    if success:
+        await query.edit_message_text(
+            TRADE_COMPLETE_MESSAGE.format(
+                user1_username=user1_username,
+                card1_title=card1.title(),
+                user2_username=user2_username,
+                card2_title=card2.title(),
+            ),
+            parse_mode=ParseMode.HTML,
+        )
+    else:
+        await query.edit_message_text("Trade failed. Please try again.")
+
+
 def main() -> None:
     """Start the bot."""
     application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
@@ -328,8 +463,11 @@ def main() -> None:
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CallbackQueryHandler(button, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
+    application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
+    application.add_handler(CallbackQueryHandler(reject_trade, pattern="^trade_reject_"))
 
     application.run_polling()
 

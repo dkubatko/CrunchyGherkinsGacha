@@ -15,6 +15,10 @@ class Card:
         self.image_b64 = image_b64
         self.attempted_by = attempted_by
 
+    def title(self):
+        """Return the card's full title."""
+        return f"{self.rarity} {self.modifier} {self.base_name}"
+
 
 def connect():
     """Connect to the SQLite database."""
@@ -205,6 +209,31 @@ def record_roll(user_id):
     )
     conn.commit()
     conn.close()
+
+
+def swap_card_owners(card_id1, card_id2):
+    """Swap the owners of two cards."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        # Get current owners
+        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id1,))
+        owner1 = cursor.fetchone()[0]
+
+        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id2,))
+        owner2 = cursor.fetchone()[0]
+
+        # Swap owners
+        cursor.execute("UPDATE cards SET owner = ? WHERE id = ?", (owner2, card_id1))
+        cursor.execute("UPDATE cards SET owner = ? WHERE id = ?", (owner1, card_id2))
+
+        conn.commit()
+        return True
+    except sqlite3.Error:
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 
 create_tables()

@@ -95,3 +95,24 @@ CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
 CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
 CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
 CARD_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
+
+TRADE_REQUEST_MESSAGE = (
+    "Trade requested:\n\n"
+    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "🔄\n\n"
+    "@{user2_username}'s\n<b>{card2_title}</b>"
+)
+
+TRADE_COMPLETE_MESSAGE = (
+    "Trade completed:\n\n"
+    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "🤝\n\n"
+    "@{user2_username}'s\n<b>{card2_title}</b>"
+)
+
+TRADE_REJECTED_MESSAGE = (
+    "Trade rejected:\n\n"
+    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "🚫\n\n"
+    "@{user2_username}'s\n<b>{card2_title}</b>"
+)
