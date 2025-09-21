@@ -2,7 +2,7 @@ IMAGE_GENERATOR_INSTRUCTION = """
 Generate a flashy, creative collectible trading card based on the character in the attached image and the following description:
 <{modification} {name}> with border color {color} and {rarity} rarity.
 
-Rarity hierarchy is Common -> Rare -> Epic -> Legendary. Higher the Rarity, more sophisticated the card should be.
+Rarity hierarchy is Common -> Rare -> Epic -> Legendary. Higher the Rarity, more sophisticated the card design should be.
 
 Use comic book-like digital art style. Adjust the style based on the card name if needed.
 
