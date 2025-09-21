@@ -12,7 +12,7 @@ from telegram import (
     InputMediaPhoto,
     ReactionTypeEmoji,
 )
-from telegram.constants import ParseMode
+from telegram.constants import ParseMode, ChatType
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from dotenv import load_dotenv
 
@@ -21,12 +21,12 @@ from settings.constants import (
     IMAGE_GENERATOR_INSTRUCTION,
     REACTION_IN_PROGRESS,
 )
-from utils import database, openai
+from utils import database, gemini
 
 # Load environment variables
 load_dotenv()
 
-openai_util = openai.GeminiUtil()
+gemini_util = gemini.GeminiUtil()
 
 # Enable logging
 logging.basicConfig(
@@ -74,12 +74,27 @@ def get_time_until_next_roll(user_id):
 
 async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Roll a new card."""
+    user = update.effective_user
+    if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji("🤡")],
+        )
+        await update.message.reply_text("Caught a cheater! Only allowed to roll in the group chat.")
+        group_chat_id = os.getenv("GROUP_CHAT_ID")
+        if group_chat_id:
+            await context.bot.send_message(
+                chat_id=group_chat_id,
+                text=f"@{user.username} attempted to roll in a private chat.",
+            )
+        return
+
     await context.bot.set_message_reaction(
         chat_id=update.effective_chat.id,
         message_id=update.message.message_id,
         reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
     )
-    user = update.effective_user
     if not DEBUG_MODE:
         if not await asyncio.to_thread(database.can_roll, user.id):
             hours, minutes = get_time_until_next_roll(user.id)
@@ -116,16 +131,10 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         card_title = f"{modifier} {base_name}"
 
-        logger.info(
-            f"Requesting image generation for {base_name} with modifier '{modifier}' and rarity '{rarity}'"
-        )
-
-        prompt = IMAGE_GENERATOR_INSTRUCTION.format(
-            modification=modifier, name=base_name, rarity=rarity, color=RARITIES[rarity]["color"]
-        )
-
         base_image_path = os.path.join(BASE_IMAGE_PATH, chosen_file_name)
-        image_b64 = await asyncio.to_thread(openai_util.generate_image, prompt, base_image_path)
+        image_b64 = await asyncio.to_thread(
+            gemini_util.generate_image, base_name, modifier, rarity, base_image_path
+        )
 
         if not image_b64:
             await update.message.reply_text(

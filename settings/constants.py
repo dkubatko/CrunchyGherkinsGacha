@@ -13,8 +13,6 @@ Do NOT add any stats, corner markers, etc. to the card.
 Only add card name "{modification} {name}" to the bottom, no description.
 """
 
-REACTION_IN_PROGRESS = "🤔"
-
 RARITIES = {
     "Common": {
         "weight": 65,
@@ -84,3 +82,5 @@ RARITIES = {
         ],
     },
 }
+
+REACTION_IN_PROGRESS = "🤔"
