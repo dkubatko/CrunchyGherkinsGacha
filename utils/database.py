@@ -266,4 +266,16 @@ def update_card_file_id(card_id, file_id):
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
 
 
+def clear_all_file_ids():
+    """Clear all file_ids from all cards (set to NULL)."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cards SET file_id = NULL")
+    affected_rows = cursor.rowcount
+    conn.commit()
+    conn.close()
+    logger.info(f"Cleared file_ids for {affected_rows} cards")
+    return affected_rows
+
+
 create_tables()

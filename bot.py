@@ -481,6 +481,37 @@ async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await query.edit_message_text("Trade failed. Please try again.")
 
 
+async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Reload command - clears all file_ids. Only accessible to admin."""
+    user = update.effective_user
+
+    # Get admin username from environment variable
+    admin_username = os.getenv("BOT_ADMIN")
+
+    # Silently ignore if user is not the admin
+    if not admin_username or user.username != admin_username:
+        return
+
+    try:
+        # Clear all file_ids from database
+        affected_rows = await asyncio.to_thread(database.clear_all_file_ids)
+
+        await update.message.reply_text(
+            f"🔄 Reload complete! Cleared file_ids for {affected_rows} cards.\n"
+            f"All cards will be re-uploaded on next display.",
+            reply_to_message_id=update.message.message_id,
+        )
+
+        logger.info(f"@{user.username} executed /reload command, cleared {affected_rows} file_ids")
+
+    except Exception as e:
+        logger.error(f"Error in /reload: {e}")
+        await update.message.reply_text(
+            "❌ An error occurred while executing the reload command.",
+            reply_to_message_id=update.message.message_id,
+        )
+
+
 def main() -> None:
     """Start the bot."""
     application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
@@ -489,6 +520,7 @@ def main() -> None:
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
+    application.add_handler(CommandHandler("reload", reload))
     application.add_handler(CallbackQueryHandler(button, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
     application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
