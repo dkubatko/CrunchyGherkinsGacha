@@ -58,7 +58,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not await asyncio.to_thread(database.can_roll, user.id):
             await update.message.reply_text(
                 "You have already rolled for a card today. Try again tomorrow!",
-                reply_to_message_id=update.message.message_id
+                reply_to_message_id=update.message.message_id,
+            )
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[],
             )
             return
 
@@ -67,7 +72,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not base_images:
             await update.message.reply_text(
                 "No base images found to create a card.",
-                reply_to_message_id=update.message.message_id
+                reply_to_message_id=update.message.message_id,
+            )
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[],
             )
             return
 
@@ -93,7 +103,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not image_b64:
             await update.message.reply_text(
                 "Sorry, I couldn't generate an image at the moment.",
-                reply_to_message_id=update.message.message_id
+                reply_to_message_id=update.message.message_id,
+            )
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[],
             )
             return
 
@@ -119,7 +134,7 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.error(f"Error in /roll: {e}")
         await update.message.reply_text(
             "An error occurred while rolling for a card.",
-            reply_to_message_id=update.message.message_id
+            reply_to_message_id=update.message.message_id,
         )
     finally:
         await context.bot.set_message_reaction(
@@ -162,7 +177,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if not cards:
         await update.message.reply_text(
             "You don't own any cards yet. Use /roll to get your first card!",
-            reply_to_message_id=update.message.message_id
+            reply_to_message_id=update.message.message_id,
         )
         return
 
@@ -226,10 +241,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         f"R: {stats['rarities']['Rare']}, C: {stats['rarities']['Common']}"
     )
 
-    await update.message.reply_text(
-        message,
-        reply_to_message_id=update.message.message_id
-    )
+    await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
 
 
 def main() -> None:
