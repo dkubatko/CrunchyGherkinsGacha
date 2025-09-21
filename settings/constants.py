@@ -26,6 +26,8 @@ MODIFIERS = [
     "Куксящийся",
     "Лакомящийся",
     "Крутой",
+    "Вчера",
+    "Завтра",
     "Overstimulated",
     "Sailor Moon",
     "Super",

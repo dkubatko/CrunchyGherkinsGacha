@@ -47,13 +47,20 @@ def get_random_rarity():
     return random.choices(rarity_list, weights=weights, k=1)[0]
 
 
-def get_time_until_next_roll():
-    """Calculate time until next roll (next midnight).
+def get_time_until_next_roll(user_id):
+    """Calculate time until next roll (24 hours from last roll).
     Uses the same timezone as the database (system local time).
     """
+    last_roll_time = database.get_last_roll_time(user_id)
+    if last_roll_time is None:
+        return 0, 0  # Can roll immediately if never rolled before
+
     now = datetime.datetime.now()
-    tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
-    time_diff = tomorrow - now
+    next_roll_time = last_roll_time + datetime.timedelta(hours=24)
+    time_diff = next_roll_time - now
+
+    if time_diff.total_seconds() <= 0:
+        return 0, 0  # Can roll now
 
     hours = int(time_diff.total_seconds() // 3600)
     minutes = int((time_diff.total_seconds() % 3600) // 60)
@@ -71,9 +78,9 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not DEBUG_MODE:
         if not await asyncio.to_thread(database.can_roll, user.id):
-            hours, minutes = get_time_until_next_roll()
+            hours, minutes = get_time_until_next_roll(user.id)
             await update.message.reply_text(
-                f"You have already rolled for a card today. Next roll in {hours} hours {minutes} minutes.",
+                f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
                 reply_to_message_id=update.message.message_id,
             )
             await context.bot.set_message_reaction(
@@ -176,7 +183,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             card_title = f"{card[2]} {card[1]}"
             rarity = card[3]
 
-            caption = f"<b>{card_title}</b>\n<b>{rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
+            caption = f"<b>{card_title}</b>\nRarity: <b>{rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
 
             await query.edit_message_caption(
                 caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
@@ -263,15 +270,26 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Display user's stats."""
-    user = update.effective_user
-    stats = await asyncio.to_thread(database.get_user_stats, user.username)
+    """Display stats for all users."""
+    users = await asyncio.to_thread(database.get_all_users_with_cards)
 
-    message = (
-        f"@{user.username}: {stats['owned']} / {stats['total']} cards\n"
-        f"L: {stats['rarities']['Legendary']}, E: {stats['rarities']['Epic']}, "
-        f"R: {stats['rarities']['Rare']}, C: {stats['rarities']['Common']}"
-    )
+    if not users:
+        await update.message.reply_text(
+            "No users have claimed any cards yet.", reply_to_message_id=update.message.message_id
+        )
+        return
+
+    message_parts = []
+    for username in users:
+        user_stats = await asyncio.to_thread(database.get_user_stats, username)
+        user_line = (
+            f"@{username}: {user_stats['owned']} / {user_stats['total']} cards\n"
+            f"L: {user_stats['rarities']['Legendary']}, E: {user_stats['rarities']['Epic']}, "
+            f"R: {user_stats['rarities']['Rare']}, C: {user_stats['rarities']['Common']}"
+        )
+        message_parts.append(user_line)
+
+    message = "\n\n".join(message_parts)
 
     await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
 
