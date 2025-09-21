@@ -166,7 +166,23 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
             )
         else:
-            await query.message.reply_text("This card has already been claimed.")
+            # Card already claimed, update caption to show attempted users
+            card = await asyncio.to_thread(database.get_card, card_id)
+            card_title = f"{card[2]} {card[1]}"
+            rarity = card[3]
+            owner = card[4]
+            attempted_by = card[6] if len(card) > 6 and card[6] else ""
+
+            caption = f"<b>{card_title}</b>\n<b>{rarity}</b>\n\n<i>Claimed by @{owner}</i>"
+            if attempted_by:
+                attempted_users = ", ".join(
+                    [f"@{u.strip()}" for u in attempted_by.split(",") if u.strip()]
+                )
+                caption += f"\n<i>Attempted by: {attempted_users}</i>"
+
+            await query.edit_message_caption(
+                caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
+            )
 
 
 async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

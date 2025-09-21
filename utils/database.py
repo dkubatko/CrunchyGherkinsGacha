@@ -24,7 +24,8 @@ def create_tables():
             modifier TEXT NOT NULL,
             rarity TEXT NOT NULL,
             owner TEXT,
-            image_b64 TEXT
+            image_b64 TEXT,
+            attempted_by TEXT DEFAULT ''
         )
     """
     )
@@ -61,11 +62,33 @@ def claim_card(card_id, owner):
     """Claim a card for a user."""
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id))
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return updated
+
+    # Check if card is already claimed
+    cursor.execute("SELECT owner, attempted_by FROM cards WHERE id = ?", (card_id,))
+    result = cursor.fetchone()
+
+    if result and result[0] is not None:
+        # Card already claimed, add to attempted_by list
+        attempted_by = result[1] or ""
+        attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
+        if owner not in attempted_list:
+            attempted_list.append(owner)
+            new_attempted_by = ", ".join(attempted_list)
+            cursor.execute(
+                "UPDATE cards SET attempted_by = ? WHERE id = ?", (new_attempted_by, card_id)
+            )
+            conn.commit()
+        conn.close()
+        return False
+    else:
+        # Claim the card
+        cursor.execute(
+            "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id)
+        )
+        updated = cursor.rowcount > 0
+        conn.commit()
+        conn.close()
+        return updated
 
 
 def get_user_collection(username):
