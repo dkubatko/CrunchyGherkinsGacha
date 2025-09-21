@@ -193,8 +193,8 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if await asyncio.to_thread(database.claim_card, card_id, user.username):
             card = await asyncio.to_thread(database.get_card, card_id)
-            card_title = f"{card[2]} {card[1]}"
-            rarity = card[3]
+            card_title = f"{card.modifier} {card.base_name}"
+            rarity = card.rarity
 
             caption = f"<b>{card_title}</b>\nRarity: <b>{rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
 
@@ -204,10 +204,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         else:
             # Card already claimed, update caption to show attempted users
             card = await asyncio.to_thread(database.get_card, card_id)
-            card_title = f"{card[2]} {card[1]}"
-            rarity = card[3]
-            owner = card[4]
-            attempted_by = card[6] if len(card) > 6 and card[6] else ""
+            card_title = f"{card.modifier} {card.base_name}"
+            rarity = card.rarity
+            owner = card.owner
+            attempted_by = card.attempted_by if card.attempted_by else ""
 
             caption = f"<b>{card_title}</b>\n<b>{rarity}</b>\n\n<i>Claimed by @{owner}</i>"
             if attempted_by:
@@ -244,9 +244,9 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     context.user_data["collection_index"] = current_index
 
     card = cards[current_index]
-    card_title = f"{card[2]} {card[1]}"
-    rarity = card[3]
-    image_b64 = card[5]
+    card_title = f"{card.modifier} {card.base_name}"
+    rarity = card.rarity
+    image_b64 = card.image_b64
 
     caption = (
         f"<b>{card_title}</b>\n"
