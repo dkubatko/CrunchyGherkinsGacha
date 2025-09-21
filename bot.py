@@ -255,6 +255,16 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     current_index = context.user_data.get("collection_index", 0)
 
     if update.callback_query:
+        # Check if the user clicking the button is the same user who initiated the collection
+        callback_data_parts = update.callback_query.data.split("_")
+        if len(callback_data_parts) >= 3:
+            original_user_id = int(callback_data_parts[2])
+            if update.callback_query.from_user.id != original_user_id:
+                await update.callback_query.answer(
+                    "You can only navigate your own collection!", show_alert=True
+                )
+                return
+
         if "prev" in update.callback_query.data:
             current_index = (current_index - 1) % len(cards)
         elif "next" in update.callback_query.data:
@@ -282,11 +292,11 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if len(cards) > 1:
         keyboard.append(
             [
-                InlineKeyboardButton("Prev", callback_data="collection_prev"),
-                InlineKeyboardButton("Next", callback_data="collection_next"),
+                InlineKeyboardButton("Prev", callback_data=f"collection_prev_{user.id}"),
+                InlineKeyboardButton("Next", callback_data=f"collection_next_{user.id}"),
             ]
         )
-    keyboard.append([InlineKeyboardButton("Close", callback_data="collection_close")])
+    keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     media = card.get_media()
