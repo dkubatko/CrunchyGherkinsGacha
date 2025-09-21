@@ -18,7 +18,6 @@ from dotenv import load_dotenv
 
 from settings.constants import (
     RARITIES,
-    MODIFIERS,
     IMAGE_GENERATOR_INSTRUCTION,
     REACTION_IN_PROGRESS,
 )
@@ -113,7 +112,7 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         base_name = os.path.splitext(chosen_file_name)[0]
 
         rarity = get_random_rarity()
-        modifier = random.choice(MODIFIERS)
+        modifier = random.choice(RARITIES[rarity]["modifiers"])
 
         card_title = f"{modifier} {base_name}"
 
