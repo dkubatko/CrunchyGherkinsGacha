@@ -18,4 +18,26 @@ RARITIES = {
     "Legendary": {"weight": 5, "color": "golden"},
 }
 
-MODIFIERS = ["Дикий", "Sailor Moon", "Super", "Anxious", "Productive"]
+MODIFIERS = [
+    "Дикий",
+    "Мытый",
+    "Бритый",
+    "Выигрышный",
+    "Куксящийся",
+    "Лакомящийся",
+    "Крутой",
+    "Overstimulated",
+    "Sailor Moon",
+    "Super",
+    "Anxious",
+    "Productive",
+    "Mexican",
+    "Angry",
+    "Shiny",
+    "Greedy",
+    "Old",
+    "Young",
+    "Swimming",
+    "Diamond",
+    "Superhero",
+]
