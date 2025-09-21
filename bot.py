@@ -35,9 +35,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 BASE_IMAGE_PATH = "data/base_images"
 DEBUG_MODE = "--debug" in sys.argv
+
+# Use debug token when in debug mode, otherwise use production token
+if DEBUG_MODE:
+    TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
+else:
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
 
 def get_random_rarity():

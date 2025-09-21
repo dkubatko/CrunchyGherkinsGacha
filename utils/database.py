@@ -38,42 +38,6 @@ def create_tables():
     """
     )
 
-    # Migrate existing data if needed
-    try:
-        # Check if old column exists
-        cursor.execute("PRAGMA table_info(user_rolls)")
-        columns = [column[1] for column in cursor.fetchall()]
-        if "last_roll_date" in columns and "last_roll_timestamp" not in columns:
-            # Need to migrate from date to timestamp
-            cursor.execute("ALTER TABLE user_rolls ADD COLUMN last_roll_timestamp TEXT")
-
-            # Convert existing dates to timestamps (set to start of day)
-            cursor.execute(
-                "SELECT user_id, last_roll_date FROM user_rolls WHERE last_roll_date IS NOT NULL"
-            )
-            rows = cursor.fetchall()
-            for user_id, date_str in rows:
-                # Convert date to timestamp at start of day
-                date_obj = datetime.datetime.strptime(date_str, "%Y-%m-%d")
-                timestamp = date_obj.isoformat()
-                cursor.execute(
-                    "UPDATE user_rolls SET last_roll_timestamp = ? WHERE user_id = ?",
-                    (timestamp, user_id),
-                )
-
-            # Drop the old column by recreating the table
-            cursor.execute(
-                "CREATE TABLE user_rolls_new (user_id INTEGER PRIMARY KEY, last_roll_timestamp TEXT NOT NULL)"
-            )
-            cursor.execute(
-                "INSERT INTO user_rolls_new SELECT user_id, last_roll_timestamp FROM user_rolls"
-            )
-            cursor.execute("DROP TABLE user_rolls")
-            cursor.execute("ALTER TABLE user_rolls_new RENAME TO user_rolls")
-    except Exception as e:
-        # If migration fails, just continue - the new table structure will be used
-        pass
-
     conn.commit()
     conn.close()
 
