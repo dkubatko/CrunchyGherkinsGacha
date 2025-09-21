@@ -417,7 +417,6 @@ async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle trade rejection."""
     query = update.callback_query
-    await query.answer()
 
     _, _, card_id1_str, card_id2_str = query.data.split("_")
     card_id1 = int(card_id1_str)
@@ -448,12 +447,12 @@ async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ),
         parse_mode=ParseMode.HTML,
     )
+    await query.answer()
 
 
 async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle trade acceptance."""
     query = update.callback_query
-    await query.answer()
 
     _, _, card_id1_str, card_id2_str = query.data.split("_")
     card_id1 = int(card_id1_str)
@@ -489,6 +488,8 @@ async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
     else:
         await query.edit_message_text("Trade failed. Please try again.")
+
+    await query.answer()
 
 
 async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
