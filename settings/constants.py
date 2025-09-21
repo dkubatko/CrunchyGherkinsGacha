@@ -1,23 +1,36 @@
 IMAGE_GENERATOR_INSTRUCTION = """
-Generate a flashy, creative collectible trading card based on the character in the attached image and the following description:
-<{modification} {name}> with border color {color} and {rarity} rarity.
+Using the provided sketch as the general guidance for layout, generate collectible trading card, based on the character in the picture with the following description:
+<{modification} {name}> and {rarity} rarity.
 
-Rarity hierarchy is Common -> Rare -> Epic -> Legendary. Higher the Rarity, more sophisticated the card design should be.
+Due to the card rarity, border color should be in {color} gamut and "creativeness factor" should be {creativeness_factor} / 100.
+Less the creativeness factor less intense the card design should be.
 
-Use comic book-like digital art style. Adjust the style based on the card name if needed.
+Character:
+Use flashy, eye-catching 2D digital art style for the character. 
+Always apply styling to the photos before using, no photorealistic images.
+Keep the face of the character consistent with their image, character must be recognizable.
+Modify the character image to reflect the card name. 
 
-You are free to modify the base image as much as you would like to fully reflect the description, but keep the face of the character consistent with the original image.
-Fill the full image with the card, edge-to-edge, corners are square.
+Card Layout:
+Aspect ratio MUST be 9:16. 
+Only use the provided card layout sketch as a reference. Add layout modifications based on the card name and creativeness factor.
+Do NOT use the reference layout directly, make significant style modifications.
+Card should take up the entire image space, full width and full height, edge-to-edge. 
+ABSOLUTELY NO blank/empty/white space around the card.
 
-Do NOT add any stats, corner markers, etc. to the card. Do NOT include rarity information on the card.
-Only add card name "{modification} {name}" to the bottom, no description.
+Text:
+Do NOT include rarity information on the card.
+Do NOT include any text other than the card name on the card.
+Add card name "{modification} {name}" to the bottom field, no description.
 """
 
 RARITIES = {
     "Common": {
-        "weight": 65,
+        "weight": 60,
         "color": "blue",
+        "creativeness_factor": 50,
         "modifiers": [
+            "Быстрый",
             "Relaxed",
             "Super",
             "Productive",
@@ -29,12 +42,17 @@ RARITIES = {
             "Sleepy",
             "Cool",
             "Regular",
+            "Working",
+            "Driving",
         ],
     },
     "Rare": {
-        "weight": 20,
+        "weight": 23,
         "color": "green",
+        "creativeness_factor": 70,
         "modifiers": [
+            "Вкусный",
+            "Мутный",
             "Smoking",
             "Rich",
             "Magic",
@@ -49,13 +67,15 @@ RARITIES = {
         ],
     },
     "Epic": {
-        "weight": 10,
+        "weight": 12,
         "color": "purple",
+        "creativeness_factor": 90,
         "modifiers": [
             "Дикий",
             "Бритый",
             "Лакомящийся",
             "Хайповый",
+            "Толстый",
             "Bored",
             "Overstimulated",
             "Sailor Moon",
@@ -66,11 +86,16 @@ RARITIES = {
             "Noir",
             "JoJo",
             "Cringe",
+            "Fake",
+            "OG",
+            "Crazy",
+            "American",
         ],
     },
     "Legendary": {
         "weight": 5,
         "color": "golden",
+        "creativeness_factor": 110,
         "modifiers": [
             "Мытый",
             "Кальянный",
@@ -79,6 +104,9 @@ RARITIES = {
             "Sigma",
             "Golden",
             "Black",
+            "Citizen",
+            "Forbidden",
+            "Russian",
         ],
     },
 }

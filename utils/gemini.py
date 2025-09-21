@@ -12,7 +12,6 @@ from settings.constants import IMAGE_GENERATOR_INSTRUCTION, RARITIES
 load_dotenv()
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,12 +32,15 @@ class GeminiUtil:
                 name=base_name,
                 rarity=rarity,
                 color=RARITIES[rarity]["color"],
+                creativeness_factor=RARITIES[rarity]["creativeness_factor"],
             )
             logger.info(
                 f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}'"
             )
+            template_image_path = f"data/card_templates/{rarity}.png"
+            template_img = Image.open(template_image_path)
             img = Image.open(base_image_path)
-            response = self.model.generate_content([prompt, img])
+            response = self.model.generate_content([prompt, template_img, img])
 
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
