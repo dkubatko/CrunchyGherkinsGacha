@@ -130,7 +130,7 @@ def get_total_cards_count():
     """Get the total number of cards ever generated."""
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM cards")
+    cursor.execute("SELECT COUNT(*) FROM cards WHERE owner IS NOT NULL")
     count = cursor.fetchone()[0]
     conn.close()
     return count
