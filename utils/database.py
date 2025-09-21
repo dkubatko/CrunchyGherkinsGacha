@@ -67,12 +67,6 @@ def create_tables():
     """
     )
 
-    # Add file_id column if it doesn't exist (migration for existing databases)
-    cursor.execute("PRAGMA table_info(cards)")
-    columns = [column[1] for column in cursor.fetchall()]
-    if "file_id" not in columns:
-        cursor.execute("ALTER TABLE cards ADD COLUMN file_id TEXT")
-
     conn.commit()
     conn.close()
 
