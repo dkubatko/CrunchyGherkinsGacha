@@ -428,6 +428,7 @@ async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     card2 = await asyncio.to_thread(database.get_card, card_id2)
 
     if not card1 or not card2:
+        await query.answer()
         await query.edit_message_text("Trade failed: one of the cards no longer exists.")
         return
 
@@ -464,6 +465,7 @@ async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     card2 = await asyncio.to_thread(database.get_card, card_id2)
 
     if not card1 or not card2:
+        await query.answer()
         await query.edit_message_text("Trade failed: one of the cards no longer exists.")
         return
 
