@@ -5,7 +5,7 @@ from PIL import Image
 import io
 import base64
 
-load_dotenv(dotenv_path=".env.google")
+load_dotenv(dotenv_path=".env")
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
