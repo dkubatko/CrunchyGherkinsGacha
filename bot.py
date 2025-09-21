@@ -18,8 +18,12 @@ from dotenv import load_dotenv
 
 from settings.constants import (
     RARITIES,
-    IMAGE_GENERATOR_INSTRUCTION,
     REACTION_IN_PROGRESS,
+    COLLECTION_CAPTION,
+    CARD_CAPTION_BASE,
+    CARD_STATUS_UNCLAIMED,
+    CARD_STATUS_CLAIMED,
+    CARD_STATUS_ATTEMPTED,
 )
 from utils import database, gemini
 
@@ -156,7 +160,10 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         keyboard = [[InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        caption = f"<b>{card_title}</b>\nRarity: <b>{rarity}</b>\n\n<i>Unclaimed</i>"
+        caption = (
+            CARD_CAPTION_BASE.format(card_id=card_id, card_title=card_title, rarity=rarity)
+            + CARD_STATUS_UNCLAIMED
+        )
 
         await update.message.reply_photo(
             photo=base64.b64decode(image_b64),
@@ -196,7 +203,9 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             card_title = f"{card.modifier} {card.base_name}"
             rarity = card.rarity
 
-            caption = f"<b>{card_title}</b>\nRarity: <b>{rarity}</b>\n\n<i>Claimed by @{user.username}</i>"
+            caption = CARD_CAPTION_BASE.format(
+                card_id=card_id, card_title=card_title, rarity=rarity
+            ) + CARD_STATUS_CLAIMED.format(username=user.username)
 
             await query.edit_message_caption(
                 caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
@@ -209,12 +218,14 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             owner = card.owner
             attempted_by = card.attempted_by if card.attempted_by else ""
 
-            caption = f"<b>{card_title}</b>\n<b>{rarity}</b>\n\n<i>Claimed by @{owner}</i>"
+            caption = CARD_CAPTION_BASE.format(
+                card_id=card_id, card_title=card_title, rarity=rarity
+            ) + CARD_STATUS_CLAIMED.format(username=owner)
             if attempted_by:
                 attempted_users = ", ".join(
                     [f"@{u.strip()}" for u in attempted_by.split(",") if u.strip()]
                 )
-                caption += f"\n<i>Attempted by: {attempted_users}</i>"
+                caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
 
             await query.edit_message_caption(
                 caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
@@ -248,10 +259,13 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     rarity = card.rarity
     image_b64 = card.image_b64
 
-    caption = (
-        f"<b>{card_title}</b>\n"
-        f"Rarity: <b>{rarity}</b>\n\n"
-        f"<i>Showing {current_index + 1}/{len(cards)} owned by @{user.username}</i>"
+    caption = COLLECTION_CAPTION.format(
+        card_id=card.id,
+        card_title=card_title,
+        rarity=rarity,
+        current_index=current_index + 1,
+        total_cards=len(cards),
+        username=user.username,
     )
 
     keyboard = []

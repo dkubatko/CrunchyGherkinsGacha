@@ -9,7 +9,7 @@ Use comic book-like digital art style. Adjust the style based on the card name i
 You are free to modify the base image as much as you would like to fully reflect the description, but keep the face of the character consistent with the original image.
 Fill the full image with the card, edge-to-edge, corners are square.
 
-Do NOT add any stats, corner markers, etc. to the card.
+Do NOT add any stats, corner markers, etc. to the card. Do NOT include rarity information on the card.
 Only add card name "{modification} {name}" to the bottom, no description.
 """
 
@@ -84,3 +84,14 @@ RARITIES = {
 }
 
 REACTION_IN_PROGRESS = "🤔"
+
+COLLECTION_CAPTION = (
+    "<b>[{card_id}] {card_title}</b>\n"
+    "Rarity: <b>{rarity}</b>\n\n"
+    "<i>Showing {current_index}/{total_cards} owned by @{username}</i>"
+)
+
+CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
+CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
+CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
+CARD_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
