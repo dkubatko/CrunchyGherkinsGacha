@@ -4,6 +4,7 @@ import os
 import random
 import sys
 import base64
+import datetime
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -46,6 +47,20 @@ def get_random_rarity():
     return random.choices(rarity_list, weights=weights, k=1)[0]
 
 
+def get_time_until_next_roll():
+    """Calculate time until next roll (next midnight).
+    Uses the same timezone as the database (system local time).
+    """
+    now = datetime.datetime.now()
+    tomorrow = now.replace(hour=0, minute=0, second=0, microsecond=0) + datetime.timedelta(days=1)
+    time_diff = tomorrow - now
+
+    hours = int(time_diff.total_seconds() // 3600)
+    minutes = int((time_diff.total_seconds() % 3600) // 60)
+
+    return hours, minutes
+
+
 async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Roll a new card."""
     await context.bot.set_message_reaction(
@@ -56,8 +71,9 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user = update.effective_user
     if not DEBUG_MODE:
         if not await asyncio.to_thread(database.can_roll, user.id):
+            hours, minutes = get_time_until_next_roll()
             await update.message.reply_text(
-                "You have already rolled for a card today. Try again tomorrow!",
+                f"You have already rolled for a card today. Next roll in {hours} hours {minutes} minutes.",
                 reply_to_message_id=update.message.message_id,
             )
             await context.bot.set_message_reaction(
