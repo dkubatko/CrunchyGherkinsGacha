@@ -93,7 +93,7 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if group_chat_id:
             await context.bot.send_message(
                 chat_id=group_chat_id,
-                text=f"@{user.username} attempted to roll in a private chat.",
+                text=f"@{user.username} attempted to roll in a private chat. 🐀",
             )
         return
 
