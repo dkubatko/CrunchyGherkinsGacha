@@ -168,13 +168,18 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             + CARD_STATUS_UNCLAIMED
         )
 
-        await update.message.reply_photo(
+        message = await update.message.reply_photo(
             photo=base64.b64decode(image_b64),
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
             reply_to_message_id=update.message.message_id,
         )
+
+        # Save the file_id returned by Telegram for future use
+        if message.photo:
+            file_id = message.photo[-1].file_id  # Get the largest photo size
+            await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
 
     except Exception as e:
         logger.error(f"Error in /roll: {e}")
@@ -254,13 +259,15 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             current_index = (current_index - 1) % len(cards)
         elif "next" in update.callback_query.data:
             current_index = (current_index + 1) % len(cards)
+        elif "close" in update.callback_query.data:
+            await update.callback_query.delete_message()
+            return
 
     context.user_data["collection_index"] = current_index
 
     card = cards[current_index]
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
-    image_b64 = card.image_b64
 
     caption = COLLECTION_CAPTION.format(
         card_id=card.id,
@@ -279,24 +286,37 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 InlineKeyboardButton("Next", callback_data="collection_next"),
             ]
         )
+    keyboard.append([InlineKeyboardButton("Close", callback_data="collection_close")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    media = card.get_media()
+
     if update.callback_query:
-        await update.callback_query.edit_message_media(
-            media=InputMediaPhoto(media=base64.b64decode(image_b64), caption=caption),
+        # For callback queries (navigation)
+        message = await update.callback_query.edit_message_media(
+            media=InputMediaPhoto(media=media, caption="Loading..."),
             reply_markup=reply_markup,
         )
         await update.callback_query.edit_message_caption(
             caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
         )
+        # Always update file_id with what Telegram returns
+        if message and message.photo:
+            new_file_id = message.photo[-1].file_id
+            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
     else:
-        await update.message.reply_photo(
-            photo=base64.b64decode(image_b64),
+        # For new collection requests
+        message = await update.message.reply_photo(
+            photo=media,
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
             reply_to_message_id=update.message.message_id,
         )
+        # Always update file_id with what Telegram returns
+        if message and message.photo:
+            new_file_id = message.photo[-1].file_id
+            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
 
 
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

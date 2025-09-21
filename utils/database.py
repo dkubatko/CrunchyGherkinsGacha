@@ -1,12 +1,18 @@
 import sqlite3
 import os
 import datetime
+import logging
+import base64
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = "data/cards.db"
 
 
 class Card:
-    def __init__(self, id, base_name, modifier, rarity, owner, image_b64, attempted_by):
+    def __init__(
+        self, id, base_name, modifier, rarity, owner, image_b64, attempted_by, file_id=None
+    ):
         self.id = id
         self.base_name = base_name
         self.modifier = modifier
@@ -14,10 +20,17 @@ class Card:
         self.owner = owner
         self.image_b64 = image_b64
         self.attempted_by = attempted_by
+        self.file_id = file_id
 
     def title(self):
         """Return the card's full title."""
         return f"{self.rarity} {self.modifier} {self.base_name}"
+
+    def get_media(self):
+        """Return file_id if available, otherwise return decoded base64 image data."""
+        if self.file_id:
+            return self.file_id
+        return base64.b64decode(self.image_b64)
 
 
 def connect():
@@ -40,7 +53,8 @@ def create_tables():
             rarity TEXT NOT NULL,
             owner TEXT,
             image_b64 TEXT,
-            attempted_by TEXT DEFAULT ''
+            attempted_by TEXT DEFAULT '',
+            file_id TEXT
         )
     """
     )
@@ -52,6 +66,12 @@ def create_tables():
         )
     """
     )
+
+    # Add file_id column if it doesn't exist (migration for existing databases)
+    cursor.execute("PRAGMA table_info(cards)")
+    columns = [column[1] for column in cursor.fetchall()]
+    if "file_id" not in columns:
+        cursor.execute("ALTER TABLE cards ADD COLUMN file_id TEXT")
 
     conn.commit()
     conn.close()
@@ -234,6 +254,16 @@ def swap_card_owners(card_id1, card_id2):
         return False
     finally:
         conn.close()
+
+
+def update_card_file_id(card_id, file_id):
+    """Update the Telegram file_id for a card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cards SET file_id = ? WHERE id = ?", (file_id, card_id))
+    conn.commit()
+    conn.close()
+    logger.info(f"Updated file_id for card {card_id}: {file_id}")
 
 
 create_tables()
