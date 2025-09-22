@@ -1,5 +1,5 @@
 {
-  "DB_PATH": "data/cards.db",
+  "DB_PATH": "/usr/local/gacha/database/cards.db",
   "BASE_IMAGE_PATH": "data/base_images",
   "CARD_TEMPLATES_PATH": "data/card_templates",
   "RARITIES": {
