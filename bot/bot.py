@@ -32,7 +32,7 @@ from settings.constants import (
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
 )
-from utils import database, gemini
+from utils import gemini, database
 
 # Load environment variables
 load_dotenv()
