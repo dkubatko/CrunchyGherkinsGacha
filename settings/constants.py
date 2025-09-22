@@ -183,6 +183,7 @@ RARITIES = {
             "Crypto",
             "CEO",
             "Freaky",
+            "Maiden",
         ],
     },
     "Legendary": {
