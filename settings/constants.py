@@ -4,20 +4,22 @@ import os
 # Load configuration from config.json
 _config = None
 
+
 def load_config():
     global _config
     if _config is None:
-        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-        with open(config_path, 'r', encoding='utf-8') as f:
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.json")
+        with open(config_path, "r", encoding="utf-8") as f:
             _config = json.load(f)
     return _config
 
+
 # Load configuration
 config = load_config()
-RARITIES = config['RARITIES']
-DB_PATH = config['DB_PATH']
-BASE_IMAGE_PATH = config['BASE_IMAGE_PATH']
-CARD_TEMPLATES_PATH = config['CARD_TEMPLATES_PATH']
+RARITIES = config["RARITIES"]
+DB_PATH = config["DB_PATH"]
+BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
+CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
 
 IMAGE_GENERATOR_INSTRUCTION = """
 Using the provided sketch as the general guidance for layout, generate collectible trading card, based on the character in the picture with the following description:
