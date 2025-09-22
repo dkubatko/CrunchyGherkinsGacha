@@ -5,6 +5,7 @@ import random
 import sys
 import base64
 import datetime
+import json
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -18,6 +19,7 @@ from dotenv import load_dotenv
 
 from settings.constants import (
     RARITIES,
+    BASE_IMAGE_PATH,
     REACTION_IN_PROGRESS,
     COLLECTION_CAPTION,
     CARD_CAPTION_BASE,
@@ -43,7 +45,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BASE_IMAGE_PATH = "data/base_images"
 DEBUG_MODE = "--debug" in sys.argv
 
 # Use debug token when in debug mode, otherwise use production token

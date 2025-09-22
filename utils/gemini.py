@@ -6,7 +6,7 @@ import google.generativeai as genai
 from dotenv import load_dotenv
 from PIL import Image
 
-from settings.constants import IMAGE_GENERATOR_INSTRUCTION, RARITIES
+from settings.constants import IMAGE_GENERATOR_INSTRUCTION, RARITIES, CARD_TEMPLATES_PATH
 from utils.image import ImageUtil
 
 load_dotenv()
@@ -37,7 +37,7 @@ class GeminiUtil:
             logger.info(
                 f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}'"
             )
-            template_image_path = f"data/card_templates/{rarity.lower()}.png"
+            template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
             template_img = Image.open(template_image_path)
             img = Image.open(base_image_path)
             response = self.model.generate_content([prompt, template_img, img])

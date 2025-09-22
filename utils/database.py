@@ -4,9 +4,9 @@ import datetime
 import logging
 import base64
 
-logger = logging.getLogger(__name__)
+from settings.constants import DB_PATH
 
-DB_PATH = "data/cards.db"
+logger = logging.getLogger(__name__)
 
 
 class Card:
