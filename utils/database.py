@@ -272,4 +272,16 @@ def clear_all_file_ids():
     return affected_rows
 
 
+def delete_card(card_id):
+    """Delete a card from the database."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    logger.info(f"Deleted card {card_id}: {deleted}")
+    return deleted
+
+
 create_tables()

@@ -24,6 +24,8 @@ from settings.constants import (
     CARD_STATUS_UNCLAIMED,
     CARD_STATUS_CLAIMED,
     CARD_STATUS_ATTEMPTED,
+    CARD_STATUS_REROLLING,
+    CARD_STATUS_REROLLED,
     TRADE_REQUEST_MESSAGE,
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
@@ -56,6 +58,19 @@ def get_random_rarity():
     rarity_list = list(RARITIES.keys())
     weights = [RARITIES[rarity]["weight"] for rarity in rarity_list]
     return random.choices(rarity_list, weights=weights, k=1)[0]
+
+
+def get_downgraded_rarity(current_rarity):
+    """Return a rarity one level lower than the current rarity."""
+    rarity_order = ["Common", "Rare", "Epic", "Legendary"]
+    try:
+        current_index = rarity_order.index(current_rarity)
+        if current_index > 0:
+            return rarity_order[current_index - 1]
+        else:
+            return "Common"  # If already Common, stay Common
+    except ValueError:
+        return "Common"  # Default to Common if rarity not found
 
 
 def get_time_until_next_roll(user_id):
@@ -160,7 +175,10 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         if not DEBUG_MODE:
             await asyncio.to_thread(database.record_roll, user.id)
 
-        keyboard = [[InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")]]
+        keyboard = [
+            [InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")],
+            [InlineKeyboardButton("Reroll", callback_data=f"reroll_{card_id}_{user.id}")],
+        ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         caption = (
@@ -195,49 +213,165 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle button clicks."""
+async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle reroll button click."""
     query = update.callback_query
-    await query.answer()
 
+    data_parts = query.data.split("_")
+    card_id = int(data_parts[1])
+    original_roller_id = int(data_parts[2])
+
+    user = query.from_user
+
+    # Check if the user clicking is the original roller
+    if user.id != original_roller_id:
+        await query.answer("Only the original roller can reroll this card!", show_alert=True)
+        return
+
+    # Get the original card
+    original_card = await asyncio.to_thread(database.get_card, card_id)
+    if not original_card:
+        await query.answer("Card not found!", show_alert=True)
+        return
+
+    if "rerolling_cards" not in context.bot_data:
+        context.bot_data["rerolling_cards"] = set()
+
+    if card_id in context.bot_data["rerolling_cards"]:
+        await query.answer("This card is already being rerolled.", show_alert=True)
+        return
+
+    try:
+        context.bot_data["rerolling_cards"].add(card_id)
+        await query.edit_message_caption(caption=CARD_STATUS_REROLLING, parse_mode=ParseMode.HTML)
+
+        # Generate new card with downgraded rarity
+        base_images = [f for f in os.listdir(BASE_IMAGE_PATH) if not f.startswith(".")]
+        if not base_images:
+            logger.error("Base images not found.")
+            await query.answer("Error: base images not found.", show_alert=True)
+            # Restore original message
+            await query.edit_message_caption(
+                caption=query.message.caption, reply_markup=query.message.reply_markup
+            )
+            return
+
+        chosen_file_name = random.choice(base_images)
+        base_name = os.path.splitext(chosen_file_name)[0]
+
+        downgraded_rarity = get_downgraded_rarity(original_card.rarity)
+        modifier = random.choice(RARITIES[downgraded_rarity]["modifiers"])
+
+        card_title = f"{modifier} {base_name}"
+
+        base_image_path = os.path.join(BASE_IMAGE_PATH, chosen_file_name)
+        image_b64 = await asyncio.to_thread(
+            gemini_util.generate_image, base_name, modifier, downgraded_rarity, base_image_path
+        )
+
+        if not image_b64:
+            await query.answer("Sorry, couldn't generate a new image!", show_alert=True)
+            # Restore original message
+            await query.edit_message_caption(
+                caption=query.message.caption, reply_markup=query.message.reply_markup
+            )
+            return
+
+        # Add new card to database
+        new_card_id = await asyncio.to_thread(
+            database.add_card, base_name, modifier, downgraded_rarity, image_b64
+        )
+
+        # Delete the original card
+        await asyncio.to_thread(database.delete_card, card_id)
+
+        # Update the message with new card
+        keyboard = [
+            [InlineKeyboardButton("Claim", callback_data=f"claim_{new_card_id}")],
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        caption = (
+            CARD_CAPTION_BASE.format(
+                card_id=new_card_id, card_title=card_title, rarity=downgraded_rarity
+            )
+            + CARD_STATUS_UNCLAIMED
+            + CARD_STATUS_REROLLED.format(
+                original_rarity=original_card.rarity, downgraded_rarity=downgraded_rarity
+            )
+        )
+
+        # Update message with new image and caption
+        message = await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=base64.b64decode(image_b64), caption=caption, parse_mode=ParseMode.HTML
+            ),
+            reply_markup=reply_markup,
+        )
+
+        # Save the file_id returned by Telegram for future use
+        if message.photo:
+            file_id = message.photo[-1].file_id
+            await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
+
+        await query.answer(f"Rerolled! New rarity: {downgraded_rarity}")
+    except Exception as e:
+        logger.error(f"Error in reroll: {e}")
+        await query.answer("An error occurred during reroll!", show_alert=True)
+    finally:
+        context.bot_data["rerolling_cards"].discard(card_id)
+
+
+async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle claim button click."""
+    query = update.callback_query
     data = query.data
+    card_id = int(data.split("_")[1])
 
-    if data.startswith("claim_"):
-        card_id = int(data.split("_")[1])
-        user = query.from_user
+    if "rerolling_cards" in context.bot_data and card_id in context.bot_data["rerolling_cards"]:
+        await query.answer("The card is being rerolled, please wait.", show_alert=True)
+        return
 
-        if await asyncio.to_thread(database.claim_card, card_id, user.username):
-            card = await asyncio.to_thread(database.get_card, card_id)
-            card_title = f"{card.modifier} {card.base_name}"
-            rarity = card.rarity
+    user = query.from_user
 
-            caption = CARD_CAPTION_BASE.format(
-                card_id=card_id, card_title=card_title, rarity=rarity
-            ) + CARD_STATUS_CLAIMED.format(username=user.username)
+    is_successful_claim = await asyncio.to_thread(database.claim_card, card_id, user.username)
+    card = await asyncio.to_thread(database.get_card, card_id)
+    card_title = f"{card.modifier} {card.base_name}"
+    rarity = card.rarity
 
-            await query.edit_message_caption(
-                caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
+    if is_successful_claim:
+        caption = CARD_CAPTION_BASE.format(
+            card_id=card_id, card_title=card_title, rarity=rarity
+        ) + CARD_STATUS_CLAIMED.format(username=user.username)
+        await query.answer(f"Card {card_title} claimed!", show_alert=True)
+    else:
+        # Card already claimed, update caption to show attempted users
+        owner = card.owner
+        attempted_by = card.attempted_by if card.attempted_by else ""
+
+        caption = CARD_CAPTION_BASE.format(
+            card_id=card_id, card_title=card_title, rarity=rarity
+        ) + CARD_STATUS_CLAIMED.format(username=owner)
+        if attempted_by:
+            attempted_users = ", ".join(
+                [f"@{u.strip()}" for u in attempted_by.split(",") if u.strip()]
             )
-        else:
-            # Card already claimed, update caption to show attempted users
-            card = await asyncio.to_thread(database.get_card, card_id)
-            card_title = f"{card.modifier} {card.base_name}"
-            rarity = card.rarity
-            owner = card.owner
-            attempted_by = card.attempted_by if card.attempted_by else ""
+            caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
+        await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
-            caption = CARD_CAPTION_BASE.format(
-                card_id=card_id, card_title=card_title, rarity=rarity
-            ) + CARD_STATUS_CLAIMED.format(username=owner)
-            if attempted_by:
-                attempted_users = ", ".join(
-                    [f"@{u.strip()}" for u in attempted_by.split(",") if u.strip()]
-                )
-                caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
+    # Keep other buttons, remove the claim button
+    current_keyboard = query.message.reply_markup.inline_keyboard
+    new_keyboard = []
+    for row in current_keyboard:
+        new_row = [button for button in row if not button.callback_data.startswith("claim_")]
+        if new_row:
+            new_keyboard.append(new_row)
 
-            await query.edit_message_caption(
-                caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
-            )
+    new_reply_markup = InlineKeyboardMarkup(new_keyboard) if new_keyboard else None
+
+    await query.edit_message_caption(
+        caption=caption, reply_markup=new_reply_markup, parse_mode=ParseMode.HTML
+    )
 
 
 async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -536,7 +670,8 @@ def main() -> None:
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("reload", reload))
-    application.add_handler(CallbackQueryHandler(button, pattern="^claim_"))
+    application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
+    application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
     application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
     application.add_handler(CallbackQueryHandler(reject_trade, pattern="^trade_reject_"))
