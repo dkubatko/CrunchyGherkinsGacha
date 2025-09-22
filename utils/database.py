@@ -11,7 +11,16 @@ DB_PATH = "data/cards.db"
 
 class Card:
     def __init__(
-        self, id, base_name, modifier, rarity, owner, image_b64, attempted_by, file_id=None
+        self,
+        id,
+        base_name,
+        modifier,
+        rarity,
+        owner,
+        image_b64,
+        attempted_by,
+        file_id=None,
+        created_at=None,
     ):
         self.id = id
         self.base_name = base_name
@@ -21,6 +30,7 @@ class Card:
         self.image_b64 = image_b64
         self.attempted_by = attempted_by
         self.file_id = file_id
+        self.created_at = created_at
 
     def title(self):
         """Return the card's full title."""
@@ -54,7 +64,8 @@ def create_tables():
             owner TEXT,
             image_b64 TEXT,
             attempted_by TEXT DEFAULT '',
-            file_id TEXT
+            file_id TEXT,
+            created_at TEXT
         )
     """
     )
@@ -67,6 +78,13 @@ def create_tables():
     """
     )
 
+    # Add created_at column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE cards ADD COLUMN created_at TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
     conn.commit()
     conn.close()
 
@@ -75,12 +93,13 @@ def add_card(base_name, modifier, rarity, image_b64):
     """Add a new card to the database."""
     conn = connect()
     cursor = conn.cursor()
+    now = datetime.datetime.now().isoformat()
     cursor.execute(
         """
-        INSERT INTO cards (base_name, modifier, rarity, image_b64)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO cards (base_name, modifier, rarity, image_b64, created_at)
+        VALUES (?, ?, ?, ?, ?)
     """,
-        (base_name, modifier, rarity, image_b64),
+        (base_name, modifier, rarity, image_b64, now),
     )
     card_id = cursor.lastrowid
     conn.commit()
@@ -282,6 +301,22 @@ def delete_card(card_id):
     conn.close()
     logger.info(f"Deleted card {card_id}: {deleted}")
     return deleted
+
+
+def is_reroll_expired(card_id):
+    """Check if the reroll time limit (5 minutes) has expired for a card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT created_at FROM cards WHERE id = ?", (card_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result or not result[0]:
+        return True  # No creation time found, consider expired
+
+    created_at = datetime.datetime.fromisoformat(result[0])
+    time_since_creation = datetime.datetime.now() - created_at
+    return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
 create_tables()

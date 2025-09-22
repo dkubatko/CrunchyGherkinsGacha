@@ -228,6 +228,23 @@ async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await query.answer("Only the original roller can reroll this card!", show_alert=True)
         return
 
+    # Check if reroll time limit has expired
+    reroll_expired = await asyncio.to_thread(database.is_reroll_expired, card_id)
+    if reroll_expired:
+        await query.answer("Reroll has expired", show_alert=True)
+
+        # Remove reroll button from the message
+        current_keyboard = query.message.reply_markup.inline_keyboard
+        new_keyboard = []
+        for row in current_keyboard:
+            new_row = [button for button in row if not button.callback_data.startswith("reroll_")]
+            if new_row:
+                new_keyboard.append(new_row)
+
+        new_reply_markup = InlineKeyboardMarkup(new_keyboard) if new_keyboard else None
+        await query.edit_message_reply_markup(reply_markup=new_reply_markup)
+        return
+
     # Get the original card
     original_card = await asyncio.to_thread(database.get_card, card_id)
     if not original_card:
