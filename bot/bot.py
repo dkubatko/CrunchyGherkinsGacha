@@ -99,11 +99,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Roll a new card."""
     user = update.effective_user
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
-        await context.bot.set_message_reaction(
-            chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-            reaction=[ReactionTypeEmoji("🤡")],
-        )
+        if not DEBUG_MODE:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[ReactionTypeEmoji("🤡")],
+            )
         await update.message.reply_text("Caught a cheater! Only allowed to roll in the group chat.")
         group_chat_id = os.getenv("GROUP_CHAT_ID")
         if group_chat_id:
@@ -113,11 +114,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
         return
 
-    await context.bot.set_message_reaction(
-        chat_id=update.effective_chat.id,
-        message_id=update.message.message_id,
-        reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
-    )
+    if not DEBUG_MODE:
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
+        )
     if not DEBUG_MODE:
         if not await asyncio.to_thread(database.can_roll, user.id):
             hours, minutes = get_time_until_next_roll(user.id)
@@ -125,11 +127,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
                 reply_to_message_id=update.message.message_id,
             )
-            await context.bot.set_message_reaction(
-                chat_id=update.effective_chat.id,
-                message_id=update.message.message_id,
-                reaction=[],
-            )
+            if not DEBUG_MODE:
+                await context.bot.set_message_reaction(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    reaction=[],
+                )
             return
 
     try:
@@ -139,11 +142,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "No base images found to create a card.",
                 reply_to_message_id=update.message.message_id,
             )
-            await context.bot.set_message_reaction(
-                chat_id=update.effective_chat.id,
-                message_id=update.message.message_id,
-                reaction=[],
-            )
+            if not DEBUG_MODE:
+                await context.bot.set_message_reaction(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    reaction=[],
+                )
             return
 
         chosen_file_name = random.choice(base_images)
@@ -164,11 +168,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 "Sorry, I couldn't generate an image at the moment.",
                 reply_to_message_id=update.message.message_id,
             )
-            await context.bot.set_message_reaction(
-                chat_id=update.effective_chat.id,
-                message_id=update.message.message_id,
-                reaction=[],
-            )
+            if not DEBUG_MODE:
+                await context.bot.set_message_reaction(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    reaction=[],
+                )
             return
 
         card_id = await asyncio.to_thread(database.add_card, base_name, modifier, rarity, image_b64)
@@ -207,11 +212,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             reply_to_message_id=update.message.message_id,
         )
     finally:
-        await context.bot.set_message_reaction(
-            chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-            reaction=[],
-        )
+        if not DEBUG_MODE:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[],
+            )
 
 
 async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -679,15 +685,51 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Display a button to open the Mini App."""
+    miniapp_url = os.getenv("MINIAPP_URL")
+    if not miniapp_url:
+        await update.message.reply_text(
+            "Mini App URL is not configured by the bot admin.",
+            reply_to_message_id=update.message.message_id,
+        )
+        return
+
+    keyboard = [[InlineKeyboardButton("Open Collection", web_app={"url": miniapp_url})]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text(
+        "Click the button below to open your card collection!", reply_markup=reply_markup
+    )
+
+
 def main() -> None:
     """Start the bot."""
-    application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
+    if DEBUG_MODE:
+        # Use test environment endpoints when in debug mode
+        # Format: https://api.telegram.org/bot<token>/test/METHOD_NAME
+        application = (
+            Application.builder()
+            .token(TELEGRAM_TOKEN)
+            .base_url("https://api.telegram.org/bot")
+            .base_file_url("https://api.telegram.org/file/bot")
+            .concurrent_updates(True)
+            .build()
+        )
+        # Override the bot's base_url to include /test/ for test environment
+        application.bot._base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/test"
+        application.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
+        logger.info("🧪 Running in DEBUG mode with test environment endpoints")
+        logger.info(f"🔗 API Base URL: {application.bot._base_url}")
+    else:
+        application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
+        logger.info("🚀 Running in PRODUCTION mode")
 
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("reload", reload))
+    application.add_handler(CommandHandler("miniapp", miniapp))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
