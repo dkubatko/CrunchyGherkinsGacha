@@ -50,12 +50,20 @@ function App() {
           return;
         }
 
-        // Get the username from the Telegram Web App user object
-        const fetchedUsername: string | undefined = WebApp.initDataUnsafe.user.username;
+        // Get the username from start parameter or fall back to Telegram Web App user object
+        let fetchedUsername: string | undefined;
+        
+        // First, check if there's a start parameter with a username
+        if (WebApp.initDataUnsafe.start_param) {
+          fetchedUsername = WebApp.initDataUnsafe.start_param;
+        } else {
+          // Fall back to the user's Telegram username
+          fetchedUsername = WebApp.initDataUnsafe.user.username;
+        }
         
         // Check if username exists and is not empty
         if (!fetchedUsername || fetchedUsername.trim() === '') {
-          setError("Could not determine Telegram username. Please make sure you have a username set in your Telegram profile.");
+          setError("Could not determine username. Please make sure you have a username set in your Telegram profile or the app was opened with a valid start parameter.");
           setLoading(false);
           return;
         }
