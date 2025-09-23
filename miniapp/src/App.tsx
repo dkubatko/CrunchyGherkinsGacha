@@ -36,24 +36,51 @@ function App() {
   useEffect(() => {
     const fetchCards = async () => {
       try {
-        // In a real app, you'd get the username from the Telegram Web App user object
-        const fetchedUsername = WebApp.initDataUnsafe?.user?.username || "Your";
-        setUsername(fetchedUsername);
-        
-        if (!fetchedUsername) {
-          setError("Could not determine Telegram username.");
+        // Check if WebApp is properly initialized
+        if (!WebApp || !WebApp.initDataUnsafe) {
+          setError("Telegram Web App not properly initialized. Please open this app from Telegram.");
           setLoading(false);
           return;
         }
 
-        const response = await fetch(`https://api.crunchygherkins.com/cards/${fetchedUsername}`);
+        // Check if user data is available
+        if (!WebApp.initDataUnsafe.user) {
+          setError("User data not available. Please make sure you're logged into Telegram.");
+          setLoading(false);
+          return;
+        }
+
+        // Get the username from the Telegram Web App user object
+        const fetchedUsername: string | undefined = WebApp.initDataUnsafe.user.username;
+        
+        // Check if username exists and is not empty
+        if (!fetchedUsername || fetchedUsername.trim() === '') {
+          setError("Could not determine Telegram username. Please make sure you have a username set in your Telegram profile.");
+          setLoading(false);
+          return;
+        }
+
+        setUsername(fetchedUsername);
+
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+        const response = await fetch(`${apiBaseUrl}/cards/${fetchedUsername}`);
         if (!response.ok) {
-          throw new Error('Failed to fetch cards');
+          if (response.status === 404) {
+            throw new Error('User not found. You may not have any cards yet.');
+          } else if (response.status >= 500) {
+            throw new Error('Server error. Please try again later.');
+          } else {
+            throw new Error(`Failed to fetch cards (Error ${response.status})`);
+          }
         }
         const data = await response.json();
         setCards(data);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'An unknown error occurred');
+        if (err instanceof Error) {
+          setError(err.message);
+        } else {
+          setError('An unknown error occurred while fetching your cards');
+        }
       } finally {
         setLoading(false);
       }

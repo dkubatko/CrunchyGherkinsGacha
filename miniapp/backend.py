@@ -3,18 +3,33 @@ from fastapi.middleware.cors import CORSMiddleware
 import sqlite3
 import os
 import base64
+import sys
 from pydantic import BaseModel
 from typing import List
 
 app = FastAPI()
 
-# CORS configuration for production
+# Determine if running in debug mode
+is_debug = "--reload" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
+
+# CORS configuration
+allowed_origins = [
+    "https://app.crunchygherkins.com",
+    "http://localhost:5173",  # For local development
+]
+
+# Add local IP address when in debug mode
+if is_debug:
+    allowed_origins.extend(
+        [
+            "http://192.168.1.200:5173",  # Local IP for mobile testing
+            "https://192.168.1.200:5173",  # HTTPS version if needed
+        ]
+    )
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://app.crunchygherkins.com",
-        "http://localhost:5173",  # For local development
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],

@@ -687,7 +687,11 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display a button to open the Mini App."""
-    miniapp_url = os.getenv("MINIAPP_URL")
+    if DEBUG_MODE:
+        miniapp_url = os.getenv("DEBUG_MINIAPP_URL")
+    else:
+        miniapp_url = os.getenv("MINIAPP_URL")
+
     if not miniapp_url:
         await update.message.reply_text(
             "Mini App URL is not configured by the bot admin.",
