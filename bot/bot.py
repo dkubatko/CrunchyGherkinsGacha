@@ -455,6 +455,16 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
                 InlineKeyboardButton("Next", callback_data=f"collection_next_{user.id}"),
             ]
         )
+
+    # Add miniapp button
+    if DEBUG_MODE:
+        miniapp_url = os.getenv("DEBUG_MINIAPP_URL")
+    else:
+        miniapp_url = os.getenv("MINIAPP_URL")
+
+    if miniapp_url:
+        keyboard.append([InlineKeyboardButton("View in the app!", web_app={"url": miniapp_url})])
+
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -685,27 +695,6 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
-async def miniapp(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Display a button to open the Mini App."""
-    if DEBUG_MODE:
-        miniapp_url = os.getenv("DEBUG_MINIAPP_URL")
-    else:
-        miniapp_url = os.getenv("MINIAPP_URL")
-
-    if not miniapp_url:
-        await update.message.reply_text(
-            "Mini App URL is not configured by the bot admin.",
-            reply_to_message_id=update.message.message_id,
-        )
-        return
-
-    keyboard = [[InlineKeyboardButton("Open Collection", web_app={"url": miniapp_url})]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "Click the button below to open your card collection!", reply_markup=reply_markup
-    )
-
-
 def main() -> None:
     """Start the bot."""
     if DEBUG_MODE:
@@ -733,7 +722,6 @@ def main() -> None:
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("reload", reload))
-    application.add_handler(CommandHandler("miniapp", miniapp))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
