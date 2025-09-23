@@ -475,8 +475,8 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             # In group chats, use regular URL button
             keyboard.append([InlineKeyboardButton("View in browser", url=miniapp_url)])
     else:
-        # In production mode, use link button with bot URL
-        bot_url = "https://t.me/CrunchyGherkinsGachaBot/collection"
+        # In production mode, use link button with bot URL and username as start parameter
+        bot_url = f"https://t.me/CrunchyGherkinsGachaBot/collection?startapp={user.username}"
         keyboard.append([InlineKeyboardButton("View in the app!", url=bot_url)])
 
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
