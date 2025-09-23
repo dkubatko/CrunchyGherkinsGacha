@@ -100,15 +100,15 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, image_b64, ori
     const rarityLower = rarity.toLowerCase();
     switch (rarityLower) {
       case 'common':
-        return 0.25; // Reduced from 0.33 for more subtle effect
+        return 0.33;
       case 'rare':
-        return 0.55; // Increased from 0.5
+        return 0.60;
       case 'epic':
-        return 0.85; // Increased from 0.7
+        return 0.85;
       case 'legendary':
-        return 1.3; // Increased from 1.0 for dramatic effect
+        return 1.25;
       default:
-        return 0.25;
+        return 0.33;
     }
   };
 
