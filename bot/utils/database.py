@@ -367,4 +367,62 @@ def is_reroll_expired(card_id):
     return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
+def upsert_user(
+    user_id: int,
+    username: str,
+    display_name: Optional[str] = None,
+    profile_imageb64: Optional[str] = None,
+) -> None:
+    """Insert or update a user record."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO users (user_id, username, display_name, profile_imageb64)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET
+            username = excluded.username,
+            display_name = COALESCE(excluded.display_name, users.display_name),
+            profile_imageb64 = COALESCE(excluded.profile_imageb64, users.profile_imageb64)
+        """,
+        (user_id, username, display_name, profile_imageb64),
+    )
+    conn.commit()
+    conn.close()
+
+
+def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
+    """Update the display name and profile image for a user."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
+        (display_name, profile_imageb64, user_id),
+    )
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def get_user(user_id: int) -> Optional[dict]:
+    """Fetch a user record by ID."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def user_exists(user_id: int) -> bool:
+    """Check whether a user exists in the users table."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+
 create_tables()

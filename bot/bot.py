@@ -8,6 +8,8 @@ import datetime
 import json
 import threading
 import urllib.parse
+from functools import wraps
+from typing import Awaitable, Callable, Any
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -17,7 +19,14 @@ from telegram import (
     WebAppInfo,
 )
 from telegram.constants import ParseMode, ChatType
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 from dotenv import load_dotenv
 
 from settings.constants import (
@@ -57,6 +66,48 @@ if DEBUG_MODE:
     TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
+
+
+HandlerFunc = Callable[..., Awaitable[Any]]
+
+
+def verify_user(handler: HandlerFunc) -> HandlerFunc:
+    """Ensure the calling user exists in the users table before proceeding."""
+
+    @wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        user = update.effective_user
+        if not user or user.id is None:
+            return await handler(update, context, *args, **kwargs)
+
+        exists = await asyncio.to_thread(database.user_exists, user.id)
+        if exists:
+            return await handler(update, context, *args, **kwargs)
+
+        prompt_message = "Please DM the bot with /start to register before using this command."
+
+        if update.callback_query:
+            try:
+                await update.callback_query.answer(prompt_message, show_alert=True)
+            except Exception:
+                # Ignore if we cannot send an alert (e.g., already answered)
+                pass
+            if update.callback_query.message:
+                await update.callback_query.message.reply_text(prompt_message)
+        elif update.message:
+            await update.message.reply_text(
+                prompt_message,
+                reply_to_message_id=getattr(update.message, "message_id", None),
+            )
+        else:
+            try:
+                await context.bot.send_message(chat_id=user.id, text=prompt_message)
+            except Exception:
+                logger.debug("Unable to prompt user %s to register via DM", user.id)
+
+        return None
+
+    return wrapper  # type: ignore[return-value]
 
 
 def get_random_rarity():
@@ -100,6 +151,89 @@ def get_time_until_next_roll(user_id):
     return hours, minutes
 
 
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Register the user in the users table. DM-only."""
+    message = update.message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    if update.effective_chat.type != ChatType.PRIVATE:
+        await message.reply_text("Please DM me with /start to register.")
+        return
+
+    if not user.username:
+        await message.reply_text(
+            "You need a Telegram username to register. Please set one in Telegram settings and try again."
+        )
+        return
+
+    user_exists = await asyncio.to_thread(database.user_exists, user.id)
+
+    display_name = None
+    if not user_exists:
+        display_name = user.full_name or user.username
+
+    await asyncio.to_thread(database.upsert_user, user.id, user.username, display_name, None)
+
+    if user_exists:
+        await message.reply_text("You're already registered! You're good to go.")
+    else:
+        await message.reply_text(
+            "Welcome! You're registered and ready to play. Use /profile with a photo to personalize your card."
+        )
+
+
+async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Update the user's display name and profile image. DM-only."""
+
+    message = update.message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    if update.effective_chat.type != ChatType.PRIVATE:
+        await message.reply_text("Please DM me to update your profile.")
+        return
+
+    if not user.username:
+        await message.reply_text("Please set a Telegram username before updating your profile.")
+        return
+
+    exists = await asyncio.to_thread(database.user_exists, user.id)
+    if not exists:
+        await message.reply_text("Please send /start first so I can register you.")
+        return
+
+    command_text = message.text or message.caption or ""
+    parts = command_text.split(maxsplit=1)
+
+    if len(parts) < 2 or not parts[1].strip():
+        await message.reply_text(
+            "Usage: /profile <display_name> (attach a photo with the command)."
+        )
+        return
+
+    display_name = parts[1].strip()
+
+    if not message.photo:
+        await message.reply_text("Please attach a profile image when using /profile.")
+        return
+
+    photo = message.photo[-1]
+    telegram_file = await context.bot.get_file(photo.file_id)
+    photo_bytes = await telegram_file.download_to_memory()
+    image_b64 = base64.b64encode(bytes(photo_bytes)).decode("utf-8")
+
+    await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
+    await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
+
+    await message.reply_text("Profile updated! Your new display name and image are saved.")
+
+
+@verify_user
 async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Roll a new card."""
     user = update.effective_user
@@ -227,6 +361,7 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
 
+@verify_user
 async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle reroll button click."""
     query = update.callback_query
@@ -359,6 +494,7 @@ async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         context.bot_data["rerolling_cards"].discard(card_id)
 
 
+@verify_user
 async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle claim button click."""
     query = update.callback_query
@@ -422,6 +558,7 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         pass
 
 
+@verify_user
 async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display user's card collection."""
     user = update.effective_user
@@ -550,6 +687,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
 
 
+@verify_user
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display stats for all users."""
     users = await asyncio.to_thread(database.get_all_users_with_cards)
@@ -575,6 +713,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
 
 
+@verify_user
 async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Initiate a card trade."""
     user1 = update.effective_user
@@ -635,6 +774,7 @@ async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+@verify_user
 async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle trade rejection."""
     query = update.callback_query
@@ -672,6 +812,7 @@ async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await query.answer()
 
 
+@verify_user
 async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle trade acceptance."""
     query = update.callback_query
@@ -715,6 +856,7 @@ async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await query.answer()
 
 
+@verify_user
 async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Reload command - clears all file_ids. Only accessible to admin."""
     user = update.effective_user
@@ -780,6 +922,11 @@ def main() -> None:
     fastapi_thread.start()
     logger.info("🚀 Starting FastAPI server on port 8000")
 
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("profile", profile))
+    application.add_handler(
+        MessageHandler(filters.PHOTO & filters.CaptionRegex(r"^/profile\b"), profile)
+    )
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
