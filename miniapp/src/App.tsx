@@ -24,7 +24,8 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [username, setUsername] = useState<string>('');
+  const [collectionUsername, setCollectionUsername] = useState<string>('');
+  const [isOwnCollection, setIsOwnCollection] = useState(false);
   const [orientation, setOrientation] = useState<OrientationData>({
     alpha: 0,
     beta: 0,
@@ -33,48 +34,78 @@ function App() {
   });
   const [orientationKey, setOrientationKey] = useState(0);
 
+  // Initialize user data and collection info
   useEffect(() => {
-    const fetchCards = async () => {
+    const initializeApp = () => {
       try {
         // Check if WebApp is properly initialized
         if (!WebApp || !WebApp.initDataUnsafe) {
           setError("Telegram Web App not properly initialized. Please open this app from Telegram.");
-          setLoading(false);
-          return;
+          return null;
         }
 
         // Check if user data is available
         if (!WebApp.initDataUnsafe.user) {
           setError("User data not available. Please make sure you're logged into Telegram.");
-          setLoading(false);
-          return;
+          return null;
         }
 
-        // Get the username from start parameter or fall back to Telegram Web App user object
-        let fetchedUsername: string | undefined;
+        // Get the current user's username from Telegram
+        const currentUserUsername = WebApp.initDataUnsafe.user.username;
+        if (!currentUserUsername || currentUserUsername.trim() === '') {
+          setError("Could not determine your username. Please make sure you have a username set in your Telegram profile.");
+          return null;
+        }
+
+        // Get the collection username from URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        let fetchUsername = urlParams.get('v') || currentUserUsername;
         
-        // First, check if there's a start parameter with a username
-        if (WebApp.initDataUnsafe.start_param) {
-          fetchedUsername = WebApp.initDataUnsafe.start_param;
+        // Remove any URL encoding artifacts
+        fetchUsername = decodeURIComponent(fetchUsername);
+        setCollectionUsername(fetchUsername);
+        
+        // Check if this is the user's own collection
+        const isOwn = currentUserUsername === fetchUsername;
+        setIsOwnCollection(isOwn);
+
+        return fetchUsername;
+      } catch (err) {
+        if (err instanceof Error) {
+          setError(err.message);
         } else {
-          // Fall back to the user's Telegram username
-          fetchedUsername = WebApp.initDataUnsafe.user.username;
+          setError('An error occurred during app initialization');
+        }
+        return null;
+      }
+    };
+
+    const fetchCards = async (username: string) => {
+      try {
+        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+        
+        // Build the request URL
+        const requestUrl = `${apiBaseUrl}/cards/${username}`;
+        
+        // Prepare headers with authentication token from URL query parameter
+        const headers: HeadersInit = {
+          'Content-Type': 'application/json',
+        };
+        
+        // Get token from URL query parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const authToken = urlParams.get('token');
+        console.log('Auth token from URL:', authToken);
+        if (authToken) {
+          headers['Authorization'] = `Bearer ${authToken}`;
         }
         
-        // Check if username exists and is not empty
-        if (!fetchedUsername || fetchedUsername.trim() === '') {
-          setError("Could not determine username. Please make sure you have a username set in your Telegram profile or the app was opened with a valid start parameter.");
-          setLoading(false);
-          return;
-        }
-
-        setUsername(fetchedUsername);
-
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-        const response = await fetch(`${apiBaseUrl}/cards/${fetchedUsername}`);
+        const response = await fetch(requestUrl, { headers });
         if (!response.ok) {
           if (response.status === 404) {
-            throw new Error('User not found. You may not have any cards yet.');
+            throw new Error('User not found. They may not have any cards yet.');
+          } else if (response.status === 401) {
+            throw new Error('Authentication failed. Please reopen the app from Telegram.');
           } else if (response.status >= 500) {
             throw new Error('Server error. Please try again later.');
           } else {
@@ -87,14 +118,20 @@ function App() {
         if (err instanceof Error) {
           setError(err.message);
         } else {
-          setError('An unknown error occurred while fetching your cards');
+          setError('An unknown error occurred while fetching cards');
         }
       } finally {
         setLoading(false);
       }
     };
 
-    fetchCards();
+    const username = initializeApp();
+    if (username) {
+      // Only fetch cards if initialization was successful
+      fetchCards(username);
+    } else {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -131,6 +168,31 @@ function App() {
     }
   }, []);
 
+  // Handle MainButton for trading
+  useEffect(() => {
+    if (!loading && !error && isOwnCollection && cards.length > 0) {
+      // Show the Trade button only if viewing own collection
+      WebApp.MainButton.setText("Trade");
+      WebApp.MainButton.show();
+      
+      const handleTradeClick = () => {
+        // Here you can implement the trade functionality
+        // For now, just show an alert or implement your trade logic
+        WebApp.showAlert("Trade functionality coming soon!");
+      };
+      
+      WebApp.MainButton.onClick(handleTradeClick);
+      
+      return () => {
+        WebApp.MainButton.hide();
+        WebApp.MainButton.offClick(handleTradeClick);
+      };
+    } else {
+      // Hide the button if not own collection or no cards
+      WebApp.MainButton.hide();
+    }
+  }, [loading, error, isOwnCollection, cards.length]);
+
   // Reset tilt reference by incrementing key
   const resetTiltReference = () => {
     setOrientationKey(prev => prev + 1);
@@ -165,7 +227,7 @@ function App() {
 
   return (
     <div className="app-container" {...handlers}>
-      <h1 style={{ marginBottom: '2vh' }}>@{username}'s collection</h1>
+      <h1 style={{ marginBottom: '2vh' }}>@{collectionUsername}'s collection</h1>
       
       {cards.length > 0 ? (
         <div className="card-container">
@@ -190,7 +252,7 @@ function App() {
           />
         </div>
       ) : (
-        <p>You don't own any cards yet.</p>
+        <p>{isOwnCollection ? "You don't own any cards yet." : `@${collectionUsername} doesn't own any cards yet.`}</p>
       )}
     </div>
   );

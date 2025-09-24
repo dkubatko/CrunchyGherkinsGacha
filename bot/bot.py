@@ -7,6 +7,7 @@ import base64
 import datetime
 import json
 import threading
+import urllib.parse
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -35,11 +36,13 @@ from settings.constants import (
     TRADE_REJECTED_MESSAGE,
 )
 from utils import gemini, database
+from utils.encoder import EncoderUtil
 
 # Load environment variables
 load_dotenv()
 
 gemini_util = gemini.GeminiUtil()
+encoder_util = EncoderUtil()
 
 # Enable logging
 logging.basicConfig(
@@ -403,14 +406,31 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display user's card collection."""
     user = update.effective_user
-    cards = await asyncio.to_thread(database.get_user_collection, user.username)
 
-    if not cards and not update.callback_query:
-        await update.message.reply_text(
-            "You don't own any cards yet. Use /roll to get your first card!",
-            reply_to_message_id=update.message.message_id,
-        )
-        return
+    # Check if a username argument was provided
+    if context.args and len(context.args) > 0:
+        target_username = context.args[0].lstrip("@")  # Remove @ if present
+        # Check if the target user exists by trying to get their collection
+        target_cards = await asyncio.to_thread(database.get_user_collection, target_username)
+        if not target_cards:
+            await update.message.reply_text(
+                f"@{target_username} doesn't exist or doesn't own any cards yet.",
+                reply_to_message_id=update.message.message_id,
+            )
+            return
+        cards = target_cards
+        display_username = target_username
+    else:
+        # Default to current user's collection
+        cards = await asyncio.to_thread(database.get_user_collection, user.username)
+        display_username = user.username
+
+        if not cards and not update.callback_query:
+            await update.message.reply_text(
+                "You don't own any cards yet. Use /roll to get your first card!",
+                reply_to_message_id=update.message.message_id,
+            )
+            return
 
     current_index = context.user_data.get("collection_index", 0)
 
@@ -446,7 +466,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         rarity=rarity,
         current_index=current_index + 1,
         total_cards=len(cards),
-        username=user.username,
+        username=display_username,
     )
 
     keyboard = []
@@ -459,18 +479,23 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         )
 
     # Add miniapp button
-    if DEBUG_MODE:
-        # In debug mode, use WebApp with DEBUG_MINIAPP_URL
-        miniapp_url = os.getenv("DEBUG_MINIAPP_URL")
-        if miniapp_url:
-            keyboard.append(
-                [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=miniapp_url))]
-            )
-    else:
-        miniapp_url = os.getenv("MINIAPP_URL")
-        if miniapp_url:
-            bot_url = f"{miniapp_url}?startapp={user.username}"
-            keyboard.append([InlineKeyboardButton("View in the app!", url=bot_url)])
+    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+    if miniapp_url:
+        # Encode user data for secure communication
+        chat_id = update.effective_chat.id if update.effective_chat else None
+        user_data = {"user_id": user.id, "chat_id": chat_id}
+        encoded_data = encoder_util.encode_data(user_data)
+        if encoded_data:
+            # Add both token parameter and v parameter (v shows whose collection to display)
+            app_url = f"{miniapp_url}?token={urllib.parse.quote(encoded_data)}&v={urllib.parse.quote(display_username)}"
+            if DEBUG_MODE:
+                # In debug mode, use WebApp
+                keyboard.append(
+                    [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=app_url))]
+                )
+            else:
+                # In production mode, use regular URL
+                keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
