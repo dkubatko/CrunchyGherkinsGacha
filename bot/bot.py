@@ -488,7 +488,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if miniapp_url:
         # Encode user data for secure communication
         chat_id = update.effective_chat.id if update.effective_chat else None
-        user_data = {"user_id": user.id, "chat_id": chat_id}
+        user_data = {"user_id": user.id, "chat_id": chat_id, "username": user.username}
         encoded_data = encoder_util.encode_data(user_data)
         if encoded_data:
             # Add both token parameter and v parameter (v shows whose collection to display)
@@ -734,13 +734,7 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 def main() -> None:
     """Start the bot and the FastAPI server."""
-    from api.server import run_server as run_fastapi_server
-
-    # Start FastAPI server in a separate thread
-    fastapi_thread = threading.Thread(target=run_fastapi_server)
-    fastapi_thread.daemon = True
-    fastapi_thread.start()
-    logger.info("🚀 Starting FastAPI server on port 8000")
+    from api.server import run_server as run_fastapi_server, set_bot_token
 
     if DEBUG_MODE:
         # Use test environment endpoints when in debug mode
@@ -761,6 +755,16 @@ def main() -> None:
     else:
         application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
         logger.info("🚀 Running in PRODUCTION mode")
+
+    # Share bot token with the server
+    set_bot_token(TELEGRAM_TOKEN, DEBUG_MODE)
+    logger.info("🤝 Bot token shared with FastAPI server")
+
+    # Start FastAPI server in a separate thread
+    fastapi_thread = threading.Thread(target=run_fastapi_server)
+    fastapi_thread.daemon = True
+    fastapi_thread.start()
+    logger.info("🚀 Starting FastAPI server on port 8000")
 
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("collection", collection))

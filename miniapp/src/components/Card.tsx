@@ -1,14 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ShinyImage from './ShinyImage';
-
-const imageCache = new Map<number, string>();
-
-interface OrientationData {
-  alpha: number;
-  beta: number;
-  gamma: number;
-  isStarted: boolean;
-}
+import { imageCache } from '../lib/imageCache';
+import type { OrientationData } from '../types';
 
 interface CardProps {
   rarity: string;
@@ -19,9 +12,11 @@ interface CardProps {
   id: number;
   authToken: string | null;
   shiny: boolean;
+  owner?: string;
+  showOwner?: boolean;
 }
 
-const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, tiltKey, id, authToken, shiny }) => {
+const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, tiltKey, id, authToken, shiny, owner, showOwner = false }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
@@ -85,7 +80,7 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
   return (
     <div className="card" onClick={handleCardClick}>
       {loadingImage ? (
-        <div className="card-image-container card-image-loader">
+        <div className="card-image-container">
           <div className="spinner"></div>
         </div>
       ) : (
@@ -121,6 +116,11 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
         </h3>
         <p className="card-rarity">{rarity}</p>
         <p className="card-id">#{id}</p>
+        {showOwner && owner && (
+          <p className="card-owner">
+            Owned by <span className="card-owner-username">@{owner}</span>
+          </p>
+        )}
       </div>
     </div>
   );

@@ -11,6 +11,9 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  
+  /* Card image padding - change this value to adjust padding for both image and shine */
+  --card-image-padding: 0.5rem;
 }
 
 * {
@@ -42,12 +45,29 @@ body {
   height: 100vh;
   max-width: 100vw;
   margin: 0;
-  padding: 1rem 0.5rem;
+  padding: 0;
   text-align: center;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.app-content {
+  flex: 1;
+  width: 100%;
+  height: calc(100vh - 56px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+.app-title {
+  margin: 1rem 0 1.25rem 0;
+  font-size: 1.5rem;
 }
 
 .card-container {
@@ -61,6 +81,7 @@ body {
   justify-content: flex-start;
   overflow: hidden;
   box-sizing: border-box;
+  padding: 0;
 }
 
 .card {
@@ -70,34 +91,34 @@ body {
   justify-content: center;
   background-color: #333;
   border-radius: 25px;
-  padding: 0.75rem;
+  padding: 1rem;
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  width: 90vw;
-  max-width: 400px;
+  width: 95vw;
+  max-width: 500px;
+  margin-bottom: 1rem;
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
 }
 
+.card-container.with-trade-button .card {
+  margin-bottom: 0rem;
+}
+
 .card-image-container {
   position: relative;
   max-width: 100%;
-  max-height: 78%;
+  max-height: 85%;
   height: auto;
   width: auto;
   flex: 1;
+  min-height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.card-image-loader {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 100%;
-  flex: 1;
-  min-height: 200px; /* Ensure loader has some size */
+  overflow: hidden;
+  padding: var(--card-image-padding);
+  box-sizing: border-box;
 }
 
 .spinner {
@@ -126,10 +147,10 @@ body {
 
 .card-shine {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  top: var(--card-image-padding);
+  left: var(--card-image-padding);
+  right: var(--card-image-padding);
+  bottom: var(--card-image-padding);
   border-radius: 30px;
   pointer-events: none;
   mix-blend-mode: screen;
@@ -144,26 +165,39 @@ body {
 }
 
 .card-info {
-  margin-top: 1rem;
+  margin: 0.5rem 0 0 0;
   text-align: center;
+  flex-shrink: 0;
 }
 
 .card .card-name {
-  font-size: 1.8rem !important;
+  font-size: 1.4rem !important;
   font-weight: bold;
-  margin: 0 0 0.5rem 0;
-  line-height: 1.2;
+  margin: 0 0 0.25rem 0;
+  line-height: 1.1;
 }
 
 .card-rarity {
-  font-size: 1rem;
+  font-size: 0.9rem;
   color: #ccc;
-  margin: 0 0 0.25rem 0;
+  margin: 0 0 0.1rem 0;
   text-transform: capitalize;
 }
 
+.card-owner {
+  font-size: 0.75rem;
+  color: #ccc;
+  margin: 0.2rem 0 0 0;
+  font-weight: 400;
+}
+
+.card-owner-username {
+  color: #4A90E2;
+  font-weight: 500;
+}
+
 .card-id {
-  font-size: 0.9rem;
+  font-size: 0.8rem;
   color: #999;
   margin: 0;
 }
@@ -193,23 +227,259 @@ body {
 /* Mobile-specific styles for Telegram Mini App */
 @media (max-width: 480px) {
   .app-container {
-    padding: 0.75rem 0.25rem;
+    padding: 0;
     height: 100vh;
+  }
+  
+  .tabs {
+    min-height: 52px;
+  }
+  
+  .tab {
+    padding: 0.75rem 0;
+    font-size: 0.95rem;
+    min-height: 52px;
+  }
+  
+  .app-content {
+    height: calc(100vh - 80px);
+    padding: 0.5rem 0.15rem;
+  }
+  
+  .app-title {
+    font-size: 1.3rem;
+    margin: 0.5rem 0 0.7rem 0;
+  }
+  
+  .card-container {
+    height: 100%;
+    padding: 0;
   }
   
   .card {
     padding: 0.5rem;
-    width: calc(100vw - 1rem);
-    max-height: calc(100vh - 8rem); /* Account for header and navigation */
+    width: calc(100vw - 0.5rem);
+    max-height: calc(100vh - 5rem);
   }
   
   .card h3 {
     font-size: 1rem;
     margin-top: 0.5rem;
   }
-  
-  h1 {
-    font-size: 1.5em;
-    margin: 0.25rem 0;
+}
+
+.loading-container, .error-container, .no-cards-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  text-align: center;
+  padding: 2rem;
+}
+
+.loading-container h2 {
+  margin-bottom: 1rem;
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
+}
+
+.error-container h2 {
+  margin-bottom: 1rem;
+  color: var(--tg-theme-destructive-text-color, #ff6b6b);
+}
+
+.error-container p {
+  margin-bottom: 1rem;
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
+}
+
+.error-container button {
+  background-color: var(--tg-theme-button-color, #007aff);
+  color: var(--tg-theme-button-text-color, #ffffff);
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.2s;
+}
+
+.error-container button:hover {
+  background-color: var(--tg-theme-button-color, #005cbf);
+  opacity: 0.9;
+}
+
+.no-cards-container h2 {
+  margin-bottom: 1rem;
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
+}
+
+.no-cards-container p {
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
+}
+
+.tabs {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100vw;
+  display: flex;
+  margin: 0;
+  padding: 0;
+  background: linear-gradient(135deg, var(--tg-theme-bg-color, #1a1a1a) 0%, var(--tg-theme-secondary-bg-color, #2a2a2a) 100%);
+  border-bottom: 1px solid var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(20px);
+}
+
+.tab {
+  flex: 1;
+  padding: 1rem 0;
+  background: transparent;
+  border: none;
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
+  cursor: pointer;
+  font-size: 1rem;
+  font-weight: 500;
+  position: relative;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  text-align: center;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tab.active {
+  color: var(--tg-theme-button-color, #007aff);
+  font-weight: 600;
+}
+
+.tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--tg-theme-button-color, #007aff) 0%, var(--tg-theme-accent-text-color, #0099ff) 100%);
+  border-radius: 1.5px 1.5px 0 0;
+  animation: tabSlideIn 0.3s ease-out;
+}
+
+@keyframes tabSlideIn {
+  from {
+    width: 0%;
+    opacity: 0;
   }
+  to {
+    width: 60%;
+    opacity: 1;
+  }
+}
+
+.tab:hover:not(.active) {
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
+  background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.05) 100%);
+}
+
+.tab:active {
+  transform: scale(0.98);
+}
+
+/* Modal styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  backdrop-filter: blur(4px);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+.modal-content {
+  position: relative;
+  width: 90vw;
+  max-width: 400px;
+  height: 70vh;
+  max-height: 600px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  animation: modalSlideIn 0.3s ease-out;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: scale(0.8) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-close {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background-color: rgba(0, 0, 0, 0.6);
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.3rem;
+  font-weight: 300;
+  cursor: pointer;
+  display: block;
+  line-height: 32px;
+  text-align: center;
+  z-index: 1001;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+.modal-close:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.modal-close:active {
+  transform: scale(0.95) rotate(90deg);
+}
+
+/* Ensure modal card takes full available space */
+.modal-content .card {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
 }

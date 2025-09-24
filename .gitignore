@@ -163,3 +163,6 @@ Temporary Items
 # Project specific
 bot/data/cards.db
 bot/data/cards/
+
+# Exceptions for miniapp
+!/miniapp/src/lib/
