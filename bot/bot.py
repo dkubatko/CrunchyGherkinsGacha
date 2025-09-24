@@ -13,6 +13,7 @@ from telegram import (
     InlineKeyboardMarkup,
     InputMediaPhoto,
     ReactionTypeEmoji,
+    WebAppInfo,
 )
 from telegram.constants import ParseMode, ChatType
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -461,24 +462,15 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     if DEBUG_MODE:
         # In debug mode, use WebApp with DEBUG_MINIAPP_URL
         miniapp_url = os.getenv("DEBUG_MINIAPP_URL")
-        if miniapp_url and update.effective_chat.type == ChatType.PRIVATE:
-            # Try to import WebApp, fallback to URL button if not available
-            try:
-                from telegram import WebApp
-
-                keyboard.append(
-                    [InlineKeyboardButton("View in the app!", web_app=WebApp(url=miniapp_url))]
-                )
-            except ImportError:
-                # Fallback to regular URL button if WebApp is not available
-                keyboard.append([InlineKeyboardButton("View in the app!", url=miniapp_url)])
-        elif miniapp_url:
-            # In group chats, use regular URL button
-            keyboard.append([InlineKeyboardButton("View in browser", url=miniapp_url)])
+        if miniapp_url:
+            keyboard.append(
+                [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=miniapp_url))]
+            )
     else:
-        # In production mode, use link button with bot URL and username as start parameter
-        bot_url = f"https://t.me/CrunchyGherkinsGachaBot/collection?startapp={user.username}"
-        keyboard.append([InlineKeyboardButton("View in the app!", url=bot_url)])
+        miniapp_url = os.getenv("MINIAPP_URL")
+        if miniapp_url:
+            bot_url = f"{miniapp_url}?startapp={user.username}"
+            keyboard.append([InlineKeyboardButton("View in the app!", url=bot_url)])
 
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
