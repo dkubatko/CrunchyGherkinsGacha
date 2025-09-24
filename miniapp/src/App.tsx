@@ -9,7 +9,6 @@ interface CardData {
   base_name: string;
   modifier: string;
   rarity: string;
-  image_b64: string;
 }
 
 interface OrientationData {
@@ -249,6 +248,8 @@ function App() {
             {...cards[currentIndex]} 
             orientation={orientation}
             tiltKey={orientationKey}
+            authToken={new URLSearchParams(window.location.search).get('token')}
+            shiny={true}
           />
         </div>
       ) : (
