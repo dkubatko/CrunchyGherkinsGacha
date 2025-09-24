@@ -29,6 +29,10 @@ alembic -c alembic.ini stamp 20240924_0001
 alembic -c alembic.ini upgrade head
 ```
 
+### Tracking Telegram user IDs
+
+Revision `20240924_0002` introduces a `user_id` column on the `cards` table. The migration backfills existing cards using a static username → Telegram user ID map (see the migration script for the exact values) and new claims automatically record the user’s Telegram ID.
+
 ### SQLite compatibility
 
 Alembic runs with `render_as_batch=True`, which enables schema migrations against SQLite. No extra database engine is required; the existing `DB_PATH` configuration continues to work.
