@@ -6,6 +6,7 @@ import sys
 import base64
 import datetime
 import json
+import threading
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -710,7 +711,15 @@ async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 def main() -> None:
-    """Start the bot."""
+    """Start the bot and the FastAPI server."""
+    from api.server import run_server as run_fastapi_server
+
+    # Start FastAPI server in a separate thread
+    fastapi_thread = threading.Thread(target=run_fastapi_server)
+    fastapi_thread.daemon = True
+    fastapi_thread.start()
+    logger.info("🚀 Starting FastAPI server on port 8000")
+
     if DEBUG_MODE:
         # Use test environment endpoints when in debug mode
         # Format: https://api.telegram.org/bot<token>/test/METHOD_NAME

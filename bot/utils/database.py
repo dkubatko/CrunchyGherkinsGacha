@@ -3,34 +3,23 @@ import os
 import datetime
 import logging
 import base64
+from pydantic import BaseModel
 
 from settings.constants import DB_PATH
 
 logger = logging.getLogger(__name__)
 
 
-class Card:
-    def __init__(
-        self,
-        id,
-        base_name,
-        modifier,
-        rarity,
-        owner,
-        image_b64,
-        attempted_by,
-        file_id=None,
-        created_at=None,
-    ):
-        self.id = id
-        self.base_name = base_name
-        self.modifier = modifier
-        self.rarity = rarity
-        self.owner = owner
-        self.image_b64 = image_b64
-        self.attempted_by = attempted_by
-        self.file_id = file_id
-        self.created_at = created_at
+class Card(BaseModel):
+    id: int
+    base_name: str
+    modifier: str
+    rarity: str
+    owner: str | None
+    image_b64: str
+    attempted_by: str
+    file_id: str | None
+    created_at: str | None
 
     def title(self):
         """Return the card's full title."""
@@ -47,6 +36,7 @@ def connect():
     """Connect to the SQLite database."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -148,7 +138,7 @@ def get_user_collection(username):
         "SELECT * FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
         (username,),
     )
-    cards = [Card(*row) for row in cursor.fetchall()]
+    cards = [Card(**row) for row in cursor.fetchall()]
     conn.close()
     return cards
 
@@ -160,7 +150,7 @@ def get_card(card_id):
     cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
     card_data = cursor.fetchone()
     conn.close()
-    return Card(*card_data) if card_data else None
+    return Card(**card_data) if card_data else None
 
 
 def get_total_cards_count():

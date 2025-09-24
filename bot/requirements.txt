@@ -2,3 +2,7 @@ python-telegram-bot
 python-dotenv
 google-generativeai
 Pillow
+fastapi
+uvicorn
+pydantic
+python-multipart
