@@ -22,6 +22,9 @@ import { TelegramUtils } from './utils/telegram';
 // Types
 import type { CardData, View } from './types';
 
+// Build info
+import { BUILD_INFO } from './build-info';
+
 function App() {
   // Core data hooks
   const { cards, loading, error, userData, authToken } = useCards();

@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "./deploy.sh",
+    "build:version": "echo \"export const BUILD_INFO = { buildTime: '$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")', gitHash: '$(git rev-parse --short HEAD 2>/dev/null || echo \"unknown\")', version: '$(node -p \"require('./package.json').version\")' };\" > src/build-info.ts && npm run build"
   },
   "dependencies": {
     "@twa-dev/sdk": "^8.0.2",
