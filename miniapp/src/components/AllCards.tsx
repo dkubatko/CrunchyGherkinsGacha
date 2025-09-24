@@ -6,17 +6,17 @@ import type { CardData } from '../types';
 interface AllCardsProps {
   cards: CardData[];
   onCardClick: (card: CardData) => void;
-  authToken: string | null;
+  initData: string | null;
 }
 
-const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, authToken }) => {
+const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }) => {
   return (
     <div className="all-cards-grid">
       {cards.map((card) => (
         <MiniCard 
           key={card.id}
           card={card}
-          authToken={authToken}
+          initData={initData}
           onClick={onCardClick}
         />
       ))}

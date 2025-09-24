@@ -18,6 +18,7 @@ export type View = 'current' | 'all';
 export interface UserData {
   username: string;
   isOwnCollection: boolean;
+  enableTrade: boolean;
 }
 
 export interface AppState {

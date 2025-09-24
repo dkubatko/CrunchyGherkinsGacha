@@ -10,24 +10,24 @@ interface UseAllCardsResult {
   refetch: () => void;
 }
 
-export const useAllCards = (authToken: string | null): UseAllCardsResult => {
+export const useAllCards = (initData: string | null): UseAllCardsResult => {
   // Initialize with cached data if available
-  const initialCachedCards = authToken ? cardsCache.get(authToken) : null;
+  const initialCachedCards = initData ? cardsCache.get(initData) : null;
   
   const [allCards, setAllCards] = useState<CardData[]>(initialCachedCards || []);
   const [loading, setLoading] = useState(!initialCachedCards);
   const [error, setError] = useState<string | null>(null);
 
   const fetchAllCards = useCallback(async (forceRefresh = false) => {
-    if (!authToken) {
-      setError("No authentication token available");
+    if (!initData) {
+      setError("No Telegram init data available");
       setLoading(false);
       return;
     }
 
     // Try to get from cache first (unless forcing refresh)
     if (!forceRefresh) {
-      const cachedCards = cardsCache.get(authToken);
+      const cachedCards = cardsCache.get(initData);
       if (cachedCards) {
         setAllCards(cachedCards);
         setLoading(false);
@@ -40,8 +40,8 @@ export const useAllCards = (authToken: string | null): UseAllCardsResult => {
     setError(null);
 
     try {
-      const cards = await ApiService.fetchAllCards(authToken);
-      cardsCache.set(cards, authToken);
+      const cards = await ApiService.fetchAllCards(initData);
+      cardsCache.set(cards, initData);
       setAllCards(cards);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to fetch all cards';
@@ -49,7 +49,7 @@ export const useAllCards = (authToken: string | null): UseAllCardsResult => {
     } finally {
       setLoading(false);
     }
-  }, [authToken]);
+  }, [initData]);
 
   useEffect(() => {
     fetchAllCards();

@@ -7,7 +7,7 @@ interface CardModalProps {
   card: CardData;
   orientation: OrientationData;
   orientationKey: number;
-  authToken: string | null;
+  initData: string | null;
   onClose: () => void;
 }
 
@@ -16,7 +16,7 @@ const CardModal: React.FC<CardModalProps> = ({
   card,
   orientation,
   orientationKey,
-  authToken,
+  initData,
   onClose
 }) => {
   if (!isOpen) return null;
@@ -29,7 +29,7 @@ const CardModal: React.FC<CardModalProps> = ({
           {...card} 
           orientation={orientation}
           tiltKey={orientationKey}
-          authToken={authToken}
+          initData={initData}
           shiny={true}
           showOwner={true}
         />

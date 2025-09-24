@@ -36,13 +36,11 @@ from settings.constants import (
     TRADE_REJECTED_MESSAGE,
 )
 from utils import gemini, database
-from utils.encoder import EncoderUtil
 
 # Load environment variables
 load_dotenv()
 
 gemini_util = gemini.GeminiUtil()
-encoder_util = EncoderUtil()
 
 # Enable logging
 logging.basicConfig(
@@ -486,27 +484,16 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
-        # Encode user data for secure communication
-        chat_id = update.effective_chat.id if update.effective_chat else None
-        user_data = {"user_id": user.id, "chat_id": chat_id, "username": user.username}
-        encoded_data = encoder_util.encode_data(user_data)
-        if encoded_data:
-            if DEBUG_MODE:
-                # In debug mode, use URL parameters (easier for development)
-                app_url = f"{miniapp_url}?token={urllib.parse.quote(encoded_data)}&v={urllib.parse.quote(display_username)}"
-                keyboard.append(
-                    [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=app_url))]
-                )
-            else:
-                # In production mode, use start_param with JSON data
-                start_param_data = {"view": display_username, "token": encoded_data}
-                start_param_json = json.dumps(start_param_data, separators=(",", ":"))
-                # Base64 encode the JSON to make it URL-safe
-                start_param = (
-                    base64.urlsafe_b64encode(start_param_json.encode()).decode().rstrip("=")
-                )
-                app_url = f"{miniapp_url}?startapp={start_param}"
-                keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
+        if DEBUG_MODE:
+            # In debug mode, use WebApp with direct URL parameter
+            app_url = f"{miniapp_url}?v={urllib.parse.quote(display_username)}"
+            keyboard.append(
+                [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=app_url))]
+            )
+        else:
+            # In production mode, use inline button with URL and startapp parameter
+            app_url = f"{miniapp_url}?startapp={urllib.parse.quote(display_username)}"
+            keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
