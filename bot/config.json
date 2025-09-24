@@ -51,7 +51,15 @@
         "Feisty",
         "Hairy",
         "Sad",
-        "Lowkey"
+        "Lowkey",
+        "Doctor",
+        "Police",
+        "Student",
+        "Dancing",
+        "Cheerleader",
+        "Spooky",
+        "Shy",
+        "Detective"
       ]
     },
     "Rare": {
@@ -103,7 +111,14 @@
         "DJ",
         "Skibidi",
         "Scammer",
-        "Fashion",
+        "Criminal",
+        "Cheating",
+        "Fried Chicken",
+        "KFC",
+        "Religious",
+        "Hulk",
+        "Healthy",
+        "Fitness",
         "Demon"
       ]
     },
@@ -161,6 +176,8 @@
         "Crypto",
         "CEO",
         "Freaky",
+        "Muslim",
+        "Villain",
         "Maiden"
       ]
     },
@@ -185,6 +202,7 @@
         "Coca-Cola",
         "Gachimuchi",
         "Power Ranger",
+        "Teletubbie",
         "God",
         "Dominatrix",
         "Indian"
