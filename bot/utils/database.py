@@ -16,10 +16,13 @@ class Card(BaseModel):
     modifier: str
     rarity: str
     owner: str | None
-    image_b64: str
     attempted_by: str
     file_id: str | None
     created_at: str | None
+
+
+class CardWithImage(Card):
+    image_b64: str
 
     def title(self):
         """Return the card's full title."""
@@ -135,7 +138,7 @@ def get_user_collection(username):
     conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT * FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
+        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
         (username,),
     )
     cards = [Card(**row) for row in cursor.fetchall()]
@@ -150,7 +153,17 @@ def get_card(card_id):
     cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
     card_data = cursor.fetchone()
     conn.close()
-    return Card(**card_data) if card_data else None
+    return CardWithImage(**card_data) if card_data else None
+
+
+def get_card_image(card_id: int) -> str | None:
+    """Get the base64 encoded image for a card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT image_b64 FROM cards WHERE id = ?", (card_id,))
+    result = cursor.fetchone()
+    conn.close()
+    return result[0] if result else None
 
 
 def get_total_cards_count():

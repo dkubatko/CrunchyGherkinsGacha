@@ -83,6 +83,32 @@ async def get_user_collection(
     return [APICard(**card.__dict__) for card in cards]
 
 
+@app.get("/cards/image/{card_id}", response_model=str)
+async def get_card_image_route(
+    card_id: int, authorization: Optional[str] = Header(None, alias="Authorization")
+):
+    """Get the base64 encoded image for a card."""
+    if not authorization:
+        logger.warning(f"No authorization header provided for card_id: {card_id}")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    token = None
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    else:
+        token = authorization
+
+    user_data = encoder_util.decode_data(token)
+    if not user_data:
+        logger.warning(f"Invalid token provided for card_id: {card_id}")
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    image_b64 = await asyncio.to_thread(database.get_card_image, card_id)
+    if not image_b64:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return image_b64
+
+
 def run_server():
     """Run the FastAPI server."""
     # Disable reload when running in a thread to avoid signal handler issues

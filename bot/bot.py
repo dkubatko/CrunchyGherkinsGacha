@@ -456,6 +456,11 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     context.user_data["collection_index"] = current_index
 
+    card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
+    if not card_with_image:
+        await update.message.reply_text("Card not found.")
+        return
+
     card = cards[current_index]
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
@@ -500,7 +505,7 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    media = card.get_media()
+    media = card_with_image.get_media()
 
     if update.callback_query:
         # For callback queries (navigation)
