@@ -146,6 +146,18 @@ def get_user_collection(username):
     return cards
 
 
+def get_all_cards():
+    """Get all cards that have an owner."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
+    )
+    cards = [Card(**row) for row in cursor.fetchall()]
+    conn.close()
+    return cards
+
+
 def get_card(card_id):
     """Get a card by its ID."""
     conn = connect()

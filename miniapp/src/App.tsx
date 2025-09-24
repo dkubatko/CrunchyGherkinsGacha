@@ -1,259 +1,229 @@
-import { useState, useEffect } from 'react';
-import { useSwipeable } from 'react-swipeable';
-import WebApp from '@twa-dev/sdk';
+import { useState, useCallback } from 'react';
 import './App.css';
+
+// Components
 import Card from './components/Card';
+import AllCards from './components/AllCards';
+import CardModal from './components/CardModal';
 
-interface CardData {
-  id: number;
-  base_name: string;
-  modifier: string;
-  rarity: string;
-}
+// Hooks
+import {
+  useCards,
+  useAllCards,
+  useOrientation,
+  useModal,
+  useMainButton,
+  useSwipeHandlers
+} from './hooks';
 
-interface OrientationData {
-  alpha: number;
-  beta: number;
-  gamma: number;
-  isStarted: boolean;
-}
+// Utils
+import { TelegramUtils } from './utils/telegram';
+
+// Types
+import type { CardData, View } from './types';
 
 function App() {
-  const [cards, setCards] = useState<CardData[]>([]);
+  // Core data hooks
+  const { cards, loading, error, userData, authToken } = useCards();
+  const { allCards, loading: allCardsLoading, error: allCardsError, refetch: refetchAllCards } = useAllCards(authToken);
+  
+  // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [collectionUsername, setCollectionUsername] = useState<string>('');
-  const [isOwnCollection, setIsOwnCollection] = useState(false);
-  const [orientation, setOrientation] = useState<OrientationData>({
-    alpha: 0,
-    beta: 0,
-    gamma: 0,
-    isStarted: false
-  });
-  const [orientationKey, setOrientationKey] = useState(0);
+  const [view, setView] = useState<View>('current');
+  const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
+  
+  // Feature hooks
+  const { orientation, orientationKey, resetTiltReference } = useOrientation();
+  const { showModal, modalCard, openModal, closeModal } = useModal();
+  
+  // Memoized callback functions to prevent infinite re-renders
+  const handleTradeClick = useCallback(() => {
+    // Handle trade button click in current view
+    if (cards[currentIndex]) {
+      setSelectedCardForTrade(cards[currentIndex]);
+      const cardName = `${cards[currentIndex].modifier} ${cards[currentIndex].base_name}`;
+      // Show alert and switch to All view
+      TelegramUtils.showAlert(`Choose the card to trade ${cardName} for in All view`);
+      setView('all');
+    }
+  }, [cards, currentIndex]);
 
-  // Initialize user data and collection info
-  useEffect(() => {
-    const initializeApp = () => {
-      try {
-        // Check if WebApp is properly initialized
-        if (!WebApp || !WebApp.initDataUnsafe) {
-          setError("Telegram Web App not properly initialized. Please open this app from Telegram.");
-          return null;
-        }
+  const handleSelectClick = useCallback(() => {
+    // Handle select button click in modal
+    if (selectedCardForTrade && modalCard) {
+      // Execute the trade via API
+      const executeTrade = async () => {
+        try {
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+          const response = await fetch(`${apiBaseUrl}/trade/${selectedCardForTrade.id}/${modalCard.id}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${authToken}`
+            }
+          });
 
-        // Check if user data is available
-        if (!WebApp.initDataUnsafe.user) {
-          setError("User data not available. Please make sure you're logged into Telegram.");
-          return null;
-        }
-
-        // Get the current user's username from Telegram
-        const currentUserUsername = WebApp.initDataUnsafe.user.username;
-        if (!currentUserUsername || currentUserUsername.trim() === '') {
-          setError("Could not determine your username. Please make sure you have a username set in your Telegram profile.");
-          return null;
-        }
-
-        // Get the collection username from URL parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        let fetchUsername = urlParams.get('v') || currentUserUsername;
-        
-        // Remove any URL encoding artifacts
-        fetchUsername = decodeURIComponent(fetchUsername);
-        setCollectionUsername(fetchUsername);
-        
-        // Check if this is the user's own collection
-        const isOwn = currentUserUsername === fetchUsername;
-        setIsOwnCollection(isOwn);
-
-        return fetchUsername;
-      } catch (err) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('An error occurred during app initialization');
-        }
-        return null;
-      }
-    };
-
-    const fetchCards = async (username: string) => {
-      try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-        
-        // Build the request URL
-        const requestUrl = `${apiBaseUrl}/cards/${username}`;
-        
-        // Prepare headers with authentication token from URL query parameter
-        const headers: HeadersInit = {
-          'Content-Type': 'application/json',
-        };
-        
-        // Get token from URL query parameters
-        const urlParams = new URLSearchParams(window.location.search);
-        const authToken = urlParams.get('token');
-        console.log('Auth token from URL:', authToken);
-        if (authToken) {
-          headers['Authorization'] = `Bearer ${authToken}`;
-        }
-        
-        const response = await fetch(requestUrl, { headers });
-        if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error('User not found. They may not have any cards yet.');
-          } else if (response.status === 401) {
-            throw new Error('Authentication failed. Please reopen the app from Telegram.');
-          } else if (response.status >= 500) {
-            throw new Error('Server error. Please try again later.');
+          if (response.ok) {
+            // Close the WebApp after successful trade request
+            TelegramUtils.closeApp();
           } else {
-            throw new Error(`Failed to fetch cards (Error ${response.status})`);
+            const errorData = await response.json();
+            TelegramUtils.showAlert(`Trade request failed: ${errorData.detail || 'Unknown error'}`);
           }
+        } catch (error) {
+          console.error('Trade API error:', error);
+          TelegramUtils.showAlert('Trade request failed: Network error');
         }
-        const data = await response.json();
-        setCards(data);
-      } catch (err) {
-        if (err instanceof Error) {
-          setError(err.message);
-        } else {
-          setError('An unknown error occurred while fetching cards');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    const username = initializeApp();
-    if (username) {
-      // Only fetch cards if initialization was successful
-      fetchCards(username);
-    } else {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    // Start device orientation tracking
-    if (WebApp.DeviceOrientation) {
-      const updateOrientation = () => {
-        setOrientation({
-          alpha: WebApp.DeviceOrientation.alpha || 0,
-          beta: WebApp.DeviceOrientation.beta || 0,
-          gamma: WebApp.DeviceOrientation.gamma || 0,
-          isStarted: WebApp.DeviceOrientation.isStarted || false
-        });
       };
 
-      // Start tracking with 100ms refresh rate for smooth animations
-      WebApp.DeviceOrientation.start({
-        refresh_rate: 100,
-        need_absolute: false
-      }, (started) => {
-        if (started) {
-          updateOrientation();
-          // Set up periodic updates
-          const interval = setInterval(updateOrientation, 100);
-          return () => clearInterval(interval);
-        }
-      });
-
-      // Initial update
-      updateOrientation();
-
-      return () => {
-        WebApp.DeviceOrientation.stop();
-      };
-    }
-  }, []);
-
-  // Handle MainButton for trading
-  useEffect(() => {
-    if (!loading && !error && isOwnCollection && cards.length > 0) {
-      // Show the Trade button only if viewing own collection
-      WebApp.MainButton.setText("Trade");
-      WebApp.MainButton.show();
+      executeTrade();
       
-      const handleTradeClick = () => {
-        // Here you can implement the trade functionality
-        // For now, just show an alert or implement your trade logic
-        WebApp.showAlert("Trade functionality coming soon!");
-      };
-      
-      WebApp.MainButton.onClick(handleTradeClick);
-      
-      return () => {
-        WebApp.MainButton.hide();
-        WebApp.MainButton.offClick(handleTradeClick);
-      };
-    } else {
-      // Hide the button if not own collection or no cards
-      WebApp.MainButton.hide();
+      // Reset trading state
+      setSelectedCardForTrade(null);
+      closeModal();
     }
-  }, [loading, error, isOwnCollection, cards.length]);
+  }, [selectedCardForTrade, modalCard, authToken, closeModal]);
+  
+  // Effects
+  const { isMainButtonVisible } = useMainButton(
+    loading, 
+    error, 
+    userData?.isOwnCollection ?? false, 
+    cards.length > 0, 
+    view,
+    selectedCardForTrade,
+    modalCard,
+    handleTradeClick,
+    handleSelectClick
+  );
+  
+  // Event handlers
+  const swipeHandlers = useSwipeHandlers({
+    cardsLength: cards.length,
+    currentIndex,
+    onIndexChange: setCurrentIndex,
+    onTiltReset: resetTiltReference
+  });
 
-  // Reset tilt reference by incrementing key
-  const resetTiltReference = () => {
-    setOrientationKey(prev => prev + 1);
+  const handleCardClick = (card: CardData) => {
+    // Always show card in modal regardless of ownership
+    openModal(card);
   };
 
-  const handlers = useSwipeable({
-    onSwipedLeft: () => {
-      setCurrentIndex((prevIndex) => {
-        const newIndex = (prevIndex + 1) % cards.length; // Wrap to 0 after last card
-        resetTiltReference();
-        return newIndex;
-      });
-    },
-    onSwipedRight: () => {
-      setCurrentIndex((prevIndex) => {
-        const newIndex = prevIndex === 0 ? cards.length - 1 : prevIndex - 1; // Wrap to last card from first
-        resetTiltReference();
-        return newIndex;
-      });
-    },
-    preventScrollOnSwipe: true,
-    trackMouse: true
-  });
+  const handleDotClick = (index: number) => {
+    if (index !== currentIndex) {
+      setCurrentIndex(index);
+      resetTiltReference();
+    }
+  };
 
+  // Loading state
   if (loading) {
     return <div className="app-container"><h1>Loading cards...</h1></div>;
   }
 
+  // Error state
   if (error) {
     return <div className="app-container"><h1>Error: {error}</h1></div>;
   }
 
   return (
-    <div className="app-container" {...handlers}>
-      <h1 style={{ marginBottom: '2vh' }}>@{collectionUsername}'s collection</h1>
-      
-      {cards.length > 0 ? (
-        <div className="card-container">
-          <div className="navigation-dots" style={{ marginBottom: '2vh' }}>
-            {cards.map((_, index) => (
-              <span
-                key={index}
-                className={`dot ${currentIndex === index ? 'active' : ''}`}
-                onClick={() => {
-                  if (index !== currentIndex) {
-                    setCurrentIndex(index);
-                    resetTiltReference();
-                  }
-                }}
-              ></span>
-            ))}
-          </div>
-          <Card 
-            {...cards[currentIndex]} 
-            orientation={orientation}
-            tiltKey={orientationKey}
-            authToken={new URLSearchParams(window.location.search).get('token')}
-            shiny={true}
-          />
-        </div>
-      ) : (
-        <p>{isOwnCollection ? "You don't own any cards yet." : `@${collectionUsername} doesn't own any cards yet.`}</p>
+    <div className="app-container" {...(view === 'current' ? swipeHandlers : {})}>
+      {/* Tab Navigation */}
+      <div className="tabs">
+        <button 
+          className={`tab ${view === 'current' ? 'active' : ''}`} 
+          onClick={() => setView('current')}
+        >
+          Current
+        </button>
+        <button 
+          className={`tab ${view === 'all' ? 'active' : ''}`} 
+          onClick={() => setView('all')}
+        >
+          All
+        </button>
+      </div>
+
+      <div className="app-content">
+        <h1 className="app-title">
+          {view === 'all' ? 'All cards' : `@${userData?.username}'s collection`}
+        </h1>
+        
+        {/* Current View */}
+        {view === 'current' && (
+          <>
+            {cards.length > 0 ? (
+              <div className={`card-container ${isMainButtonVisible ? 'with-trade-button' : ''}`}>
+                {/* Navigation Dots */}
+                <div className="navigation-dots" style={{ marginBottom: '2vh' }}>
+                  {cards.map((_, index) => (
+                    <span
+                      key={index}
+                      className={`dot ${currentIndex === index ? 'active' : ''}`}
+                      onClick={() => handleDotClick(index)}
+                    />
+                  ))}
+                </div>
+                
+                {/* Current Card */}
+                <Card 
+                  {...cards[currentIndex]} 
+                  orientation={orientation}
+                  tiltKey={orientationKey}
+                  authToken={authToken}
+                  shiny={true}
+                />
+              </div>
+            ) : (
+              <p>
+                {userData?.isOwnCollection 
+                  ? "You don't own any cards yet." 
+                  : `@${userData?.username} doesn't own any cards yet.`
+                }
+              </p>
+            )}
+          </>
+        )}
+
+        {/* All Cards View */}
+        {view === 'all' && (
+          <>
+            {allCardsLoading ? (
+              <div className="loading-container">
+                <h2>Loading all cards...</h2>
+              </div>
+            ) : allCardsError ? (
+              <div className="error-container">
+                <h2>Error loading cards</h2>
+                <p>{allCardsError}</p>
+                <button onClick={refetchAllCards}>Retry</button>
+              </div>
+            ) : allCards.length === 0 ? (
+              <div className="no-cards-container">
+                <h2>No cards found</h2>
+                <p>There are no cards in the system yet.</p>
+              </div>
+            ) : (
+              <AllCards 
+                cards={allCards} 
+                onCardClick={handleCardClick}
+                authToken={authToken}
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Card Modal */}
+      {modalCard && (
+        <CardModal
+          isOpen={showModal}
+          card={modalCard}
+          orientation={orientation}
+          orientationKey={orientationKey}
+          authToken={authToken}
+          onClose={closeModal}
+        />
       )}
     </div>
   );
