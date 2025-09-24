@@ -26,6 +26,9 @@ import type { CardData, View } from './types';
 import { BUILD_INFO } from './build-info';
 
 function App() {
+  // Log build info to console for debugging
+  console.log('App build info:', BUILD_INFO);
+  
   // Core data hooks
   const { cards, loading, error, userData, authToken } = useCards();
   const { allCards, loading: allCardsLoading, error: allCardsError, refetch: refetchAllCards } = useAllCards(authToken);
