@@ -491,15 +491,21 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         user_data = {"user_id": user.id, "chat_id": chat_id, "username": user.username}
         encoded_data = encoder_util.encode_data(user_data)
         if encoded_data:
-            # Add both token parameter and v parameter (v shows whose collection to display)
-            app_url = f"{miniapp_url}?token={urllib.parse.quote(encoded_data)}&v={urllib.parse.quote(display_username)}"
             if DEBUG_MODE:
-                # In debug mode, use WebApp
+                # In debug mode, use URL parameters (easier for development)
+                app_url = f"{miniapp_url}?token={urllib.parse.quote(encoded_data)}&v={urllib.parse.quote(display_username)}"
                 keyboard.append(
                     [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=app_url))]
                 )
             else:
-                # In production mode, use regular URL
+                # In production mode, use start_param with JSON data
+                start_param_data = {"view": display_username, "token": encoded_data}
+                start_param_json = json.dumps(start_param_data, separators=(",", ":"))
+                # Base64 encode the JSON to make it URL-safe
+                start_param = (
+                    base64.urlsafe_b64encode(start_param_json.encode()).decode().rstrip("=")
+                )
+                app_url = f"{miniapp_url}?startapp={start_param}"
                 keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])

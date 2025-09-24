@@ -2,6 +2,30 @@ import WebApp from '@twa-dev/sdk';
 import type { UserData, OrientationData } from '../types';
 
 export class TelegramUtils {
+  private static parseStartParam(): { view?: string; token?: string } | null {
+    try {
+      if (!WebApp?.initDataUnsafe?.start_param) {
+        console.log('No start_param found in WebApp initData');
+        return null;
+      }
+
+      const startParam = WebApp.initDataUnsafe.start_param;
+      console.log('Found start_param:', startParam);
+
+      // Base64 decode the start_param
+      // Add padding if necessary
+      const padded = startParam + '='.repeat((4 - startParam.length % 4) % 4);
+      const decoded = atob(padded.replace(/-/g, '+').replace(/_/g, '/'));
+      const parsedData = JSON.parse(decoded);
+      
+      console.log('Parsed start_param data:', parsedData);
+      return parsedData;
+    } catch (err) {
+      console.error('Error parsing start_param:', err);
+      return null;
+    }
+  }
+
   static initializeUser(): UserData | null {
     try {
       // Check if WebApp is properly initialized
@@ -20,15 +44,39 @@ export class TelegramUtils {
         throw new Error("Could not determine your username. Please make sure you have a username set in your Telegram profile.");
       }
 
-      // Get the collection username from URL parameters
-      const urlParams = new URLSearchParams(window.location.search);
-      let fetchUsername = urlParams.get('v') || currentUserUsername;
+      let fetchUsername = currentUserUsername;
+      let dataSource = 'default';
+
+      // Try to get data from start_param first (production mode)
+      const startParamData = this.parseStartParam();
+      if (startParamData?.view) {
+        fetchUsername = startParamData.view;
+        dataSource = 'start_param';
+        console.log('Using view username from start_param (production mode)');
+      } else {
+        // Fallback to URL parameters (debug mode)
+        console.log('No start_param data, checking URL parameters (debug mode)');
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlView = urlParams.get('v');
+        if (urlView) {
+          fetchUsername = urlView;
+          dataSource = 'url_params';
+          console.log('Using view username from URL parameters');
+        }
+      }
       
       // Remove any URL encoding artifacts
       fetchUsername = decodeURIComponent(fetchUsername);
       
       // Check if this is the user's own collection
       const isOwnCollection = currentUserUsername === fetchUsername;
+
+      console.log('User initialized:', { 
+        currentUserUsername, 
+        fetchUsername, 
+        isOwnCollection,
+        dataSource
+      });
 
       return {
         username: fetchUsername,
@@ -41,8 +89,31 @@ export class TelegramUtils {
   }
 
   static getAuthToken(): string | null {
-    const urlParams = new URLSearchParams(window.location.search);
-    return urlParams.get('token');
+    let token = null;
+    let tokenSource = 'none';
+
+    // Try to get token from start_param first (production mode)
+    const startParamData = this.parseStartParam();
+    if (startParamData?.token) {
+      token = startParamData.token;
+      tokenSource = 'start_param';
+      console.log('Using token from start_param (production mode)');
+    } else {
+      // Fallback to URL parameters (debug mode)
+      console.log('No start_param token, checking URL parameters (debug mode)');
+      const urlParams = new URLSearchParams(window.location.search);
+      token = urlParams.get('token');
+      
+      if (token) {
+        tokenSource = 'url_params';
+        console.log('Using token from URL parameters');
+      } else {
+        console.log('No token found in either start_param or URL parameters');
+      }
+    }
+    
+    console.log('Token resolution:', { found: !!token, source: tokenSource });
+    return token;
   }
 
   static getCurrentUsername(): string | null {
