@@ -33,6 +33,18 @@ alembic -c alembic.ini upgrade head
 
 Revision `20240924_0002` introduces a `user_id` column on the `cards` table. The migration backfills existing cards using a static username → Telegram user ID map (see the migration script for the exact values) and new claims automatically record the user’s Telegram ID.
 
+### Chats mapping
+
+Revision `20240924_0003` adds a `chats` table that links the configured `GROUP_CHAT_ID` to every known Telegram user ID from the same map used above. A fresh upgrade will create one row per user for the group chat so future features can resolve membership quickly.
+
+### User profiles
+
+Revision `20240924_0004` introduces a `users` table (`user_id`, `username`, `display_name`, `profile_imageb64`). The migration seeds it with known Telegram IDs and usernames. Run the helper below after upgrading to populate display names and profile images from `data/base_images`:
+
+```bash
+python tools/backfill_user_profiles.py
+```
+
 ### SQLite compatibility
 
 Alembic runs with `render_as_batch=True`, which enables schema migrations against SQLite. No extra database engine is required; the existing `DB_PATH` configuration continues to work.
