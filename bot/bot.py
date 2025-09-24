@@ -381,9 +381,14 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         ) + CARD_STATUS_CLAIMED.format(username=owner)
         if attempted_by:
             attempted_users = ", ".join(
-                [f"@{u.strip()}" for u in attempted_by.split(",") if u.strip()]
+                [
+                    f"@{u.strip()}"
+                    for u in attempted_by.split(",")
+                    if u.strip() and u.strip() != owner
+                ]
             )
-            caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
+            if attempted_users:
+                caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
         await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
     # Keep other buttons, remove the claim button
@@ -396,9 +401,13 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     new_reply_markup = InlineKeyboardMarkup(new_keyboard) if new_keyboard else None
 
-    await query.edit_message_caption(
-        caption=caption, reply_markup=new_reply_markup, parse_mode=ParseMode.HTML
-    )
+    try:
+        await query.edit_message_caption(
+            caption=caption, reply_markup=new_reply_markup, parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        # Silently ignore if message content is identical (Telegram BadRequest)
+        pass
 
 
 async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
