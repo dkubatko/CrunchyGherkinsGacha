@@ -179,7 +179,9 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
             return
 
-        card_id = await asyncio.to_thread(database.add_card, base_name, modifier, rarity, image_b64)
+        card_id = await asyncio.to_thread(
+            database.add_card, base_name, modifier, rarity, image_b64, update.effective_chat.id
+        )
 
         if not DEBUG_MODE:
             await asyncio.to_thread(database.record_roll, user.id)
@@ -305,8 +307,14 @@ async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
 
         # Add new card to database
+        new_card_chat_id = original_card.chat_id or query.message.chat_id
         new_card_id = await asyncio.to_thread(
-            database.add_card, base_name, modifier, downgraded_rarity, image_b64
+            database.add_card,
+            base_name,
+            modifier,
+            downgraded_rarity,
+            image_b64,
+            new_card_chat_id,
         )
 
         # Delete the original card

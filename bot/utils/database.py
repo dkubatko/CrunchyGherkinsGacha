@@ -18,6 +18,7 @@ class Card(BaseModel):
     owner: str | None
     attempted_by: str
     file_id: str | None
+    chat_id: str | None
     created_at: str | None
 
 
@@ -58,6 +59,7 @@ def create_tables():
             image_b64 TEXT,
             attempted_by TEXT DEFAULT '',
             file_id TEXT,
+            chat_id TEXT,
             created_at TEXT
         )
     """
@@ -78,21 +80,42 @@ def create_tables():
         # Column already exists
         pass
 
+    # Add chat_id column if it doesn't exist (for existing databases)
+    try:
+        cursor.execute("ALTER TABLE cards ADD COLUMN chat_id TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
+    # Backfill chat_id for existing records if GROUP_CHAT_ID is available
+    group_chat_id = os.getenv("GROUP_CHAT_ID")
+    if group_chat_id:
+        cursor.execute(
+            "UPDATE cards SET chat_id = ? WHERE chat_id IS NULL OR chat_id = ''",
+            (group_chat_id,),
+        )
+    else:
+        logger.warning("GROUP_CHAT_ID not set; skipping chat_id backfill")
+
     conn.commit()
     conn.close()
 
 
-def add_card(base_name, modifier, rarity, image_b64):
+def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
     """Add a new card to the database."""
     conn = connect()
     cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
+    if chat_id is None:
+        chat_id = os.getenv("GROUP_CHAT_ID")
+    if chat_id is not None:
+        chat_id = str(chat_id)
     cursor.execute(
         """
-        INSERT INTO cards (base_name, modifier, rarity, image_b64, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO cards (base_name, modifier, rarity, image_b64, chat_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
     """,
-        (base_name, modifier, rarity, image_b64, now),
+        (base_name, modifier, rarity, image_b64, chat_id, now),
     )
     card_id = cursor.lastrowid
     conn.commit()
@@ -138,7 +161,7 @@ def get_user_collection(username):
     conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
+        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
         (username,),
     )
     cards = [Card(**row) for row in cursor.fetchall()]
@@ -151,7 +174,7 @@ def get_all_cards():
     conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
+        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
     )
     cards = [Card(**row) for row in cursor.fetchall()]
     conn.close()

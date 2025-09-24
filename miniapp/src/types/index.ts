@@ -4,6 +4,7 @@ export interface CardData {
   modifier: string;
   rarity: string;
   owner?: string;
+  chat_id?: string | null;
 }
 
 export interface OrientationData {
