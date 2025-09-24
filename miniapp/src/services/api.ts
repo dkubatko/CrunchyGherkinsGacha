@@ -3,21 +3,21 @@ import type { CardData } from '../types';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
 export class ApiService {
-  private static getHeaders(authToken?: string | null): HeadersInit {
+  private static getHeaders(initData?: string | null): HeadersInit {
     const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
     
-    if (authToken) {
-      headers['Authorization'] = `Bearer ${authToken}`;
+    if (initData) {
+      headers['Authorization'] = `tma ${initData}`;
     }
     
     return headers;
   }
 
-  static async fetchUserCards(username: string, authToken: string): Promise<CardData[]> {
+  static async fetchUserCards(username: string, initData: string): Promise<CardData[]> {
     const response = await fetch(`${API_BASE_URL}/cards/${username}`, {
-      headers: this.getHeaders(authToken)
+      headers: this.getHeaders(initData)
     });
     
     if (!response.ok) {
@@ -35,9 +35,9 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchAllCards(authToken: string): Promise<CardData[]> {
+  static async fetchAllCards(initData: string): Promise<CardData[]> {
     const response = await fetch(`${API_BASE_URL}/cards/all`, {
-      headers: this.getHeaders(authToken)
+      headers: this.getHeaders(initData)
     });
     
     if (!response.ok) {
@@ -47,9 +47,9 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchCardImage(cardId: number, authToken: string): Promise<string> {
+  static async fetchCardImage(cardId: number, initData: string): Promise<string> {
     const response = await fetch(`${API_BASE_URL}/cards/image/${cardId}`, {
-      headers: this.getHeaders(authToken)
+      headers: this.getHeaders(initData)
     });
     
     if (!response.ok) {

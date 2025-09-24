@@ -4,23 +4,35 @@ import type { CardData } from '../types';
 interface CacheEntry {
   data: CardData[];
   timestamp: number;
-  authToken: string;
+  cacheKey: string;
 }
 
 class CardsCache {
   private cache: CacheEntry | null = null;
   private readonly CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
-  set(data: CardData[], authToken: string): void {
+  // Create a simple cache key from init data
+  private createCacheKey(initData: string): string {
+    // Use a simple hash of the initData for cache key
+    let hash = 0;
+    for (let i = 0; i < initData.length; i++) {
+      const char = initData.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return hash.toString();
+  }
+
+  set(data: CardData[], initData: string): void {
     this.cache = {
       data,
       timestamp: Date.now(),
-      authToken
+      cacheKey: this.createCacheKey(initData)
     };
   }
 
-  get(authToken: string): CardData[] | null {
-    if (!this.cache || this.cache.authToken !== authToken) {
+  get(initData: string): CardData[] | null {
+    if (!this.cache || this.cache.cacheKey !== this.createCacheKey(initData)) {
       return null;
     }
 
@@ -37,8 +49,8 @@ class CardsCache {
     this.cache = null;
   }
 
-  isValid(authToken: string): boolean {
-    if (!this.cache || this.cache.authToken !== authToken) {
+  isValid(initData: string): boolean {
+    if (!this.cache || this.cache.cacheKey !== this.createCacheKey(initData)) {
       return false;
     }
 

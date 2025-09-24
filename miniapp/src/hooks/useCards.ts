@@ -8,7 +8,7 @@ interface UseCardsResult {
   loading: boolean;
   error: string | null;
   userData: UserData | null;
-  authToken: string | null;
+  initData: string | null;
 }
 
 export const useCards = (): UseCardsResult => {
@@ -16,7 +16,7 @@ export const useCards = (): UseCardsResult => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [initData, setInitData] = useState<string | null>(null);
 
   useEffect(() => {
     const initializeAndFetch = async () => {
@@ -30,17 +30,17 @@ export const useCards = (): UseCardsResult => {
         }
         setUserData(user);
 
-        // Get auth token
-        const token = TelegramUtils.getAuthToken();
-        if (!token) {
-          setError("No authentication token found");
+        // Get init data
+        const telegramInitData = TelegramUtils.getInitData();
+        if (!telegramInitData) {
+          setError("No Telegram init data found");
           setLoading(false);
           return;
         }
-        setAuthToken(token);
+        setInitData(telegramInitData);
 
         // Fetch user's cards
-        const userCards = await ApiService.fetchUserCards(user.username, token);
+        const userCards = await ApiService.fetchUserCards(user.username, telegramInitData);
         setCards(userCards);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
@@ -58,6 +58,6 @@ export const useCards = (): UseCardsResult => {
     loading,
     error,
     userData,
-    authToken
+    initData
   };
 };

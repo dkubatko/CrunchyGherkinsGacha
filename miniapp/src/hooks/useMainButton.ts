@@ -6,6 +6,7 @@ export const useMainButton = (
   loading: boolean,
   error: string | null,
   isOwnCollection: boolean,
+  enableTrade: boolean,
   hasCards: boolean,
   view: View,
   selectedCardForTrade?: CardData | null,
@@ -25,8 +26,8 @@ export const useMainButton = (
 
   useEffect(() => {
     if (!loading && !error) {
-      // Show Trade button in current view for own collection
-      if (isOwnCollection && hasCards && view === 'current' && !selectedCardForTrade) {
+      // Show Trade button in current view for own collection (only if trading is enabled)
+      if (isOwnCollection && enableTrade && hasCards && view === 'current' && !selectedCardForTrade) {
         setIsMainButtonVisible(true);
         const cleanup = TelegramUtils.setupMainButton(
           'Trade',
@@ -34,8 +35,8 @@ export const useMainButton = (
         );
         return cleanup;
       }
-      // Show Select button in modal when trading and viewing others' cards
-      else if (selectedCardForTrade && modalCard && view === 'all' && modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
+      // Show Select button in modal when trading and viewing others' cards (only if trading is enabled)
+      else if (enableTrade && selectedCardForTrade && modalCard && view === 'all' && modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
         setIsMainButtonVisible(true);
         const cleanup = TelegramUtils.setupMainButton(
           'Select',
@@ -52,7 +53,7 @@ export const useMainButton = (
       setIsMainButtonVisible(false);
       return TelegramUtils.hideMainButton();
     }
-  }, [loading, error, isOwnCollection, hasCards, view, selectedCardForTrade, modalCard]);
+  }, [loading, error, isOwnCollection, enableTrade, hasCards, view, selectedCardForTrade, modalCard]);
 
   return { isMainButtonVisible };
 };

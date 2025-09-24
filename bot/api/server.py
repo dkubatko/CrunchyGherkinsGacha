@@ -2,7 +2,10 @@ import asyncio
 import os
 import sys
 import logging
-from typing import List, Optional
+import hmac
+import hashlib
+import urllib.parse
+from typing import List, Optional, Dict, Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Header
@@ -17,7 +20,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils import database
 from utils.database import Card as APICard
-from utils.encoder import EncoderUtil
 from settings.constants import TRADE_REQUEST_MESSAGE
 
 # Initialize logger
@@ -39,8 +41,109 @@ app = FastAPI()
 
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
-# Initialize encoder utility
-encoder_util = EncoderUtil()
+
+def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
+    """
+    Validate Telegram WebApp init data according to:
+    https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
+
+    Args:
+        init_data: URL-encoded init data from Telegram WebApp
+
+    Returns:
+        Dictionary with parsed and validated data, or None if validation fails
+    """
+    global bot_token
+
+    if not bot_token:
+        logger.error("Bot token not available for init data validation")
+        return None
+
+    try:
+        # Parse URL-encoded data
+        parsed_data = urllib.parse.parse_qs(init_data)
+
+        # Extract hash and other data
+        received_hash = parsed_data.get("hash", [None])[0]
+        if not received_hash:
+            logger.warning("No hash found in init data")
+            return None
+
+        # Remove hash from data for validation
+        data_check_string_parts = []
+        for key in sorted(parsed_data.keys()):
+            if key != "hash":
+                values = parsed_data[key]
+                for value in values:
+                    data_check_string_parts.append(f"{key}={value}")
+
+        data_check_string = "\n".join(data_check_string_parts)
+
+        # Create secret key from bot token
+        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+
+        # Calculate expected hash
+        expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
+
+        # Verify hash
+        if not hmac.compare_digest(received_hash, expected_hash):
+            logger.warning("Init data hash validation failed")
+            return None
+
+        # Parse user data if present
+        user_data = None
+        if "user" in parsed_data:
+            import json
+
+            try:
+                user_data = json.loads(parsed_data["user"][0])
+            except (json.JSONDecodeError, IndexError):
+                logger.warning("Failed to parse user data from init data")
+                return None
+
+        # Parse auth_date and check if not too old (optional, but recommended)
+        auth_date = parsed_data.get("auth_date", [None])[0]
+        if auth_date:
+            try:
+                import time
+
+                auth_timestamp = int(auth_date)
+                current_timestamp = int(time.time())
+                # Check if auth_date is not older than 24 hours
+                if current_timestamp - auth_timestamp > 24 * 60 * 60:
+                    logger.warning("Init data is too old (older than 24 hours)")
+                    return None
+            except (ValueError, TypeError):
+                logger.warning("Invalid auth_date in init data")
+                return None
+
+        return {
+            "user": user_data,
+            "auth_date": auth_date,
+            "query_id": parsed_data.get("query_id", [None])[0],
+            "chat_instance": parsed_data.get("chat_instance", [None])[0],
+            "chat_type": parsed_data.get("chat_type", [None])[0],
+            "start_param": parsed_data.get("start_param", [None])[0],
+        }
+
+    except Exception as e:
+        logger.error(f"Error validating init data: {e}")
+        return None
+
+
+def extract_init_data_from_header(authorization: Optional[str]) -> Optional[str]:
+    """Extract init data from Authorization header."""
+    if not authorization:
+        return None
+
+    # Handle both "Bearer <initdata>" and direct initdata formats
+    if authorization.startswith("Bearer "):
+        return authorization[7:]
+    elif authorization.startswith("tma "):  # Telegram Mini App prefix
+        return authorization[4:]
+    else:
+        return authorization
+
 
 # CORS configuration
 allowed_origins = [
@@ -76,18 +179,17 @@ async def get_all_cards_endpoint(
         logger.warning(f"No authorization header provided for /cards/all")
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # Extract token from "Bearer <token>" format
-    token = None
-    if authorization.startswith("Bearer "):
-        token = authorization[7:]  # Remove "Bearer " prefix
-    else:
-        token = authorization  # Use as-is if no Bearer prefix
+    # Extract init data from header
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(f"No init data found in authorization header for /cards/all")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
 
-    # Decode and validate the token
-    user_data = encoder_util.decode_data(token)
-    if not user_data:
-        logger.warning(f"Invalid token provided for /cards/all")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # Validate Telegram init data
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(f"Invalid Telegram init data provided for /cards/all")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
 
     cards = await asyncio.to_thread(database.get_all_cards)
     return [APICard(**card.__dict__) for card in cards]
@@ -99,7 +201,7 @@ async def get_user_collection(
 ):
     """Get all cards owned by a user.
 
-    This endpoint requires authentication via Authorization header with encoded user data.
+    This endpoint requires authentication via Authorization header with Telegram WebApp initData.
     """
 
     # Check if authorization header is provided
@@ -107,18 +209,17 @@ async def get_user_collection(
         logger.warning(f"No authorization header provided for username: {username}")
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # Extract token from "Bearer <token>" format
-    token = None
-    if authorization.startswith("Bearer "):
-        token = authorization[7:]  # Remove "Bearer " prefix
-    else:
-        token = authorization  # Use as-is if no Bearer prefix
+    # Extract init data from header
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(f"No init data found in authorization header for username: {username}")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
 
-    # Decode and validate the token
-    user_data = encoder_util.decode_data(token)
-    if not user_data:
-        logger.warning(f"Invalid token provided for username: {username}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # Validate Telegram init data
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(f"Invalid Telegram init data provided for username: {username}")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
 
     cards = await asyncio.to_thread(database.get_user_collection, username)
     return [APICard(**card.__dict__) for card in cards]
@@ -133,16 +234,17 @@ async def get_card_image_route(
         logger.warning(f"No authorization header provided for card_id: {card_id}")
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    token = None
-    if authorization.startswith("Bearer "):
-        token = authorization[7:]
-    else:
-        token = authorization
+    # Extract init data from header
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(f"No init data found in authorization header for card_id: {card_id}")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
 
-    user_data = encoder_util.decode_data(token)
-    if not user_data:
-        logger.warning(f"Invalid token provided for card_id: {card_id}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    # Validate Telegram init data
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(f"Invalid Telegram init data provided for card_id: {card_id}")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
 
     image_b64 = await asyncio.to_thread(database.get_card_image, card_id)
     if not image_b64:
@@ -162,26 +264,38 @@ async def execute_trade(
         logger.warning(f"No authorization header provided for trade {card_id1}/{card_id2}")
         raise HTTPException(status_code=401, detail="Authorization header required")
 
-    # Extract token from "Bearer <token>" format
-    token = None
-    if authorization.startswith("Bearer "):
-        token = authorization[7:]  # Remove "Bearer " prefix
+    # Extract init data from header
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for trade {card_id1}/{card_id2}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    # Validate Telegram init data
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(f"Invalid Telegram init data provided for trade {card_id1}/{card_id2}")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    # Get user data from validated init data
+    user_data = validated_data["user"]
+    user_id = user_data.get("id")
+
+    # Determine chat_id based on debug mode
+    if debug_mode:
+        # In debug mode, send to user directly
+        chat_id = user_id
     else:
-        token = authorization  # Use as-is if no Bearer prefix
+        # In production mode, send to group chat
+        chat_id = os.getenv("GROUP_CHAT_ID")
+        if not chat_id:
+            logger.error("GROUP_CHAT_ID not configured for production trade messages")
+            raise HTTPException(status_code=500, detail="Group chat not configured")
 
-    # Decode and validate the token
-    user_data = encoder_util.decode_data(token)
-    if not user_data:
-        logger.warning(f"Invalid token provided for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-
-    # Get user_id and chat_id from decoded data
-    user_id = user_data.get("user_id")
-    chat_id = user_data.get("chat_id")
-
-    if not user_id or not chat_id:
-        logger.warning(f"Missing user_id or chat_id in token for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=400, detail="Invalid user data in token")
+    if not user_id:
+        logger.warning(f"Missing user_id in init data for trade {card_id1}/{card_id2}")
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
 
     # Check if bot token is available
     if not bot_token:
@@ -196,11 +310,11 @@ async def execute_trade(
         if not card1 or not card2:
             raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
 
-        # Get current user's username from the token
+        # Get current user's username from the validated init data
         current_username = user_data.get("username")
         if not current_username:
-            logger.error(f"Username not found in token for user_id {user_id}")
-            raise HTTPException(status_code=400, detail="Username not found in token")
+            logger.error(f"Username not found in init data for user_id {user_id}")
+            raise HTTPException(status_code=400, detail="Username not found in init data")
 
         # Validate trade
         if card1.owner != current_username:

@@ -30,8 +30,8 @@ function App() {
   console.log('App build info:', BUILD_INFO);
   
   // Core data hooks
-  const { cards, loading, error, userData, authToken } = useCards();
-  const { allCards, loading: allCardsLoading, error: allCardsError, refetch: refetchAllCards } = useAllCards(authToken);
+  const { cards, loading, error, userData, initData } = useCards();
+  const { allCards, loading: allCardsLoading, error: allCardsError, refetch: refetchAllCards } = useAllCards(initData);
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -44,15 +44,15 @@ function App() {
   
   // Memoized callback functions to prevent infinite re-renders
   const handleTradeClick = useCallback(() => {
-    // Handle trade button click in current view
-    if (cards[currentIndex]) {
+    // Handle trade button click in current view (only if trading is enabled)
+    if (userData?.enableTrade && cards[currentIndex]) {
       setSelectedCardForTrade(cards[currentIndex]);
       const cardName = `${cards[currentIndex].modifier} ${cards[currentIndex].base_name}`;
       // Show alert and switch to All view
       TelegramUtils.showAlert(`Choose the card to trade ${cardName} for in All view`);
       setView('all');
     }
-  }, [cards, currentIndex]);
+  }, [cards, currentIndex, userData?.enableTrade]);
 
   const handleSelectClick = useCallback(() => {
     // Handle select button click in modal
@@ -64,7 +64,7 @@ function App() {
           const response = await fetch(`${apiBaseUrl}/trade/${selectedCardForTrade.id}/${modalCard.id}`, {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${authToken}`
+              'Authorization': `tma ${initData}`
             }
           });
 
@@ -87,13 +87,14 @@ function App() {
       setSelectedCardForTrade(null);
       closeModal();
     }
-  }, [selectedCardForTrade, modalCard, authToken, closeModal]);
+  }, [selectedCardForTrade, modalCard, initData, closeModal]);
   
   // Effects
   const { isMainButtonVisible } = useMainButton(
     loading, 
     error, 
     userData?.isOwnCollection ?? false, 
+    userData?.enableTrade ?? false,
     cards.length > 0, 
     view,
     selectedCardForTrade,
@@ -109,11 +110,6 @@ function App() {
     onIndexChange: setCurrentIndex,
     onTiltReset: resetTiltReference
   });
-
-  const handleCardClick = (card: CardData) => {
-    // Always show card in modal regardless of ownership
-    openModal(card);
-  };
 
   const handleDotClick = (index: number) => {
     if (index !== currentIndex) {
@@ -176,7 +172,7 @@ function App() {
                   {...cards[currentIndex]} 
                   orientation={orientation}
                   tiltKey={orientationKey}
-                  authToken={authToken}
+                  initData={initData}
                   shiny={true}
                 />
               </div>
@@ -210,10 +206,10 @@ function App() {
                 <p>There are no cards in the system yet.</p>
               </div>
             ) : (
-              <AllCards 
-                cards={allCards} 
-                onCardClick={handleCardClick}
-                authToken={authToken}
+                            <AllCards
+                cards={allCards}
+                onCardClick={openModal}
+                initData={initData}
               />
             )}
           </>
@@ -227,7 +223,7 @@ function App() {
           card={modalCard}
           orientation={orientation}
           orientationKey={orientationKey}
-          authToken={authToken}
+          initData={initData}
           onClose={closeModal}
         />
       )}

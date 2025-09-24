@@ -10,20 +10,20 @@ interface CardProps {
   orientation: OrientationData;
   tiltKey: number;
   id: number;
-  authToken: string | null;
+  initData: string | null;
   shiny: boolean;
   owner?: string;
   showOwner?: boolean;
 }
 
-const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, tiltKey, id, authToken, shiny, owner, showOwner = false }) => {
+const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, tiltKey, id, initData, shiny, owner, showOwner = false }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
 
   useEffect(() => {
     const fetchImage = async () => {
-      if (!id || !authToken) return;
+      if (!id || !initData) return;
 
       if (imageCache.has(id)) {
         setImageB64(imageCache.get(id)!);
@@ -36,7 +36,7 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
         const response = await fetch(`${apiBaseUrl}/cards/image/${id}`, {
           headers: {
-            'Authorization': `Bearer ${authToken}`
+            'Authorization': `tma ${initData}`
           }
         });
         if (!response.ok) {
@@ -53,7 +53,7 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
     };
 
     fetchImage();
-  }, [id, authToken]);
+  }, [id, initData]);
 
   const getRarityGradient = (rarity: string) => {
     const rarityLower = rarity.toLowerCase();

@@ -4,11 +4,11 @@ import type { CardData } from '../types';
 
 interface MiniCardProps {
   card: CardData;
-  authToken: string | null;
+  initData: string | null;
   onClick: (card: CardData) => void;
 }
 
-const MiniCard: React.FC<MiniCardProps> = memo(({ card, authToken, onClick }) => {
+const MiniCard: React.FC<MiniCardProps> = memo(({ card, initData, onClick }) => {
   // Check if we have cached data immediately to set initial state
   const cachedImage = imageCache.has(card.id) ? imageCache.get(card.id) : null;
   
@@ -18,7 +18,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, authToken, onClick }) =>
 
   useEffect(() => {
     const fetchImage = async () => {
-      if (!authToken || !card.id) return;
+      if (!initData || !card.id) return;
 
       if (imageCache.has(card.id)) {
         setImageB64(imageCache.get(card.id)!);
@@ -32,7 +32,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, authToken, onClick }) =>
         const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
         const response = await fetch(`${apiBaseUrl}/cards/image/${card.id}`, {
           headers: {
-            'Authorization': `Bearer ${authToken}`
+            'Authorization': `tma ${initData}`
           }
         });
         if (!response.ok) {
@@ -50,7 +50,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, authToken, onClick }) =>
     };
 
     fetchImage();
-  }, [card.id, authToken]);
+  }, [card.id, initData]);
 
   return (
     <div className="grid-card" onClick={() => onClick(card)}>
