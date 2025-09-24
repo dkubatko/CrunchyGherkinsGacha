@@ -1,13 +1,21 @@
-import sqlite3
-import os
+import base64
 import datetime
 import logging
-import base64
+import os
+import sqlite3
+from typing import Optional
+
+from alembic import command
+from alembic.config import Config
 from pydantic import BaseModel
 
 from settings.constants import DB_PATH
 
 logger = logging.getLogger(__name__)
+PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+ALEMBIC_INI_PATH = os.path.join(PROJECT_ROOT, "alembic.ini")
+ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
+INITIAL_ALEMBIC_REVISION = "20240924_0001"
 
 
 class Card(BaseModel):
@@ -15,11 +23,11 @@ class Card(BaseModel):
     base_name: str
     modifier: str
     rarity: str
-    owner: str | None
+    owner: Optional[str]
     attempted_by: str
-    file_id: str | None
-    chat_id: str | None
-    created_at: str | None
+    file_id: Optional[str]
+    chat_id: Optional[str]
+    created_at: Optional[str]
 
 
 class CardWithImage(Card):
@@ -44,61 +52,46 @@ def connect():
     return conn
 
 
-def create_tables():
-    """Create the tables if they don't exist."""
+def _get_alembic_config() -> Config:
+    """Build an Alembic configuration pointing at the project's migration setup."""
+    config = Config(ALEMBIC_INI_PATH)
+    config.set_main_option("script_location", ALEMBIC_SCRIPT_LOCATION)
+    config.set_main_option("sqlalchemy.url", f"sqlite:///{DB_PATH}")
+    return config
+
+
+def _has_table(table_name: str) -> bool:
     conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS cards (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            base_name TEXT NOT NULL,
-            modifier TEXT NOT NULL,
-            rarity TEXT NOT NULL,
-            owner TEXT,
-            image_b64 TEXT,
-            attempted_by TEXT DEFAULT '',
-            file_id TEXT,
-            chat_id TEXT,
-            created_at TEXT
-        )
-    """
-    )
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS user_rolls (
-            user_id INTEGER PRIMARY KEY,
-            last_roll_timestamp TEXT NOT NULL
-        )
-    """
-    )
-
-    # Add created_at column if it doesn't exist (for existing databases)
     try:
-        cursor.execute("ALTER TABLE cards ADD COLUMN created_at TEXT")
-    except sqlite3.OperationalError:
-        # Column already exists
-        pass
-
-    # Add chat_id column if it doesn't exist (for existing databases)
-    try:
-        cursor.execute("ALTER TABLE cards ADD COLUMN chat_id TEXT")
-    except sqlite3.OperationalError:
-        # Column already exists
-        pass
-
-    # Backfill chat_id for existing records if GROUP_CHAT_ID is available
-    group_chat_id = os.getenv("GROUP_CHAT_ID")
-    if group_chat_id:
+        cursor = conn.cursor()
         cursor.execute(
-            "UPDATE cards SET chat_id = ? WHERE chat_id IS NULL OR chat_id = ''",
-            (group_chat_id,),
+            "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
+            (table_name,),
         )
-    else:
-        logger.warning("GROUP_CHAT_ID not set; skipping chat_id backfill")
+        return cursor.fetchone() is not None
+    finally:
+        conn.close()
 
-    conn.commit()
-    conn.close()
+
+def run_migrations():
+    """Apply Alembic migrations to bring the database schema up to date."""
+    config = _get_alembic_config()
+    if not _has_table("alembic_version") and (_has_table("cards") or _has_table("user_rolls")):
+        logger.info(
+            "Existing SQLite schema detected without Alembic metadata; stamping baseline revision %s",
+            INITIAL_ALEMBIC_REVISION,
+        )
+        command.stamp(config, INITIAL_ALEMBIC_REVISION)
+    try:
+        command.upgrade(config, "head")
+    except Exception:
+        logger.exception("Failed to apply database migrations")
+        raise
+
+
+def create_tables():
+    """Backwards-compatible wrapper that now applies Alembic migrations."""
+    run_migrations()
 
 
 def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
