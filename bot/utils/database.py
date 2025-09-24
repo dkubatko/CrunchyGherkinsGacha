@@ -24,6 +24,7 @@ class Card(BaseModel):
     modifier: str
     rarity: str
     owner: Optional[str]
+    user_id: Optional[int]
     attempted_by: str
     file_id: Optional[str]
     chat_id: Optional[str]
@@ -116,7 +117,7 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
     return card_id
 
 
-def claim_card(card_id, owner):
+def claim_card(card_id, owner, user_id=None):
     """Claim a card for a user."""
     conn = connect()
     cursor = conn.cursor()
@@ -140,9 +141,15 @@ def claim_card(card_id, owner):
         return False
     else:
         # Claim the card
-        cursor.execute(
-            "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id)
-        )
+        if user_id is not None:
+            cursor.execute(
+                "UPDATE cards SET owner = ?, user_id = ? WHERE id = ? AND owner IS NULL",
+                (owner, user_id, card_id),
+            )
+        else:
+            cursor.execute(
+                "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id)
+            )
         updated = cursor.rowcount > 0
         conn.commit()
         conn.close()
@@ -154,7 +161,7 @@ def get_user_collection(username):
     conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
+        "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
         (username,),
     )
     cards = [Card(**row) for row in cursor.fetchall()]
@@ -167,7 +174,7 @@ def get_all_cards():
     conn = connect()
     cursor = conn.cursor()
     cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
+        "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
     )
     cards = [Card(**row) for row in cursor.fetchall()]
     conn.close()
@@ -281,15 +288,25 @@ def swap_card_owners(card_id1, card_id2):
     cursor = conn.cursor()
     try:
         # Get current owners
-        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id1,))
-        owner1 = cursor.fetchone()[0]
+        cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id1,))
+        owner1_row = cursor.fetchone()
+        owner1 = owner1_row[0]
+        user_id1 = owner1_row[1]
 
-        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id2,))
-        owner2 = cursor.fetchone()[0]
+        cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id2,))
+        owner2_row = cursor.fetchone()
+        owner2 = owner2_row[0]
+        user_id2 = owner2_row[1]
 
         # Swap owners
-        cursor.execute("UPDATE cards SET owner = ? WHERE id = ?", (owner2, card_id1))
-        cursor.execute("UPDATE cards SET owner = ? WHERE id = ?", (owner1, card_id2))
+        cursor.execute(
+            "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
+            (owner2, user_id2, card_id1),
+        )
+        cursor.execute(
+            "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
+            (owner1, user_id1, card_id2),
+        )
 
         conn.commit()
         return True

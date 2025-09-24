@@ -44,7 +44,9 @@ gemini_util = gemini.GeminiUtil()
 
 # Enable logging
 logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    level=logging.INFO,
+    force=True,
 )
 logger = logging.getLogger(__name__)
 
@@ -369,7 +371,9 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
     user = query.from_user
 
-    is_successful_claim = await asyncio.to_thread(database.claim_card, card_id, user.username)
+    is_successful_claim = await asyncio.to_thread(
+        database.claim_card, card_id, user.username, user.id
+    )
     card = await asyncio.to_thread(database.get_card, card_id)
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
