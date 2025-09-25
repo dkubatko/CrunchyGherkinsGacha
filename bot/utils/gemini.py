@@ -1,6 +1,7 @@
 import base64
 import logging
 import os
+from io import BytesIO
 
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -24,9 +25,13 @@ class GeminiUtil:
         base_name: str,
         modifier: str,
         rarity: str,
-        base_image_path: str,
+        base_image_path: str | None = None,
+        base_image_b64: str | None = None,
     ):
         try:
+            if base_image_path is None and base_image_b64 is None:
+                raise ValueError("Either base_image_path or base_image_b64 must be provided.")
+
             prompt = IMAGE_GENERATOR_INSTRUCTION.format(
                 modification=modifier,
                 name=base_name,
@@ -39,7 +44,11 @@ class GeminiUtil:
             )
             template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
             template_img = Image.open(template_image_path)
-            img = Image.open(base_image_path)
+            if base_image_b64:
+                source_bytes = base64.b64decode(base_image_b64)
+                img = Image.open(BytesIO(source_bytes))
+            else:
+                img = Image.open(base_image_path)
             response = self.model.generate_content([prompt, template_img, img])
 
             for part in response.candidates[0].content.parts:
