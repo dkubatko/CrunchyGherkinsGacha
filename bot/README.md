@@ -50,3 +50,7 @@ The `/profile` DM command lets players upload a display name and portrait. The `
 ### SQLite compatibility
 
 Alembic runs with `render_as_batch=True`, which enables schema migrations against SQLite. No extra database engine is required; the existing `DB_PATH` configuration continues to work.
+
+## Chat commands
+
+- `/balance [@username]` — Displays the remaining claim points in the current chat. If you omit the argument it reports your own balance; otherwise it resolves the provided username (must be enrolled in the chat) and shows their balance. Claim balances are scoped per chat, so this command only works in group chats.
