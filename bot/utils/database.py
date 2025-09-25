@@ -3,6 +3,8 @@ import datetime
 import logging
 import os
 import sqlite3
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional, Any
 
 from alembic import command
@@ -50,6 +52,24 @@ class CardWithImage(Card):
         if self.file_id:
             return self.file_id
         return base64.b64decode(self.image_b64)
+
+
+class Claim(BaseModel):
+    user_id: int
+    chat_id: str
+    balance: int
+
+
+class ClaimStatus(Enum):
+    SUCCESS = "success"
+    ALREADY_CLAIMED = "already_claimed"
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+
+
+@dataclass
+class ClaimAttemptResult:
+    status: ClaimStatus
+    balance: Optional[int] = None
 
 
 def connect():
@@ -124,29 +144,44 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
     return card_id
 
 
-def claim_card(card_id, owner, user_id=None):
-    """Claim a card for a user."""
+def claim_card(card_id, owner, user_id=None, chat_id=None):
+    """Attempt to claim a card for a user.
+
+    Returns a ClaimAttemptResult indicating whether the claim succeeded, failed because the
+    card was already owned, or failed due to insufficient balance. When tracking is possible
+    (user_id and chat_id provided), the result includes the remaining balance after the attempt.
+    """
+
     conn = connect()
     cursor = conn.cursor()
+    chat_id_value = str(chat_id) if chat_id is not None else None
 
-    # Check if card is already claimed
-    cursor.execute("SELECT owner, attempted_by FROM cards WHERE id = ?", (card_id,))
-    result = cursor.fetchone()
+    try:
+        # Fetch current balance when tracking is possible
+        balance: Optional[int] = None
+        if user_id is not None and chat_id_value is not None:
+            balance = _get_claim_balance(cursor, user_id, chat_id_value)
+            if balance < 1:
+                conn.rollback()
+                return ClaimAttemptResult(ClaimStatus.INSUFFICIENT_BALANCE, balance)
 
-    if result and result[0] is not None:
-        # Card already claimed, add to attempted_by list
-        attempted_by = result[1] or ""
-        attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
-        if owner not in attempted_list:
-            attempted_list.append(owner)
-            new_attempted_by = ", ".join(attempted_list)
-            cursor.execute(
-                "UPDATE cards SET attempted_by = ? WHERE id = ?", (new_attempted_by, card_id)
-            )
-            conn.commit()
-        conn.close()
-        return False
-    else:
+        # Check if card is already claimed
+        cursor.execute("SELECT owner, attempted_by FROM cards WHERE id = ?", (card_id,))
+        result = cursor.fetchone()
+
+        if result and result[0] is not None:
+            # Card already claimed, add to attempted_by list
+            attempted_by = result[1] or ""
+            attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
+            if owner not in attempted_list:
+                attempted_list.append(owner)
+                new_attempted_by = ", ".join(attempted_list)
+                cursor.execute(
+                    "UPDATE cards SET attempted_by = ? WHERE id = ?", (new_attempted_by, card_id)
+                )
+                conn.commit()
+            return ClaimAttemptResult(ClaimStatus.ALREADY_CLAIMED, balance)
+
         # Claim the card
         if user_id is not None:
             cursor.execute(
@@ -157,10 +192,83 @@ def claim_card(card_id, owner, user_id=None):
             cursor.execute(
                 "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id)
             )
+
         updated = cursor.rowcount > 0
+
+        if not updated:
+            conn.rollback()
+            return ClaimAttemptResult(ClaimStatus.ALREADY_CLAIMED, balance)
+
+        remaining_balance = balance
+        if user_id is not None and chat_id_value is not None:
+            remaining_balance = _update_claim_balance(cursor, user_id, chat_id_value, -1)
+
         conn.commit()
+        return ClaimAttemptResult(ClaimStatus.SUCCESS, remaining_balance)
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
         conn.close()
-        return updated
+
+
+def _ensure_claim_row(cursor: sqlite3.Cursor, user_id: int, chat_id: str) -> None:
+    cursor.execute(
+        """
+        INSERT INTO claims (user_id, chat_id, balance)
+        VALUES (?, ?, 1)
+        ON CONFLICT(user_id, chat_id) DO NOTHING
+        """,
+        (user_id, chat_id),
+    )
+
+
+def _get_claim_balance(cursor: sqlite3.Cursor, user_id: int, chat_id: str) -> int:
+    _ensure_claim_row(cursor, user_id, chat_id)
+    cursor.execute(
+        "SELECT balance FROM claims WHERE user_id = ? AND chat_id = ?",
+        (user_id, chat_id),
+    )
+    row = cursor.fetchone()
+    if row and row[0] is not None:
+        return int(row[0])
+    return 1
+
+
+def _update_claim_balance(cursor: sqlite3.Cursor, user_id: int, chat_id: str, delta: int) -> int:
+    _ensure_claim_row(cursor, user_id, chat_id)
+    if delta != 0:
+        cursor.execute(
+            "UPDATE claims SET balance = balance + ? WHERE user_id = ? AND chat_id = ?",
+            (delta, user_id, chat_id),
+        )
+        cursor.execute(
+            "UPDATE claims SET balance = CASE WHEN balance < 0 THEN 0 ELSE balance END WHERE user_id = ? AND chat_id = ?",
+            (user_id, chat_id),
+        )
+    return _get_claim_balance(cursor, user_id, chat_id)
+
+
+def get_claim_balance(user_id: int, chat_id: str) -> int:
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        return _get_claim_balance(cursor, user_id, str(chat_id))
+    finally:
+        conn.close()
+
+
+def increment_claim_balance(user_id: int, chat_id: str, amount: int = 1) -> int:
+    if amount <= 0:
+        return get_claim_balance(user_id, chat_id)
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        new_balance = _update_claim_balance(cursor, user_id, str(chat_id), amount)
+        conn.commit()
+        return new_balance
+    finally:
+        conn.close()
 
 
 def get_username_for_user_id(user_id: int) -> Optional[str]:
@@ -377,11 +485,20 @@ def get_user_stats(username):
     return {"owned": owned_count, "total": total_count, "rarities": rarity_counts}
 
 
-def get_all_users_with_cards():
-    """Get all unique users who have claimed cards."""
+def get_all_users_with_cards(chat_id: Optional[str] = None):
+    """Get all unique users who have claimed cards, optionally scoped to a chat."""
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT owner FROM cards WHERE owner IS NOT NULL ORDER BY owner")
+    query = "SELECT DISTINCT owner FROM cards WHERE owner IS NOT NULL"
+    parameters: list[Any] = []
+
+    if chat_id is not None:
+        query += " AND chat_id = ?"
+        parameters.append(str(chat_id))
+
+    query += " ORDER BY owner"
+
+    cursor.execute(query, tuple(parameters))
     users = [row[0] for row in cursor.fetchall()]
     conn.close()
     return users
