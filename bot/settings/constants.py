@@ -79,7 +79,7 @@ RECYCLE_UPGRADE_MAP = {
 RECYCLE_BURN_COUNT = 3
 RECYCLE_MINIMUM_REQUIRED = RECYCLE_BURN_COUNT
 
-RECYCLE_USAGE_MESSAGE = "Usage: /recycle <rarity> where rarity is one of common, rare, epic."
+RECYCLE_USAGE_MESSAGE = "Usage: /recycle <rarity> where rarity is one of common, rare, epic. Burns 3 of <rarity> to get one guaranteed <rarity + 1> card."
 RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling is only available in the group chat."
 RECYCLE_CONFIRM_MESSAGE = (
     "Burn {burn_count} <b>{rarity}</b> cards to generate 1 <b>{upgraded_rarity}</b> card?"

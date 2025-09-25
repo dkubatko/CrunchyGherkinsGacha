@@ -8,6 +8,7 @@ import html
 import json
 import threading
 import urllib.parse
+from typing import Optional
 from io import BytesIO
 from telegram import (
     Update,
@@ -305,6 +306,9 @@ async def roll(
 
         if not DEBUG_MODE:
             await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
+
+        # Give the user 1 claim point for successfully rolling
+        await asyncio.to_thread(database.increment_claim_balance, user.user_id, chat_id_str)
 
         keyboard = [
             [InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")],
@@ -701,6 +705,13 @@ async def handle_reroll(
         await query.answer("Card not found!", show_alert=True)
         return
 
+    original_owner_id = original_card.user_id
+    original_claim_chat_id = original_card.chat_id
+    if original_claim_chat_id is None and query.message:
+        original_claim_chat_id = str(query.message.chat_id)
+    elif original_claim_chat_id is not None:
+        original_claim_chat_id = str(original_claim_chat_id)
+
     if "rerolling_cards" not in context.bot_data:
         context.bot_data["rerolling_cards"] = set()
 
@@ -772,6 +783,13 @@ async def handle_reroll(
             file_id = message.photo[-1].file_id
             await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
 
+        if original_owner_id is not None and original_claim_chat_id is not None:
+            await asyncio.to_thread(
+                database.increment_claim_balance,
+                original_owner_id,
+                original_claim_chat_id,
+            )
+
         await query.answer(f"Rerolled! New rarity: {generated_card.rarity}")
     except rolling.NoEligibleUserError:
         await query.edit_message_caption(
@@ -807,23 +825,40 @@ async def claim_card(
     query = update.callback_query
     data = query.data
     card_id = int(data.split("_")[1])
+    chat = update.effective_chat
+    chat_id = str(chat.id) if chat else None
 
     if "rerolling_cards" in context.bot_data and card_id in context.bot_data["rerolling_cards"]:
         await query.answer("The card is being rerolled, please wait.", show_alert=True)
         return
 
-    is_successful_claim = await asyncio.to_thread(
-        database.claim_card, card_id, user.username, user.user_id
+    claim_result = await asyncio.to_thread(
+        database.claim_card, card_id, user.username, user.user_id, chat_id
     )
+
+    if claim_result.status is database.ClaimStatus.INSUFFICIENT_BALANCE:
+        balance_value = claim_result.balance if claim_result.balance is not None else 0
+        await query.answer(
+            (f"Not enough claim points!\n\nBalance: {balance_value}"),
+            show_alert=True,
+        )
+        return
+
     card = await asyncio.to_thread(database.get_card, card_id)
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
 
-    if is_successful_claim:
+    if claim_result.status is database.ClaimStatus.SUCCESS:
         caption = CARD_CAPTION_BASE.format(
             card_id=card_id, card_title=card_title, rarity=rarity
         ) + CARD_STATUS_CLAIMED.format(username=user.username)
-        await query.answer(f"Card {card_title} claimed!", show_alert=True)
+        if claim_result.balance is not None:
+            await query.answer(
+                f"Card {card_title} claimed!\n\nRemaining balance: {claim_result.balance}.",
+                show_alert=True,
+            )
+        else:
+            await query.answer(f"Card {card_title} claimed!", show_alert=True)
     else:
         # Card already claimed, update caption to show attempted users
         owner = card.owner
@@ -861,6 +896,75 @@ async def claim_card(
     except Exception:
         # Silently ignore if message content is identical (Telegram BadRequest)
         pass
+
+
+@verify_user_in_chat
+async def balance(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Report claim balance for the calling user or a specified username."""
+    message = update.effective_message
+    chat = update.effective_chat
+
+    if not chat or chat.type == ChatType.PRIVATE:
+        if message:
+            await message.reply_text(
+                "Claim balances are tracked per group chat. Use this command inside a chat.",
+                reply_to_message_id=getattr(message, "message_id", None),
+            )
+        return
+
+    chat_id = str(chat.id)
+
+    target_user_id: int
+    display_username: Optional[str] = None
+
+    if context.args and len(context.args) > 0:
+        target_username = context.args[0].lstrip("@")
+        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+        if target_user_id is None:
+            if message:
+                await message.reply_text(
+                    f"@{target_username} doesn't exist or isn't enrolled yet.",
+                    reply_to_message_id=getattr(message, "message_id", None),
+                )
+            return
+
+        is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+        if not is_member:
+            if message:
+                await message.reply_text(
+                    f"@{target_username} isn't enrolled in this chat.",
+                    reply_to_message_id=getattr(message, "message_id", None),
+                )
+            return
+
+        resolved_username = await asyncio.to_thread(
+            database.get_username_for_user_id, target_user_id
+        )
+        display_username = resolved_username or target_username
+    else:
+        target_user_id = user.user_id
+        display_username = user.username
+
+    balance_value = await asyncio.to_thread(database.get_claim_balance, target_user_id, chat_id)
+    point_label = "point" if balance_value == 1 else "points"
+
+    if target_user_id == user.user_id:
+        response_text = f"You have {balance_value} claim {point_label} available in this chat."
+        if balance_value == 0:
+            response_text += "\n\nUse /roll to get a claim point!"
+    else:
+        handle = f"@{display_username}" if display_username else str(target_user_id)
+        response_text = f"{handle} has {balance_value} claim {point_label} available in this chat."
+
+    if message:
+        await message.reply_text(
+            response_text,
+            reply_to_message_id=getattr(message, "message_id", None),
+        )
 
 
 @verify_user
@@ -1044,34 +1148,113 @@ async def collection(
             await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
 
 
+async def _get_user_targets_for_stats(
+    chat_id: str, is_private_chat: bool, user: database.User, args: list[str]
+) -> list[tuple[str, Optional[int]]]:
+    """Get list of target users for stats display."""
+    targets = []
+
+    if is_private_chat:
+        # In private chat, only show current user's stats
+        username = user.username or f"user_{user.user_id}"
+        targets.append((username, user.user_id))
+    elif args:
+        # Specific user requested
+        target_username = args[0].lstrip("@")
+        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+
+        if target_user_id is None:
+            raise ValueError(f"@{target_username} doesn't exist or isn't enrolled yet.")
+
+        is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+        if not is_member:
+            raise ValueError(f"@{target_username} isn't enrolled in this chat.")
+
+        targets.append((target_username, target_user_id))
+    else:
+        # All users in chat
+        chat_scope = None if is_private_chat else chat_id
+        usernames = await asyncio.to_thread(database.get_all_users_with_cards, chat_scope)
+
+        if not usernames:
+            raise ValueError("No users have claimed any cards yet.")
+
+        for username in usernames:
+            user_id = await asyncio.to_thread(database.get_user_id_by_username, username)
+            targets.append((username, user_id))
+
+    return targets
+
+
+async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str) -> str:
+    """Format stats for a single user."""
+    user_stats = await asyncio.to_thread(database.get_user_stats, username)
+
+    if user_id is not None:
+        balance_value = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
+        point_label = "point" if balance_value == 1 else "points"
+        balance_line = f"{balance_value} claim {point_label}"
+    else:
+        balance_line = "unknown (no linked user ID)"
+
+    handle_display = f"@{username}" if username else "unknown"
+
+    return (
+        f"{handle_display}: {user_stats['owned']} / {user_stats['total']} cards\n"
+        f"L: {user_stats['rarities']['Legendary']}, "
+        f"E: {user_stats['rarities']['Epic']}, "
+        f"R: {user_stats['rarities']['Rare']}, "
+        f"C: {user_stats['rarities']['Common']}\n"
+        f"Balance: {balance_line}"
+    )
+
+
 @verify_user_in_chat
 async def stats(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Display stats for all users."""
-    users = await asyncio.to_thread(database.get_all_users_with_cards)
+    """Display stats for the current chat, optionally filtered to one user."""
+    message = update.effective_message
+    chat = update.effective_chat
 
-    if not users:
-        await update.message.reply_text(
-            "No users have claimed any cards yet.", reply_to_message_id=update.message.message_id
+    if not message or not chat:
+        return
+
+    chat_id = str(chat.id)
+    is_private_chat = chat.type == ChatType.PRIVATE
+
+    # Validate arguments
+    if is_private_chat and context.args:
+        await message.reply_text(
+            "In DMs, /stats only supports your own stats.",
+            reply_to_message_id=message.message_id,
         )
         return
 
-    message_parts = []
-    for username in users:
-        user_stats = await asyncio.to_thread(database.get_user_stats, username)
-        user_line = (
-            f"@{username}: {user_stats['owned']} / {user_stats['total']} cards\n"
-            f"L: {user_stats['rarities']['Legendary']}, E: {user_stats['rarities']['Epic']}, "
-            f"R: {user_stats['rarities']['Rare']}, C: {user_stats['rarities']['Common']}"
+    if context.args and len(context.args) > 1:
+        await message.reply_text(
+            "Usage: /stats [@username]",
+            reply_to_message_id=message.message_id,
         )
+        return
+
+    # Get target users for stats
+    try:
+        targets = await _get_user_targets_for_stats(chat_id, is_private_chat, user, context.args)
+    except ValueError as e:
+        await message.reply_text(str(e), reply_to_message_id=message.message_id)
+        return
+
+    # Format stats for all targets
+    message_parts = []
+    for username, user_id in targets:
+        user_line = await _format_user_stats(username, user_id, chat_id)
         message_parts.append(user_line)
 
-    message = "\n\n".join(message_parts)
-
-    await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
+    response_text = "\n\n".join(message_parts)
+    await message.reply_text(response_text, reply_to_message_id=message.message_id)
 
 
 @verify_user_in_chat
@@ -1298,6 +1481,7 @@ def main() -> None:
         MessageHandler(filters.PHOTO & filters.CaptionRegex(r"^/profile\b"), profile)
     )
     application.add_handler(CommandHandler("enroll", enroll))
+    application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("recycle", recycle))
     application.add_handler(CommandHandler("collection", collection))
