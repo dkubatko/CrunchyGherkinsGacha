@@ -63,15 +63,6 @@ if DEBUG_MODE:
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
-GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
-
-
-def get_generation_chat_id(chat_id: int | str) -> str:
-    """Return the chat id to use during image generation."""
-    if DEBUG_MODE and GROUP_CHAT_ID:
-        return str(GROUP_CHAT_ID)
-    return str(chat_id)
-
 
 def get_time_until_next_roll(user_id):
     """Calculate time until next roll (24 hours from last roll).
@@ -268,7 +259,7 @@ async def roll(
             return
 
     try:
-        chat_id_str = get_generation_chat_id(update.effective_chat.id)
+        chat_id_str = str(update.effective_chat.id)
         generated_card = await asyncio.to_thread(
             rolling.generate_card_for_chat,
             chat_id_str,
@@ -396,12 +387,11 @@ async def handle_reroll(
         await query.edit_message_caption(caption=CARD_STATUS_REROLLING, parse_mode=ParseMode.HTML)
 
         downgraded_rarity = rolling.get_downgraded_rarity(original_card.rarity)
-        chat_id_candidate = original_card.chat_id or query.message.chat_id
-        chat_id_for_generation = get_generation_chat_id(chat_id_candidate)
+        chat_id_for_roll = original_card.chat_id or str(query.message.chat_id)
 
         generated_card = await asyncio.to_thread(
             rolling.generate_card_for_chat,
-            chat_id_for_generation,
+            str(chat_id_for_roll),
             gemini_util,
             downgraded_rarity,
         )
