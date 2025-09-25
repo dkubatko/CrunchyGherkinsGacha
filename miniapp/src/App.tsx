@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import './App.css';
 
 // Components
@@ -31,28 +31,73 @@ function App() {
   
   // Core data hooks
   const { cards, loading, error, userData, initData } = useCards();
-  const { allCards, loading: allCardsLoading, error: allCardsError, refetch: refetchAllCards } = useAllCards(initData);
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
   const [view, setView] = useState<View>('current');
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
+  const [isTradeGridActive, setIsTradeGridActive] = useState(false);
+
+  const hasChatScope = Boolean(userData?.chatId);
+  const isTradeView = view === 'all' && isTradeGridActive;
+  const activeTradeCardId = isTradeView && selectedCardForTrade ? selectedCardForTrade.id : null;
+  const cardsScopeChatId = isTradeView && selectedCardForTrade?.chat_id
+    ? selectedCardForTrade.chat_id
+    : userData?.chatId ?? null;
+  const shouldFetchAllCards = hasChatScope || activeTradeCardId !== null;
+
+  const {
+    allCards,
+    loading: allCardsLoading,
+    error: allCardsError,
+    refetch: refetchAllCards
+  } = useAllCards(initData, cardsScopeChatId, {
+    enabled: shouldFetchAllCards,
+    tradeCardId: activeTradeCardId
+  });
+
+  const tradeCardName = selectedCardForTrade
+    ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
+    : null;
+
+  const displayedCards = isTradeView && selectedCardForTrade
+    ? allCards.filter((card) => card.id !== selectedCardForTrade.id)
+    : allCards;
   
   // Feature hooks
   const { orientation, orientationKey, resetTiltReference } = useOrientation();
   const { showModal, modalCard, openModal, closeModal } = useModal();
+
+  const exitTradeView = useCallback(() => {
+    setIsTradeGridActive(false);
+    setSelectedCardForTrade(null);
+    closeModal();
+    setView('current');
+    TelegramUtils.hideBackButton();
+  }, [closeModal]);
   
   // Memoized callback functions to prevent infinite re-renders
   const handleTradeClick = useCallback(() => {
     // Handle trade button click in current view (only if trading is enabled)
     if (userData?.enableTrade && cards[currentIndex]) {
-      setSelectedCardForTrade(cards[currentIndex]);
-      const cardName = `${cards[currentIndex].modifier} ${cards[currentIndex].base_name}`;
-      // Show alert and switch to All view
-      TelegramUtils.showAlert(`Choose the card to trade ${cardName} for in All view`);
+      const tradeCard = cards[currentIndex];
+
+      if (!tradeCard.chat_id) {
+        TelegramUtils.showAlert('This card cannot be traded because it is not associated with a chat yet.');
+        return;
+      }
+
+      setSelectedCardForTrade(tradeCard);
+      const cardName = `${tradeCard.modifier} ${tradeCard.base_name}`;
+      TelegramUtils.showAlert(
+        hasChatScope
+          ? `Choose the card to trade ${cardName} for in All view`
+          : `Choose a card from this chat to trade ${cardName} for`
+      );
+      setIsTradeGridActive(!hasChatScope);
       setView('all');
     }
-  }, [cards, currentIndex, userData?.enableTrade]);
+  }, [cards, currentIndex, userData?.enableTrade, hasChatScope]);
 
   const handleSelectClick = useCallback(() => {
     // Handle select button click in modal
@@ -84,16 +129,35 @@ function App() {
       executeTrade();
       
       // Reset trading state
-      setSelectedCardForTrade(null);
-      closeModal();
+      exitTradeView();
     }
-  }, [selectedCardForTrade, modalCard, initData, closeModal]);
+  }, [selectedCardForTrade, modalCard, initData, exitTradeView]);
+
+  const handleCurrentTabClick = useCallback(() => {
+    exitTradeView();
+  }, [exitTradeView]);
+
+  const handleAllTabClick = useCallback(() => {
+    setIsTradeGridActive(false);
+    setSelectedCardForTrade(null);
+    setView('all');
+  }, []);
+
+  useEffect(() => {
+    if (isTradeView) {
+      const cleanup = TelegramUtils.setupBackButton(exitTradeView);
+      return cleanup;
+    }
+
+    TelegramUtils.hideBackButton();
+    return () => { };
+  }, [isTradeView, exitTradeView]);
   
   // Effects
   const { isMainButtonVisible } = useMainButton(
-    loading, 
-    error, 
-    userData?.isOwnCollection ?? false, 
+    loading,
+    error,
+    userData?.isOwnCollection ?? false,
     userData?.enableTrade ?? false,
     cards.length > 0, 
     view,
@@ -102,6 +166,19 @@ function App() {
     handleTradeClick,
     handleSelectClick
   );
+
+  const collectionOwnerLabel = (() => {
+    if (!userData) {
+      return 'Collection';
+    }
+    if (userData.collectionDisplayName && userData.collectionDisplayName.trim().length > 0) {
+      return userData.collectionDisplayName;
+    }
+    if (userData.collectionUsername && userData.collectionUsername.trim().length > 0) {
+      return `@${userData.collectionUsername}`;
+    }
+    return 'Collection';
+  })();
   
   // Event handlers
   const swipeHandlers = useSwipeHandlers({
@@ -134,21 +211,27 @@ function App() {
       <div className="tabs">
         <button 
           className={`tab ${view === 'current' ? 'active' : ''}`} 
-          onClick={() => setView('current')}
+          onClick={handleCurrentTabClick}
         >
           Current
         </button>
-        <button 
-          className={`tab ${view === 'all' ? 'active' : ''}`} 
-          onClick={() => setView('all')}
-        >
-          All
-        </button>
+        {hasChatScope && (
+          <button 
+            className={`tab ${view === 'all' && !isTradeGridActive ? 'active' : ''}`} 
+            onClick={handleAllTabClick}
+          >
+            All
+          </button>
+        )}
       </div>
 
       <div className="app-content">
         <h1 className="app-title">
-          {view === 'all' ? 'All cards' : `@${userData?.username}'s collection`}
+          {view === 'all'
+            ? isTradeView && tradeCardName
+              ? `Trade for ${tradeCardName}`
+              : 'All cards'
+            : `${collectionOwnerLabel}'s collection`}
         </h1>
         
         {/* Current View */}
@@ -178,10 +261,9 @@ function App() {
               </div>
             ) : (
               <p>
-                {userData?.isOwnCollection 
-                  ? "You don't own any cards yet." 
-                  : `@${userData?.username} doesn't own any cards yet.`
-                }
+                {userData?.isOwnCollection
+                  ? "You don't own any cards yet."
+                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
               </p>
             )}
           </>
@@ -192,22 +274,26 @@ function App() {
           <>
             {allCardsLoading ? (
               <div className="loading-container">
-                <h2>Loading all cards...</h2>
+                <h2>{isTradeView ? 'Loading trade options...' : 'Loading all cards...'}</h2>
               </div>
             ) : allCardsError ? (
               <div className="error-container">
-                <h2>Error loading cards</h2>
+                <h2>{isTradeView ? 'Error loading trade options' : 'Error loading cards'}</h2>
                 <p>{allCardsError}</p>
                 <button onClick={refetchAllCards}>Retry</button>
               </div>
-            ) : allCards.length === 0 ? (
+            ) : displayedCards.length === 0 ? (
               <div className="no-cards-container">
-                <h2>No cards found</h2>
-                <p>There are no cards in the system yet.</p>
+                <h2>{isTradeView ? 'No trade options' : 'No cards found'}</h2>
+                <p>
+                  {isTradeView
+                    ? 'No other cards are available in this chat right now.'
+                    : 'There are no cards in the system yet.'}
+                </p>
               </div>
             ) : (
                             <AllCards
-                cards={allCards}
+                cards={displayedCards}
                 onCardClick={openModal}
                 initData={initData}
               />

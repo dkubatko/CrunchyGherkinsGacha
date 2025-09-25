@@ -8,9 +8,10 @@ import urllib.parse
 from typing import List, Optional, Dict, Any
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Header
+from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -40,6 +41,17 @@ def set_bot_token(token, is_debug=False):
 app = FastAPI()
 
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
+
+
+class UserSummary(BaseModel):
+    user_id: int
+    username: Optional[str] = None
+    display_name: Optional[str] = None
+
+
+class UserCollectionResponse(BaseModel):
+    user: UserSummary
+    cards: List[APICard]
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
@@ -170,7 +182,8 @@ app.add_middleware(
 
 @app.get("/cards/all", response_model=List[APICard])
 async def get_all_cards_endpoint(
-    authorization: Optional[str] = Header(None, alias="Authorization")
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+    chat_id: Optional[str] = Query(None, alias="chat_id"),
 ):
     """Get all cards that have been claimed."""
 
@@ -191,13 +204,68 @@ async def get_all_cards_endpoint(
         logger.warning(f"Invalid Telegram init data provided for /cards/all")
         raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
 
-    cards = await asyncio.to_thread(database.get_all_cards)
+    cards = await asyncio.to_thread(database.get_all_cards, chat_id)
     return [APICard(**card.__dict__) for card in cards]
 
 
-@app.get("/cards/{username}", response_model=List[APICard])
+@app.get("/trade/{card_id}/options", response_model=List[APICard])
+async def get_trade_options(
+    card_id: int,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Get trade options for a specific card, scoped to the same chat."""
+
+    if not authorization:
+        logger.warning(f"No authorization header provided for trade options of card_id: {card_id}")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for trade options of card_id: {card_id}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(
+            f"Invalid Telegram init data provided for trade options of card_id: {card_id}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if not card.chat_id:
+        logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
+        raise HTTPException(status_code=400, detail="Card is not associated with a chat")
+
+    cards = await asyncio.to_thread(database.get_all_cards, card.chat_id)
+
+    initiating_owner = card.owner
+    print(len(cards))
+    filtered_cards = [
+        card_option
+        for card_option in cards
+        if card_option.id != card_id
+        and card_option.owner is not None
+        and card_option.owner != initiating_owner
+    ]
+    for card in cards:
+        print(card.owner)
+    print(initiating_owner)
+    print(card.owner)
+    print(filtered_cards)
+    return [APICard(**card_option.__dict__) for card_option in filtered_cards]
+
+
+@app.get("/cards/{user_id}", response_model=UserCollectionResponse)
 async def get_user_collection(
-    username: str, authorization: Optional[str] = Header(None, alias="Authorization")
+    user_id: int,
+    chat_id: Optional[str] = Query(None, alias="chat_id"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
     """Get all cards owned by a user.
 
@@ -206,23 +274,43 @@ async def get_user_collection(
 
     # Check if authorization header is provided
     if not authorization:
-        logger.warning(f"No authorization header provided for username: {username}")
+        logger.warning(f"No authorization header provided for user_id: {user_id}")
         raise HTTPException(status_code=401, detail="Authorization header required")
 
     # Extract init data from header
     init_data = extract_init_data_from_header(authorization)
     if not init_data:
-        logger.warning(f"No init data found in authorization header for username: {username}")
+        logger.warning(f"No init data found in authorization header for user_id: {user_id}")
         raise HTTPException(status_code=401, detail="Invalid authorization format")
 
     # Validate Telegram init data
     validated_data = validate_telegram_init_data(init_data)
     if not validated_data or not validated_data.get("user"):
-        logger.warning(f"Invalid Telegram init data provided for username: {username}")
+        logger.warning(f"Invalid Telegram init data provided for user_id: {user_id}")
         raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
 
-    cards = await asyncio.to_thread(database.get_user_collection, username)
-    return [APICard(**card.__dict__) for card in cards]
+    cards = await asyncio.to_thread(database.get_user_collection, user_id, chat_id)
+    user_record = await asyncio.to_thread(database.get_user, user_id)
+    username = user_record.username if user_record else None
+    display_name = user_record.display_name if user_record else None
+
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, user_id)
+
+    if not cards and username is None:
+        logger.warning(f"No user or cards found for user_id: {user_id}")
+        raise HTTPException(status_code=404, detail="User not found")
+
+    api_cards = [APICard(**card.model_dump()) for card in cards]
+
+    return UserCollectionResponse(
+        user=UserSummary(
+            user_id=user_id,
+            username=username,
+            display_name=display_name,
+        ),
+        cards=api_cards,
+    )
 
 
 @app.get("/cards/image/{card_id}", response_model=str)

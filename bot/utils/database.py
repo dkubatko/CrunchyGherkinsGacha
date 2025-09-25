@@ -3,7 +3,7 @@ import datetime
 import logging
 import os
 import sqlite3
-from typing import Optional
+from typing import Optional, Any
 
 from alembic import command
 from alembic.config import Config
@@ -163,29 +163,117 @@ def claim_card(card_id, owner, user_id=None):
         return updated
 
 
-def get_user_collection(username):
-    """Get all cards owned by a user."""
+def get_username_for_user_id(user_id: int) -> Optional[str]:
+    """Return the username associated with a user_id, falling back to card ownership."""
     conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner = ? ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier",
-        (username,),
-    )
-    cards = [Card(**row) for row in cursor.fetchall()]
-    conn.close()
-    return cards
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT username FROM users WHERE user_id = ?",
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            return row[0]
+
+        cursor.execute(
+            "SELECT owner FROM cards WHERE user_id = ? AND owner IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+            (user_id,),
+        )
+        fallback = cursor.fetchone()
+        if fallback and fallback[0]:
+            return fallback[0]
+        return None
+    finally:
+        conn.close()
 
 
-def get_all_cards():
-    """Get all cards that have an owner."""
+def get_user_id_by_username(username: str) -> Optional[int]:
+    """Resolve a username to a user_id if available."""
     conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at FROM cards WHERE owner IS NOT NULL ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, base_name, modifier"
-    )
-    cards = [Card(**row) for row in cursor.fetchall()]
-    conn.close()
-    return cards
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT user_id FROM users WHERE username = ? COLLATE NOCASE",
+            (username,),
+        )
+        row = cursor.fetchone()
+        if row and row[0] is not None:
+            return int(row[0])
+
+        cursor.execute(
+            "SELECT user_id FROM cards WHERE owner = ? COLLATE NOCASE AND user_id IS NOT NULL ORDER BY created_at DESC LIMIT 1",
+            (username,),
+        )
+        fallback = cursor.fetchone()
+        if fallback and fallback[0] is not None:
+            return int(fallback[0])
+        return None
+    finally:
+        conn.close()
+
+
+def get_user_collection(user_id: int, chat_id: Optional[str] = None):
+    """Get all cards owned by a user (by user_id), optionally scoped to a chat."""
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+
+        username = get_username_for_user_id(user_id)
+
+        conditions = ["user_id = ?"]
+        parameters: list[Any] = [user_id]
+
+        if username:
+            conditions.append("owner = ? COLLATE NOCASE")
+            parameters.append(username)
+
+        query = (
+            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at "
+            "FROM cards WHERE (" + " OR ".join(conditions) + ")"
+        )
+
+        if chat_id is not None:
+            query += " AND chat_id = ?"
+            parameters.append(str(chat_id))
+
+        query += (
+            " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+            "base_name, modifier"
+        )
+
+        cursor.execute(query, tuple(parameters))
+        cards = [Card(**row) for row in cursor.fetchall()]
+        return cards
+    finally:
+        conn.close()
+
+
+def get_all_cards(chat_id: Optional[str] = None):
+    """Get all cards that have an owner, optionally filtered by chat."""
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+        query = (
+            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at "
+            "FROM cards WHERE owner IS NOT NULL"
+        )
+        parameters: list[Any] = []
+
+        if chat_id is not None:
+            query += " AND chat_id = ?"
+            parameters.append(str(chat_id))
+
+        query += (
+            " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+            "base_name, modifier"
+        )
+
+        cursor.execute(query, tuple(parameters))
+        cards = [Card(**row) for row in cursor.fetchall()]
+        return cards
+    finally:
+        conn.close()
 
 
 def get_card(card_id):

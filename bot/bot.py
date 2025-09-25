@@ -545,6 +545,9 @@ async def collection(
     """Display user's card collection."""
 
     chat = update.effective_chat
+    chat_id_filter = None
+    if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
         is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
         if not is_member:
@@ -558,25 +561,57 @@ async def collection(
 
     # Check if a username argument was provided
     if context.args and len(context.args) > 0:
+        if not chat_id_filter:
+            if update.message:
+                await update.message.reply_text(
+                    "Viewing another player's collection is only available in group chats.",
+                    reply_to_message_id=update.message.message_id,
+                )
+            return
+
         target_username = context.args[0].lstrip("@")  # Remove @ if present
+        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+        if target_user_id is None:
+            await update.message.reply_text(
+                f"@{target_username} doesn't exist or isn't enrolled yet.",
+                reply_to_message_id=update.message.message_id,
+            )
+            return
+
         # Check if the target user exists by trying to get their collection
-        target_cards = await asyncio.to_thread(database.get_user_collection, target_username)
+        target_cards = await asyncio.to_thread(
+            database.get_user_collection, target_user_id, chat_id_filter
+        )
         if not target_cards:
             await update.message.reply_text(
-                f"@{target_username} doesn't exist or doesn't own any cards yet.",
+                (
+                    f"@{target_username} doesn't have any cards in this chat yet."
+                    if chat_id_filter
+                    else f"@{target_username} doesn't exist or doesn't own any cards yet."
+                ),
                 reply_to_message_id=update.message.message_id,
             )
             return
         cards = target_cards
-        display_username = target_username
+        resolved_username = await asyncio.to_thread(
+            database.get_username_for_user_id, target_user_id
+        )
+        display_username = resolved_username or target_username
+        viewed_user_id = target_user_id
     else:
         # Default to current user's collection
-        cards = await asyncio.to_thread(database.get_user_collection, user.username)
-        display_username = user.username
+        cards = await asyncio.to_thread(database.get_user_collection, user.user_id, chat_id_filter)
+        resolved_username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+        display_username = resolved_username or user.username
+        viewed_user_id = user.user_id
 
         if not cards and not update.callback_query:
             await update.message.reply_text(
-                "You don't own any cards yet. Use /roll to get your first card!",
+                (
+                    "You don't own any cards in this chat yet. Use /roll to get your first card!"
+                    if chat_id_filter
+                    else "You don't own any cards yet. Use /roll to get your first card!"
+                ),
                 reply_to_message_id=update.message.message_id,
             )
             return
@@ -635,15 +670,17 @@ async def collection(
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
+        miniapp_payload = {"user_id": str(viewed_user_id)}
+        if chat_id_filter:
+            miniapp_payload["chat_id"] = chat_id_filter
+        encoded_payload = urllib.parse.quote(json.dumps(miniapp_payload))
         if DEBUG_MODE:
             # In debug mode, use WebApp with direct URL parameter
-            app_url = f"{miniapp_url}?v={urllib.parse.quote(display_username)}"
-            keyboard.append(
-                [InlineKeyboardButton("View in the app!", web_app=WebAppInfo(url=app_url))]
-            )
+            app_url = f"{miniapp_url}?v={encoded_payload}"
+            keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
         else:
             # In production mode, use inline button with URL and startapp parameter
-            app_url = f"{miniapp_url}?startapp={urllib.parse.quote(display_username)}"
+            app_url = f"{miniapp_url}?startapp={encoded_payload}"
             keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(

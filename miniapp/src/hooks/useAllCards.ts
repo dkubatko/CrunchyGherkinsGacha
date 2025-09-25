@@ -10,46 +10,70 @@ interface UseAllCardsResult {
   refetch: () => void;
 }
 
-export const useAllCards = (initData: string | null): UseAllCardsResult => {
-  // Initialize with cached data if available
-  const initialCachedCards = initData ? cardsCache.get(initData) : null;
-  
+interface UseAllCardsOptions {
+  tradeCardId?: number | null;
+  enabled?: boolean;
+}
+
+export const useAllCards = (
+  initData: string | null,
+  chatId: string | null = null,
+  { tradeCardId = null, enabled = true }: UseAllCardsOptions = {}
+): UseAllCardsResult => {
+  const cacheKey = tradeCardId !== null ? `trade:${tradeCardId}` : chatId ?? null;
+  const initialCachedCards = initData && enabled ? cardsCache.get(initData, cacheKey) : null;
+
   const [allCards, setAllCards] = useState<CardData[]>(initialCachedCards || []);
-  const [loading, setLoading] = useState(!initialCachedCards);
+  const [loading, setLoading] = useState<boolean>(enabled && !initialCachedCards);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAllCards = useCallback(async (forceRefresh = false) => {
-    if (!initData) {
-      setError("No Telegram init data available");
-      setLoading(false);
-      return;
-    }
-
-    // Try to get from cache first (unless forcing refresh)
-    if (!forceRefresh) {
-      const cachedCards = cardsCache.get(initData);
-      if (cachedCards) {
-        setAllCards(cachedCards);
+  const fetchAllCards = useCallback(
+    async (forceRefresh = false) => {
+      if (!enabled) {
         setLoading(false);
         setError(null);
+        setAllCards([]);
         return;
       }
-    }
 
-    setLoading(true);
-    setError(null);
+      if (!initData) {
+        setError('No Telegram init data available');
+        setLoading(false);
+        return;
+      }
 
-    try {
-      const cards = await ApiService.fetchAllCards(initData);
-      cardsCache.set(cards, initData);
-      setAllCards(cards);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to fetch all cards';
-      setError(errorMessage);
-    } finally {
-      setLoading(false);
-    }
-  }, [initData]);
+      if (!forceRefresh) {
+        const cachedCards = cardsCache.get(initData, cacheKey ?? null);
+        if (cachedCards) {
+          setAllCards(cachedCards);
+          setLoading(false);
+          setError(null);
+          return;
+        }
+        setAllCards([]);
+      }
+
+      setLoading(true);
+      setError(null);
+
+      try {
+        let cards: CardData[];
+        if (tradeCardId !== null) {
+          cards = await ApiService.fetchTradeOptions(tradeCardId, initData);
+        } else {
+          cards = await ApiService.fetchAllCards(initData, chatId ?? undefined);
+        }
+        cardsCache.set(cards, initData, cacheKey ?? null);
+        setAllCards(cards);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to fetch all cards';
+        setError(errorMessage);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [enabled, initData, chatId, tradeCardId, cacheKey]
+  );
 
   useEffect(() => {
     fetchAllCards();

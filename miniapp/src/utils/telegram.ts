@@ -14,42 +14,86 @@ export class TelegramUtils {
         throw new Error("User data not available. Please make sure you're logged into Telegram.");
       }
 
-      // Get the current user's username from Telegram
-      const currentUserUsername = WebApp.initDataUnsafe.user.username;
-      if (!currentUserUsername || currentUserUsername.trim() === '') {
-        throw new Error("Could not determine your username. Please make sure you have a username set in your Telegram profile.");
+      const currentUserId = WebApp.initDataUnsafe.user.id;
+      if (typeof currentUserId !== 'number') {
+        throw new Error("Could not determine your Telegram user id.");
       }
 
-      let fetchUsername = currentUserUsername;
-      let enableTrade = false;
+      let targetUserId: number = currentUserId;
+      let chatId: string | null = null;
 
-      // Try to get view parameter from start_param first (production mode)
-      if (WebApp.initDataUnsafe.start_param) {
+      const applyExternalPayload = (value: string, source: string) => {
+        if (!value) {
+          return;
+        }
+
+        let decoded = value;
         try {
-          const startParam = WebApp.initDataUnsafe.start_param;
-          // In production, start_param contains the username directly (URL-encoded)
-          fetchUsername = decodeURIComponent(startParam);
-          enableTrade = true;
-        } catch (err) {
-          console.error('Error parsing start_param:', err);
+          decoded = decodeURIComponent(value);
+        } catch (decodeErr) {
+          console.error(`Error decoding ${source}:`, decodeErr);
         }
-      } else {
-        // Fallback to URL parameters (debug mode)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlView = urlParams.get('v');
-        if (urlView) {
-          fetchUsername = decodeURIComponent(urlView);
-          enableTrade = true;
+
+        try {
+          const parsed = JSON.parse(decoded);
+          if (parsed && typeof parsed === 'object') {
+            const parsedUserIdRaw = parsed.user_id ?? parsed.target_user_id ?? parsed.userId;
+            const parsedChatId = parsed.chat_id ?? parsed.chatId;
+
+            if (parsedUserIdRaw !== undefined && parsedUserIdRaw !== null) {
+              const maybeNumber = typeof parsedUserIdRaw === 'number'
+                ? parsedUserIdRaw
+                : Number(String(parsedUserIdRaw));
+              if (!Number.isNaN(maybeNumber)) {
+                targetUserId = maybeNumber;
+              }
+            }
+
+            if (typeof parsedChatId === 'string') {
+              chatId = parsedChatId.trim() || null;
+            }
+
+            return;
+          }
+        } catch (parseErr) {
+          console.error(`Error parsing ${source}:`, parseErr);
+        }
+
+        const trimmed = decoded.trim();
+        if (!trimmed) {
+          return;
+        }
+
+        const maybeNumber = Number(trimmed);
+        if (!Number.isNaN(maybeNumber)) {
+          targetUserId = maybeNumber;
+        }
+      };
+
+      const payloadCandidates: (string | null)[] = [
+        WebApp.initDataUnsafe.start_param ?? null,
+      ];
+
+      const urlParams = new URLSearchParams(window.location.search);
+      payloadCandidates.push(urlParams.get('startapp'));
+      payloadCandidates.push(urlParams.get('v'));
+
+      for (const candidate of payloadCandidates) {
+        if (candidate) {
+          applyExternalPayload(candidate, 'mini app payload');
+          break;
         }
       }
-      
-      // Check if this is the user's own collection
-      const isOwnCollection = currentUserUsername === fetchUsername;
+
+      const isOwnCollection = targetUserId === currentUserId;
+      const enableTrade = isOwnCollection;
 
       return {
-        username: fetchUsername,
+        currentUserId,
+        targetUserId,
         isOwnCollection,
-        enableTrade // Add this field to indicate if trading should be allowed
+        enableTrade,
+        chatId,
       };
     } catch (err) {
       console.error('Error initializing user:', err);
@@ -86,7 +130,7 @@ export class TelegramUtils {
     WebApp.MainButton.setText(buttonText);
     WebApp.MainButton.show();
     WebApp.MainButton.onClick(clickHandler);
-    
+
     return () => {
       WebApp.MainButton.hide();
       WebApp.MainButton.offClick(clickHandler);
@@ -95,7 +139,29 @@ export class TelegramUtils {
 
   static hideMainButton() {
     WebApp.MainButton.hide();
-    return () => {};
+    return () => { };
+  }
+
+  static setupBackButton(clickHandler: () => void) {
+    if (!WebApp.BackButton) {
+      return () => { };
+    }
+
+    WebApp.BackButton.onClick(clickHandler);
+    WebApp.BackButton.show();
+
+    return () => {
+      WebApp.BackButton.offClick(clickHandler);
+      WebApp.BackButton.hide();
+    };
+  }
+
+  static hideBackButton() {
+    if (!WebApp.BackButton) {
+      return;
+    }
+
+    WebApp.BackButton.hide();
   }
 
   static showAlert(message: string) {
@@ -113,7 +179,7 @@ export class TelegramUtils {
   }
 
   static startOrientationTracking(callback: (data: OrientationData) => void) {
-    if (!WebApp.DeviceOrientation) return () => {};
+    if (!WebApp.DeviceOrientation) return () => { };
 
     const updateOrientation = () => {
       callback({
