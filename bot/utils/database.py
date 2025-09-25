@@ -337,11 +337,14 @@ def get_all_users_with_cards():
     return users
 
 
-def get_last_roll_time(user_id):
-    """Get the last roll timestamp for a user."""
+def get_last_roll_time(user_id: int, chat_id: str):
+    """Get the last roll timestamp for a user within a specific chat."""
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute("SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
+        (user_id, str(chat_id)),
+    )
     result = cursor.fetchone()
     conn.close()
     if result:
@@ -349,11 +352,14 @@ def get_last_roll_time(user_id):
     return None
 
 
-def can_roll(user_id):
-    """Check if a user can roll (24 hours since last roll)."""
+def can_roll(user_id: int, chat_id: str):
+    """Check if a user can roll (24 hours since last roll) within a chat."""
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute("SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ?", (user_id,))
+    cursor.execute(
+        "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
+        (user_id, str(chat_id)),
+    )
     result = cursor.fetchone()
     conn.close()
     if result:
@@ -364,14 +370,17 @@ def can_roll(user_id):
     return True
 
 
-def record_roll(user_id):
-    """Record a user's roll timestamp."""
+def record_roll(user_id: int, chat_id: str):
+    """Record a user's roll timestamp for a specific chat."""
     conn = connect()
     cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
     cursor.execute(
-        "INSERT OR REPLACE INTO user_rolls (user_id, last_roll_timestamp) VALUES (?, ?)",
-        (user_id, now),
+        """
+        INSERT OR REPLACE INTO user_rolls (user_id, chat_id, last_roll_timestamp)
+        VALUES (?, ?, ?)
+        """,
+        (user_id, str(chat_id), now),
     )
     conn.commit()
     conn.close()
