@@ -432,6 +432,30 @@ def user_exists(user_id: int) -> bool:
     return exists
 
 
+def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
+    """Return a random user enrolled in the chat with a stored profile image."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT u.user_id, u.username, u.display_name, u.profile_imageb64
+        FROM chats c
+        INNER JOIN users u ON c.user_id = u.user_id
+        WHERE c.chat_id = ?
+          AND u.profile_imageb64 IS NOT NULL
+          AND TRIM(u.profile_imageb64) != ''
+                    AND u.display_name IS NOT NULL
+                    AND TRIM(u.display_name) != ''
+        ORDER BY RANDOM()
+        LIMIT 1
+        """,
+        (str(chat_id),),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return User(**row) if row else None
+
+
 def add_user_to_chat(chat_id: str, user_id: int) -> bool:
     """Add a user to a chat; returns True if inserted."""
     conn = connect()

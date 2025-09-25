@@ -45,6 +45,8 @@ Revision `20240924_0004` introduces a `users` table (`user_id`, `username`, `dis
 python tools/backfill_user_profiles.py
 ```
 
+The `/profile` DM command lets players upload a display name and portrait. The `/roll` and `/reroll` commands now pull their base images from a random enrolled user in the active chat who has supplied both a display name and portrait. If no one qualifies yet, the bot prompts the chat to DM `/profile` before trying again.
+
 ### SQLite compatibility
 
 Alembic runs with `render_as_batch=True`, which enables schema migrations against SQLite. No extra database engine is required; the existing `DB_PATH` configuration continues to work.
