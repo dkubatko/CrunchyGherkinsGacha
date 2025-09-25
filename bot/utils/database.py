@@ -18,6 +18,13 @@ ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
 INITIAL_ALEMBIC_REVISION = "20240924_0001"
 
 
+class User(BaseModel):
+    user_id: int
+    username: str
+    display_name: Optional[str]
+    profile_imageb64: Optional[str]
+
+
 class Card(BaseModel):
     id: int
     base_name: str
@@ -405,14 +412,14 @@ def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) 
     return updated
 
 
-def get_user(user_id: int) -> Optional[dict]:
+def get_user(user_id: int) -> Optional[User]:
     """Fetch a user record by ID."""
     conn = connect()
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
     row = cursor.fetchone()
     conn.close()
-    return dict(row) if row else None
+    return User(**row) if row else None
 
 
 def user_exists(user_id: int) -> bool:
@@ -420,6 +427,33 @@ def user_exists(user_id: int) -> bool:
     conn = connect()
     cursor = conn.cursor()
     cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+    exists = cursor.fetchone() is not None
+    conn.close()
+    return exists
+
+
+def add_user_to_chat(chat_id: str, user_id: int) -> bool:
+    """Add a user to a chat; returns True if inserted."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT OR IGNORE INTO chats (chat_id, user_id) VALUES (?, ?)",
+        (str(chat_id), user_id),
+    )
+    inserted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return inserted
+
+
+def is_user_in_chat(chat_id: str, user_id: int) -> bool:
+    """Check whether a user is enrolled in a chat."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT 1 FROM chats WHERE chat_id = ? AND user_id = ?",
+        (str(chat_id), user_id),
+    )
     exists = cursor.fetchone() is not None
     conn.close()
     return exists
