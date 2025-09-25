@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 
 // Components
@@ -75,6 +75,12 @@ function App() {
     setView('current');
     TelegramUtils.hideBackButton();
   }, [closeModal]);
+
+  const exitTradeViewRef = useRef(exitTradeView);
+
+  useEffect(() => {
+    exitTradeViewRef.current = exitTradeView;
+  }, [exitTradeView]);
   
   // Memoized callback functions to prevent infinite re-renders
   const handleTradeClick = useCallback(() => {
@@ -144,14 +150,17 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (isTradeView) {
-      const cleanup = TelegramUtils.setupBackButton(exitTradeView);
-      return cleanup;
+    if (!isTradeView) {
+      TelegramUtils.hideBackButton();
+      return;
     }
 
-    TelegramUtils.hideBackButton();
-    return () => { };
-  }, [isTradeView, exitTradeView]);
+    const cleanup = TelegramUtils.setupBackButton(() => {
+      exitTradeViewRef.current();
+    });
+
+    return cleanup;
+  }, [isTradeView]);
   
   // Effects
   const { isMainButtonVisible } = useMainButton(
