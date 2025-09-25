@@ -1047,29 +1047,14 @@ async def collection(
             )
             return
 
-    current_index = context.user_data.get("collection_index", 0)
-
+    # For callback queries, we should not be here - they're handled by the navigation handler
     if update.callback_query:
-        # Check if the user clicking the button is the same user who initiated the collection
-        callback_data_parts = update.callback_query.data.split("_")
-        if len(callback_data_parts) >= 3:
-            original_user_id = int(callback_data_parts[2])
-            if user.user_id != original_user_id:
-                await update.callback_query.answer(
-                    "You can only navigate your own collection!", show_alert=True
-                )
-                return
+        await update.callback_query.answer(
+            "Use the navigation handler for this action.", show_alert=True
+        )
+        return
 
-        if "prev" in update.callback_query.data:
-            current_index = (current_index - 1) % len(cards)
-        elif "next" in update.callback_query.data:
-            current_index = (current_index + 1) % len(cards)
-        elif "close" in update.callback_query.data:
-            await update.callback_query.delete_message()
-            await update.callback_query.answer()
-            return
-
-    context.user_data["collection_index"] = current_index
+    current_index = context.user_data.get("collection_index", 0)
 
     card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
     if not card_with_image:
@@ -1093,8 +1078,12 @@ async def collection(
     if len(cards) > 1:
         keyboard.append(
             [
-                InlineKeyboardButton("Prev", callback_data=f"collection_prev_{user.user_id}"),
-                InlineKeyboardButton("Next", callback_data=f"collection_next_{user.user_id}"),
+                InlineKeyboardButton(
+                    "Prev", callback_data=f"collection_prev_{user.user_id}_{viewed_user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Next", callback_data=f"collection_next_{user.user_id}_{viewed_user_id}"
+                ),
             ]
         )
 
@@ -1113,28 +1102,18 @@ async def collection(
         keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(
-        [InlineKeyboardButton("Close", callback_data=f"collection_close_{user.user_id}")]
+        [
+            InlineKeyboardButton(
+                "Close", callback_data=f"collection_close_{user.user_id}_{viewed_user_id}"
+            )
+        ]
     )
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     media = card_with_image.get_media()
 
-    if update.callback_query:
-        # For callback queries (navigation)
-        message = await update.callback_query.edit_message_media(
-            media=InputMediaPhoto(media=media, caption="Loading..."),
-            reply_markup=reply_markup,
-        )
-        await update.callback_query.edit_message_caption(
-            caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
-        )
-        # Always update file_id with what Telegram returns
-        if message and message.photo:
-            new_file_id = message.photo[-1].file_id
-            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
-        await update.callback_query.answer()
-    else:
-        # For new collection requests
+    # For new collection requests (command invocations only)
+    try:
         message = await update.message.reply_photo(
             photo=media,
             caption=caption,
@@ -1146,6 +1125,199 @@ async def collection(
         if message and message.photo:
             new_file_id = message.photo[-1].file_id
             await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+    except Exception as e:
+        logger.warning(
+            f"Failed to send photo using file_id for card {card.id}, falling back to base64: {e}"
+        )
+        # Fallback to base64 upload
+        try:
+            message = await update.message.reply_photo(
+                photo=base64.b64decode(card_with_image.image_b64),
+                caption=caption,
+                reply_markup=reply_markup,
+                parse_mode=ParseMode.HTML,
+                reply_to_message_id=update.message.message_id,
+            )
+            # Update file_id with the new one from Telegram
+            if message and message.photo:
+                new_file_id = message.photo[-1].file_id
+                await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+        except Exception as fallback_error:
+            logger.error(
+                f"Failed to send photo even with base64 fallback for card {card.id}: {fallback_error}"
+            )
+            await update.message.reply_text(
+                f"Error displaying card {card.id}. Please try again.",
+                reply_to_message_id=update.message.message_id,
+            )
+
+
+@verify_user
+async def handle_collection_navigation(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle collection navigation (Prev/Next/Close buttons)."""
+    query = update.callback_query
+    if not query:
+        return
+
+    chat = update.effective_chat
+    chat_id_filter = None
+    if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        chat_id_filter = str(chat.id)
+    if chat and chat.type != ChatType.PRIVATE:
+        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
+        if not is_member:
+            await query.answer(
+                "You're not enrolled in this chat yet. Use /enroll in this chat to join.",
+                show_alert=True,
+            )
+            return
+
+    callback_data_parts = query.data.split("_")
+
+    # Handle close action
+    if "close" in query.data:
+        await query.delete_message()
+        await query.answer()
+        return
+
+    # Extract user IDs from callback data - only support new format
+    if len(callback_data_parts) < 4:
+        await query.answer(
+            "Invalid callback format. Please refresh the collection.", show_alert=True
+        )
+        return
+
+    original_user_id = int(callback_data_parts[2])
+    viewed_user_id = int(callback_data_parts[3])
+
+    if user.user_id != original_user_id:
+        await query.answer("You can only navigate collections you initiated!", show_alert=True)
+        return
+
+    # Re-fetch the correct user's collection for navigation
+    cards = await asyncio.to_thread(database.get_user_collection, viewed_user_id, chat_id_filter)
+    if not cards:
+        await query.answer("No cards found.", show_alert=True)
+        return
+
+    # Update display_username for the viewed user
+    resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
+    display_username = resolved_username or f"user_{viewed_user_id}"
+
+    # Handle navigation
+    current_index = context.user_data.get("collection_index", 0)
+
+    if "prev" in query.data:
+        current_index = (current_index - 1) % len(cards)
+    elif "next" in query.data:
+        current_index = (current_index + 1) % len(cards)
+    else:
+        await query.answer()
+        return
+
+    context.user_data["collection_index"] = current_index
+
+    # Get card details
+    card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
+    if not card_with_image:
+        await query.answer("Card not found.", show_alert=True)
+        return
+
+    card = cards[current_index]
+    card_title = f"{card.modifier} {card.base_name}"
+    rarity = card.rarity
+
+    caption = COLLECTION_CAPTION.format(
+        card_id=card.id,
+        card_title=card_title,
+        rarity=rarity,
+        current_index=current_index + 1,
+        total_cards=len(cards),
+        username=display_username,
+    )
+
+    # Build keyboard
+    keyboard = []
+    if len(cards) > 1:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "Prev", callback_data=f"collection_prev_{user.user_id}_{viewed_user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Next", callback_data=f"collection_next_{user.user_id}_{viewed_user_id}"
+                ),
+            ]
+        )
+
+    # Add miniapp button
+    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+    if miniapp_url:
+        token = encode_miniapp_token(viewed_user_id, chat_id_filter)
+
+        if DEBUG_MODE:
+            app_url = f"{miniapp_url}?v={token}"
+        else:
+            app_url = f"{miniapp_url}?startapp={token}"
+        keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "Close", callback_data=f"collection_close_{user.user_id}_{viewed_user_id}"
+            )
+        ]
+    )
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    media = card_with_image.get_media()
+
+    # Update the message
+    try:
+        message = await query.edit_message_media(
+            media=InputMediaPhoto(media=media, caption="Loading..."),
+            reply_markup=reply_markup,
+        )
+        await query.edit_message_caption(
+            caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
+        )
+        # Always update file_id with what Telegram returns
+        if message and message.photo:
+            new_file_id = message.photo[-1].file_id
+            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+    except Exception as e:
+        logger.warning(
+            f"Failed to edit message media using file_id for card {card.id}, falling back to base64: {e}"
+        )
+        # Fallback to base64 upload
+        try:
+            message = await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=base64.b64decode(card_with_image.image_b64), caption="Loading..."
+                ),
+                reply_markup=reply_markup,
+            )
+            await query.edit_message_caption(
+                caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
+            )
+            # Update file_id with the new one from Telegram
+            if message and message.photo:
+                new_file_id = message.photo[-1].file_id
+                await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+        except Exception as fallback_error:
+            logger.error(
+                f"Failed to edit message media even with base64 fallback for card {card.id}: {fallback_error}"
+            )
+            await query.answer(
+                f"Error displaying card {card.id}. Please try again.", show_alert=True
+            )
+            return
+
+    await query.answer()
 
 
 async def _get_user_targets_for_stats(
@@ -1491,7 +1663,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
-    application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
+    application.add_handler(
+        CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")
+    )
     application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
     application.add_handler(CallbackQueryHandler(reject_trade, pattern="^trade_reject_"))
 
