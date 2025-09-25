@@ -64,6 +64,42 @@ CARD_STATUS_REROLLED = (
 )
 CARD_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
 
+RECYCLE_ALLOWED_RARITIES = {
+    "common": "Common",
+    "rare": "Rare",
+    "epic": "Epic",
+}
+
+RECYCLE_UPGRADE_MAP = {
+    "Common": "Rare",
+    "Rare": "Epic",
+    "Epic": "Legendary",
+}
+
+RECYCLE_BURN_COUNT = 3
+RECYCLE_MINIMUM_REQUIRED = RECYCLE_BURN_COUNT
+
+RECYCLE_USAGE_MESSAGE = "Usage: /recycle <rarity> where rarity is one of common, rare, epic."
+RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling is only available in the group chat."
+RECYCLE_CONFIRM_MESSAGE = (
+    "Burn {burn_count} <b>{rarity}</b> cards to generate 1 <b>{upgraded_rarity}</b> card?"
+)
+RECYCLE_INSUFFICIENT_CARDS_MESSAGE = (
+    "You need at least {required} {rarity} cards in this chat to recycle."
+)
+RECYCLE_ALREADY_RUNNING_MESSAGE = "You already have a recycle in progress."
+RECYCLE_NOT_YOURS_MESSAGE = "This recycle prompt isn't for you!"
+RECYCLE_UNKNOWN_RARITY_MESSAGE = "Unknown rarity. Please choose one of common, rare, or epic."
+RECYCLE_FAILURE_NOT_ENOUGH_CARDS = "Recycle failed: not enough cards remaining."
+RECYCLE_FAILURE_NO_PROFILE = (
+    "Recycle failed: no eligible profiles available to create an upgraded card.\n"
+    "Your cards were not burned."
+)
+RECYCLE_FAILURE_IMAGE = (
+    "Recycle failed: image generation is unavailable right now. Your cards were not burned."
+)
+RECYCLE_FAILURE_UNEXPECTED = "An unexpected error occurred while recycling cards. Try again later."
+RECYCLE_RESULT_APPENDIX = "\n\nBurned cards:\n\n<b>{burned_block}</b>\n\n"
 TRADE_REQUEST_MESSAGE = (
     "Trade requested:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"

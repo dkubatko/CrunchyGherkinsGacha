@@ -4,6 +4,7 @@ import os
 import sys
 import base64
 import datetime
+import html
 import json
 import threading
 import urllib.parse
@@ -39,6 +40,22 @@ from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
+    RECYCLE_ALLOWED_RARITIES,
+    RECYCLE_UPGRADE_MAP,
+    RECYCLE_BURN_COUNT,
+    RECYCLE_MINIMUM_REQUIRED,
+    RECYCLE_USAGE_MESSAGE,
+    RECYCLE_DM_RESTRICTED_MESSAGE,
+    RECYCLE_CONFIRM_MESSAGE,
+    RECYCLE_INSUFFICIENT_CARDS_MESSAGE,
+    RECYCLE_ALREADY_RUNNING_MESSAGE,
+    RECYCLE_NOT_YOURS_MESSAGE,
+    RECYCLE_UNKNOWN_RARITY_MESSAGE,
+    RECYCLE_FAILURE_NOT_ENOUGH_CARDS,
+    RECYCLE_FAILURE_NO_PROFILE,
+    RECYCLE_FAILURE_IMAGE,
+    RECYCLE_FAILURE_UNEXPECTED,
+    RECYCLE_RESULT_APPENDIX,
 )
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat
@@ -340,6 +357,307 @@ async def roll(
                 message_id=update.message.message_id,
                 reaction=[],
             )
+
+
+def _build_burning_text(card_titles: list[str], revealed: int, strike_all: bool = False) -> str:
+    if revealed <= 0:
+        return "Burning cards..."
+
+    lines = []
+    for idx in range(revealed):
+        line = f"🔥{card_titles[idx]}🔥"
+        if strike_all or idx < revealed - 1:
+            line = f"<s>{line}</s>"
+        lines.append(line)
+
+    return "Burning cards...\n\n" + "\n".join(lines)
+
+
+@verify_user_in_chat
+async def recycle(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text(
+            RECYCLE_DM_RESTRICTED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if not context.args:
+        await message.reply_text(
+            RECYCLE_USAGE_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    rarity_key = context.args[0].lower()
+    if rarity_key not in RECYCLE_ALLOWED_RARITIES:
+        await message.reply_text(
+            RECYCLE_UNKNOWN_RARITY_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    rarity_name = RECYCLE_ALLOWED_RARITIES[rarity_key]
+    upgrade_rarity = RECYCLE_UPGRADE_MAP[rarity_name]
+    chat_id_str = str(chat.id)
+
+    cards = await asyncio.to_thread(
+        database.get_user_cards_by_rarity,
+        user.user_id,
+        user.username,
+        rarity_name,
+        chat_id_str,
+        RECYCLE_MINIMUM_REQUIRED,
+    )
+
+    if len(cards) < RECYCLE_MINIMUM_REQUIRED:
+        await message.reply_text(
+            RECYCLE_INSUFFICIENT_CARDS_MESSAGE.format(
+                required=RECYCLE_MINIMUM_REQUIRED,
+                rarity=rarity_name.lower(),
+            ),
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Yes!", callback_data=f"recycle_yes_{rarity_key}_{user.user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Cancel", callback_data=f"recycle_cancel_{rarity_key}_{user.user_id}"
+                ),
+            ]
+        ]
+    )
+
+    await message.reply_text(
+        RECYCLE_CONFIRM_MESSAGE.format(
+            burn_count=RECYCLE_BURN_COUNT,
+            rarity=rarity_name,
+            upgraded_rarity=upgrade_rarity,
+        ),
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@verify_user_in_chat
+async def handle_recycle_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer()
+        return
+
+    _, action, rarity_key, target_user_id_str = data_parts[:4]
+
+    try:
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Unable to process this request.", show_alert=True)
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer(RECYCLE_NOT_YOURS_MESSAGE, show_alert=True)
+        return
+
+    rarity_name = RECYCLE_ALLOWED_RARITIES.get(rarity_key)
+    if not rarity_name:
+        await query.answer(RECYCLE_UNKNOWN_RARITY_MESSAGE, show_alert=True)
+        return
+
+    if action == "cancel":
+        await query.answer("Recycle cancelled.")
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text("Recycle cancelled.")
+            except Exception:
+                pass
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    chat = update.effective_chat
+    if not chat:
+        await query.answer()
+        return
+
+    recycling_users = context.bot_data.setdefault("recycling_users", set())
+    if user.user_id in recycling_users:
+        await query.answer(RECYCLE_ALREADY_RUNNING_MESSAGE, show_alert=True)
+        return
+
+    recycling_users.add(user.user_id)
+
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+    upgrade_rarity = RECYCLE_UPGRADE_MAP.get(rarity_name)
+
+    if not upgrade_rarity:
+        await query.answer("Unable to upgrade this rarity.", show_alert=True)
+        recycling_users.discard(user.user_id)
+        return
+
+    try:
+        cards = await asyncio.to_thread(
+            database.get_user_cards_by_rarity,
+            user.user_id,
+            user.username,
+            rarity_name,
+            str(chat_id),
+            RECYCLE_MINIMUM_REQUIRED,
+        )
+
+        if len(cards) < RECYCLE_MINIMUM_REQUIRED:
+            await query.answer(RECYCLE_FAILURE_NOT_ENOUGH_CARDS, show_alert=True)
+            try:
+                await query.edit_message_text(RECYCLE_FAILURE_NOT_ENOUGH_CARDS)
+            except Exception:
+                pass
+            return
+
+        cards_to_burn = cards[:RECYCLE_BURN_COUNT]
+        card_titles = [html.escape(card.title()) for card in cards_to_burn]
+
+        await query.answer()
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        generation_task = asyncio.create_task(
+            asyncio.to_thread(
+                rolling.generate_card_for_chat,
+                str(chat_id),
+                gemini_util,
+                upgrade_rarity,
+            )
+        )
+
+        for idx in range(len(cards_to_burn)):
+            text = _build_burning_text(card_titles, idx + 1)
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=_build_burning_text(card_titles, len(cards_to_burn), strike_all=True)
+                + "\n\nGenerating upgraded card...",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
+        try:
+            generated_card = await generation_task
+        except rolling.NoEligibleUserError:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_NO_PROFILE,
+            )
+            return
+        except rolling.ImageGenerationError:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_IMAGE,
+            )
+            return
+        except Exception as exc:
+            logger.error("Error while generating recycled card: %s", exc)
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_UNEXPECTED,
+            )
+            return
+
+        new_card_id = await asyncio.to_thread(
+            database.add_card,
+            generated_card.base_name,
+            generated_card.modifier,
+            generated_card.rarity,
+            generated_card.image_b64,
+            chat_id,
+        )
+
+        owner_username = user.username or f"user_{user.user_id}"
+        await asyncio.to_thread(
+            database.claim_card,
+            new_card_id,
+            owner_username,
+            user.user_id,
+        )
+
+        for card in cards_to_burn:
+            await asyncio.to_thread(database.delete_card, card.id)
+
+        burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])
+        final_caption = CARD_CAPTION_BASE.format(
+            card_id=new_card_id,
+            card_title=generated_card.card_title,
+            rarity=generated_card.rarity,
+        )
+        final_caption += RECYCLE_RESULT_APPENDIX.format(
+            burned_block=burned_block,
+        )
+
+        media = InputMediaPhoto(
+            media=base64.b64decode(generated_card.image_b64),
+            caption=final_caption,
+            parse_mode=ParseMode.HTML,
+        )
+
+        message = await context.bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=message_id,
+            media=media,
+        )
+
+        if message and message.photo:
+            file_id = message.photo[-1].file_id
+            await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
+
+        await query.answer("Recycled! Enjoy your new card!", show_alert=False)
+
+    finally:
+        recycling_users.discard(user.user_id)
 
 
 @verify_user_in_chat
@@ -981,11 +1299,13 @@ def main() -> None:
     )
     application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("roll", roll))
+    application.add_handler(CommandHandler("recycle", recycle))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("reload", reload))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
+    application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(CallbackQueryHandler(collection, pattern="^collection_"))
     application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
