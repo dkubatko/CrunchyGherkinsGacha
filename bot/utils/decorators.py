@@ -55,7 +55,7 @@ def verify_user(handler: HandlerFunc) -> HandlerFunc:
             await _notify_user(update, context, registration_prompt)
             return None
 
-        kwargs.setdefault("db_user", db_user)
+        kwargs.setdefault("user", db_user)
         return await handler(update, context, *args, **kwargs)
 
     return wrapper
@@ -74,9 +74,11 @@ def verify_user_in_chat(handler: HandlerFunc) -> HandlerFunc:
         if not chat or chat.type == ChatType.PRIVATE:
             return await handler(update, context, *args, **kwargs)
 
-        db_user = kwargs.get("db_user")
+        db_user = kwargs.get("user")
         if db_user is None:
-            logger.warning("verify_user_in_chat executed without db_user; was verify_user removed?")
+            logger.warning(
+                "verify_user_in_chat executed without user kwarg; was verify_user removed?"
+            )
             await _notify_user(update, context, "I couldn't identify your Telegram account.")
             return None
 

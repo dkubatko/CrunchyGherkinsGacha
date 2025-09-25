@@ -194,15 +194,14 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def enroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Add the calling user to the current chat."""
 
     message = update.message
     chat = update.effective_chat
-    user = update.effective_user
 
-    if not message or not chat or not user:
+    if not message or not chat:
         return
 
     if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
@@ -210,13 +209,13 @@ async def enroll(
         return
 
     chat_id = str(chat.id)
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.id)
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.user_id)
 
     if is_member:
         await message.reply_text("You're already enrolled in this chat.")
         return
 
-    inserted = await asyncio.to_thread(database.add_user_to_chat, chat_id, user.id)
+    inserted = await asyncio.to_thread(database.add_user_to_chat, chat_id, user.user_id)
 
     if inserted:
         await message.reply_text("You're enrolled! Have fun out there.")
@@ -224,9 +223,9 @@ async def enroll(
         await message.reply_text("You're now marked as part of this chat.")
 
     missing_parts = []
-    if not db_user.display_name:
+    if not user.display_name:
         missing_parts.append("display name")
-    if not db_user.profile_imageb64:
+    if not user.profile_imageb64:
         missing_parts.append("profile photo")
 
     if missing_parts:
@@ -242,10 +241,9 @@ async def enroll(
 async def roll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Roll a new card."""
-    user = update.effective_user
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
         if not DEBUG_MODE:
             await context.bot.set_message_reaction(
@@ -269,8 +267,8 @@ async def roll(
             reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
         )
     if not DEBUG_MODE:
-        if not await asyncio.to_thread(database.can_roll, user.id):
-            hours, minutes = get_time_until_next_roll(user.id)
+        if not await asyncio.to_thread(database.can_roll, user.user_id):
+            hours, minutes = get_time_until_next_roll(user.user_id)
             await update.message.reply_text(
                 f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
                 reply_to_message_id=update.message.message_id,
@@ -329,11 +327,11 @@ async def roll(
         )
 
         if not DEBUG_MODE:
-            await asyncio.to_thread(database.record_roll, user.id)
+            await asyncio.to_thread(database.record_roll, user.user_id)
 
         keyboard = [
             [InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")],
-            [InlineKeyboardButton("Reroll", callback_data=f"reroll_{card_id}_{user.id}")],
+            [InlineKeyboardButton("Reroll", callback_data=f"reroll_{card_id}_{user.user_id}")],
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -374,7 +372,7 @@ async def roll(
 async def handle_reroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Handle reroll button click."""
     query = update.callback_query
@@ -383,10 +381,8 @@ async def handle_reroll(
     card_id = int(data_parts[1])
     original_roller_id = int(data_parts[2])
 
-    user = query.from_user
-
     # Check if the user clicking is the original roller
-    if user.id != original_roller_id:
+    if user.user_id != original_roller_id:
         await query.answer("Only the original roller can reroll this card!", show_alert=True)
         return
 
@@ -511,7 +507,7 @@ async def handle_reroll(
 async def claim_card(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Handle claim button click."""
     query = update.callback_query
@@ -522,10 +518,8 @@ async def claim_card(
         await query.answer("The card is being rerolled, please wait.", show_alert=True)
         return
 
-    user = query.from_user
-
     is_successful_claim = await asyncio.to_thread(
-        database.claim_card, card_id, user.username, user.id
+        database.claim_card, card_id, user.username, user.user_id
     )
     card = await asyncio.to_thread(database.get_card, card_id)
     card_title = f"{card.modifier} {card.base_name}"
@@ -579,13 +573,13 @@ async def claim_card(
 async def collection(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Display user's card collection."""
 
     chat = update.effective_chat
     if chat and chat.type != ChatType.PRIVATE:
-        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), db_user.user_id)
+        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
         if not is_member:
             prompt = "You're not enrolled in this chat yet. Use /enroll in this chat to join."
             if update.callback_query:
@@ -594,8 +588,6 @@ async def collection(
             if effective_message:
                 await effective_message.reply_text(prompt)
             return
-
-    user = update.effective_user
 
     # Check if a username argument was provided
     if context.args and len(context.args) > 0:
@@ -629,7 +621,7 @@ async def collection(
         callback_data_parts = update.callback_query.data.split("_")
         if len(callback_data_parts) >= 3:
             original_user_id = int(callback_data_parts[2])
-            if update.callback_query.from_user.id != original_user_id:
+            if user.user_id != original_user_id:
                 await update.callback_query.answer(
                     "You can only navigate your own collection!", show_alert=True
                 )
@@ -668,8 +660,8 @@ async def collection(
     if len(cards) > 1:
         keyboard.append(
             [
-                InlineKeyboardButton("Prev", callback_data=f"collection_prev_{user.id}"),
-                InlineKeyboardButton("Next", callback_data=f"collection_next_{user.id}"),
+                InlineKeyboardButton("Prev", callback_data=f"collection_prev_{user.user_id}"),
+                InlineKeyboardButton("Next", callback_data=f"collection_next_{user.user_id}"),
             ]
         )
 
@@ -687,7 +679,9 @@ async def collection(
             app_url = f"{miniapp_url}?startapp={urllib.parse.quote(display_username)}"
             keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
-    keyboard.append([InlineKeyboardButton("Close", callback_data=f"collection_close_{user.id}")])
+    keyboard.append(
+        [InlineKeyboardButton("Close", callback_data=f"collection_close_{user.user_id}")]
+    )
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     media = card_with_image.get_media()
@@ -725,7 +719,7 @@ async def collection(
 async def stats(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Display stats for all users."""
     users = await asyncio.to_thread(database.get_all_users_with_cards)
@@ -755,10 +749,9 @@ async def stats(
 async def trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Initiate a card trade."""
-    user1 = update.effective_user
 
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
         await update.message.reply_text("Only allowed to trade in the group chat.")
@@ -782,13 +775,13 @@ async def trade(
         await update.message.reply_text("One or both card IDs are invalid.")
         return
 
-    if card1.owner != user1.username:
+    if card1.owner != user.username:
         await update.message.reply_text(
             f"You do not own card <b>{card1.title()}</b>.", parse_mode=ParseMode.HTML
         )
         return
 
-    if card2.owner == user1.username:
+    if card2.owner == user.username:
         await update.message.reply_text(
             f"You already own card <b>{card2.title()}</b>.", parse_mode=ParseMode.HTML
         )
@@ -806,7 +799,7 @@ async def trade(
 
     await update.message.reply_text(
         TRADE_REQUEST_MESSAGE.format(
-            user1_username=user1.username,
+            user1_username=user.username,
             card1_title=card1.title(),
             user2_username=user2_username,
             card2_title=card2.title(),
@@ -820,7 +813,7 @@ async def trade(
 async def reject_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Handle trade rejection."""
     query = update.callback_query
@@ -828,8 +821,6 @@ async def reject_trade(
     _, _, card_id1_str, card_id2_str = query.data.split("_")
     card_id1 = int(card_id1_str)
     card_id2 = int(card_id2_str)
-
-    user_who_clicked = query.from_user
 
     card1 = await asyncio.to_thread(database.get_card, card_id1)
     card2 = await asyncio.to_thread(database.get_card, card_id2)
@@ -842,7 +833,7 @@ async def reject_trade(
     user1_username = card1.owner
     user2_username = card2.owner
 
-    if not DEBUG_MODE and user_who_clicked.username != user2_username:
+    if not DEBUG_MODE and user.username != user2_username:
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
@@ -862,7 +853,7 @@ async def reject_trade(
 async def accept_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Handle trade acceptance."""
     query = update.callback_query
@@ -870,8 +861,6 @@ async def accept_trade(
     _, _, card_id1_str, card_id2_str = query.data.split("_")
     card_id1 = int(card_id1_str)
     card_id2 = int(card_id2_str)
-
-    user_who_clicked = query.from_user
 
     card1 = await asyncio.to_thread(database.get_card, card_id1)
     card2 = await asyncio.to_thread(database.get_card, card_id2)
@@ -884,7 +873,7 @@ async def accept_trade(
     user1_username = card1.owner
     user2_username = card2.owner
 
-    if not DEBUG_MODE and user_who_clicked.username != user2_username:
+    if not DEBUG_MODE and user.username != user2_username:
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
@@ -910,11 +899,9 @@ async def accept_trade(
 async def reload(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    db_user: database.User,
+    user: database.User,
 ) -> None:
     """Reload command - clears all file_ids. Only accessible to admin."""
-    user = update.effective_user
-
     # Get admin username from environment variable
     admin_username = os.getenv("BOT_ADMIN")
 
