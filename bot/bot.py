@@ -7,6 +7,7 @@ import datetime
 import json
 import threading
 import urllib.parse
+from io import BytesIO
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -158,8 +159,9 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     photo = message.photo[-1]
     telegram_file = await context.bot.get_file(photo.file_id)
-    photo_bytes = await telegram_file.download_to_memory()
-    image_b64 = base64.b64encode(bytes(photo_bytes)).decode("utf-8")
+    buffer = BytesIO()
+    await telegram_file.download_to_memory(out=buffer)
+    image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
     await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
     await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
