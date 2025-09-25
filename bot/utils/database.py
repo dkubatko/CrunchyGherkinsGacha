@@ -249,6 +249,56 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None):
         conn.close()
 
 
+def get_user_cards_by_rarity(
+    user_id: int,
+    username: Optional[str],
+    rarity: str,
+    chat_id: Optional[str] = None,
+    limit: Optional[int] = None,
+):
+    """Return cards owned by the user for a specific rarity, optionally limited in count."""
+
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+
+        owner_clauses = []
+        parameters: list[Any] = []
+
+        if user_id is not None:
+            owner_clauses.append("user_id = ?")
+            parameters.append(user_id)
+
+        if username:
+            owner_clauses.append("owner = ? COLLATE NOCASE")
+            parameters.append(username)
+
+        if not owner_clauses:
+            return []
+
+        query = (
+            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at, image_b64 "
+            "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
+        )
+        parameters.append(rarity)
+
+        if chat_id is not None:
+            query += " AND chat_id = ?"
+            parameters.append(str(chat_id))
+
+        query += " ORDER BY COALESCE(created_at, ''), id"
+
+        if limit is not None:
+            query += " LIMIT ?"
+            parameters.append(limit)
+
+        cursor.execute(query, tuple(parameters))
+        rows = cursor.fetchall()
+        return [CardWithImage(**row) for row in rows]
+    finally:
+        conn.close()
+
+
 def get_all_cards(chat_id: Optional[str] = None):
     """Get all cards that have an owner, optionally filtered by chat."""
     conn = connect()
