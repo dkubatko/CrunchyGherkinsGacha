@@ -990,6 +990,8 @@ async def collection(
                 await effective_message.reply_text(prompt)
             return
 
+    viewed_username_key: Optional[str] = None
+
     # Check if a username argument was provided
     if context.args and len(context.args) > 0:
         if not chat_id_filter:
@@ -1029,12 +1031,14 @@ async def collection(
         )
         display_username = resolved_username or target_username
         viewed_user_id = target_user_id
+        viewed_username_key = resolved_username or target_username
     else:
         # Default to current user's collection
         cards = await asyncio.to_thread(database.get_user_collection, user.user_id, chat_id_filter)
         resolved_username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
         display_username = resolved_username or user.username
         viewed_user_id = user.user_id
+        viewed_username_key = resolved_username or user.username
 
         if not cards and not update.callback_query:
             await update.message.reply_text(
@@ -1054,7 +1058,13 @@ async def collection(
         )
         return
 
-    current_index = context.user_data.get("collection_index", 0)
+    viewed_username_key = viewed_username_key or f"user_{viewed_user_id}"
+
+    collection_indices = context.user_data.setdefault("collection_index", {})
+    collection_indices[viewed_username_key] = 0
+
+    total_cards = len(cards)
+    current_index = 0
 
     card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
     if not card_with_image:
@@ -1207,19 +1217,24 @@ async def handle_collection_navigation(
     # Update display_username for the viewed user
     resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
     display_username = resolved_username or f"user_{viewed_user_id}"
+    viewed_username_key = resolved_username or f"user_{viewed_user_id}"
 
-    # Handle navigation
-    current_index = context.user_data.get("collection_index", 0)
+    total_cards = len(cards)
+    collection_indices = context.user_data.setdefault("collection_index", {})
+    current_index = collection_indices.get(viewed_username_key, 0)
+
+    if current_index >= total_cards or current_index < 0:
+        current_index %= total_cards
 
     if "prev" in query.data:
-        current_index = (current_index - 1) % len(cards)
+        current_index = (current_index - 1) % total_cards
     elif "next" in query.data:
-        current_index = (current_index + 1) % len(cards)
+        current_index = (current_index + 1) % total_cards
     else:
         await query.answer()
         return
 
-    context.user_data["collection_index"] = current_index
+    collection_indices[viewed_username_key] = current_index
 
     # Get card details
     card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
