@@ -73,11 +73,11 @@ def encode_miniapp_token(user_id, chat_id=None):
     return f"{TOKEN_PREFIX}{encoded}"
 
 
-def get_time_until_next_roll(user_id):
+def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
     Uses the same timezone as the database (system local time).
     """
-    last_roll_time = database.get_last_roll_time(user_id)
+    last_roll_time = database.get_last_roll_time(user_id, chat_id)
     if last_roll_time is None:
         return 0, 0  # Can roll immediately if never rolled before
 
@@ -231,6 +231,8 @@ async def roll(
     user: database.User,
 ) -> None:
     """Roll a new card."""
+    chat_id_str = str(update.effective_chat.id)
+
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
         if not DEBUG_MODE:
             await context.bot.set_message_reaction(
@@ -254,8 +256,8 @@ async def roll(
             reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
         )
     if not DEBUG_MODE:
-        if not await asyncio.to_thread(database.can_roll, user.user_id):
-            hours, minutes = get_time_until_next_roll(user.user_id)
+        if not await asyncio.to_thread(database.can_roll, user.user_id, chat_id_str):
+            hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
             await update.message.reply_text(
                 f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
                 reply_to_message_id=update.message.message_id,
@@ -269,7 +271,6 @@ async def roll(
             return
 
     try:
-        chat_id_str = str(update.effective_chat.id)
         generated_card = await asyncio.to_thread(
             rolling.generate_card_for_chat,
             chat_id_str,
@@ -286,7 +287,7 @@ async def roll(
         )
 
         if not DEBUG_MODE:
-            await asyncio.to_thread(database.record_roll, user.user_id)
+            await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
 
         keyboard = [
             [InlineKeyboardButton("Claim", callback_data=f"claim_{card_id}")],
