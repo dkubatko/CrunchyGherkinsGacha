@@ -94,12 +94,6 @@ function App() {
       }
 
       setSelectedCardForTrade(tradeCard);
-      const cardName = `${tradeCard.modifier} ${tradeCard.base_name}`;
-      TelegramUtils.showAlert(
-        hasChatScope
-          ? `Choose the card to trade ${cardName} for in All view`
-          : `Choose a card from this chat to trade ${cardName} for`
-      );
       setIsTradeGridActive(!hasChatScope);
       setView('all');
     }
