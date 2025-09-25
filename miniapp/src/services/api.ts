@@ -1,4 +1,4 @@
-import type { CardData } from '../types';
+import type { CardData, UserCollectionResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
@@ -15,8 +15,16 @@ export class ApiService {
     return headers;
   }
 
-  static async fetchUserCards(username: string, initData: string): Promise<CardData[]> {
-    const response = await fetch(`${API_BASE_URL}/cards/${username}`, {
+  static async fetchUserCards(userId: number, initData: string, chatId?: string | null): Promise<UserCollectionResponse> {
+    const params = new URLSearchParams();
+    if (chatId) {
+      params.set('chat_id', chatId);
+    }
+
+    const endpoint = `${API_BASE_URL}/cards/${encodeURIComponent(String(userId))}`;
+    const url = params.size > 0 ? `${endpoint}?${params.toString()}` : endpoint;
+
+    const response = await fetch(url, {
       headers: this.getHeaders(initData)
     });
     
@@ -35,8 +43,16 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchAllCards(initData: string): Promise<CardData[]> {
-    const response = await fetch(`${API_BASE_URL}/cards/all`, {
+  static async fetchAllCards(initData: string, chatId?: string): Promise<CardData[]> {
+    const params = new URLSearchParams();
+    if (chatId) {
+      params.set('chat_id', chatId);
+    }
+
+    const endpoint = `${API_BASE_URL}/cards/all`;
+    const url = params.size > 0 ? `${endpoint}?${params.toString()}` : endpoint;
+
+    const response = await fetch(url, {
       headers: this.getHeaders(initData)
     });
     
@@ -44,6 +60,20 @@ export class ApiService {
       throw new Error('Failed to fetch all cards');
     }
     
+    return response.json();
+  }
+
+  static async fetchTradeOptions(cardId: number, initData: string): Promise<CardData[]> {
+    const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(String(cardId))}/options`;
+
+    const response = await fetch(endpoint, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch trade options');
+    }
+
     return response.json();
   }
 
