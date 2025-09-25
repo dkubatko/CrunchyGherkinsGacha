@@ -2,6 +2,33 @@ import WebApp from '@twa-dev/sdk';
 import type { UserData, OrientationData } from '../types';
 
 export class TelegramUtils {
+  private static readonly TOKEN_PREFIX = 'tg1_';
+
+  static decodeToken(token: string): string | null {
+    if (!token.startsWith(TelegramUtils.TOKEN_PREFIX)) {
+      return null;
+    }
+
+    const raw = token.slice(TelegramUtils.TOKEN_PREFIX.length);
+    if (!raw) {
+      return null;
+    }
+
+    const normalized = raw.replace(/-/g, '+').replace(/_/g, '/');
+    const padLength = normalized.length % 4;
+    const padded = padLength ? normalized + '='.repeat(4 - padLength) : normalized;
+
+    try {
+      const binary = atob(padded);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const decoder = new TextDecoder();
+      return decoder.decode(bytes);
+    } catch (err) {
+      console.error('Failed to decode token payload', err);
+      return null;
+    }
+  }
+
   static initializeUser(): UserData | null {
     try {
       // Check if WebApp is properly initialized
@@ -34,8 +61,11 @@ export class TelegramUtils {
           console.error(`Error decoding ${source}:`, decodeErr);
         }
 
+        const decodedToken = TelegramUtils.decodeToken(decoded);
+        const tokenPayload = decodedToken ?? decoded;
+
         // Parse the simple token format: user_id or user_id.chat_id
-        const trimmed = decoded.trim();
+        const trimmed = tokenPayload.trim();
         if (!trimmed) {
           return;
         }

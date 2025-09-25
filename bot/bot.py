@@ -64,6 +64,14 @@ if DEBUG_MODE:
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
+TOKEN_PREFIX = "tg1_"
+
+
+def encode_miniapp_token(user_id, chat_id=None):
+    raw_token = f"{user_id}" if not chat_id else f"{user_id}.{chat_id}"
+    encoded = base64.urlsafe_b64encode(raw_token.encode("utf-8")).decode("ascii").rstrip("=")
+    return f"{TOKEN_PREFIX}{encoded}"
+
 
 def get_time_until_next_roll(user_id):
     """Calculate time until next roll (24 hours from last roll).
@@ -670,10 +678,7 @@ async def collection(
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
-        # Create a simple token: user_id or user_id.chat_id
-        token = str(viewed_user_id)
-        if chat_id_filter:
-            token = f"{viewed_user_id}.{chat_id_filter}"
+        token = encode_miniapp_token(viewed_user_id, chat_id_filter)
 
         if DEBUG_MODE:
             # In debug mode, use direct URL with v parameter
