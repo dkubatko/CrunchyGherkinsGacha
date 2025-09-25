@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import os
-import random
 import sys
 import base64
 import datetime
@@ -28,8 +27,6 @@ from telegram.ext import (
 from dotenv import load_dotenv
 
 from settings.constants import (
-    RARITIES,
-    BASE_IMAGE_PATH,
     REACTION_IN_PROGRESS,
     COLLECTION_CAPTION,
     CARD_CAPTION_BASE,
@@ -42,7 +39,7 @@ from settings.constants import (
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
 )
-from utils import gemini, database
+from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat
 
 # Load environment variables
@@ -66,25 +63,14 @@ if DEBUG_MODE:
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
-
-def get_random_rarity():
-    """Return a rarity based on chance."""
-    rarity_list = list(RARITIES.keys())
-    weights = [RARITIES[rarity]["weight"] for rarity in rarity_list]
-    return random.choices(rarity_list, weights=weights, k=1)[0]
+GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
 
 
-def get_downgraded_rarity(current_rarity):
-    """Return a rarity one level lower than the current rarity."""
-    rarity_order = ["Common", "Rare", "Epic", "Legendary"]
-    try:
-        current_index = rarity_order.index(current_rarity)
-        if current_index > 0:
-            return rarity_order[current_index - 1]
-        else:
-            return "Common"  # If already Common, stay Common
-    except ValueError:
-        return "Common"  # Default to Common if rarity not found
+def get_generation_chat_id(chat_id: int | str) -> str:
+    """Return the chat id to use during image generation."""
+    if DEBUG_MODE and GROUP_CHAT_ID:
+        return str(GROUP_CHAT_ID)
+    return str(chat_id)
 
 
 def get_time_until_next_roll(user_id):
@@ -282,48 +268,20 @@ async def roll(
             return
 
     try:
-        base_images = [f for f in os.listdir(BASE_IMAGE_PATH) if not f.startswith(".")]
-        if not base_images:
-            await update.message.reply_text(
-                "No base images found to create a card.",
-                reply_to_message_id=update.message.message_id,
-            )
-            if not DEBUG_MODE:
-                await context.bot.set_message_reaction(
-                    chat_id=update.effective_chat.id,
-                    message_id=update.message.message_id,
-                    reaction=[],
-                )
-            return
-
-        chosen_file_name = random.choice(base_images)
-        base_name = os.path.splitext(chosen_file_name)[0]
-
-        rarity = get_random_rarity()
-        modifier = random.choice(RARITIES[rarity]["modifiers"])
-
-        card_title = f"{modifier} {base_name}"
-
-        base_image_path = os.path.join(BASE_IMAGE_PATH, chosen_file_name)
-        image_b64 = await asyncio.to_thread(
-            gemini_util.generate_image, base_name, modifier, rarity, base_image_path
+        chat_id_str = get_generation_chat_id(update.effective_chat.id)
+        generated_card = await asyncio.to_thread(
+            rolling.generate_card_for_chat,
+            chat_id_str,
+            gemini_util,
         )
 
-        if not image_b64:
-            await update.message.reply_text(
-                "Sorry, I couldn't generate an image at the moment.",
-                reply_to_message_id=update.message.message_id,
-            )
-            if not DEBUG_MODE:
-                await context.bot.set_message_reaction(
-                    chat_id=update.effective_chat.id,
-                    message_id=update.message.message_id,
-                    reaction=[],
-                )
-            return
-
         card_id = await asyncio.to_thread(
-            database.add_card, base_name, modifier, rarity, image_b64, update.effective_chat.id
+            database.add_card,
+            generated_card.base_name,
+            generated_card.modifier,
+            generated_card.rarity,
+            generated_card.image_b64,
+            update.effective_chat.id,
         )
 
         if not DEBUG_MODE:
@@ -336,12 +294,14 @@ async def roll(
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         caption = (
-            CARD_CAPTION_BASE.format(card_id=card_id, card_title=card_title, rarity=rarity)
+            CARD_CAPTION_BASE.format(
+                card_id=card_id, card_title=generated_card.card_title, rarity=generated_card.rarity
+            )
             + CARD_STATUS_UNCLAIMED
         )
 
         message = await update.message.reply_photo(
-            photo=base64.b64decode(image_b64),
+            photo=base64.b64decode(generated_card.image_b64),
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
@@ -353,6 +313,18 @@ async def roll(
             file_id = message.photo[-1].file_id  # Get the largest photo size
             await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
 
+    except rolling.NoEligibleUserError:
+        await update.message.reply_text(
+            "No enrolled players here have set both a display name and profile photo yet. DM me with /profile <display_name> and a picture to join the fun!",
+            reply_to_message_id=update.message.message_id,
+        )
+        return
+    except rolling.ImageGenerationError:
+        await update.message.reply_text(
+            "Sorry, I couldn't generate an image at the moment.",
+            reply_to_message_id=update.message.message_id,
+        )
+        return
     except Exception as e:
         logger.error(f"Error in /roll: {e}")
         await update.message.reply_text(
@@ -416,50 +388,32 @@ async def handle_reroll(
         await query.answer("This card is already being rerolled.", show_alert=True)
         return
 
+    original_caption = query.message.caption
+    original_markup = query.message.reply_markup
+
     try:
         context.bot_data["rerolling_cards"].add(card_id)
         await query.edit_message_caption(caption=CARD_STATUS_REROLLING, parse_mode=ParseMode.HTML)
 
-        # Generate new card with downgraded rarity
-        base_images = [f for f in os.listdir(BASE_IMAGE_PATH) if not f.startswith(".")]
-        if not base_images:
-            logger.error("Base images not found.")
-            await query.answer("Error: base images not found.", show_alert=True)
-            # Restore original message
-            await query.edit_message_caption(
-                caption=query.message.caption, reply_markup=query.message.reply_markup
-            )
-            return
+        downgraded_rarity = rolling.get_downgraded_rarity(original_card.rarity)
+        chat_id_candidate = original_card.chat_id or query.message.chat_id
+        chat_id_for_generation = get_generation_chat_id(chat_id_candidate)
 
-        chosen_file_name = random.choice(base_images)
-        base_name = os.path.splitext(chosen_file_name)[0]
-
-        downgraded_rarity = get_downgraded_rarity(original_card.rarity)
-        modifier = random.choice(RARITIES[downgraded_rarity]["modifiers"])
-
-        card_title = f"{modifier} {base_name}"
-
-        base_image_path = os.path.join(BASE_IMAGE_PATH, chosen_file_name)
-        image_b64 = await asyncio.to_thread(
-            gemini_util.generate_image, base_name, modifier, downgraded_rarity, base_image_path
+        generated_card = await asyncio.to_thread(
+            rolling.generate_card_for_chat,
+            chat_id_for_generation,
+            gemini_util,
+            downgraded_rarity,
         )
-
-        if not image_b64:
-            await query.answer("Sorry, couldn't generate a new image!", show_alert=True)
-            # Restore original message
-            await query.edit_message_caption(
-                caption=query.message.caption, reply_markup=query.message.reply_markup
-            )
-            return
 
         # Add new card to database
         new_card_chat_id = original_card.chat_id or query.message.chat_id
         new_card_id = await asyncio.to_thread(
             database.add_card,
-            base_name,
-            modifier,
-            downgraded_rarity,
-            image_b64,
+            generated_card.base_name,
+            generated_card.modifier,
+            generated_card.rarity,
+            generated_card.image_b64,
             new_card_chat_id,
         )
 
@@ -474,18 +428,22 @@ async def handle_reroll(
 
         caption = (
             CARD_CAPTION_BASE.format(
-                card_id=new_card_id, card_title=card_title, rarity=downgraded_rarity
+                card_id=new_card_id,
+                card_title=generated_card.card_title,
+                rarity=generated_card.rarity,
             )
             + CARD_STATUS_UNCLAIMED
             + CARD_STATUS_REROLLED.format(
-                original_rarity=original_card.rarity, downgraded_rarity=downgraded_rarity
+                original_rarity=original_card.rarity, downgraded_rarity=generated_card.rarity
             )
         )
 
         # Update message with new image and caption
         message = await query.edit_message_media(
             media=InputMediaPhoto(
-                media=base64.b64decode(image_b64), caption=caption, parse_mode=ParseMode.HTML
+                media=base64.b64decode(generated_card.image_b64),
+                caption=caption,
+                parse_mode=ParseMode.HTML,
             ),
             reply_markup=reply_markup,
         )
@@ -495,7 +453,24 @@ async def handle_reroll(
             file_id = message.photo[-1].file_id
             await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
 
-        await query.answer(f"Rerolled! New rarity: {downgraded_rarity}")
+        await query.answer(f"Rerolled! New rarity: {generated_card.rarity}")
+    except rolling.NoEligibleUserError:
+        await query.edit_message_caption(
+            caption=original_caption,
+            reply_markup=original_markup,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer(
+            "No enrolled players here have set both a display name and profile photo yet.",
+            show_alert=True,
+        )
+    except rolling.ImageGenerationError:
+        await query.edit_message_caption(
+            caption=original_caption,
+            reply_markup=original_markup,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer("Sorry, couldn't generate a new image!", show_alert=True)
     except Exception as e:
         logger.error(f"Error in reroll: {e}")
         await query.answer("An error occurred during reroll!", show_alert=True)
