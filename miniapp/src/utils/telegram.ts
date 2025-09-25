@@ -34,36 +34,30 @@ export class TelegramUtils {
           console.error(`Error decoding ${source}:`, decodeErr);
         }
 
-        try {
-          const parsed = JSON.parse(decoded);
-          if (parsed && typeof parsed === 'object') {
-            const parsedUserIdRaw = parsed.user_id ?? parsed.target_user_id ?? parsed.userId;
-            const parsedChatId = parsed.chat_id ?? parsed.chatId;
-
-            if (parsedUserIdRaw !== undefined && parsedUserIdRaw !== null) {
-              const maybeNumber = typeof parsedUserIdRaw === 'number'
-                ? parsedUserIdRaw
-                : Number(String(parsedUserIdRaw));
-              if (!Number.isNaN(maybeNumber)) {
-                targetUserId = maybeNumber;
-              }
-            }
-
-            if (typeof parsedChatId === 'string') {
-              chatId = parsedChatId.trim() || null;
-            }
-
-            return;
-          }
-        } catch (parseErr) {
-          console.error(`Error parsing ${source}:`, parseErr);
-        }
-
+        // Parse the simple token format: user_id or user_id.chat_id
         const trimmed = decoded.trim();
         if (!trimmed) {
           return;
         }
 
+        // Check if it's the simple token format (numbers and dots only)
+        if (/^[\d.-]+$/.test(trimmed)) {
+          const parts = trimmed.split('.');
+          const userIdStr = parts[0];
+          const chatIdStr = parts[1]; // Optional chat_id
+
+          const maybeUserId = Number(userIdStr);
+          if (!Number.isNaN(maybeUserId)) {
+            targetUserId = maybeUserId;
+          }
+
+          if (chatIdStr) {
+            chatId = chatIdStr;
+          }
+          return;
+        }
+
+        // Fallback: try to parse as a simple number
         const maybeNumber = Number(trimmed);
         if (!Number.isNaN(maybeNumber)) {
           targetUserId = maybeNumber;

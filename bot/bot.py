@@ -670,18 +670,19 @@ async def collection(
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
-        miniapp_payload = {"user_id": str(viewed_user_id)}
+        # Create a simple token: user_id or user_id.chat_id
+        token = str(viewed_user_id)
         if chat_id_filter:
-            miniapp_payload["chat_id"] = chat_id_filter
-        encoded_payload = urllib.parse.quote(json.dumps(miniapp_payload))
+            token = f"{viewed_user_id}.{chat_id_filter}"
+
         if DEBUG_MODE:
-            # In debug mode, use WebApp with direct URL parameter
-            app_url = f"{miniapp_url}?v={encoded_payload}"
-            keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
+            # In debug mode, use direct URL with v parameter
+            app_url = f"{miniapp_url}?v={token}"
         else:
-            # In production mode, use inline button with URL and startapp parameter
-            app_url = f"{miniapp_url}?startapp={encoded_payload}"
-            keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
+            # In production mode, use direct URL with startapp parameter
+            # This works in both group chats and private chats
+            app_url = f"{miniapp_url}?startapp={token}"
+        keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(
         [InlineKeyboardButton("Close", callback_data=f"collection_close_{user.user_id}")]
