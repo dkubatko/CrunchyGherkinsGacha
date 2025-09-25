@@ -8,8 +8,6 @@ import datetime
 import json
 import threading
 import urllib.parse
-from functools import wraps
-from typing import Awaitable, Callable, Any
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -45,6 +43,7 @@ from settings.constants import (
     TRADE_REJECTED_MESSAGE,
 )
 from utils import gemini, database
+from utils.decorators import verify_user, verify_user_in_chat
 
 # Load environment variables
 load_dotenv()
@@ -66,48 +65,6 @@ if DEBUG_MODE:
     TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
-
-
-HandlerFunc = Callable[..., Awaitable[Any]]
-
-
-def verify_user(handler: HandlerFunc) -> HandlerFunc:
-    """Ensure the calling user exists in the users table before proceeding."""
-
-    @wraps(handler)
-    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        user = update.effective_user
-        if not user or user.id is None:
-            return await handler(update, context, *args, **kwargs)
-
-        exists = await asyncio.to_thread(database.user_exists, user.id)
-        if exists:
-            return await handler(update, context, *args, **kwargs)
-
-        prompt_message = "Please DM the bot with /start to register before using this command."
-
-        if update.callback_query:
-            try:
-                await update.callback_query.answer(prompt_message, show_alert=True)
-            except Exception:
-                # Ignore if we cannot send an alert (e.g., already answered)
-                pass
-            if update.callback_query.message:
-                await update.callback_query.message.reply_text(prompt_message)
-        elif update.message:
-            await update.message.reply_text(
-                prompt_message,
-                reply_to_message_id=getattr(update.message, "message_id", None),
-            )
-        else:
-            try:
-                await context.bot.send_message(chat_id=user.id, text=prompt_message)
-            except Exception:
-                logger.debug("Unable to prompt user %s to register via DM", user.id)
-
-        return None
-
-    return wrapper  # type: ignore[return-value]
 
 
 def get_random_rarity():
@@ -234,7 +191,59 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 @verify_user
-async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def enroll(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
+    """Add the calling user to the current chat."""
+
+    message = update.message
+    chat = update.effective_chat
+    user = update.effective_user
+
+    if not message or not chat or not user:
+        return
+
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        await message.reply_text("/enroll can only be used in group chats.")
+        return
+
+    chat_id = str(chat.id)
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.id)
+
+    if is_member:
+        await message.reply_text("You're already enrolled in this chat.")
+        return
+
+    inserted = await asyncio.to_thread(database.add_user_to_chat, chat_id, user.id)
+
+    if inserted:
+        await message.reply_text("You're enrolled! Have fun out there.")
+    else:
+        await message.reply_text("You're now marked as part of this chat.")
+
+    missing_parts = []
+    if not db_user.display_name:
+        missing_parts.append("display name")
+    if not db_user.profile_imageb64:
+        missing_parts.append("profile photo")
+
+    if missing_parts:
+        prompt = (
+            "Heads up: I don't have your "
+            + " and ".join(missing_parts)
+            + ". DM me with /profile <display_name> and a photo to complete your profile."
+        )
+        await message.reply_text(prompt)
+
+
+@verify_user_in_chat
+async def roll(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Roll a new card."""
     user = update.effective_user
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
@@ -361,8 +370,12 @@ async def roll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             )
 
 
-@verify_user
-async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def handle_reroll(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Handle reroll button click."""
     query = update.callback_query
 
@@ -494,8 +507,12 @@ async def handle_reroll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         context.bot_data["rerolling_cards"].discard(card_id)
 
 
-@verify_user
-async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def claim_card(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Handle claim button click."""
     query = update.callback_query
     data = query.data
@@ -559,8 +576,25 @@ async def claim_card(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 
 @verify_user
-async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def collection(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Display user's card collection."""
+
+    chat = update.effective_chat
+    if chat and chat.type != ChatType.PRIVATE:
+        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), db_user.user_id)
+        if not is_member:
+            prompt = "You're not enrolled in this chat yet. Use /enroll in this chat to join."
+            if update.callback_query:
+                await update.callback_query.answer(prompt, show_alert=True)
+            effective_message = update.effective_message
+            if effective_message:
+                await effective_message.reply_text(prompt)
+            return
+
     user = update.effective_user
 
     # Check if a username argument was provided
@@ -687,8 +721,12 @@ async def collection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
             await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
 
 
-@verify_user
-async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def stats(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Display stats for all users."""
     users = await asyncio.to_thread(database.get_all_users_with_cards)
 
@@ -713,8 +751,12 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(message, reply_to_message_id=update.message.message_id)
 
 
-@verify_user
-async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def trade(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Initiate a card trade."""
     user1 = update.effective_user
 
@@ -774,8 +816,12 @@ async def trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
-@verify_user
-async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def reject_trade(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Handle trade rejection."""
     query = update.callback_query
 
@@ -812,8 +858,12 @@ async def reject_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await query.answer()
 
 
-@verify_user
-async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def accept_trade(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Handle trade acceptance."""
     query = update.callback_query
 
@@ -856,8 +906,12 @@ async def accept_trade(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await query.answer()
 
 
-@verify_user
-async def reload(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+@verify_user_in_chat
+async def reload(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    db_user: database.User,
+) -> None:
     """Reload command - clears all file_ids. Only accessible to admin."""
     user = update.effective_user
 
@@ -927,6 +981,7 @@ def main() -> None:
     application.add_handler(
         MessageHandler(filters.PHOTO & filters.CaptionRegex(r"^/profile\b"), profile)
     )
+    application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
