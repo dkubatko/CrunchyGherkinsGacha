@@ -25,8 +25,8 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
     const fetchImage = async () => {
       if (!id || !initData) return;
 
-      if (imageCache.has(id)) {
-        setImageB64(imageCache.get(id)!);
+      if (imageCache.has(id, 'full')) {
+        setImageB64(imageCache.get(id, 'full')!);
         setLoadingImage(false);
         return;
       }
@@ -43,7 +43,7 @@ const Card: React.FC<CardProps> = ({ rarity, modifier, base_name, orientation, t
           throw new Error('Failed to fetch image');
         }
         const imageData = await response.json();
-        imageCache.set(id, imageData);
+  imageCache.set(id, imageData, 'full');
         setImageB64(imageData);
       } catch (error) {
         console.error("Error fetching card image:", error);
