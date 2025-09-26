@@ -54,6 +54,15 @@ class UserCollectionResponse(BaseModel):
     cards: List[APICard]
 
 
+class CardImagesRequest(BaseModel):
+    card_ids: List[int]
+
+
+class CardImageResponse(BaseModel):
+    card_id: int
+    image_b64: str
+
+
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
     """
     Validate Telegram WebApp init data according to:
@@ -338,6 +347,55 @@ async def get_card_image_route(
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
     return image_b64
+
+
+@app.post("/cards/images", response_model=List[CardImageResponse])
+async def get_card_images_route(
+    request: CardImagesRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Get base64 encoded images for multiple cards in a single batch."""
+
+    if not authorization:
+        logger.warning("No authorization header provided for batch image request")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning("No init data found in authorization header for batch image request")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning("Invalid Telegram init data provided for batch image request")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    card_ids = request.card_ids or []
+    unique_card_ids = list(dict.fromkeys(card_ids))
+
+    if not unique_card_ids:
+        raise HTTPException(status_code=400, detail="card_ids must contain at least one value")
+
+    if len(unique_card_ids) > 3:
+        raise HTTPException(
+            status_code=400, detail="A maximum of 3 card IDs can be requested per batch"
+        )
+
+    images = await asyncio.to_thread(database.get_card_images_batch, unique_card_ids)
+
+    if not images:
+        raise HTTPException(status_code=404, detail="No images found for requested card IDs")
+
+    response_payload = [
+        CardImageResponse(card_id=card_id, image_b64=image)
+        for card_id, image in images.items()
+        if image
+    ]
+
+    if not response_payload:
+        raise HTTPException(status_code=404, detail="No images found for requested card IDs")
+
+    return response_payload
 
 
 @app.post("/trade/{card_id1}/{card_id2}")
