@@ -35,7 +35,6 @@ class Card(BaseModel):
     rarity: str
     owner: Optional[str]
     user_id: Optional[int]
-    attempted_by: str
     file_id: Optional[str]
     chat_id: Optional[str]
     created_at: Optional[str]
@@ -59,6 +58,17 @@ class Claim(BaseModel):
     user_id: int
     chat_id: str
     balance: int
+
+
+class RolledCard(BaseModel):
+    card_id: int
+    created_at: str
+    original_roller_id: int
+    rerolled: bool
+    being_rerolled: bool
+    attempted_by: Optional[str]
+    is_locked: bool
+    original_rarity: Optional[str] = None
 
 
 class ClaimStatus(Enum):
@@ -177,20 +187,19 @@ def claim_card(card_id, owner, user_id=None, chat_id=None):
                 return ClaimAttemptResult(ClaimStatus.INSUFFICIENT_BALANCE, balance)
 
         # Check if card is already claimed
-        cursor.execute("SELECT owner, attempted_by FROM cards WHERE id = ?", (card_id,))
+        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id,))
         result = cursor.fetchone()
 
         if result and result[0] is not None:
-            # Card already claimed, add to attempted_by list
-            attempted_by = result[1] or ""
-            attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
-            if owner not in attempted_list:
-                attempted_list.append(owner)
-                new_attempted_by = ", ".join(attempted_list)
-                cursor.execute(
-                    "UPDATE cards SET attempted_by = ? WHERE id = ?", (new_attempted_by, card_id)
-                )
-                conn.commit()
+            # Card already claimed, update rolled_cards attempted_by if this is a rolled card
+            try:
+                rolled_card = get_rolled_card_internal(cursor, card_id)
+                if rolled_card and owner:
+                    update_rolled_card_attempted_by_internal(cursor, card_id, owner)
+                    conn.commit()
+            except Exception:
+                # If rolled_card doesn't exist, that's fine - just continue
+                pass
             return ClaimAttemptResult(ClaimStatus.ALREADY_CLAIMED, balance)
 
         # Claim the card
@@ -371,7 +380,7 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None):
             parameters.append(username)
 
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at "
             "FROM cards WHERE (" + " OR ".join(conditions) + ")"
         )
 
@@ -419,7 +428,7 @@ def get_user_cards_by_rarity(
             return []
 
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at, image_b64 "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64 "
             "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
         )
         parameters.append(rarity)
@@ -447,7 +456,7 @@ def get_all_cards(chat_id: Optional[str] = None):
     try:
         cursor = conn.cursor()
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, attempted_by, file_id, chat_id, created_at "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at "
             "FROM cards WHERE owner IS NOT NULL"
         )
         parameters: list[Any] = []
@@ -700,8 +709,20 @@ def clear_all_file_ids():
     return affected_rows
 
 
+def nullify_card_owner(card_id):
+    """Set card owner to NULL (for rerolls/burns) instead of deleting."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cards SET owner = NULL, user_id = NULL WHERE id = ?", (card_id,))
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    logger.info(f"Nullified owner for card {card_id}: {updated}")
+    return updated
+
+
 def delete_card(card_id):
-    """Delete a card from the database."""
+    """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
     conn = connect()
     cursor = conn.cursor()
     cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
@@ -710,22 +731,6 @@ def delete_card(card_id):
     conn.close()
     logger.info(f"Deleted card {card_id}: {deleted}")
     return deleted
-
-
-def is_reroll_expired(card_id):
-    """Check if the reroll time limit (5 minutes) has expired for a card."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT created_at FROM cards WHERE id = ?", (card_id,))
-    result = cursor.fetchone()
-    conn.close()
-
-    if not result or not result[0]:
-        return True  # No creation time found, consider expired
-
-    created_at = datetime.datetime.fromisoformat(result[0])
-    time_since_creation = datetime.datetime.now() - created_at
-    return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
 def upsert_user(
@@ -835,6 +840,173 @@ def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     exists = cursor.fetchone() is not None
     conn.close()
     return exists
+
+
+def get_rolled_card_internal(cursor: sqlite3.Cursor, card_id: int) -> Optional[RolledCard]:
+    """Internal helper to get rolled card state using existing cursor."""
+    cursor.execute("SELECT * FROM rolled_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    return RolledCard(**row) if row else None
+
+
+def update_rolled_card_attempted_by_internal(
+    cursor: sqlite3.Cursor, card_id: int, username: str
+) -> None:
+    """Internal helper to update attempted_by using existing cursor."""
+    cursor.execute("SELECT attempted_by FROM rolled_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    if not row:
+        return
+
+    attempted_by = row[0] or ""
+    attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
+
+    if username not in attempted_list:
+        attempted_list.append(username)
+        new_attempted_by = ", ".join(attempted_list)
+        cursor.execute(
+            "UPDATE rolled_cards SET attempted_by = ? WHERE card_id = ?",
+            (new_attempted_by, card_id),
+        )
+
+
+def create_rolled_card(card_id: int, original_roller_id: int) -> None:
+    """Create a rolled card entry to track its state."""
+    conn = connect()
+    cursor = conn.cursor()
+    now = datetime.datetime.now().isoformat()
+    cursor.execute(
+        """
+        INSERT OR IGNORE INTO rolled_cards 
+        (card_id, created_at, original_roller_id, rerolled, being_rerolled, attempted_by, is_locked, original_rarity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (card_id, now, original_roller_id, False, False, None, False, None),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_rolled_card(card_id: int) -> Optional[RolledCard]:
+    """Get rolled card state by card ID."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM rolled_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return RolledCard(**row) if row else None
+
+
+def update_rolled_card_attempted_by(card_id: int, username: str) -> None:
+    """Add a username to the attempted_by list for a rolled card."""
+    conn = connect()
+    cursor = conn.cursor()
+
+    # Get current attempted_by list
+    cursor.execute("SELECT attempted_by FROM rolled_cards WHERE card_id = ?", (card_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return
+
+    attempted_by = row[0] or ""
+    attempted_list = [u.strip() for u in attempted_by.split(",") if u.strip()]
+
+    if username not in attempted_list:
+        attempted_list.append(username)
+        new_attempted_by = ", ".join(attempted_list)
+        cursor.execute(
+            "UPDATE rolled_cards SET attempted_by = ? WHERE card_id = ?",
+            (new_attempted_by, card_id),
+        )
+        conn.commit()
+
+    conn.close()
+
+
+def set_rolled_card_being_rerolled(card_id: int, being_rerolled: bool) -> None:
+    """Set the being_rerolled status for a rolled card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE rolled_cards SET being_rerolled = ? WHERE card_id = ?",
+        (being_rerolled, card_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_rolled_card_rerolled(card_id: int) -> None:
+    """Mark a rolled card as having been rerolled."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE rolled_cards SET rerolled = ?, being_rerolled = ? WHERE card_id = ?",
+        (True, False, card_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_rolled_card_rerolled_with_original_rarity(card_id: int, original_rarity: str) -> None:
+    """Mark a rolled card as having been rerolled and store the original rarity."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE rolled_cards SET rerolled = ?, being_rerolled = ?, original_rarity = ? WHERE card_id = ?",
+        (True, False, original_rarity, card_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def set_rolled_card_locked(card_id: int, is_locked: bool) -> None:
+    """Set the locked status for a rolled card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE rolled_cards SET is_locked = ? WHERE card_id = ?",
+        (is_locked, card_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def swap_rolled_card_id(old_card_id: int, new_card_id: int) -> None:
+    """Swap the card_id in rolled_cards table (for rerolls)."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE rolled_cards SET card_id = ? WHERE card_id = ?",
+        (new_card_id, old_card_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def delete_rolled_card(card_id: int) -> None:
+    """Delete a rolled card entry (use sparingly - prefer reset_rolled_card)."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM rolled_cards WHERE card_id = ?", (card_id,))
+    conn.commit()
+    conn.close()
+
+
+def is_rolled_card_reroll_expired(card_id: int) -> bool:
+    """Check if the reroll time limit (5 minutes) has expired for a rolled card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT created_at FROM rolled_cards WHERE card_id = ?", (card_id,))
+    result = cursor.fetchone()
+    conn.close()
+
+    if not result or not result[0]:
+        return True  # No creation time found, consider expired
+
+    created_at = datetime.datetime.fromisoformat(result[0])
+    time_since_creation = datetime.datetime.now() - created_at
+    return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
 create_tables()
