@@ -35,6 +35,7 @@ from settings.constants import (
     CARD_CAPTION_BASE,
     CARD_STATUS_UNCLAIMED,
     CARD_STATUS_CLAIMED,
+    CARD_STATUS_LOCKED,
     CARD_STATUS_ATTEMPTED,
     CARD_STATUS_REROLLING,
     CARD_STATUS_REROLLED,
@@ -816,6 +817,101 @@ async def handle_reroll(
 
 
 @verify_user_in_chat
+async def handle_lock(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle lock button click to prevent rerolling."""
+    query = update.callback_query
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 3:
+        await query.answer("Invalid lock request.", show_alert=True)
+        return
+
+    card_id = int(data_parts[1])
+    original_roller_id = int(data_parts[2])
+
+    # Get the card
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        await query.answer("Card not found!", show_alert=True)
+        return
+
+    # Check if the card has been claimed
+    if card.owner is None:
+        await query.answer("Card must be claimed before it can be locked!", show_alert=True)
+        return
+
+    # Check if the person trying to lock is the owner of the card
+    if card.owner != user.username:
+        await query.answer("Only the owner of the card can lock it!", show_alert=True)
+        return
+
+    chat = update.effective_chat
+    chat_id = str(chat.id) if chat else None
+
+    # Determine if this is the original roller or someone else
+    is_original_roller = user.user_id == original_roller_id
+
+    if not is_original_roller:
+        # Not the original roller - need to consume a claim point to prevent rerolling
+        remaining_balance = await asyncio.to_thread(
+            database.reduce_claim_points, user.user_id, chat_id, 1
+        )
+
+        if remaining_balance is None:
+            # Get current balance for error message
+            current_balance = await asyncio.to_thread(
+                database.get_claim_balance, user.user_id, chat_id
+            )
+            await query.answer(
+                f"Not enough claim points!\n\nBalance: {current_balance}",
+                show_alert=True,
+            )
+            return
+
+        await query.answer(
+            f"Card locked from re-rolling!\n\nBalance: {remaining_balance}",
+            show_alert=True,
+        )
+    else:
+        # Original roller - no claim point needed since they can't reroll their own claimed card anyway
+        await query.answer("Card locked from re-rolling!", show_alert=True)
+
+    # Update the caption to show locked status
+    card_title = f"{card.modifier} {card.base_name}"
+    caption = CARD_CAPTION_BASE.format(
+        card_id=card_id, card_title=card_title, rarity=card.rarity
+    ) + CARD_STATUS_CLAIMED.format(username=user.username)
+
+    # Add attempted by information if there are any attempts
+    if card.attempted_by:
+        attempted_users = ", ".join(
+            [
+                f"@{u.strip()}"
+                for u in card.attempted_by.split(",")
+                if u.strip() and u.strip() != user.username
+            ]
+        )
+        if attempted_users:
+            caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
+
+    # Add locked status last
+    caption += CARD_STATUS_LOCKED
+
+    # Remove all buttons when locked
+    try:
+        await query.edit_message_caption(
+            caption=caption, reply_markup=None, parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        # Silently ignore if message content is identical
+        pass
+
+
+@verify_user_in_chat
 async def claim_card(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -879,14 +975,36 @@ async def claim_card(
                 caption += CARD_STATUS_ATTEMPTED.format(users=attempted_users)
         await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
-    # Keep other buttons, remove the claim button
+    # Update buttons - replace Claim with Lock button in both success and failure cases
     current_keyboard = query.message.reply_markup.inline_keyboard
     new_keyboard = []
+    original_roller_id = None
+
+    # Find original roller ID from reroll button
     for row in current_keyboard:
-        new_row = [button for button in row if not button.callback_data.startswith("claim_")]
+        for button in row:
+            if button.callback_data.startswith("reroll_"):
+                parts = button.callback_data.split("_")
+                if len(parts) >= 3:
+                    original_roller_id = parts[2]
+                break
+
+    for row in current_keyboard:
+        new_row = []
+        for button in row:
+            if button.callback_data.startswith("claim_"):
+                # Replace claim button with lock button
+                if original_roller_id:
+                    new_row.append(
+                        InlineKeyboardButton(
+                            "Lock", callback_data=f"lock_{card_id}_{original_roller_id}"
+                        )
+                    )
+            else:
+                # Keep other buttons (like reroll)
+                new_row.append(button)
         if new_row:
             new_keyboard.append(new_row)
-
     new_reply_markup = InlineKeyboardMarkup(new_keyboard) if new_keyboard else None
 
     try:
@@ -1676,6 +1794,7 @@ def main() -> None:
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("reload", reload))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
+    application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(
