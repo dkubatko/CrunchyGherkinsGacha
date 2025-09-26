@@ -14,7 +14,7 @@ interface MiniCardProps {
 
 const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
   // Check if we have cached data immediately to set initial state
-  const cachedImage = imageCache.has(card.id) ? imageCache.get(card.id) : null;
+  const cachedImage = imageCache.has(card.id, 'thumb') ? imageCache.get(card.id, 'thumb') : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
 
   // Use react-intersection-observer for reliable visibility detection
@@ -33,8 +33,8 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
   useEffect(() => {
     if (imageB64) return; // Already have image, no need to check
     
-    if (imageCache.has(card.id)) {
-      const cached = imageCache.get(card.id);
+    if (imageCache.has(card.id, 'thumb')) {
+      const cached = imageCache.get(card.id, 'thumb');
       if (cached) {
         setImageB64(cached);
         return;
@@ -44,8 +44,8 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
     // If we're loading, check cache periodically
     if (isLoading) {
       const interval = setInterval(() => {
-        if (imageCache.has(card.id)) {
-          const cached = imageCache.get(card.id);
+        if (imageCache.has(card.id, 'thumb')) {
+          const cached = imageCache.get(card.id, 'thumb');
           if (cached) {
             setImageB64(cached);
             clearInterval(interval);

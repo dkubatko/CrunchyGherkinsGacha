@@ -12,6 +12,7 @@ from alembic.config import Config
 from pydantic import BaseModel
 
 from settings.constants import DB_PATH
+from utils.image import ImageUtil
 
 logger = logging.getLogger(__name__)
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
@@ -131,12 +132,22 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
         chat_id = os.getenv("GROUP_CHAT_ID")
     if chat_id is not None:
         chat_id = str(chat_id)
+
+    image_thumb_b64: Optional[str] = None
+    if image_b64:
+        try:
+            image_bytes = base64.b64decode(image_b64)
+            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes)
+            image_thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+        except Exception as exc:
+            logger.warning("Failed to generate thumbnail for new card: %s", exc)
+
     cursor.execute(
         """
-        INSERT INTO cards (base_name, modifier, rarity, image_b64, chat_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """,
-        (base_name, modifier, rarity, image_b64, chat_id, now),
+        (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, now),
     )
     card_id = cursor.lastrowid
     conn.commit()
@@ -455,7 +466,7 @@ def get_card_image(card_id: int) -> str | None:
 
 
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
-    """Get base64 images for multiple cards in a single query."""
+    """Get thumbnail base64 images for multiple cards, generating them when missing."""
     if not card_ids:
         return {}
 
@@ -464,16 +475,47 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
         cursor = conn.cursor()
         placeholders = ",".join(["?"] * len(card_ids))
         cursor.execute(
-            f"SELECT id, image_b64 FROM cards WHERE id IN ({placeholders})",
+            f"SELECT id, image_thumb_b64, image_b64 FROM cards WHERE id IN ({placeholders})",
             tuple(card_ids),
         )
         rows = cursor.fetchall()
-        fetched = {int(row["id"]): row["image_b64"] for row in rows if row["image_b64"]}
+        fetched: dict[int, str] = {}
+        updated = False
+        for row in rows:
+            card_id = int(row["id"])
+            thumb = row["image_thumb_b64"]
+            full = row["image_b64"]
+
+            if thumb:
+                fetched[card_id] = thumb
+                continue
+
+            if not full:
+                continue
+
+            try:
+                image_bytes = base64.b64decode(full)
+                thumb_bytes = ImageUtil.compress_to_fraction(image_bytes)
+                thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+                cursor.execute(
+                    "UPDATE cards SET image_thumb_b64 = ? WHERE id = ?",
+                    (thumb_b64, card_id),
+                )
+                fetched[card_id] = thumb_b64
+                updated = True
+            except Exception as exc:
+                logger.warning(
+                    "Failed to generate thumbnail during batch fetch for card %s: %s",
+                    card_id,
+                    exc,
+                )
         ordered: dict[int, str] = {}
         for card_id in card_ids:
             image = fetched.get(card_id)
             if image is not None:
                 ordered[card_id] = image
+        if updated:
+            conn.commit()
         return ordered
     finally:
         conn.close()
