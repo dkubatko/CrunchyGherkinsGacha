@@ -1,45 +1,54 @@
 // src/lib/imageCache.ts
 
+type ImageVariant = 'full' | 'thumb';
+
 interface CacheEntry {
   data: string;
   timestamp: number;
 }
 
 class ImageCache {
-  private cache: Map<number, CacheEntry> = new Map();
+  private cache: Map<string, CacheEntry> = new Map();
   private readonly CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 
-  set(cardId: number, data: string): void {
-    this.cache.set(cardId, {
+  private getKey(cardId: number, variant: ImageVariant): string {
+    return `${variant}:${cardId}`;
+  }
+
+  set(cardId: number, data: string, variant: ImageVariant = 'full'): void {
+    const key = this.getKey(cardId, variant);
+    this.cache.set(key, {
       data,
       timestamp: Date.now()
     });
   }
 
-  get(cardId: number): string | null {
-    const entry = this.cache.get(cardId);
+  get(cardId: number, variant: ImageVariant = 'full'): string | null {
+    const key = this.getKey(cardId, variant);
+    const entry = this.cache.get(key);
     if (!entry) {
       return null;
     }
 
     const isExpired = Date.now() - entry.timestamp > this.CACHE_DURATION;
     if (isExpired) {
-      this.cache.delete(cardId);
+      this.cache.delete(key);
       return null;
     }
 
     return entry.data;
   }
 
-  has(cardId: number): boolean {
-    const entry = this.cache.get(cardId);
+  has(cardId: number, variant: ImageVariant = 'full'): boolean {
+    const key = this.getKey(cardId, variant);
+    const entry = this.cache.get(key);
     if (!entry) {
       return false;
     }
 
     const isExpired = Date.now() - entry.timestamp > this.CACHE_DURATION;
     if (isExpired) {
-      this.cache.delete(cardId);
+      this.cache.delete(key);
       return false;
     }
 
@@ -57,10 +66,10 @@ class ImageCache {
   // Clean up expired entries
   cleanup(): void {
     const now = Date.now();
-    for (const [cardId, entry] of this.cache.entries()) {
+    for (const [key, entry] of this.cache.entries()) {
       const isExpired = now - entry.timestamp > this.CACHE_DURATION;
       if (isExpired) {
-        this.cache.delete(cardId);
+        this.cache.delete(key);
       }
     }
   }

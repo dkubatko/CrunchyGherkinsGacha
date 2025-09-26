@@ -87,7 +87,6 @@ export const useBatchLoader = (
   
   // Pending batch processing
   const pendingCardsRef = useRef(new Set<number>());
-  const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Create stable card IDs string for effect dependencies
   const cardIdsString = useMemo(() => cards.map(c => c.id).join(','), [cards]);
@@ -96,13 +95,6 @@ export const useBatchLoader = (
     () => import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com',
     []
   );
-
-  const clearBatchTimeout = useCallback(() => {
-    if (batchTimeoutRef.current) {
-      clearTimeout(batchTimeoutRef.current);
-      batchTimeoutRef.current = null;
-    }
-  }, []);
 
   const markCardsAsProcessing = useCallback((cardsToLoad: CardData[]) => {
     cardsToLoad.forEach(card => {
@@ -129,7 +121,7 @@ export const useBatchLoader = (
 
       const imageResponses: CardImageResponse[] = await response.json();
       imageResponses.forEach(imageResponse => {
-        imageCache.set(imageResponse.card_id, imageResponse.image_b64);
+    imageCache.set(imageResponse.card_id, imageResponse.image_b64, 'thumb');
       });
 
       const batchCardIds = batch.map(c => c.id);
@@ -187,7 +179,7 @@ export const useBatchLoader = (
     const pendingCardIds = Array.from(pendingCardsRef.current);
     const visibleCards = cards.filter(card => 
       pendingCardIds.includes(card.id) && 
-      !imageCache.has(card.id) && 
+  !imageCache.has(card.id, 'thumb') && 
       !processedCardsRef.current.has(card.id)
     );
 
@@ -203,20 +195,13 @@ export const useBatchLoader = (
   // Add card to pending batch and schedule processing
   const addToPendingBatch = useCallback((cardId: number) => {
     pendingCardsRef.current.add(cardId);
-    clearBatchTimeout();
-    
-    // If we have enough for a batch, process immediately
+
     if (pendingCardsRef.current.size >= BATCH_SIZE) {
       console.log(`Pending batch reached ${BATCH_SIZE} cards, processing immediately`);
-      processPendingBatch();
-    } else {
-      // Otherwise, wait a bit to accumulate more cards
-      batchTimeoutRef.current = setTimeout(() => {
-        console.log(`Processing pending batch after timeout (${pendingCardsRef.current.size} cards)`);
-        processPendingBatch();
-      }, 200); // Wait 200ms to accumulate more cards
     }
-  }, [clearBatchTimeout, processPendingBatch]);
+
+    processPendingBatch();
+  }, [processPendingBatch]);
 
   // Function to be called by individual cards when visibility changes
   const setCardVisible = useCallback((cardId: number, isVisible: boolean) => {
@@ -228,7 +213,7 @@ export const useBatchLoader = (
           newSet.add(cardId);
           
           // Add to pending batch if not already cached/processed
-          if (!imageCache.has(cardId) && !processedCardsRef.current.has(cardId)) {
+          if (!imageCache.has(cardId, 'thumb') && !processedCardsRef.current.has(cardId)) {
             addToPendingBatch(cardId);
           }
         }
@@ -239,27 +224,20 @@ export const useBatchLoader = (
     });
   }, [addToPendingBatch]);
 
-  // Fallback: Load first batch after 1 second if nothing loaded
+  // If the remaining unfetched cards are fewer than the batch size, load them immediately.
   useEffect(() => {
     if (!cards.length || !initData) return;
 
-    const fallbackTimer = setTimeout(() => {
-      const cardsNeedingLoad = cards.filter(card => 
-        !imageCache.has(card.id) && !processedCardsRef.current.has(card.id)
-      );
-      
-      if (cardsNeedingLoad.length > 0) {
-        console.log('Fallback: Loading first 6 cards after 1 second timeout');
-        const firstBatch = cardsNeedingLoad.slice(0, 6);
-        loadCardsInBatches(firstBatch);
-      }
-    }, 1000);
+    const remainingCards = cards.filter(card =>
+      !imageCache.has(card.id, 'thumb') &&
+      !processedCardsRef.current.has(card.id)
+    );
 
-    return () => {
-      clearTimeout(fallbackTimer);
-      clearBatchTimeout();
-    };
-  }, [cards, initData, loadCardsInBatches, clearBatchTimeout]);
+    if (remainingCards.length > 0 && remainingCards.length < BATCH_SIZE) {
+      console.log('Loading remaining cards directly:', remainingCards.map(card => card.id));
+      loadCardsInBatches(remainingCards);
+    }
+  }, [cards, initData, loadCardsInBatches]);
 
   // Reset state when cards change significantly
   useEffect(() => {
@@ -267,8 +245,7 @@ export const useBatchLoader = (
     processedCardsRef.current.clear();
     pendingCardsRef.current.clear();
     setVisibleCardIds(new Set());
-    clearBatchTimeout();
-  }, [cardIdsString, clearBatchTimeout]);
+  }, [cardIdsString]);
 
   return {
     loadingCards: state.loadingCards,
