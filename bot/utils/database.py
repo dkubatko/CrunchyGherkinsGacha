@@ -282,6 +282,29 @@ def increment_claim_balance(user_id: int, chat_id: str, amount: int = 1) -> int:
         conn.close()
 
 
+def reduce_claim_points(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
+    """
+    Attempt to reduce claim points for a user.
+
+    Returns the remaining balance if successful, or None if insufficient balance.
+    """
+    if amount <= 0:
+        return get_claim_balance(user_id, chat_id)
+
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        current_balance = _get_claim_balance(cursor, user_id, str(chat_id))
+        if current_balance < amount:
+            return None  # Insufficient balance
+
+        new_balance = _update_claim_balance(cursor, user_id, str(chat_id), -amount)
+        conn.commit()
+        return new_balance
+    finally:
+        conn.close()
+
+
 def get_username_for_user_id(user_id: int) -> Optional[str]:
     """Return the username associated with a user_id, falling back to card ownership."""
     conn = connect()
