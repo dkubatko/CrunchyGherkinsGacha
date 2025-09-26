@@ -1188,12 +1188,6 @@ async def handle_collection_navigation(
 
     callback_data_parts = query.data.split("_")
 
-    # Handle close action
-    if "close" in query.data:
-        await query.delete_message()
-        await query.answer()
-        return
-
     # Extract user IDs from callback data - only support new format
     if len(callback_data_parts) < 4:
         await query.answer(
@@ -1206,6 +1200,12 @@ async def handle_collection_navigation(
 
     if user.user_id != original_user_id:
         await query.answer("You can only navigate collections you initiated!", show_alert=True)
+        return
+
+    # Handle close action (after user validation)
+    if "close" in query.data:
+        await query.delete_message()
+        await query.answer()
         return
 
     # Re-fetch the correct user's collection for navigation
