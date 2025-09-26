@@ -1,11 +1,6 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback, useReducer } from 'react';
 import { imageCache } from '../lib/imageCache';
 import type { CardData } from '../types';
-
-interface BatchLoadState {
-  loadingCards: Set<number>;
-  failedCards: Set<number>;
-}
 
 interface UseBatchLoaderReturn {
   loadingCards: Set<number>;
@@ -21,14 +16,68 @@ interface CardImageResponse {
 
 const BATCH_SIZE = 3;
 
+interface BatchLoadState {
+  loadingCards: Set<number>;
+  failedCards: Set<number>;
+}
+
+type BatchAction =
+  | { type: 'start-loading'; ids: number[] }
+  | { type: 'complete-loading'; completedIds: number[]; failedIds: number[] }
+  | { type: 'fail-loading'; ids: number[] }
+  | { type: 'reset' };
+
+const initialBatchState: BatchLoadState = {
+  loadingCards: new Set(),
+  failedCards: new Set(),
+};
+
+const batchReducer = (state: BatchLoadState, action: BatchAction): BatchLoadState => {
+  switch (action.type) {
+    case 'start-loading':
+      return {
+        loadingCards: new Set([...state.loadingCards, ...action.ids]),
+        failedCards: new Set(state.failedCards),
+      };
+    case 'complete-loading': {
+      const nextLoading = new Set(state.loadingCards);
+      action.completedIds.forEach(id => nextLoading.delete(id));
+
+      const nextFailed = new Set(state.failedCards);
+      action.failedIds.forEach(id => nextFailed.add(id));
+
+      return {
+        loadingCards: nextLoading,
+        failedCards: nextFailed,
+      };
+    }
+    case 'fail-loading': {
+      const nextLoading = new Set(state.loadingCards);
+      action.ids.forEach(id => nextLoading.delete(id));
+
+      const nextFailed = new Set(state.failedCards);
+      action.ids.forEach(id => nextFailed.add(id));
+
+      return {
+        loadingCards: nextLoading,
+        failedCards: nextFailed,
+      };
+    }
+    case 'reset':
+      return {
+        loadingCards: new Set(),
+        failedCards: new Set(),
+      };
+    default:
+      return state;
+  }
+};
+
 export const useBatchLoader = (
   cards: CardData[],
   initData: string | null
 ): UseBatchLoaderReturn => {
-  const [state, setState] = useState<BatchLoadState>({
-    loadingCards: new Set(),
-    failedCards: new Set(),
-  });
+  const [state, dispatch] = useReducer(batchReducer, initialBatchState);
 
   // Track which cards we've already attempted to load to prevent re-processing
   const processedCardsRef = useRef(new Set<number>());
@@ -38,90 +87,98 @@ export const useBatchLoader = (
   
   // Pending batch processing
   const pendingCardsRef = useRef(new Set<number>());
-  const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const batchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Create stable card IDs string for effect dependencies
   const cardIdsString = useMemo(() => cards.map(c => c.id).join(','), [cards]);
+
+  const apiBaseUrl = useMemo(
+    () => import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com',
+    []
+  );
+
+  const clearBatchTimeout = useCallback(() => {
+    if (batchTimeoutRef.current) {
+      clearTimeout(batchTimeoutRef.current);
+      batchTimeoutRef.current = null;
+    }
+  }, []);
+
+  const markCardsAsProcessing = useCallback((cardsToLoad: CardData[]) => {
+    cardsToLoad.forEach(card => {
+      processedCardsRef.current.add(card.id);
+    });
+  }, []);
+
+  const fetchBatchImages = useCallback(
+    async (batch: CardData[]) => {
+      const response = await fetch(`${apiBaseUrl}/cards/images`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `tma ${initData}`,
+        },
+        body: JSON.stringify({
+          card_ids: batch.map(c => c.id),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch batch images: ${response.statusText}`);
+      }
+
+      const imageResponses: CardImageResponse[] = await response.json();
+      imageResponses.forEach(imageResponse => {
+        imageCache.set(imageResponse.card_id, imageResponse.image_b64);
+      });
+
+      const batchCardIds = batch.map(c => c.id);
+      const loadedCardIds = new Set(imageResponses.map(r => r.card_id));
+      const failedCardIds = batchCardIds.filter(id => !loadedCardIds.has(id));
+
+      return { batchCardIds, failedCardIds };
+    },
+    [apiBaseUrl, initData]
+  );
 
   const loadCardsInBatches = useCallback((cardsToLoad: CardData[]) => {
     if (!initData || cardsToLoad.length === 0) return;
     
     console.log(`Loading ${cardsToLoad.length} cards in batches...`);
     
-    // Mark cards as being processed to prevent re-processing
-    cardsToLoad.forEach(card => {
-      processedCardsRef.current.add(card.id);
-    });
+    markCardsAsProcessing(cardsToLoad);
+    const allCardIds = cardsToLoad.map(c => c.id);
+    dispatch({ type: 'start-loading', ids: allCardIds });
 
-    // Mark cards as loading
-    setState(prev => ({
-      ...prev,
-      loadingCards: new Set([...prev.loadingCards, ...cardsToLoad.map(c => c.id)]),
-    }));
-
-    // Process batches
     const processBatches = async () => {
       for (let i = 0; i < cardsToLoad.length; i += BATCH_SIZE) {
         const batch = cardsToLoad.slice(i, i + BATCH_SIZE);
-        
+
         try {
           console.log(`Loading batch: ${batch.map(c => c.id)}`);
-          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-          
-          const response = await fetch(`${apiBaseUrl}/cards/images`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `tma ${initData}`
-            },
-            body: JSON.stringify({
-              card_ids: batch.map(c => c.id)
-            })
+          const { batchCardIds, failedCardIds } = await fetchBatchImages(batch);
+          console.log(`Successfully loaded ${batchCardIds.length - failedCardIds.length} images from batch`);
+
+          dispatch({
+            type: 'complete-loading',
+            completedIds: batchCardIds,
+            failedIds: failedCardIds,
           });
-          
-          if (!response.ok) {
-            throw new Error(`Failed to fetch batch images: ${response.statusText}`);
-          }
-          
-          const imageResponses: CardImageResponse[] = await response.json();
-          console.log(`Successfully loaded ${imageResponses.length} images from batch`);
-          
-          // Cache the loaded images
-          for (const imageResponse of imageResponses) {
-            imageCache.set(imageResponse.card_id, imageResponse.image_b64);
-          }
-
-          // Update state: remove from loading, add failures to failed
-          const batchCardIds = batch.map(c => c.id);
-          const loadedCardIds = new Set(imageResponses.map(r => r.card_id));
-          const failedCardIds = batchCardIds.filter(id => !loadedCardIds.has(id));
-
-          setState(prev => ({
-            loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
-            failedCards: new Set([...prev.failedCards, ...failedCardIds]),
-          }));
-
         } catch (error) {
           console.error(`Error loading batch:`, error);
-          
+
           const batchCardIds = batch.map(c => c.id);
-          
-          // Mark all cards in this batch as failed
-          setState(prev => ({
-            loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
-            failedCards: new Set([...prev.failedCards, ...batchCardIds]),
-          }));
+          dispatch({ type: 'fail-loading', ids: batchCardIds });
         }
-        
-        // Add a small delay between batches to avoid overwhelming the server
+
         if (i + BATCH_SIZE < cardsToLoad.length) {
           await new Promise(resolve => setTimeout(resolve, 300));
         }
       }
     };
 
-    processBatches();
-  }, [initData]);
+    void processBatches();
+  }, [fetchBatchImages, initData, markCardsAsProcessing]);
 
   // Process pending cards in batches
   const processPendingBatch = useCallback(() => {
@@ -146,11 +203,7 @@ export const useBatchLoader = (
   // Add card to pending batch and schedule processing
   const addToPendingBatch = useCallback((cardId: number) => {
     pendingCardsRef.current.add(cardId);
-    
-    // Clear existing timeout
-    if (batchTimeoutRef.current) {
-      clearTimeout(batchTimeoutRef.current);
-    }
+    clearBatchTimeout();
     
     // If we have enough for a batch, process immediately
     if (pendingCardsRef.current.size >= BATCH_SIZE) {
@@ -163,7 +216,7 @@ export const useBatchLoader = (
         processPendingBatch();
       }, 200); // Wait 200ms to accumulate more cards
     }
-  }, [processPendingBatch]);
+  }, [clearBatchTimeout, processPendingBatch]);
 
   // Function to be called by individual cards when visibility changes
   const setCardVisible = useCallback((cardId: number, isVisible: boolean) => {
@@ -204,28 +257,18 @@ export const useBatchLoader = (
 
     return () => {
       clearTimeout(fallbackTimer);
-      if (batchTimeoutRef.current) {
-        clearTimeout(batchTimeoutRef.current);
-      }
+      clearBatchTimeout();
     };
-  }, [cards, initData, loadCardsInBatches]);
+  }, [cards, initData, loadCardsInBatches, clearBatchTimeout]);
 
   // Reset state when cards change significantly
   useEffect(() => {
-    setState({
-      loadingCards: new Set(),
-      failedCards: new Set(),
-    });
+    dispatch({ type: 'reset' });
     processedCardsRef.current.clear();
     pendingCardsRef.current.clear();
     setVisibleCardIds(new Set());
-    
-    // Clear any pending timeouts
-    if (batchTimeoutRef.current) {
-      clearTimeout(batchTimeoutRef.current);
-      batchTimeoutRef.current = null;
-    }
-  }, [cardIdsString]);
+    clearBatchTimeout();
+  }, [cardIdsString, clearBatchTimeout]);
 
   return {
     loadingCards: state.loadingCards,
