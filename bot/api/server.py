@@ -254,7 +254,6 @@ async def get_trade_options(
     cards = await asyncio.to_thread(database.get_all_cards, card.chat_id)
 
     initiating_owner = card.owner
-    print(len(cards))
     filtered_cards = [
         card_option
         for card_option in cards
@@ -262,11 +261,7 @@ async def get_trade_options(
         and card_option.owner is not None
         and card_option.owner != initiating_owner
     ]
-    for card in cards:
-        print(card.owner)
-    print(initiating_owner)
-    print(card.owner)
-    print(filtered_cards)
+
     return [APICard(**card_option.__dict__) for card_option in filtered_cards]
 
 
