@@ -10,7 +10,8 @@ interface BatchLoadState {
 interface UseBatchLoaderReturn {
   loadingCards: Set<number>;
   failedCards: Set<number>;
-  registerCard: (cardId: number, element: Element | null) => void;
+  visibleCardIds: Set<number>;
+  setCardVisible: (cardId: number, isVisible: boolean) => void;
 }
 
 interface CardImageResponse {
@@ -32,16 +33,20 @@ export const useBatchLoader = (
   // Track which cards we've already attempted to load to prevent re-processing
   const processedCardsRef = useRef(new Set<number>());
   
-  // Track visible cards and their elements
-  const visibleCardsRef = useRef(new Set<number>());
-  const cardElementsRef = useRef(new Map<number, Element>());
-  const observerRef = useRef<IntersectionObserver | null>(null);
+  // Track visible cards
+  const [visibleCardIds, setVisibleCardIds] = useState<Set<number>>(new Set());
+  
+  // Pending batch processing
+  const pendingCardsRef = useRef(new Set<number>());
+  const batchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Create stable card IDs string for effect dependencies
   const cardIdsString = useMemo(() => cards.map(c => c.id).join(','), [cards]);
 
   const loadCardsInBatches = useCallback((cardsToLoad: CardData[]) => {
     if (!initData || cardsToLoad.length === 0) return;
+    
+    console.log(`Loading ${cardsToLoad.length} cards in batches...`);
     
     // Mark cards as being processed to prevent re-processing
     cardsToLoad.forEach(card => {
@@ -118,79 +123,70 @@ export const useBatchLoader = (
     processBatches();
   }, [initData]);
 
-  // Initialize intersection observer
-  useEffect(() => {
-    if (!('IntersectionObserver' in window)) {
-      // Fallback for browsers without IntersectionObserver
-      // Load all cards immediately
-      console.log('IntersectionObserver not supported, loading all cards');
-      const allCardIds = cards.map(c => c.id);
-      visibleCardsRef.current = new Set(allCardIds);
-      
-      // Trigger immediate loading
-      setTimeout(() => {
-        const cardsToLoad = cards.filter(card => 
-          !imageCache.has(card.id) && !processedCardsRef.current.has(card.id)
-        );
-        
-        if (cardsToLoad.length > 0) {
-          console.log(`Fallback: Loading ${cardsToLoad.length} cards immediately`);
-          loadCardsInBatches(cardsToLoad);
-        }
-      }, 100);
-      
-      return;
-    }
+  // Process pending cards in batches
+  const processPendingBatch = useCallback(() => {
+    if (pendingCardsRef.current.size === 0) return;
 
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        let hasNewVisibleCards = false;
-        
-        entries.forEach((entry) => {
-          const cardId = parseInt(entry.target.getAttribute('data-card-id') || '0');
-          if (cardId) {
-            if (entry.isIntersecting) {
-              if (!visibleCardsRef.current.has(cardId)) {
-                console.log(`Card ${cardId} became visible`);
-                visibleCardsRef.current.add(cardId);
-                hasNewVisibleCards = true;
-              }
-            } else {
-              visibleCardsRef.current.delete(cardId);
-            }
-          }
-        });
-
-        // Trigger loading for newly visible cards
-        if (hasNewVisibleCards && initData && cards.length > 0) {
-          console.log(`${visibleCardsRef.current.size} cards visible, checking what needs loading...`);
-          
-          const visibleCardsNeedingLoad = cards.filter(card => {
-            return visibleCardsRef.current.has(card.id) &&
-                   !imageCache.has(card.id) && 
-                   !processedCardsRef.current.has(card.id);
-          });
-
-          if (visibleCardsNeedingLoad.length > 0) {
-            console.log(`Loading ${visibleCardsNeedingLoad.length} visible cards in batches...`);
-            loadCardsInBatches(visibleCardsNeedingLoad);
-          }
-        }
-      },
-      {
-        rootMargin: '200px', // Increased margin to load images earlier
-        threshold: 0.1,
-      }
+    const pendingCardIds = Array.from(pendingCardsRef.current);
+    const visibleCards = cards.filter(card => 
+      pendingCardIds.includes(card.id) && 
+      !imageCache.has(card.id) && 
+      !processedCardsRef.current.has(card.id)
     );
 
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [initData, cards, loadCardsInBatches]);
+    if (visibleCards.length > 0) {
+      console.log(`Processing pending batch of ${visibleCards.length} cards:`, visibleCards.map(c => c.id));
+      loadCardsInBatches(visibleCards);
+    }
 
-  // Fallback: Load first batch immediately after a delay to ensure something loads
+    // Clear pending cards
+    pendingCardsRef.current.clear();
+  }, [cards, loadCardsInBatches]);
+
+  // Add card to pending batch and schedule processing
+  const addToPendingBatch = useCallback((cardId: number) => {
+    pendingCardsRef.current.add(cardId);
+    
+    // Clear existing timeout
+    if (batchTimeoutRef.current) {
+      clearTimeout(batchTimeoutRef.current);
+    }
+    
+    // If we have enough for a batch, process immediately
+    if (pendingCardsRef.current.size >= BATCH_SIZE) {
+      console.log(`Pending batch reached ${BATCH_SIZE} cards, processing immediately`);
+      processPendingBatch();
+    } else {
+      // Otherwise, wait a bit to accumulate more cards
+      batchTimeoutRef.current = setTimeout(() => {
+        console.log(`Processing pending batch after timeout (${pendingCardsRef.current.size} cards)`);
+        processPendingBatch();
+      }, 200); // Wait 200ms to accumulate more cards
+    }
+  }, [processPendingBatch]);
+
+  // Function to be called by individual cards when visibility changes
+  const setCardVisible = useCallback((cardId: number, isVisible: boolean) => {
+    setVisibleCardIds(prev => {
+      const newSet = new Set(prev);
+      if (isVisible) {
+        if (!newSet.has(cardId)) {
+          console.log(`Card ${cardId} became visible`);
+          newSet.add(cardId);
+          
+          // Add to pending batch if not already cached/processed
+          if (!imageCache.has(cardId) && !processedCardsRef.current.has(cardId)) {
+            addToPendingBatch(cardId);
+          }
+        }
+      } else {
+        newSet.delete(cardId);
+      }
+      return newSet;
+    });
+  }, [addToPendingBatch]);
+
+  // Fallback: Load first batch after 1 second if nothing loaded
   useEffect(() => {
     if (!cards.length || !initData) return;
 
@@ -199,36 +195,20 @@ export const useBatchLoader = (
         !imageCache.has(card.id) && !processedCardsRef.current.has(card.id)
       );
       
-      if (cardsNeedingLoad.length > 0 && visibleCardsRef.current.size === 0) {
-        console.log('Fallback: No visible cards detected, loading first batch anyway');
-        const firstBatch = cardsNeedingLoad.slice(0, 6); // Load first 6 cards as fallback
+      if (cardsNeedingLoad.length > 0) {
+        console.log('Fallback: Loading first 6 cards after 1 second timeout');
+        const firstBatch = cardsNeedingLoad.slice(0, 6);
         loadCardsInBatches(firstBatch);
       }
-    }, 2000); // Wait 2 seconds
+    }, 1000);
 
-    return () => clearTimeout(fallbackTimer);
+    return () => {
+      clearTimeout(fallbackTimer);
+      if (batchTimeoutRef.current) {
+        clearTimeout(batchTimeoutRef.current);
+      }
+    };
   }, [cards, initData, loadCardsInBatches]);
-
-  // Register a card element for intersection observation
-  const registerCard = useCallback((cardId: number, element: Element | null) => {
-    if (!observerRef.current) return;
-
-    // Unobserve previous element if it exists
-    const previousElement = cardElementsRef.current.get(cardId);
-    if (previousElement) {
-      observerRef.current.unobserve(previousElement);
-    }
-
-    if (element) {
-      // Set data attribute for identification
-      element.setAttribute('data-card-id', cardId.toString());
-      cardElementsRef.current.set(cardId, element);
-      observerRef.current.observe(element);
-    } else {
-      cardElementsRef.current.delete(cardId);
-      visibleCardsRef.current.delete(cardId);
-    }
-  }, []);
 
   // Reset state when cards change significantly
   useEffect(() => {
@@ -237,18 +217,20 @@ export const useBatchLoader = (
       failedCards: new Set(),
     });
     processedCardsRef.current.clear();
-    visibleCardsRef.current.clear();
+    pendingCardsRef.current.clear();
+    setVisibleCardIds(new Set());
     
-    // Clear all observed elements
-    if (observerRef.current) {
-      observerRef.current.disconnect();
+    // Clear any pending timeouts
+    if (batchTimeoutRef.current) {
+      clearTimeout(batchTimeoutRef.current);
+      batchTimeoutRef.current = null;
     }
-    cardElementsRef.current.clear();
   }, [cardIdsString]);
 
   return {
     loadingCards: state.loadingCards,
     failedCards: state.failedCards,
-    registerCard,
+    visibleCardIds,
+    setCardVisible,
   };
 };

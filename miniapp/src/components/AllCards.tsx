@@ -11,7 +11,7 @@ interface AllCardsProps {
 }
 
 const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }) => {
-  const { loadingCards, failedCards, registerCard } = useBatchLoader(cards, initData);
+  const { loadingCards, failedCards, setCardVisible } = useBatchLoader(cards, initData);
 
   return (
     <div className="all-cards-container">
@@ -23,7 +23,7 @@ const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }
             onClick={onCardClick}
             isLoading={loadingCards.has(card.id)}
             hasFailed={failedCards.has(card.id)}
-            registerCard={registerCard}
+            setCardVisible={setCardVisible}
           />
         ))}
       </div>
