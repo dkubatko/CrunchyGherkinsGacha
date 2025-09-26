@@ -40,13 +40,105 @@ export const useBatchLoader = (
   // Create stable card IDs string for effect dependencies
   const cardIdsString = useMemo(() => cards.map(c => c.id).join(','), [cards]);
 
+  const loadCardsInBatches = useCallback((cardsToLoad: CardData[]) => {
+    if (!initData || cardsToLoad.length === 0) return;
+    
+    // Mark cards as being processed to prevent re-processing
+    cardsToLoad.forEach(card => {
+      processedCardsRef.current.add(card.id);
+    });
+
+    // Mark cards as loading
+    setState(prev => ({
+      ...prev,
+      loadingCards: new Set([...prev.loadingCards, ...cardsToLoad.map(c => c.id)]),
+    }));
+
+    // Process batches
+    const processBatches = async () => {
+      for (let i = 0; i < cardsToLoad.length; i += BATCH_SIZE) {
+        const batch = cardsToLoad.slice(i, i + BATCH_SIZE);
+        
+        try {
+          console.log(`Loading batch: ${batch.map(c => c.id)}`);
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+          
+          const response = await fetch(`${apiBaseUrl}/cards/images`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `tma ${initData}`
+            },
+            body: JSON.stringify({
+              card_ids: batch.map(c => c.id)
+            })
+          });
+          
+          if (!response.ok) {
+            throw new Error(`Failed to fetch batch images: ${response.statusText}`);
+          }
+          
+          const imageResponses: CardImageResponse[] = await response.json();
+          console.log(`Successfully loaded ${imageResponses.length} images from batch`);
+          
+          // Cache the loaded images
+          for (const imageResponse of imageResponses) {
+            imageCache.set(imageResponse.card_id, imageResponse.image_b64);
+          }
+
+          // Update state: remove from loading, add failures to failed
+          const batchCardIds = batch.map(c => c.id);
+          const loadedCardIds = new Set(imageResponses.map(r => r.card_id));
+          const failedCardIds = batchCardIds.filter(id => !loadedCardIds.has(id));
+
+          setState(prev => ({
+            loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
+            failedCards: new Set([...prev.failedCards, ...failedCardIds]),
+          }));
+
+        } catch (error) {
+          console.error(`Error loading batch:`, error);
+          
+          const batchCardIds = batch.map(c => c.id);
+          
+          // Mark all cards in this batch as failed
+          setState(prev => ({
+            loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
+            failedCards: new Set([...prev.failedCards, ...batchCardIds]),
+          }));
+        }
+        
+        // Add a small delay between batches to avoid overwhelming the server
+        if (i + BATCH_SIZE < cardsToLoad.length) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+    };
+
+    processBatches();
+  }, [initData]);
+
   // Initialize intersection observer
   useEffect(() => {
     if (!('IntersectionObserver' in window)) {
       // Fallback for browsers without IntersectionObserver
       // Load all cards immediately
+      console.log('IntersectionObserver not supported, loading all cards');
       const allCardIds = cards.map(c => c.id);
       visibleCardsRef.current = new Set(allCardIds);
+      
+      // Trigger immediate loading
+      setTimeout(() => {
+        const cardsToLoad = cards.filter(card => 
+          !imageCache.has(card.id) && !processedCardsRef.current.has(card.id)
+        );
+        
+        if (cardsToLoad.length > 0) {
+          console.log(`Fallback: Loading ${cardsToLoad.length} cards immediately`);
+          loadCardsInBatches(cardsToLoad);
+        }
+      }, 100);
+      
       return;
     }
 
@@ -59,6 +151,7 @@ export const useBatchLoader = (
           if (cardId) {
             if (entry.isIntersecting) {
               if (!visibleCardsRef.current.has(cardId)) {
+                console.log(`Card ${cardId} became visible`);
                 visibleCardsRef.current.add(cardId);
                 hasNewVisibleCards = true;
               }
@@ -70,7 +163,8 @@ export const useBatchLoader = (
 
         // Trigger loading for newly visible cards
         if (hasNewVisibleCards && initData && cards.length > 0) {
-          // Inline the batch loading logic to avoid dependency issues
+          console.log(`${visibleCardsRef.current.size} cards visible, checking what needs loading...`);
+          
           const visibleCardsNeedingLoad = cards.filter(card => {
             return visibleCardsRef.current.has(card.id) &&
                    !imageCache.has(card.id) && 
@@ -79,85 +173,12 @@ export const useBatchLoader = (
 
           if (visibleCardsNeedingLoad.length > 0) {
             console.log(`Loading ${visibleCardsNeedingLoad.length} visible cards in batches...`);
-
-            // Mark cards as being processed to prevent re-processing
-            visibleCardsNeedingLoad.forEach(card => {
-              processedCardsRef.current.add(card.id);
-            });
-
-            // Mark cards as loading
-            setState(prev => ({
-              ...prev,
-              loadingCards: new Set([...prev.loadingCards, ...visibleCardsNeedingLoad.map(c => c.id)]),
-            }));
-
-            // Process batches
-            const processBatches = async () => {
-              for (let i = 0; i < visibleCardsNeedingLoad.length; i += BATCH_SIZE) {
-                const batch = visibleCardsNeedingLoad.slice(i, i + BATCH_SIZE);
-                
-                try {
-                  console.log(`Loading batch: ${batch.map(c => c.id)}`);
-                  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-                  
-                  const response = await fetch(`${apiBaseUrl}/cards/images`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `tma ${initData}`
-                    },
-                    body: JSON.stringify({
-                      card_ids: batch.map(c => c.id)
-                    })
-                  });
-                  
-                  if (!response.ok) {
-                    throw new Error(`Failed to fetch batch images: ${response.statusText}`);
-                  }
-                  
-                  const imageResponses: CardImageResponse[] = await response.json();
-                  console.log(`Successfully loaded ${imageResponses.length} images`);
-                  
-                  // Cache the loaded images
-                  for (const imageResponse of imageResponses) {
-                    imageCache.set(imageResponse.card_id, imageResponse.image_b64);
-                  }
-
-                  // Update state: remove from loading, add failures to failed
-                  const batchCardIds = batch.map(c => c.id);
-                  const loadedCardIds = new Set(imageResponses.map(r => r.card_id));
-                  const failedCardIds = batchCardIds.filter(id => !loadedCardIds.has(id));
-
-                  setState(prev => ({
-                    loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
-                    failedCards: new Set([...prev.failedCards, ...failedCardIds]),
-                  }));
-
-                } catch (error) {
-                  console.error(`Error loading batch:`, error);
-                  
-                  const batchCardIds = batch.map(c => c.id);
-                  
-                  // Mark all cards in this batch as failed
-                  setState(prev => ({
-                    loadingCards: new Set([...prev.loadingCards].filter(id => !batchCardIds.includes(id))),
-                    failedCards: new Set([...prev.failedCards, ...batchCardIds]),
-                  }));
-                }
-                
-                // Add a small delay between batches to avoid overwhelming the server
-                if (i + BATCH_SIZE < visibleCardsNeedingLoad.length) {
-                  await new Promise(resolve => setTimeout(resolve, 300));
-                }
-              }
-            };
-
-            processBatches();
+            loadCardsInBatches(visibleCardsNeedingLoad);
           }
         }
       },
       {
-        rootMargin: '50px', // Load images 50px before they become visible
+        rootMargin: '200px', // Increased margin to load images earlier
         threshold: 0.1,
       }
     );
@@ -167,7 +188,26 @@ export const useBatchLoader = (
         observerRef.current.disconnect();
       }
     };
-  }, [initData, cards]);
+  }, [initData, cards, loadCardsInBatches]);
+
+  // Fallback: Load first batch immediately after a delay to ensure something loads
+  useEffect(() => {
+    if (!cards.length || !initData) return;
+
+    const fallbackTimer = setTimeout(() => {
+      const cardsNeedingLoad = cards.filter(card => 
+        !imageCache.has(card.id) && !processedCardsRef.current.has(card.id)
+      );
+      
+      if (cardsNeedingLoad.length > 0 && visibleCardsRef.current.size === 0) {
+        console.log('Fallback: No visible cards detected, loading first batch anyway');
+        const firstBatch = cardsNeedingLoad.slice(0, 6); // Load first 6 cards as fallback
+        loadCardsInBatches(firstBatch);
+      }
+    }, 2000); // Wait 2 seconds
+
+    return () => clearTimeout(fallbackTimer);
+  }, [cards, initData, loadCardsInBatches]);
 
   // Register a card element for intersection observation
   const registerCard = useCallback((cardId: number, element: Element | null) => {
