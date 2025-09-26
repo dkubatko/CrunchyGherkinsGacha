@@ -1,4 +1,5 @@
-import React, { useState, useEffect, memo, useRef } from 'react';
+import React, { useState, useEffect, memo } from 'react';
+import { useInView } from 'react-intersection-observer';
 import { imageCache } from '../lib/imageCache';
 import type { CardData } from '../types';
 
@@ -8,27 +9,25 @@ interface MiniCardProps {
   onClick: (card: CardData) => void;
   isLoading?: boolean;
   hasFailed?: boolean;
-  registerCard?: (cardId: number, element: Element | null) => void;
+  setCardVisible: (cardId: number, isVisible: boolean) => void;
 }
 
-const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = false, hasFailed = false, registerCard }) => {
+const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
   // Check if we have cached data immediately to set initial state
   const cachedImage = imageCache.has(card.id) ? imageCache.get(card.id) : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
-  const cardRef = useRef<HTMLDivElement>(null);
 
-  // Register this card element with the intersection observer
+  // Use react-intersection-observer for reliable visibility detection
+  const { ref, inView } = useInView({
+    threshold: 0.1,
+    rootMargin: '300px', // Load images 300px before they become visible
+    triggerOnce: false, // Keep monitoring visibility changes
+  });
+
+  // Notify parent when visibility changes
   useEffect(() => {
-    if (registerCard && cardRef.current) {
-      registerCard(card.id, cardRef.current);
-    }
-    
-    return () => {
-      if (registerCard) {
-        registerCard(card.id, null);
-      }
-    };
-  }, [card.id, registerCard]);
+    setCardVisible(card.id, inView);
+  }, [card.id, inView, setCardVisible]);
 
   // Effect to check cache when loading state changes or periodically
   useEffect(() => {
@@ -63,7 +62,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
   const showError = hasFailed;
 
   return (
-    <div className="grid-card" ref={cardRef} onClick={() => onClick(card)}>
+    <div className="grid-card" ref={ref} onClick={() => onClick(card)}>
       {showImage ? (
         <>
           <img src={`data:image/png;base64,${imageB64}`} alt={`${card.rarity} ${card.modifier} ${card.base_name}`} loading="lazy" />
