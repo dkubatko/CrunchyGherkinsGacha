@@ -350,9 +350,6 @@ async def get_card_images_route(
     authorization: Optional[str] = Header(None, alias="Authorization"),
 ):
     """Get base64 encoded images for multiple cards in a single batch."""
-
-    logger.info(f"Batch image request for card IDs: {request.card_ids if request else 'None'}")
-
     if not authorization:
         logger.warning("No authorization header provided for batch image request")
         raise HTTPException(status_code=401, detail="Authorization header required")
@@ -378,13 +375,7 @@ async def get_card_images_route(
             status_code=400, detail="A maximum of 3 card IDs can be requested per batch"
         )
 
-    logger.info(
-        f"Processing batch request for {len(unique_card_ids)} unique card IDs: {unique_card_ids}"
-    )
-
     images = await asyncio.to_thread(database.get_card_images_batch, unique_card_ids)
-
-    logger.info(f"Retrieved {len(images)} images from database")
 
     if not images:
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")
@@ -398,7 +389,6 @@ async def get_card_images_route(
     if not response_payload:
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")
 
-    logger.info(f"Returning {len(response_payload)} card images")
     return response_payload
 
 
