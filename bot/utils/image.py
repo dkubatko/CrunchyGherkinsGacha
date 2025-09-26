@@ -101,3 +101,41 @@ class ImageUtil:
             logger.error(f"Error cropping image: {e}")
             # Return original image bytes if processing fails
             return image_bytes
+
+    @staticmethod
+    def compress_to_fraction(image_bytes: bytes, scale_factor: float = 1 / 3) -> bytes:
+        """Resize the image to a fraction of its original width and height."""
+        if scale_factor <= 0:
+            raise ValueError("scale_factor must be greater than 0")
+
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            original_format = image.format or "PNG"
+
+            width, height = image.size
+            target_width = max(1, int(width * scale_factor))
+            target_height = max(1, int(height * scale_factor))
+
+            if target_width == width and target_height == height:
+                return image_bytes
+
+            resized_image = image.resize((target_width, target_height), Image.LANCZOS)
+
+            # Ensure consistent mode for saving while preserving alpha where possible
+            if resized_image.mode not in ("RGB", "RGBA"):
+                resized_image = resized_image.convert("RGBA" if image.mode == "RGBA" else "RGB")
+
+            output_buffer = io.BytesIO()
+            resized_image.save(output_buffer, format=original_format, optimize=True)
+            logger.info(
+                "Image compressed from %dx%d to %dx%d",
+                width,
+                height,
+                target_width,
+                target_height,
+            )
+            return output_buffer.getvalue()
+
+        except Exception as exc:
+            logger.error("Error compressing image: %s", exc)
+            return image_bytes
