@@ -1,60 +1,70 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, memo, useRef } from 'react';
 import { imageCache } from '../lib/imageCache';
 import type { CardData } from '../types';
 
 interface MiniCardProps {
   card: CardData;
-  initData: string | null;
+  initData?: string | null;
   onClick: (card: CardData) => void;
+  isLoading?: boolean;
+  hasFailed?: boolean;
+  registerCard?: (cardId: number, element: Element | null) => void;
 }
 
-const MiniCard: React.FC<MiniCardProps> = memo(({ card, initData, onClick }) => {
+const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = false, hasFailed = false, registerCard }) => {
   // Check if we have cached data immediately to set initial state
   const cachedImage = imageCache.has(card.id) ? imageCache.get(card.id) : null;
-  
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
-  const [loading, setLoading] = useState(!cachedImage);
-  const [error, setError] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
+  // Register this card element with the intersection observer
   useEffect(() => {
-    const fetchImage = async () => {
-      if (!initData || !card.id) return;
-
-      if (imageCache.has(card.id)) {
-        setImageB64(imageCache.get(card.id)!);
-        setLoading(false);
-        return;
-      }
-
-      try {
-        setLoading(true);
-        setError(false);
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-        const response = await fetch(`${apiBaseUrl}/cards/image/${card.id}`, {
-          headers: {
-            'Authorization': `tma ${initData}`
-          }
-        });
-        if (!response.ok) {
-          throw new Error('Failed to fetch image');
-        }
-        const imageData = await response.json();
-        imageCache.set(card.id, imageData);
-        setImageB64(imageData);
-        setLoading(false);
-      } catch (err) {
-        console.error(`Error fetching image for card ${card.id}:`, err);
-        setError(true);
-        setLoading(false);
+    if (registerCard && cardRef.current) {
+      registerCard(card.id, cardRef.current);
+    }
+    
+    return () => {
+      if (registerCard) {
+        registerCard(card.id, null);
       }
     };
+  }, [card.id, registerCard]);
 
-    fetchImage();
-  }, [card.id, initData]);
+  // Effect to check cache when loading state changes or periodically
+  useEffect(() => {
+    if (imageB64) return; // Already have image, no need to check
+    
+    if (imageCache.has(card.id)) {
+      const cached = imageCache.get(card.id);
+      if (cached) {
+        setImageB64(cached);
+        return;
+      }
+    }
+
+    // If we're loading, check cache periodically
+    if (isLoading) {
+      const interval = setInterval(() => {
+        if (imageCache.has(card.id)) {
+          const cached = imageCache.get(card.id);
+          if (cached) {
+            setImageB64(cached);
+            clearInterval(interval);
+          }
+        }
+      }, 100);
+
+      return () => clearInterval(interval);
+    }
+  }, [card.id, isLoading, imageB64]);
+
+  const showImage = imageB64 && !hasFailed;
+  const showLoading = !imageB64 && isLoading && !hasFailed;
+  const showError = hasFailed;
 
   return (
-    <div className="grid-card" onClick={() => onClick(card)}>
-      {imageB64 && !loading && !error ? (
+    <div className="grid-card" ref={cardRef} onClick={() => onClick(card)}>
+      {showImage ? (
         <>
           <img src={`data:image/png;base64,${imageB64}`} alt={`${card.rarity} ${card.modifier} ${card.base_name}`} loading="lazy" />
           <div className="grid-card-info">
@@ -62,7 +72,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, initData, onClick }) => 
             <div className="grid-card-rarity">{card.rarity}</div>
           </div>
         </>
-      ) : error ? (
+      ) : showError ? (
         <div className="card-image-loader">
           <div className="grid-card-error">
             <div>❌</div>
@@ -72,9 +82,20 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, initData, onClick }) => 
             </div>
           </div>
         </div>
-      ) : (
+      ) : showLoading ? (
         <div className="card-image-loader">
           <div className="spinner-mini"></div>
+          <div className="grid-card-info">
+            <div className="grid-card-title">{card.modifier} {card.base_name}</div>
+            <div className="grid-card-rarity">{card.rarity}</div>
+          </div>
+        </div>
+      ) : (
+        <div className="card-image-loader">
+          <div className="grid-card-info">
+            <div className="grid-card-title">{card.modifier} {card.base_name}</div>
+            <div className="grid-card-rarity">{card.rarity}</div>
+          </div>
         </div>
       )}
     </div>

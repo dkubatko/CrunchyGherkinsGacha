@@ -5,7 +5,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Any
+from typing import Optional, Any, List
 
 from alembic import command
 from alembic.config import Config
@@ -452,6 +452,31 @@ def get_card_image(card_id: int) -> str | None:
     result = cursor.fetchone()
     conn.close()
     return result[0] if result else None
+
+
+def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
+    """Get base64 images for multiple cards in a single query."""
+    if not card_ids:
+        return {}
+
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+        placeholders = ",".join(["?"] * len(card_ids))
+        cursor.execute(
+            f"SELECT id, image_b64 FROM cards WHERE id IN ({placeholders})",
+            tuple(card_ids),
+        )
+        rows = cursor.fetchall()
+        fetched = {int(row["id"]): row["image_b64"] for row in rows if row["image_b64"]}
+        ordered: dict[int, str] = {}
+        for card_id in card_ids:
+            image = fetched.get(card_id)
+            if image is not None:
+                ordered[card_id] = image
+        return ordered
+    finally:
+        conn.close()
 
 
 def get_total_cards_count():
