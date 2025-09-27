@@ -41,10 +41,18 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
       .filter((owner): owner is string => Boolean(owner))
   )).sort();
 
-  // Get unique rarities from cards for the filter dropdown  
+  // Get unique rarities from cards for the filter dropdown, sorted by rarity order
+  const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
   const uniqueRarities = Array.from(new Set(
     cards.map(card => card.rarity)
-  )).sort();
+  )).sort((a, b) => {
+    const aIndex = rarityOrder.indexOf(a);
+    const bIndex = rarityOrder.indexOf(b);
+    // If rarity not found in order, put it at the end
+    const aPos = aIndex === -1 ? rarityOrder.length : aIndex;
+    const bPos = bIndex === -1 ? rarityOrder.length : bIndex;
+    return aPos - bPos;
+  });
 
   // Close dropdowns when clicking outside
   useEffect(() => {

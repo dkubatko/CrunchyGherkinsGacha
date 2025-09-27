@@ -66,6 +66,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
       {showImage ? (
         <>
           <img src={`data:image/png;base64,${imageB64}`} alt={`${card.rarity} ${card.modifier} ${card.base_name}`} loading="lazy" />
+          <div className="grid-card-number-overlay">#{card.id}</div>
           <div className="grid-card-info">
             <div className="grid-card-title">{card.modifier} {card.base_name}</div>
             <div className="grid-card-rarity">{card.rarity}</div>
@@ -73,6 +74,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
         </>
       ) : showError ? (
         <div className="card-image-loader">
+          <div className="grid-card-number-overlay">#{card.id}</div>
           <div className="grid-card-error">
             <div>❌</div>
             <div className="grid-card-info">
@@ -83,6 +85,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
         </div>
       ) : showLoading ? (
         <div className="card-image-loader">
+          <div className="grid-card-number-overlay">#{card.id}</div>
           <div className="spinner-mini"></div>
           <div className="grid-card-info">
             <div className="grid-card-title">{card.modifier} {card.base_name}</div>
@@ -91,6 +94,7 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
         </div>
       ) : (
         <div className="card-image-loader">
+          <div className="grid-card-number-overlay">#{card.id}</div>
           <div className="grid-card-info">
             <div className="grid-card-title">{card.modifier} {card.base_name}</div>
             <div className="grid-card-rarity">{card.rarity}</div>
