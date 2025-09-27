@@ -440,10 +440,19 @@ function App() {
 
       <div className="app-content">
         <div className="title-container">
+          {view === 'current' && cards.length > 0 && !isGridView && (
+            <div className="card-position-indicator">
+              <span className="position-current">{currentIndex + 1}</span>
+              <span className="position-separator"> / </span>
+              <span className="position-total">{cards.length}</span>
+            </div>
+          )}
           {view === 'current' && cards.length > 0 && (
             <button 
               className="view-toggle-button"
               onClick={handleGridToggle}
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => e.stopPropagation()}
               aria-label={isGridView ? "Currently in grid view" : "Currently in gallery view"}
             >
               {isGridView ? "Grid" : "Gallery"}
@@ -488,13 +497,6 @@ function App() {
                   </>
                 ) : (
                   <div className={`card-container ${isMainButtonVisible ? 'with-trade-button' : ''}`}>
-                    {/* Card Position Indicator */}
-                    <div className="card-position-indicator" style={{ marginBottom: '2vh' }}>
-                      <span className="position-current">{currentIndex + 1}</span>
-                      <span className="position-separator"> / </span>
-                      <span className="position-total">{cards.length}</span>
-                    </div>
-                    
                     {/* Current Card */}
                     <Card 
                       {...cards[currentIndex]} 
