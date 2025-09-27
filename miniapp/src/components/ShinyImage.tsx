@@ -22,12 +22,35 @@ interface ShinyImageProps {
   tiltKey: number;
 }
 
+// Performance constants
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const toDegrees = (value: number) => (value * 180) / Math.PI;
 const createZeroTilt = (): TiltValues => ({ x: 0, y: 0 });
 const TILT_LIMIT_DEGREES = 15;
 const TILT_SENSITIVITY = 0.3;
 const SMOOTHING_THRESHOLD = 0.005;
+
+// Performance detection
+const detectDevicePerformance = (): 'high' | 'medium' | 'low' => {
+  const hardwareConcurrency = navigator.hardwareConcurrency || 2;
+  const memory = (navigator as any).deviceMemory || 4; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const userAgent = navigator.userAgent.toLowerCase();
+  
+  // Check for high-end devices
+  if (hardwareConcurrency >= 8 && memory >= 8) return 'high';
+  
+  // Check for low-end devices
+  if (hardwareConcurrency <= 2 || memory <= 2 || 
+      userAgent.includes('android 4') || userAgent.includes('android 5')) {
+    return 'low';
+  }
+  
+  return 'medium';
+};
+
+const DEVICE_PERFORMANCE = detectDevicePerformance();
+const ANIMATION_FPS = DEVICE_PERFORMANCE === 'high' ? 60 : DEVICE_PERFORMANCE === 'medium' ? 30 : 15;
+const FRAME_INTERVAL = 1000 / ANIMATION_FPS;
 
 const wrapAngleDelta = (angle: number) => {
   if (!Number.isFinite(angle)) {
@@ -49,18 +72,19 @@ const normalizeAngleDelta = (current: number, reference: number) => {
 
 const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey }) => {
   const [referenceOrientation, setReferenceOrientation] = useState<OrientationData | null>(null);
-  const [animationTick, setAnimationTick] = useState(0);
-  const [smoothedTilt, setSmoothedTilt] = useState<TiltValues>(createZeroTilt);
+  const [animationState, setAnimationState] = useState({ tick: 0, smoothedTilt: createZeroTilt() });
 
   const tiltTargetRef = useRef<TiltValues>(createZeroTilt());
-  const smoothingFactorRef = useRef(0.18);
+  const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.18 : 0.12);
+  const lastFrameTimeRef = useRef<number>(0);
+  const animationFrameRef = useRef<number | undefined>(undefined);
 
   // Reset reference when tiltKey changes (new card)
   useEffect(() => {
     setReferenceOrientation(null);
     const resetTilt = createZeroTilt();
     tiltTargetRef.current = resetTilt;
-    setSmoothedTilt(resetTilt);
+    setAnimationState(prev => ({ ...prev, smoothedTilt: resetTilt }));
   }, [tiltKey]);
 
   // Set reference on first non-zero orientation reading
@@ -72,56 +96,60 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
   }, [orientation, referenceOrientation]);
 
   useEffect(() => {
-    smoothingFactorRef.current = effectsEnabled ? 0.18 : 0.1;
+    const performanceFactor = DEVICE_PERFORMANCE === 'high' ? 0.18 : DEVICE_PERFORMANCE === 'medium' ? 0.15 : 0.12;
+    smoothingFactorRef.current = effectsEnabled ? performanceFactor : 0.1;
     if (!effectsEnabled) {
       tiltTargetRef.current = createZeroTilt();
     }
   }, [effectsEnabled]);
 
-  // Animation loop for subtle shine effect on PC
+  // Consolidated animation loop
   useEffect(() => {
-    if (!orientation.isStarted || !referenceOrientation) {
-      const interval = setInterval(() => {
-        setAnimationTick(tick => tick + 1);
-      }, 16); // 60 FPS for smooth animation
+    const animate = (currentTime: number) => {
+      // Throttle animation based on device performance
+      if (currentTime - lastFrameTimeRef.current < FRAME_INTERVAL) {
+        animationFrameRef.current = requestAnimationFrame(animate);
+        return;
+      }
       
-      return () => clearInterval(interval);
-    }
-  }, [orientation.isStarted, referenceOrientation]);
+      lastFrameTimeRef.current = currentTime;
 
-  useEffect(() => {
-    let animationFrame: number;
-
-    const updateTilt = () => {
-      setSmoothedTilt(prev => {
+      setAnimationState(prevState => {
         const target = tiltTargetRef.current;
         const factor = smoothingFactorRef.current;
+        const prevTilt = prevState.smoothedTilt;
 
-        const nextX = prev.x + (target.x - prev.x) * factor;
-        const nextY = prev.y + (target.y - prev.y) * factor;
+        const nextX = prevTilt.x + (target.x - prevTilt.x) * factor;
+        const nextY = prevTilt.y + (target.y - prevTilt.y) * factor;
 
-        if (Math.abs(nextX - prev.x) < SMOOTHING_THRESHOLD && Math.abs(nextY - prev.y) < SMOOTHING_THRESHOLD) {
+        // Early return if no significant change
+        if (Math.abs(nextX - prevTilt.x) < SMOOTHING_THRESHOLD && Math.abs(nextY - prevTilt.y) < SMOOTHING_THRESHOLD) {
           if (Math.abs(target.x) < SMOOTHING_THRESHOLD && Math.abs(target.y) < SMOOTHING_THRESHOLD) {
-            if (prev.x === 0 && prev.y === 0) {
-              return prev;
-            }
-            return createZeroTilt();
+            return prevState.smoothedTilt.x === 0 && prevState.smoothedTilt.y === 0 
+              ? prevState 
+              : { ...prevState, smoothedTilt: createZeroTilt() };
           }
-
-          return prev;
+          return prevState;
         }
 
         return {
-          x: Math.abs(nextX) < SMOOTHING_THRESHOLD ? 0 : nextX,
-          y: Math.abs(nextY) < SMOOTHING_THRESHOLD ? 0 : nextY
+          tick: prevState.tick + 1,
+          smoothedTilt: {
+            x: Math.abs(nextX) < SMOOTHING_THRESHOLD ? 0 : nextX,
+            y: Math.abs(nextY) < SMOOTHING_THRESHOLD ? 0 : nextY
+          }
         };
       });
 
-      animationFrame = requestAnimationFrame(updateTilt);
+      animationFrameRef.current = requestAnimationFrame(animate);
     };
 
-    animationFrame = requestAnimationFrame(updateTilt);
-    return () => cancelAnimationFrame(animationFrame);
+    animationFrameRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
   }, []);
 
   const orientationDelta = useMemo(() => {
@@ -158,7 +186,7 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
   }, [effectsEnabled, targetTiltAngles]);
 
   const hasLiveTilt = effectsEnabled && !!targetTiltAngles;
-  const tiltForEffects = hasLiveTilt ? smoothedTilt : null;
+  const tiltForEffects = hasLiveTilt ? animationState.smoothedTilt : null;
 
   const manualTiltAngles = useMemo(() => {
     if (!tiltForEffects) {
@@ -187,7 +215,7 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
     }
 
     if (!tiltForEffects) {
-      const time = animationTick * 0.01;
+      const time = animationState.tick * 0.01;
       return {
         offsetX: Math.sin(time) * 6,
         offsetY: 17 + Math.cos(time * 1.4) * 3,
@@ -214,7 +242,7 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
     const alpha = clamp(baseAlpha + magnitudeBoost + directionalBoost, 0.4, 0.85);
 
     return { offsetX, offsetY, blur, spread, alpha };
-  }, [animationTick, effectsEnabled, tiltForEffects]);
+  }, [animationState.tick, effectsEnabled, tiltForEffects]);
 
   const tiltContainerStyle = useMemo<React.CSSProperties>(() => ({
     transformStyle: 'preserve-3d'
@@ -224,46 +252,45 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
     boxShadow: `${shadowMetrics.offsetX}px ${shadowMetrics.offsetY}px ${shadowMetrics.blur}px ${shadowMetrics.spread}px rgba(0, 0, 0, ${shadowMetrics.alpha})`
   }), [shadowMetrics]);
 
-  // Calculate shine position based on device tilt
-  const getShinePosition = () => {
+  // Memoized shine calculations for better performance
+  const shineMetrics = useMemo(() => {
     if (!effectsEnabled) {
-      return { x: 50, y: 50 };
+      return { x: 50, y: 50, intensity: 0 };
     }
     
+    // Get shine intensity based on rarity
+    const getShineIntensity = (rarity: string) => {
+      const rarityLower = rarity.toLowerCase();
+      const baseIntensity = DEVICE_PERFORMANCE === 'high' ? 1.0 : DEVICE_PERFORMANCE === 'medium' ? 0.8 : 0.6;
+      switch (rarityLower) {
+        case 'common': return 0.33 * baseIntensity;
+        case 'rare': return 0.60 * baseIntensity;
+        case 'epic': return 0.85 * baseIntensity;
+        case 'legendary': return 1.25 * baseIntensity;
+        default: return 0.33 * baseIntensity;
+      }
+    };
+    
     if (!tiltForEffects) {
-      const time = animationTick * 0.012;
-      return { 
-        x: 80 + Math.sin(time) * 3,
-        y: 20 + Math.cos(time * 1.2) * 2
+      // Simplified animation for devices without tilt
+      const time = animationState.tick * 0.015;
+      const motionFactor = DEVICE_PERFORMANCE === 'low' ? 0.5 : 1.0;
+      return {
+        x: 80 + Math.sin(time) * 3 * motionFactor,
+        y: 20 + Math.cos(time * 1.2) * 2 * motionFactor,
+        intensity: getShineIntensity(rarity)
       };
     }
     
     const normalizedX = clamp(tiltForEffects.y / TILT_LIMIT_DEGREES, -1, 1);
     const normalizedY = clamp(tiltForEffects.x / TILT_LIMIT_DEGREES, -1, 1);
 
-    const x = 50 + normalizedX * 25;
-    const y = 50 + normalizedY * 25;
-
-    const clampedX = Math.max(0, Math.min(100, x));
-    const clampedY = Math.max(0, Math.min(100, y));
-
-    return { x: clampedX, y: clampedY };
-  };
-
-  // Get shine intensity based on rarity
-  const getShineIntensity = (rarity: string) => {
-    const rarityLower = rarity.toLowerCase();
-    switch (rarityLower) {
-      case 'common': return 0.33;
-      case 'rare': return 0.60;
-      case 'epic': return 0.85;
-      case 'legendary': return 1.25;
-      default: return 0.33;
-    }
-  };
-
-  const shinePosition = getShinePosition();
-  const shineIntensity = effectsEnabled ? getShineIntensity(rarity) : 0;
+    return {
+      x: clamp(50 + normalizedX * 25, 0, 100),
+      y: clamp(50 + normalizedY * 25, 0, 100),
+      intensity: getShineIntensity(rarity)
+    };
+  }, [effectsEnabled, tiltForEffects, animationState.tick, rarity]);
 
   return (
     <Tilt
@@ -292,22 +319,26 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
         <div 
           className="card-shine"
           style={{
-            background: `
-              linear-gradient(${75 + (shinePosition.x - 50) * 0.2}deg,
-                transparent 0%,
-                transparent ${Math.max(5, shinePosition.x - 25)}%,
-                rgba(255, 100, 255, ${shineIntensity * 0.14}) ${Math.max(10, shinePosition.x - 20)}%,
-                rgba(100, 200, 255, ${shineIntensity * 0.18}) ${Math.max(15, shinePosition.x - 15)}%,
-                rgba(100, 255, 100, ${shineIntensity * 0.22}) ${Math.max(20, shinePosition.x - 10)}%,
-                rgba(255, 255, 100, ${shineIntensity * 0.26}) ${shinePosition.x}%,
-                rgba(255, 150, 100, ${shineIntensity * 0.22}) ${Math.min(80, shinePosition.x + 10)}%,
-                rgba(255, 100, 150, ${shineIntensity * 0.18}) ${Math.min(85, shinePosition.x + 15)}%,
-                rgba(200, 100, 255, ${shineIntensity * 0.14}) ${Math.min(90, shinePosition.x + 20)}%,
-                transparent ${Math.min(95, shinePosition.x + 25)}%,
-                transparent 100%
-              )
-            `,
-            transition: 'background 0.15s ease-out'
+            background: DEVICE_PERFORMANCE === 'low' 
+              ? `linear-gradient(${75 + (shineMetrics.x - 50) * 0.1}deg,
+                  transparent 0%,
+                  rgba(255, 255, 255, ${shineMetrics.intensity * 0.15}) ${shineMetrics.x}%,
+                  transparent 100%
+                )`
+              : `linear-gradient(${75 + (shineMetrics.x - 50) * 0.2}deg,
+                  transparent 0%,
+                  transparent ${Math.max(5, shineMetrics.x - 25)}%,
+                  rgba(255, 100, 255, ${shineMetrics.intensity * 0.14}) ${Math.max(10, shineMetrics.x - 20)}%,
+                  rgba(100, 200, 255, ${shineMetrics.intensity * 0.18}) ${Math.max(15, shineMetrics.x - 15)}%,
+                  rgba(100, 255, 100, ${shineMetrics.intensity * 0.22}) ${Math.max(20, shineMetrics.x - 10)}%,
+                  rgba(255, 255, 100, ${shineMetrics.intensity * 0.26}) ${shineMetrics.x}%,
+                  rgba(255, 150, 100, ${shineMetrics.intensity * 0.22}) ${Math.min(80, shineMetrics.x + 10)}%,
+                  rgba(255, 100, 150, ${shineMetrics.intensity * 0.18}) ${Math.min(85, shineMetrics.x + 15)}%,
+                  rgba(200, 100, 255, ${shineMetrics.intensity * 0.14}) ${Math.min(90, shineMetrics.x + 20)}%,
+                  transparent ${Math.min(95, shineMetrics.x + 25)}%,
+                  transparent 100%
+                )`,
+            transition: DEVICE_PERFORMANCE === 'high' ? 'background 0.15s ease-out' : 'none'
           }}
         />
       </div>
