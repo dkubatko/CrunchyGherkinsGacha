@@ -84,6 +84,28 @@ body {
   padding: 0;
 }
 
+.single-card-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 3vh, 2rem);
+  box-sizing: border-box;
+}
+
+.single-card-container .card {
+  flex: 0 1 auto;
+  width: min(420px, 90vw);
+  max-height: min(82vh, 620px);
+  padding: clamp(0.85rem, 1.25vw + 0.5rem, 1.4rem);
+  overflow: hidden;
+}
+
+.single-card-container .card-image-container {
+  max-height: clamp(260px, 55vh, 480px);
+}
+
 .card {
   display: flex;
   flex-direction: column;
@@ -99,6 +121,7 @@ body {
   flex: 1;
   min-height: 0;
   box-sizing: border-box;
+  position: relative;
 }
 
 .card-container.with-trade-button .card {
@@ -237,6 +260,173 @@ body {
   margin: 0;
 }
 
+.card-share-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: none;
+  outline: none;
+  background: rgba(0, 0, 0, 0.8);
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+  backdrop-filter: blur(6px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.card-share-button:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.05);
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.card-share-button:active:not(:disabled) {
+  transform: translateY(1px) scale(0.98);
+}
+
+.card-share-button:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+.share-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-left: -0.1rem;
+}
+
+.share-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.share-dialog {
+  background: rgba(28, 28, 30, 0.92);
+  backdrop-filter: blur(30px);
+  padding: 1.75rem 1.5rem 1.5rem;
+  border-radius: 1.25rem;
+  box-shadow: 
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+  min-width: 270px;
+  max-width: 300px;
+  animation: slideUp 0.2s ease-out;
+}
+
+.share-dialog p {
+  margin: 0 0 1.75rem 0;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+}
+
+.share-dialog-buttons {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.share-confirm-btn, .share-cancel-btn {
+  padding: 0.8rem 1.2rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(10px);
+  flex: 1;
+  max-width: 110px;
+  letter-spacing: -0.005em;
+}
+
+.share-confirm-btn {
+  background: rgba(0, 122, 255, 0.95);
+  color: white;
+  border: 0.5px solid rgba(0, 122, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2);
+}
+
+.share-confirm-btn:hover {
+  background: rgba(0, 122, 255, 1);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 14px rgba(0, 122, 255, 0.35);
+}
+
+.share-confirm-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.25);
+}
+
+.share-cancel-btn {
+  background: rgba(72, 72, 74, 0.85);
+  color: rgba(255, 255, 255, 0.85);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.share-cancel-btn:hover {
+  background: rgba(90, 90, 92, 0.9);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.share-cancel-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.share-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid transparent;
+  border-top: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
 .navigation-dots {
   position: relative;
   display: flex;
@@ -296,10 +486,38 @@ body {
     width: calc(100vw - 0.5rem);
     max-height: calc(100vh - 5rem);
   }
+
+  .card-share-button {
+    top: 0.6rem;
+    right: 0.6rem;
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  .share-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    margin-left: -0.08rem;
+  }
   
   .card h3 {
     font-size: 1rem;
     margin-top: 0.5rem;
+  }
+
+  .single-card-container {
+    height: 100vh;
+    padding: 0.75rem 0.4rem 1.1rem;
+  }
+
+  .single-card-container .card {
+    width: calc(100vw - 0.8rem);
+    max-height: min(90vh, 520px);
+    padding: clamp(0.65rem, 3vw, 1rem);
+  }
+
+  .single-card-container .card-image-container {
+    max-height: clamp(220px, 60vh, 420px);
   }
 }
 

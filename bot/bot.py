@@ -62,6 +62,7 @@ from settings.constants import (
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat
 from utils.rolled_card import RolledCardManager
+from utils.miniapp import encode_miniapp_token
 
 # Load environment variables
 load_dotenv()
@@ -83,14 +84,6 @@ if DEBUG_MODE:
     TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
-
-TOKEN_PREFIX = "tg1_"
-
-
-def encode_miniapp_token(user_id, chat_id=None):
-    raw_token = f"{user_id}" if not chat_id else f"{user_id}.{chat_id}"
-    encoded = base64.urlsafe_b64encode(raw_token.encode("utf-8")).decode("ascii").rstrip("=")
-    return f"{TOKEN_PREFIX}{encoded}"
 
 
 def log_card_generation(generated_card, context="card generation"):
@@ -1299,15 +1292,9 @@ async def collection(
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
+        # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
         token = encode_miniapp_token(viewed_user_id, chat_id_filter)
-
-        if DEBUG_MODE:
-            # In debug mode, use direct URL with v parameter
-            app_url = f"{miniapp_url}?v={token}"
-        else:
-            # In production mode, use direct URL with startapp parameter
-            # This works in both group chats and private chats
-            app_url = f"{miniapp_url}?startapp={token}"
+        app_url = f"{miniapp_url}?startapp={token}"
         keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(
@@ -1471,6 +1458,7 @@ async def handle_collection_navigation(
     # Add miniapp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if miniapp_url:
+        # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
         token = encode_miniapp_token(viewed_user_id, chat_id_filter)
 
         if DEBUG_MODE:

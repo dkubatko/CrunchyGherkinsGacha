@@ -3,6 +3,7 @@ import './App.css';
 
 // Components
 import Card from './components/Card';
+import SingleCardView from './components/SingleCardView';
 import AllCards from './components/AllCards';
 import CardModal from './components/CardModal';
 
@@ -18,6 +19,9 @@ import {
 
 // Utils
 import { TelegramUtils } from './utils/telegram';
+
+// Services
+import { ApiService } from './services/api';
 
 // Types
 import type { CardData, View } from './types';
@@ -63,10 +67,19 @@ function App() {
   const displayedCards = isTradeView && selectedCardForTrade
     ? allCards.filter((card) => card.id !== selectedCardForTrade.id)
     : allCards;
+
+  const shareEnabled = Boolean(initData && userData);
   
   // Feature hooks
   const { orientation, orientationKey, resetTiltReference } = useOrientation();
   const { showModal, modalCard, openModal, closeModal } = useModal();
+  // Hide trade/navigation buttons when in single card mode
+  useEffect(() => {
+    if (userData?.singleCardView) {
+      TelegramUtils.hideMainButton();
+      TelegramUtils.hideBackButton();
+    }
+  }, [userData?.singleCardView]);
 
   const exitTradeView = useCallback(() => {
     setIsTradeGridActive(false);
@@ -143,6 +156,26 @@ function App() {
     setView('all');
   }, []);
 
+  const handleShareCard = useCallback(async (cardId: number) => {
+    if (!initData) {
+      TelegramUtils.showAlert('Unable to share card: missing Telegram init data.');
+      return;
+    }
+    if (!userData) {
+      TelegramUtils.showAlert('Unable to share card: user data unavailable.');
+      return;
+    }
+
+    try {
+      await ApiService.shareCard(cardId, userData.currentUserId, initData);
+      TelegramUtils.showAlert('Shared to chat!');
+    } catch (err) {
+      console.error('Share card error:', err);
+      const message = err instanceof Error ? err.message : 'Failed to share card.';
+      TelegramUtils.showAlert(message);
+    }
+  }, [initData, userData]);
+
   useEffect(() => {
     if (!isTradeView) {
       TelegramUtils.hideBackButton();
@@ -208,6 +241,20 @@ function App() {
     return <div className="app-container"><h1>Error: {error}</h1></div>;
   }
 
+  // Single Card View (no tabs, no navigation or trade UI)
+  if (userData?.singleCardView && userData.singleCardId && initData) {
+    return (
+      <div className="app-container">
+        <SingleCardView
+          cardId={userData.singleCardId}
+          initData={initData}
+          orientation={orientation}
+          orientationKey={orientationKey}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="app-container" {...(view === 'current' ? swipeHandlers : {})}>
       {/* Tab Navigation */}
@@ -260,6 +307,8 @@ function App() {
                   tiltKey={orientationKey}
                   initData={initData}
                   shiny={true}
+                  onShare={shareEnabled ? handleShareCard : undefined}
+                  showShareButton={shareEnabled}
                 />
               </div>
             ) : (
@@ -314,6 +363,7 @@ function App() {
           orientationKey={orientationKey}
           initData={initData}
           onClose={closeModal}
+          onShare={shareEnabled ? handleShareCard : undefined}
         />
       )}
     </div>
