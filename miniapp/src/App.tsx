@@ -6,6 +6,8 @@ import Card from './components/Card';
 import SingleCardView from './components/SingleCardView';
 import AllCards from './components/AllCards';
 import CardModal from './components/CardModal';
+import FilterSortControls from './components/FilterSortControls';
+import type { FilterOptions, SortOptions } from './components/FilterSortControls';
 
 // Hooks
 import {
@@ -42,6 +44,16 @@ function App() {
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [isTradeGridActive, setIsTradeGridActive] = useState(false);
 
+  // Filter and sort state
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
+    owner: '',
+    rarity: ''
+  });
+  const [sortOptions, setSortOptions] = useState<SortOptions>({
+    field: 'rarity',
+    direction: 'desc'
+  });
+
   const hasChatScope = Boolean(userData?.chatId);
   const isTradeView = view === 'all' && isTradeGridActive;
   const activeTradeCardId = isTradeView && selectedCardForTrade ? selectedCardForTrade.id : null;
@@ -64,9 +76,68 @@ function App() {
     ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
     : null;
 
-  const displayedCards = isTradeView && selectedCardForTrade
+  // Filtering and sorting logic
+  const applyFiltersAndSorting = (cards: CardData[]) => {
+    let filtered = cards;
+
+    // Apply owner filter
+    if (filterOptions.owner) {
+      filtered = filtered.filter(card => card.owner === filterOptions.owner);
+    }
+
+    // Apply rarity filter
+    if (filterOptions.rarity) {
+      filtered = filtered.filter(card => card.rarity === filterOptions.rarity);
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+
+      switch (sortOptions.field) {
+        case 'rarity': {
+          // Define rarity order: Common -> Rare -> Epic -> Legendary
+          const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
+          const aIndex = rarityOrder.indexOf(a.rarity);
+          const bIndex = rarityOrder.indexOf(b.rarity);
+          // If rarity not found in order, put it at the end
+          aValue = aIndex === -1 ? rarityOrder.length : aIndex;
+          bValue = bIndex === -1 ? rarityOrder.length : bIndex;
+          break;
+        }
+        case 'id':
+          aValue = a.id;
+          bValue = b.id;
+          break;
+        case 'name':
+          aValue = `${a.modifier} ${a.base_name}`.toLowerCase();
+          bValue = `${b.modifier} ${b.base_name}`.toLowerCase();
+          break;
+        default:
+          aValue = a.id;
+          bValue = b.id;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        const comparison = aValue.localeCompare(bValue);
+        return sortOptions.direction === 'asc' ? comparison : -comparison;
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        const comparison = aValue - bValue;
+        return sortOptions.direction === 'asc' ? comparison : -comparison;
+      }
+
+      return 0;
+    });
+
+    return sorted;
+  };
+
+  const baseDisplayedCards = isTradeView && selectedCardForTrade
     ? allCards.filter((card) => card.id !== selectedCardForTrade.id)
     : allCards;
+
+  const displayedCards = applyFiltersAndSorting(baseDisplayedCards);
 
   const shareEnabled = Boolean(initData && userData);
   
@@ -86,6 +157,8 @@ function App() {
     setSelectedCardForTrade(null);
     closeModal();
     setView('current');
+    setFilterOptions({ owner: '', rarity: '' });
+    setSortOptions({ field: 'rarity', direction: 'desc' });
     TelegramUtils.hideBackButton();
   }, [closeModal]);
 
@@ -153,7 +226,15 @@ function App() {
   const handleAllTabClick = useCallback(() => {
     setIsTradeGridActive(false);
     setSelectedCardForTrade(null);
+    setFilterOptions({ owner: '', rarity: '' });
+    setSortOptions({ field: 'rarity', direction: 'desc' });
     setView('all');
+  }, []);  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
+    setFilterOptions(newFilters);
+  }, []);
+
+  const handleSortChange = useCallback((newSort: SortOptions) => {
+    setSortOptions(newSort);
   }, []);
 
   const handleShareCard = useCallback(async (cardId: number) => {
@@ -334,7 +415,7 @@ function App() {
                 <p>{allCardsError}</p>
                 <button onClick={refetchAllCards}>Retry</button>
               </div>
-            ) : displayedCards.length === 0 ? (
+            ) : baseDisplayedCards.length === 0 ? (
               <div className="no-cards-container">
                 <h2>{isTradeView ? 'No trade options' : 'No cards found'}</h2>
                 <p>
@@ -344,11 +425,27 @@ function App() {
                 </p>
               </div>
             ) : (
-                            <AllCards
-                cards={displayedCards}
-                onCardClick={openModal}
-                initData={initData}
-              />
+              <>
+                <FilterSortControls
+                  cards={baseDisplayedCards}
+                  filterOptions={filterOptions}
+                  sortOptions={sortOptions}
+                  onFilterChange={handleFilterChange}
+                  onSortChange={handleSortChange}
+                />
+                {displayedCards.length === 0 ? (
+                  <div className="no-cards-container">
+                    <h2>No cards match your filters</h2>
+                    <p>Try adjusting your filter settings to see more cards.</p>
+                  </div>
+                ) : (
+                  <AllCards
+                    cards={displayedCards}
+                    onCardClick={openModal}
+                    initData={initData}
+                  />
+                )}
+              </>
             )}
           </>
         )}
