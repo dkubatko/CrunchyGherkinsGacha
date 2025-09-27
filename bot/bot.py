@@ -403,10 +403,10 @@ async def roll(
         await asyncio.to_thread(database.increment_claim_balance, user.user_id, chat_id_str)
 
         # Create rolled card entry to track state
-        await asyncio.to_thread(database.create_rolled_card, card_id, user.user_id)
+        roll_id = await asyncio.to_thread(database.create_rolled_card, card_id, user.user_id)
 
         # Use RolledCardManager to generate caption and keyboard
-        rolled_card_manager = RolledCardManager(card_id)
+        rolled_card_manager = RolledCardManager(roll_id)
         caption = rolled_card_manager.generate_caption()
         reply_markup = rolled_card_manager.generate_keyboard()
 
@@ -764,23 +764,27 @@ async def handle_reroll(
     query = update.callback_query
 
     data_parts = query.data.split("_")
-    card_id = int(data_parts[1])
+    roll_id = int(data_parts[1])
 
-    # Use RolledCardManager to handle reroll logic
-    rolled_card_manager = RolledCardManager(card_id)
+    rolled_card_manager = RolledCardManager(roll_id)
 
     if not rolled_card_manager.is_valid():
         await query.answer("Card not found!", show_alert=True)
         return
 
+    active_card = rolled_card_manager.card
+    if active_card is None:
+        await query.answer("Card data unavailable", show_alert=True)
+        return
+
     # Check if the user clicking can reroll this card
     if not rolled_card_manager.can_user_reroll(user.user_id):
-        if rolled_card_manager.rolled_card.original_roller_id != user.user_id:
+        rolled_card = rolled_card_manager.rolled_card
+        if rolled_card and rolled_card.original_roller_id != user.user_id:
             await query.answer("Only the original roller can reroll this card!", show_alert=True)
         elif rolled_card_manager.is_reroll_expired():
             await query.answer("Reroll has expired", show_alert=True)
 
-            # Update the message to remove reroll button
             caption = rolled_card_manager.generate_caption()
             reply_markup = rolled_card_manager.generate_keyboard()
             await query.edit_message_caption(
@@ -790,9 +794,9 @@ async def handle_reroll(
             await query.answer("Cannot reroll this card", show_alert=True)
         return
 
-    original_card = rolled_card_manager.card
-    original_owner_id = original_card.user_id
-    original_claim_chat_id = original_card.chat_id
+    original_card = rolled_card_manager.original_card or active_card
+    original_owner_id = active_card.user_id
+    original_claim_chat_id = active_card.chat_id
     if original_claim_chat_id is None and query.message:
         original_claim_chat_id = str(query.message.chat_id)
     elif original_claim_chat_id is not None:
@@ -808,7 +812,11 @@ async def handle_reroll(
         await query.answer("Rerolling card...")
 
         downgraded_rarity = rolling.get_downgraded_rarity(original_card.rarity)
-        chat_id_for_roll = original_card.chat_id or str(query.message.chat_id)
+        chat_id_for_roll = active_card.chat_id or (
+            str(query.message.chat_id) if query.message else None
+        )
+        if chat_id_for_roll is None:
+            raise ValueError("Unable to resolve chat id for reroll")
 
         generated_card = await asyncio.to_thread(
             rolling.generate_card_for_chat,
@@ -821,7 +829,7 @@ async def handle_reroll(
         log_card_generation(generated_card, "reroll")
 
         # Add new card to database
-        new_card_chat_id = original_card.chat_id or query.message.chat_id
+        new_card_chat_id = active_card.chat_id or (query.message.chat_id if query.message else None)
         new_card_id = await asyncio.to_thread(
             database.add_card,
             generated_card.base_name,
@@ -832,19 +840,14 @@ async def handle_reroll(
         )
 
         # Nullify the original card's owner (preserves history)
-        await asyncio.to_thread(database.nullify_card_owner, card_id)
+        await asyncio.to_thread(database.nullify_card_owner, active_card.id)
 
-        # Swap the card_id in rolled_cards to point to the new card
-        await asyncio.to_thread(database.swap_rolled_card_id, card_id, new_card_id)
-
-        # Create RolledCardManager for new card AFTER swap (so rolled_card data exists)
-        new_rolled_manager = RolledCardManager(new_card_id)
-        # Mark the rolled card as having been rerolled
-        new_rolled_manager.mark_rerolled_with_original_rarity(original_card.rarity)
+        # Update rolled card state to point to the new card
+        rolled_card_manager.mark_rerolled(new_card_id)
 
         # Generate caption and keyboard for the new card
-        caption = new_rolled_manager.generate_caption()
-        reply_markup = new_rolled_manager.generate_keyboard()
+        caption = rolled_card_manager.generate_caption()
+        reply_markup = rolled_card_manager.generate_keyboard()
 
         # Update message with new image and caption
         message = await query.edit_message_media(
@@ -929,10 +932,10 @@ async def handle_lock(
         await query.answer("Invalid lock request.", show_alert=True)
         return
 
-    card_id = int(data_parts[1])
+    roll_id = int(data_parts[1])
 
     # Use RolledCardManager to handle lock logic
-    rolled_card_manager = RolledCardManager(card_id)
+    rolled_card_manager = RolledCardManager(roll_id)
 
     if not rolled_card_manager.is_valid():
         await query.answer("Card not found!", show_alert=True)
@@ -1003,19 +1006,28 @@ async def claim_card(
     """Handle claim button click."""
     query = update.callback_query
     data = query.data
-    card_id = int(data.split("_")[1])
+    roll_id = int(data.split("_")[1])
     chat = update.effective_chat
     chat_id = str(chat.id) if chat else None
 
     # Use RolledCardManager to handle the claim logic
-    rolled_card_manager = RolledCardManager(card_id)
+    rolled_card_manager = RolledCardManager(roll_id)
+
+    card = rolled_card_manager.card
+    if card is None:
+        await query.answer("Card not found!", show_alert=True)
+        return
 
     if rolled_card_manager.is_being_rerolled():
         await query.answer("The card is being rerolled, please wait.", show_alert=True)
         return
 
     claim_result = await asyncio.to_thread(
-        database.claim_card, card_id, user.username, user.user_id, chat_id
+        RolledCardManager.claim,
+        rolled_card_manager,
+        user.username,
+        user.user_id,
+        chat_id,
     )
 
     if claim_result.status is database.ClaimStatus.INSUFFICIENT_BALANCE:
@@ -1025,9 +1037,6 @@ async def claim_card(
             show_alert=True,
         )
         return
-
-    # Refresh the rolled card manager to get updated state
-    rolled_card_manager.refresh()
 
     card = rolled_card_manager.card
     card_title = f"{card.modifier} {card.base_name}"
@@ -1041,9 +1050,22 @@ async def claim_card(
         else:
             await query.answer(f"Card {card_title} claimed!", show_alert=True)
     else:
-        # Card already claimed - the attempted_by was handled in database.claim_card
+        # Card already claimed - check if it's owned by the same user
         owner = card.owner
-        await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
+        if owner == user.username:
+            # Show success message with current balance for user's own card
+            if chat_id and user.user_id:
+                current_balance = await asyncio.to_thread(
+                    database.get_claim_balance, user.user_id, chat_id
+                )
+                await query.answer(
+                    f"Card {card_title} claimed!\n\nRemaining balance: {current_balance}.",
+                    show_alert=True,
+                )
+            else:
+                await query.answer(f"Card {card_title} claimed!", show_alert=True)
+        else:
+            await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
     # Update the message with new caption and keyboard
     caption = rolled_card_manager.generate_caption()
