@@ -80,7 +80,7 @@ body {
 }
 
 .app-title {
-  margin: 1rem 0 0.5rem 0;
+  margin: 0;
   font-size: 1.5rem;
 }
 
@@ -90,7 +90,7 @@ body {
   justify-content: center;
   position: relative;
   width: 100%;
-  margin: 1rem 0 0.5rem 0;
+  margin: 1rem 0;
 }
 
 .view-toggle-button {
@@ -482,7 +482,7 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 20px;
+  margin: 0 auto;
   font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-weight: 500;
   font-size: 1rem;
@@ -493,8 +493,6 @@ body {
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   width: fit-content;
-  margin-left: auto;
-  margin-right: auto;
 }
 
 .position-current {
@@ -538,11 +536,11 @@ body {
   
   .app-title {
     font-size: 1.3rem;
-    margin: 0.5rem 0 0.25rem 0;
+    margin: 0;
   }
 
   .title-container {
-    margin: 0.5rem 0 0.25rem 0;
+    margin: 0.75rem 0;
   }
 
   .card-position-indicator {
