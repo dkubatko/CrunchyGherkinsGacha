@@ -93,6 +93,27 @@ def encode_miniapp_token(user_id, chat_id=None):
     return f"{TOKEN_PREFIX}{encoded}"
 
 
+def log_card_generation(generated_card, context="card generation"):
+    """Log details about a generated card including its source."""
+    source_type = "unknown"
+    source_info = "unknown"
+
+    if generated_card.source_user:
+        source_type = "User"
+        source_info = (
+            f"{generated_card.source_user.display_name} ({generated_card.source_user.user_id})"
+        )
+    elif generated_card.source_character:
+        source_type = "Character"
+        source_info = (
+            f"{generated_card.source_character.name} ({generated_card.source_character.id})"
+        )
+
+    logger.info(
+        f"Generating card for {context}: {source_type} {source_info} -> ({generated_card.rarity}) {generated_card.modifier} {generated_card.base_name}"
+    )
+
+
 def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
     Uses the same timezone as the database (system local time).
@@ -149,7 +170,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Update the user's display name and profile image. DM-only."""
+    """Update the user's display name and profile image in DM, or add a character in group chats."""
 
     message = update.message
     user = update.effective_user
@@ -157,6 +178,43 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not message or not user:
         return
 
+    # Check if it's a group chat or DM
+    if update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        # Group chat - add character functionality
+        command_text = message.text or message.caption or ""
+        parts = command_text.split(maxsplit=1)
+
+        if len(parts) < 2 or not parts[1].strip():
+            await message.reply_text(
+                "Usage: /profile <character_name> (attach a photo with the command)."
+            )
+            return
+
+        character_name = parts[1].strip()
+
+        if not message.photo:
+            await message.reply_text(
+                "Please attach a character image when using /profile in group chats."
+            )
+            return
+
+        photo = message.photo[-1]
+        telegram_file = await context.bot.get_file(photo.file_id)
+        buffer = BytesIO()
+        await telegram_file.download_to_memory(out=buffer)
+        image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+
+        chat_id = str(update.effective_chat.id)
+        character_id = await asyncio.to_thread(
+            database.add_character, chat_id, character_name, image_b64
+        )
+
+        await message.reply_text(
+            f"Character '{character_name}' added with ID {character_id}! They will now be used for card generation."
+        )
+        return
+
+    # DM functionality - existing user profile update
     if update.effective_chat.type != ChatType.PRIVATE:
         await message.reply_text("Please DM me to update your profile.")
         return
@@ -195,6 +253,35 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
 
     await message.reply_text("Profile updated! Your new display name and image are saved.")
+
+
+async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Delete characters by name (case-insensitive). Can be used in any chat type."""
+
+    message = update.message
+    user = update.effective_user
+
+    if not message or not user:
+        return
+
+    if not context.args or len(context.args) != 1:
+        await message.reply_text("Usage: /delete <character_name>")
+        return
+
+    character_name = context.args[0].strip()
+
+    if not character_name:
+        await message.reply_text("Character name cannot be empty.")
+        return
+
+    deleted_count = await asyncio.to_thread(database.delete_characters_by_name, character_name)
+
+    if deleted_count == 0:
+        await message.reply_text(f"No characters found with the name '{character_name}'.")
+    elif deleted_count == 1:
+        await message.reply_text(f"Deleted 1 character named '{character_name}'.")
+    else:
+        await message.reply_text(f"Deleted {deleted_count} characters named '{character_name}'.")
 
 
 @verify_user
@@ -296,6 +383,9 @@ async def roll(
             chat_id_str,
             gemini_util,
         )
+
+        # Log the card generation details
+        log_card_generation(generated_card, "roll")
 
         card_id = await asyncio.to_thread(
             database.add_card,
@@ -586,6 +676,9 @@ async def handle_recycle_callback(
 
         try:
             generated_card = await generation_task
+
+            # Log the card generation details
+            log_card_generation(generated_card, "recycle")
         except rolling.NoEligibleUserError:
             await context.bot.edit_message_text(
                 chat_id=chat_id,
@@ -711,6 +804,9 @@ async def handle_reroll(
         rerolling_caption = rolled_card_manager.generate_caption()
         await query.edit_message_caption(caption=rerolling_caption, parse_mode=ParseMode.HTML)
 
+        # Answer callback query immediately to avoid timeout
+        await query.answer("Rerolling card...")
+
         downgraded_rarity = rolling.get_downgraded_rarity(original_card.rarity)
         chat_id_for_roll = original_card.chat_id or str(query.message.chat_id)
 
@@ -720,6 +816,9 @@ async def handle_reroll(
             gemini_util,
             downgraded_rarity,
         )
+
+        # Log the card generation details
+        log_card_generation(generated_card, "reroll")
 
         # Add new card to database
         new_card_chat_id = original_card.chat_id or query.message.chat_id
@@ -738,8 +837,9 @@ async def handle_reroll(
         # Swap the card_id in rolled_cards to point to the new card
         await asyncio.to_thread(database.swap_rolled_card_id, card_id, new_card_id)
 
-        # Mark the rolled card as having been rerolled
+        # Create RolledCardManager for new card AFTER swap (so rolled_card data exists)
         new_rolled_manager = RolledCardManager(new_card_id)
+        # Mark the rolled card as having been rerolled
         new_rolled_manager.mark_rerolled_with_original_rarity(original_card.rarity)
 
         # Generate caption and keyboard for the new card
@@ -768,8 +868,6 @@ async def handle_reroll(
                 original_owner_id,
                 original_claim_chat_id,
             )
-
-        await query.answer(f"Rerolled! New rarity: {generated_card.rarity}")
     except rolling.NoEligibleUserError:
         # Restore original state on error
         rolled_card_manager.set_being_rerolled(False)
@@ -809,7 +907,12 @@ async def handle_reroll(
             )
         except Exception:
             pass
-        await query.answer("An error occurred during reroll!", show_alert=True)
+
+        # Try to answer callback query, but don't fail if it times out
+        try:
+            await query.answer("An error occurred during reroll!", show_alert=True)
+        except Exception as callback_error:
+            logger.warning(f"Failed to answer callback query: {callback_error}")
 
 
 @verify_user_in_chat
@@ -1724,6 +1827,7 @@ def main() -> None:
     application.add_handler(
         MessageHandler(filters.PHOTO & filters.CaptionRegex(r"^/profile\b"), profile)
     )
+    application.add_handler(CommandHandler("delete", delete_character))
     application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("roll", roll))
