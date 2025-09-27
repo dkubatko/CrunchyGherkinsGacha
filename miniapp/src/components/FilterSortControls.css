@@ -2,7 +2,7 @@
   display: flex;
   justify-content: stretch;
   padding: 0 16px;
-  margin: 0.25rem 0;
+  margin: 0 0 0.25rem 0;
   position: relative;
 }
 
@@ -253,7 +253,7 @@
 @media (max-width: 480px) {
   .filter-sort-controls {
     padding: 0 12px;
-    margin: 0.25rem 0;
+    margin: 0 0 0.25rem 0;
   }
   
   .control-buttons {
