@@ -496,7 +496,7 @@ async def share_card(
         logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
 
-    card_title = f"{card.rarity} {card.modifier} {card.base_name}".strip()
+    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
     if not MINIAPP_URL:
         logger.error("MINIAPP_URL not configured; cannot generate share link")
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
@@ -523,7 +523,7 @@ async def share_card(
 
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
 
-        message = f"@{username} shared card: <b>{card_title}</b>"
+        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
 
         await bot.send_message(
             chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
