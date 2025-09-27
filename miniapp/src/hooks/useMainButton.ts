@@ -9,6 +9,7 @@ export const useMainButton = (
   enableTrade: boolean,
   hasCards: boolean,
   view: View,
+  isGridView: boolean,
   selectedCardForTrade?: CardData | null,
   modalCard?: CardData | null,
   onTradeClick?: () => void,
@@ -27,7 +28,8 @@ export const useMainButton = (
   useEffect(() => {
     if (!loading && !error) {
       // Show Trade button in current view for own collection (only if trading is enabled)
-      if (isOwnCollection && enableTrade && hasCards && view === 'current' && !selectedCardForTrade) {
+      // Allow in gallery view always, or in grid view when a modal card is open
+      if (isOwnCollection && enableTrade && hasCards && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
         setIsMainButtonVisible(true);
         const cleanup = TelegramUtils.setupMainButton(
           'Trade',
@@ -53,7 +55,7 @@ export const useMainButton = (
       setIsMainButtonVisible(false);
       return TelegramUtils.hideMainButton();
     }
-  }, [loading, error, isOwnCollection, enableTrade, hasCards, view, selectedCardForTrade, modalCard]);
+  }, [loading, error, isOwnCollection, enableTrade, hasCards, view, isGridView, selectedCardForTrade, modalCard]);
 
   return { isMainButtonVisible };
 };

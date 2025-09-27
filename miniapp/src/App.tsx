@@ -43,6 +43,7 @@ function App() {
   const [view, setView] = useState<View>('current');
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [isTradeGridActive, setIsTradeGridActive] = useState(false);
+  const [isGridView, setIsGridView] = useState(false);
 
   // Filter and sort state
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -50,6 +51,16 @@ function App() {
     rarity: ''
   });
   const [sortOptions, setSortOptions] = useState<SortOptions>({
+    field: 'rarity',
+    direction: 'desc'
+  });
+  
+  // Current view grid filter and sort state (only rarity filter, but full sort options)
+  const [currentGridFilterOptions, setCurrentGridFilterOptions] = useState<FilterOptions>({
+    owner: '', // Always empty for current view
+    rarity: ''
+  });
+  const [currentGridSortOptions, setCurrentGridSortOptions] = useState<SortOptions>({
     field: 'rarity',
     direction: 'desc'
   });
@@ -139,6 +150,60 @@ function App() {
 
   const displayedCards = applyFiltersAndSorting(baseDisplayedCards);
 
+  // Apply filtering and sorting for current view grid
+  const applyCurrentGridFiltersAndSorting = (cards: CardData[]) => {
+    let filtered = cards;
+
+    // Apply rarity filter
+    if (currentGridFilterOptions.rarity) {
+      filtered = filtered.filter(card => card.rarity === currentGridFilterOptions.rarity);
+    }
+
+    // Apply sorting
+    const sorted = [...filtered].sort((a, b) => {
+      let aValue: string | number;
+      let bValue: string | number;
+
+      switch (currentGridSortOptions.field) {
+        case 'rarity': {
+          // Define rarity order: Common -> Rare -> Epic -> Legendary
+          const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
+          const aIndex = rarityOrder.indexOf(a.rarity);
+          const bIndex = rarityOrder.indexOf(b.rarity);
+          // If rarity not found in order, put it at the end
+          aValue = aIndex === -1 ? rarityOrder.length : aIndex;
+          bValue = bIndex === -1 ? rarityOrder.length : bIndex;
+          break;
+        }
+        case 'id':
+          aValue = a.id;
+          bValue = b.id;
+          break;
+        case 'name':
+          aValue = `${a.modifier} ${a.base_name}`.toLowerCase();
+          bValue = `${b.modifier} ${b.base_name}`.toLowerCase();
+          break;
+        default:
+          aValue = a.id;
+          bValue = b.id;
+      }
+
+      if (typeof aValue === 'string' && typeof bValue === 'string') {
+        const comparison = aValue.localeCompare(bValue);
+        return currentGridSortOptions.direction === 'asc' ? comparison : -comparison;
+      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
+        const comparison = aValue - bValue;
+        return currentGridSortOptions.direction === 'asc' ? comparison : -comparison;
+      }
+
+      return 0;
+    });
+
+    return sorted;
+  };
+
+  const filteredCurrentCards = applyCurrentGridFiltersAndSorting(cards);
+
   const shareEnabled = Boolean(initData && userData);
   
   // Feature hooks
@@ -171,19 +236,29 @@ function App() {
   // Memoized callback functions to prevent infinite re-renders
   const handleTradeClick = useCallback(() => {
     // Handle trade button click in current view (only if trading is enabled)
-    if (userData?.enableTrade && cards[currentIndex]) {
-      const tradeCard = cards[currentIndex];
+    if (userData?.enableTrade) {
+      // Use modal card if open (grid view case), otherwise use current index card (gallery view case)
+      const tradeCard = modalCard || cards[currentIndex];
+      
+      if (!tradeCard) {
+        return;
+      }
 
       if (!tradeCard.chat_id) {
         TelegramUtils.showAlert('This card cannot be traded because it is not associated with a chat yet.');
         return;
       }
 
+      // Close modal if it's open before starting trade
+      if (modalCard) {
+        closeModal();
+      }
+
       setSelectedCardForTrade(tradeCard);
       setIsTradeGridActive(!hasChatScope);
       setView('all');
     }
-  }, [cards, currentIndex, userData?.enableTrade, hasChatScope]);
+  }, [cards, currentIndex, modalCard, userData?.enableTrade, hasChatScope, closeModal]);
 
   const handleSelectClick = useCallback(() => {
     // Handle select button click in modal
@@ -221,20 +296,33 @@ function App() {
 
   const handleCurrentTabClick = useCallback(() => {
     exitTradeView();
+    // Don't reset grid view state - preserve it
   }, [exitTradeView]);
 
   const handleAllTabClick = useCallback(() => {
     setIsTradeGridActive(false);
     setSelectedCardForTrade(null);
-    setFilterOptions({ owner: '', rarity: '' });
-    setSortOptions({ field: 'rarity', direction: 'desc' });
     setView('all');
-  }, []);  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
+    // Don't reset filters - preserve All view state
+  }, []);
+
+  const handleGridToggle = useCallback(() => {
+    setIsGridView(!isGridView);
+    // Don't reset filters - preserve them when switching between grid/gallery
+  }, [isGridView]);  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
     setFilterOptions(newFilters);
   }, []);
 
   const handleSortChange = useCallback((newSort: SortOptions) => {
     setSortOptions(newSort);
+  }, []);
+
+  const handleCurrentGridFilterChange = useCallback((newFilters: FilterOptions) => {
+    setCurrentGridFilterOptions(newFilters);
+  }, []);
+
+  const handleCurrentGridSortChange = useCallback((newSort: SortOptions) => {
+    setCurrentGridSortOptions(newSort);
   }, []);
 
   const handleShareCard = useCallback(async (cardId: number) => {
@@ -278,6 +366,7 @@ function App() {
     userData?.enableTrade ?? false,
     cards.length > 0, 
     view,
+    isGridView,
     selectedCardForTrade,
     modalCard,
     handleTradeClick,
@@ -304,13 +393,6 @@ function App() {
     onIndexChange: setCurrentIndex,
     onTiltReset: resetTiltReference
   });
-
-  const handleDotClick = (index: number) => {
-    if (index !== currentIndex) {
-      setCurrentIndex(index);
-      resetTiltReference();
-    }
-  };
 
   // Loading state
   if (loading) {
@@ -357,41 +439,75 @@ function App() {
       </div>
 
       <div className="app-content">
-        <h1 className="app-title">
-          {view === 'all'
-            ? isTradeView && tradeCardName
-              ? `Trade for ${tradeCardName}`
-              : 'All cards'
-            : `${collectionOwnerLabel}'s collection`}
-        </h1>
+        <div className="title-container">
+          {view === 'current' && cards.length > 0 && (
+            <button 
+              className="view-toggle-button"
+              onClick={handleGridToggle}
+              aria-label={isGridView ? "Currently in grid view" : "Currently in gallery view"}
+            >
+              {isGridView ? "Grid" : "Gallery"}
+            </button>
+          )}
+          <h1 className="app-title">
+            {view === 'all'
+              ? isTradeView && tradeCardName
+                ? `Trade for ${tradeCardName}`
+                : 'All cards'
+              : `${collectionOwnerLabel}'s collection`}
+          </h1>
+        </div>
         
         {/* Current View */}
         {view === 'current' && (
           <>
             {cards.length > 0 ? (
-              <div className={`card-container ${isMainButtonVisible ? 'with-trade-button' : ''}`}>
-                {/* Navigation Dots */}
-                <div className="navigation-dots" style={{ marginBottom: '2vh' }}>
-                  {cards.map((_, index) => (
-                    <span
-                      key={index}
-                      className={`dot ${currentIndex === index ? 'active' : ''}`}
-                      onClick={() => handleDotClick(index)}
+              <>
+                {isGridView ? (
+                  <>
+                    <FilterSortControls
+                      cards={cards}
+                      filterOptions={currentGridFilterOptions}
+                      sortOptions={currentGridSortOptions}
+                      onFilterChange={handleCurrentGridFilterChange}
+                      onSortChange={handleCurrentGridSortChange}
+                      showOwnerFilter={false}
                     />
-                  ))}
-                </div>
-                
-                {/* Current Card */}
-                <Card 
-                  {...cards[currentIndex]} 
-                  orientation={orientation}
-                  tiltKey={orientationKey}
-                  initData={initData}
-                  shiny={true}
-                  onShare={shareEnabled ? handleShareCard : undefined}
-                  showShareButton={shareEnabled}
-                />
-              </div>
+                    {filteredCurrentCards.length === 0 ? (
+                      <div className="no-cards-container">
+                        <h2>No cards match your filter</h2>
+                        <p>Try selecting a different rarity or clearing the filter.</p>
+                      </div>
+                    ) : (
+                      <AllCards
+                        cards={filteredCurrentCards}
+                        onCardClick={openModal}
+                        initData={initData}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <div className={`card-container ${isMainButtonVisible ? 'with-trade-button' : ''}`}>
+                    {/* Card Position Indicator */}
+                    <div className="card-position-indicator" style={{ marginBottom: '2vh' }}>
+                      <span className="position-current">{currentIndex + 1}</span>
+                      <span className="position-separator"> / </span>
+                      <span className="position-total">{cards.length}</span>
+                    </div>
+                    
+                    {/* Current Card */}
+                    <Card 
+                      {...cards[currentIndex]} 
+                      orientation={orientation}
+                      tiltKey={orientationKey}
+                      initData={initData}
+                      shiny={true}
+                      onShare={shareEnabled ? handleShareCard : undefined}
+                      showShareButton={shareEnabled}
+                    />
+                  </div>
+                )}
+              </>
             ) : (
               <p>
                 {userData?.isOwnCollection

@@ -18,6 +18,7 @@ interface FilterSortControlsProps {
   sortOptions: SortOptions;
   onFilterChange: (filters: FilterOptions) => void;
   onSortChange: (sort: SortOptions) => void;
+  showOwnerFilter?: boolean; // Optional prop to show/hide owner filter
 }
 
 const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
@@ -26,6 +27,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   sortOptions,
   onFilterChange,
   onSortChange,
+  showOwnerFilter = true, // Default to true to maintain existing behavior
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -70,7 +72,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const hasActiveFilters = filterOptions.owner || filterOptions.rarity;
+  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity;
   const isActiveSortField = (field: string) => sortOptions.field === field;
 
   const handleFilterToggle = () => {
@@ -148,37 +150,39 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
           {filterOpen && (
             <div className="dropdown filter-dropdown">
               <div className="dropdown-content">
-                <div className={`dropdown-item ${expandedFilter === 'owner' ? 'expanded' : ''}`}>
-                  <button 
-                    className="dropdown-main-option"
-                    onClick={() => handleFilterOptionClick('owner')}
-                  >
-                    <span>Owner</span>
-                    {filterOptions.owner && <span className="current-value">({filterOptions.owner})</span>}
-                    <svg className={`expand-icon ${expandedFilter === 'owner' ? 'rotated' : ''}`} viewBox="0 0 24 24">
-                      <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
-                    </svg>
-                  </button>
-                  {expandedFilter === 'owner' && (
-                    <div className="dropdown-submenu">
-                      <button 
-                        className={`dropdown-subitem ${!filterOptions.owner ? 'active' : ''}`}
-                        onClick={() => handleOwnerSelect('')}
-                      >
-                        All owners
-                      </button>
-                      {uniqueOwners.map(owner => (
-                        <button
-                          key={owner}
-                          className={`dropdown-subitem ${filterOptions.owner === owner ? 'active' : ''}`}
-                          onClick={() => handleOwnerSelect(owner)}
+                {showOwnerFilter && (
+                  <div className={`dropdown-item ${expandedFilter === 'owner' ? 'expanded' : ''}`}>
+                    <button 
+                      className="dropdown-main-option"
+                      onClick={() => handleFilterOptionClick('owner')}
+                    >
+                      <span>Owner</span>
+                      {filterOptions.owner && <span className="current-value">({filterOptions.owner})</span>}
+                      <svg className={`expand-icon ${expandedFilter === 'owner' ? 'rotated' : ''}`} viewBox="0 0 24 24">
+                        <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
+                      </svg>
+                    </button>
+                    {expandedFilter === 'owner' && (
+                      <div className="dropdown-submenu">
+                        <button 
+                          className={`dropdown-subitem ${!filterOptions.owner ? 'active' : ''}`}
+                          onClick={() => handleOwnerSelect('')}
                         >
-                          {owner}
+                          All owners
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                        {uniqueOwners.map(owner => (
+                          <button
+                            key={owner}
+                            className={`dropdown-subitem ${filterOptions.owner === owner ? 'active' : ''}`}
+                            onClick={() => handleOwnerSelect(owner)}
+                          >
+                            {owner}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className={`dropdown-item ${expandedFilter === 'rarity' ? 'expanded' : ''}`}>
                   <button 
