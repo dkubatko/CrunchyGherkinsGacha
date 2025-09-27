@@ -136,7 +136,7 @@ class RolledCardManager:
 
         card_title = f"{card.modifier} {card.base_name}"
         base_caption = CARD_CAPTION_BASE.format(
-            card_id=self.roll_id, card_title=card_title, rarity=card.rarity
+            card_id=card.id, card_title=card_title, rarity=card.rarity
         )
 
         if rolled_card.being_rerolled:
