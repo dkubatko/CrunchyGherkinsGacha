@@ -180,7 +180,16 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Check if it's a group chat or DM
     if update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
-        # Group chat - add character functionality
+        # Group chat - add character functionality (admin only)
+        admin_username = os.getenv("BOT_ADMIN")
+
+        # Check if user is admin
+        if not admin_username or user.username != admin_username:
+            await message.reply_text(
+                "Only the bot administrator can add characters in group chats."
+            )
+            return
+
         command_text = message.text or message.caption or ""
         parts = command_text.split(maxsplit=1)
 
@@ -256,12 +265,20 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Delete characters by name (case-insensitive). Can be used in any chat type."""
+    """Delete characters by name (case-insensitive). Admin only."""
 
     message = update.message
     user = update.effective_user
 
     if not message or not user:
+        return
+
+    # Restrict to admin only
+    admin_username = os.getenv("BOT_ADMIN")
+
+    # Check if user is admin
+    if not admin_username or user.username != admin_username:
+        await message.reply_text("Only the bot administrator can delete characters.")
         return
 
     if not context.args or len(context.args) != 1:
