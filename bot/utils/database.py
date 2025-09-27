@@ -71,6 +71,13 @@ class RolledCard(BaseModel):
     original_rarity: Optional[str] = None
 
 
+class Character(BaseModel):
+    id: int
+    chat_id: str
+    name: str
+    image: str
+
+
 class ClaimStatus(Enum):
     SUCCESS = "success"
     ALREADY_CLAIMED = "already_claimed"
@@ -791,6 +798,28 @@ def user_exists(user_id: int) -> bool:
     return exists
 
 
+def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
+    """Return all users enrolled in the chat with stored profile images and display names."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT u.user_id, u.username, u.display_name, u.profile_imageb64
+        FROM chats c
+        INNER JOIN users u ON c.user_id = u.user_id
+        WHERE c.chat_id = ?
+          AND u.profile_imageb64 IS NOT NULL
+          AND TRIM(u.profile_imageb64) != ''
+          AND u.display_name IS NOT NULL
+          AND TRIM(u.display_name) != ''
+        """,
+        (str(chat_id),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [User(**row) for row in rows]
+
+
 def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
     """Return a random user enrolled in the chat with a stored profile image."""
     conn = connect()
@@ -1007,6 +1036,62 @@ def is_rolled_card_reroll_expired(card_id: int) -> bool:
     created_at = datetime.datetime.fromisoformat(result[0])
     time_since_creation = datetime.datetime.now() - created_at
     return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
+
+
+def add_character(chat_id: str, name: str, image: str) -> int:
+    """Add a new character to the database."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO characters (chat_id, name, image) VALUES (?, ?, ?)",
+        (str(chat_id), name, image),
+    )
+    character_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return character_id
+
+
+def delete_characters_by_name(name: str) -> int:
+    """Delete all characters with the given name (case-insensitive). Returns count of deleted characters."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM characters WHERE LOWER(name) = LOWER(?)", (name,))
+    deleted_count = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return deleted_count
+
+
+def get_characters_by_chat(chat_id: str) -> List[Character]:
+    """Get all characters for a specific chat."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM characters WHERE chat_id = ?", (str(chat_id),))
+    rows = cursor.fetchall()
+    conn.close()
+    return [Character(**row) for row in rows]
+
+
+def get_character_by_id(character_id: int) -> Optional[Character]:
+    """Get a character by its ID."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM characters WHERE id = ?", (character_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return Character(**row) if row else None
+
+
+def set_all_claim_balances_to(balance: int) -> int:
+    """Set all users' claim balances to the specified amount. Returns the number of affected rows."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE claims SET balance = ?", (balance,))
+    affected_rows = cursor.rowcount
+    conn.commit()
+    conn.close()
+    return affected_rows
 
 
 create_tables()
