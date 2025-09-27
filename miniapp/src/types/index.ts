@@ -36,6 +36,9 @@ export interface UserData {
   chatId?: string | null;
   collectionDisplayName?: string | null;
   collectionUsername?: string | null;
+  // Single card view mode: if singleCardId is set, the app should render only that card
+  singleCardId?: number | null;
+  singleCardView?: boolean; // Convenience boolean to avoid recomputing
 }
 
 export interface AppState {

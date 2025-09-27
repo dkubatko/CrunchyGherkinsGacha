@@ -39,33 +39,35 @@ export const useCards = (): UseCardsResult => {
         }
         setInitData(telegramInitData);
 
-        // Fetch user's cards
-        const userCardsResponse = await ApiService.fetchUserCards(
-          user.targetUserId,
-          telegramInitData,
-          user.chatId ?? undefined
-        );
-        setCards(userCardsResponse.cards);
+        // If single card view, we do not fetch a collection.
+        if (!user.singleCardView) {
+          const userCardsResponse = await ApiService.fetchUserCards(
+            user.targetUserId,
+            telegramInitData,
+            user.chatId ?? undefined
+          );
+          setCards(userCardsResponse.cards);
 
-        setUserData((previous) => {
-          if (!previous) {
-            return previous;
-          }
+          setUserData((previous) => {
+            if (!previous) {
+              return previous;
+            }
 
-          const responseUserId = userCardsResponse.user.user_id;
-          const collectionUsername = userCardsResponse.user.username ?? null;
-          const collectionDisplayName = userCardsResponse.user.display_name ?? null;
-          const isOwn = responseUserId === previous.currentUserId;
+            const responseUserId = userCardsResponse.user.user_id;
+            const collectionUsername = userCardsResponse.user.username ?? null;
+            const collectionDisplayName = userCardsResponse.user.display_name ?? null;
+            const isOwn = responseUserId === previous.currentUserId;
 
-          return {
-            ...previous,
-            targetUserId: responseUserId,
-            collectionUsername,
-            collectionDisplayName,
-            isOwnCollection: isOwn,
-            enableTrade: isOwn,
-          };
-        });
+            return {
+              ...previous,
+              targetUserId: responseUserId,
+              collectionUsername,
+              collectionDisplayName,
+              isOwnCollection: isOwn,
+              enableTrade: isOwn,
+            };
+          });
+        }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
         setError(errorMessage);

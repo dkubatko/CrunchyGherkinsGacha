@@ -4,10 +4,10 @@ import sys
 import logging
 import hmac
 import hashlib
+import uvicorn
 import urllib.parse
 from typing import List, Optional, Dict, Any
-
-import uvicorn
+from telegram.constants import ParseMode
 from fastapi import FastAPI, HTTPException, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from utils import database
 from utils.database import Card as APICard
 from settings.constants import TRADE_REQUEST_MESSAGE
+from utils.miniapp import encode_single_card_token
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -42,6 +43,8 @@ app = FastAPI()
 
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
+MINIAPP_URL = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+
 
 class UserSummary(BaseModel):
     user_id: int
@@ -61,6 +64,11 @@ class CardImagesRequest(BaseModel):
 class CardImageResponse(BaseModel):
     card_id: int
     image_b64: str
+
+
+class ShareCardRequest(BaseModel):
+    card_id: int
+    user_id: int
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
@@ -390,6 +398,144 @@ async def get_card_images_route(
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")
 
     return response_payload
+
+
+@app.get("/cards/detail/{card_id}", response_model=APICard)
+async def get_card_detail(
+    card_id: int,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Fetch metadata for a single card."""
+
+    if not authorization:
+        logger.warning("No authorization header provided for card detail request")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning("No init data found in authorization header for card detail request")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning("Invalid Telegram init data provided for card detail request")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        logger.warning("Card detail requested for non-existent card_id: %s", card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card_payload = card.model_dump(
+        include={
+            "id",
+            "base_name",
+            "modifier",
+            "rarity",
+            "owner",
+            "user_id",
+            "file_id",
+            "chat_id",
+            "created_at",
+        }
+    )
+
+    return APICard(**card_payload)
+
+
+@app.post("/cards/share")
+async def share_card(
+    request: ShareCardRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Share a card to its chat via the Telegram bot."""
+
+    global bot_token
+
+    if not authorization:
+        logger.warning("No authorization header provided for share request")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning("No init data found in authorization header for share request")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning("Invalid Telegram init data provided for share request")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    user_data: Dict[str, Any] = validated_data["user"] or {}
+    auth_user_id = user_data.get("id")
+    if not isinstance(auth_user_id, int):
+        logger.warning("Missing or invalid user_id in init data for share request")
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
+
+    if auth_user_id != request.user_id:
+        logger.warning(
+            "Share request user_id mismatch (auth %s vs payload %s)", auth_user_id, request.user_id
+        )
+        raise HTTPException(status_code=403, detail="Unauthorized share request")
+
+    card = await asyncio.to_thread(database.get_card, request.card_id)
+    if not card:
+        logger.warning("Share requested for non-existent card_id: %s", request.card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card_chat_id = card.chat_id
+    if not card_chat_id:
+        logger.error("Card %s missing chat_id; cannot share", request.card_id)
+        raise HTTPException(status_code=500, detail="Card chat not configured")
+
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    card_title = f"{card.rarity} {card.modifier} {card.base_name}".strip()
+    if not MINIAPP_URL:
+        logger.error("MINIAPP_URL not configured; cannot generate share link")
+        raise HTTPException(status_code=500, detail="Mini app URL not configured")
+
+    try:
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+        share_token = encode_single_card_token(request.card_id)
+        share_url = MINIAPP_URL
+        if "?" in MINIAPP_URL:
+            separator = "&"
+        else:
+            separator = "?"
+        share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
+
+        if not bot_token:
+            logger.error("Bot token not available for share request")
+            raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
+
+        message = f"@{username} shared card: <b>{card_title}</b>"
+
+        await bot.send_message(
+            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
+        )
+
+        return {"success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to share card %s: %s", request.card_id, e)
+        raise HTTPException(status_code=500, detail="Failed to share card")
 
 
 @app.post("/trade/{card_id1}/{card_id2}")

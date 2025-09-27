@@ -1,8 +1,20 @@
 import WebApp from '@twa-dev/sdk';
 import type { UserData, OrientationData } from '../types';
 
+type ParsedPayload =
+  | { kind: 'card'; cardId: number }
+  | { kind: 'user'; userId: number }
+  | { kind: 'userChat'; userId: number; chatId: string };
+
 export class TelegramUtils {
   private static readonly TOKEN_PREFIX = 'tg1_';
+
+  // Token format documentation:
+  // Supported external payload (start_param) values after the optional tg1_ base64 wrapper:
+  //   c-<cardId>            => Single card view (display only this card)
+  //   u-<userId>            => View user collection
+  //   uc-<userId>-<chatId>  => View user collection scoped to chat
+  // Unrecognized payloads are ignored.
 
   static decodeToken(token: string): string | null {
     if (!token.startsWith(TelegramUtils.TOKEN_PREFIX)) {
@@ -29,6 +41,52 @@ export class TelegramUtils {
     }
   }
 
+  private static parsePayload(payload: string): ParsedPayload | null {
+    const trimmed = payload.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const lower = trimmed.toLowerCase();
+
+    if (lower.startsWith('c-')) {
+      const maybeCardId = Number(trimmed.slice(2));
+      if (Number.isInteger(maybeCardId) && maybeCardId > 0) {
+        return { kind: 'card', cardId: maybeCardId };
+      }
+      return null;
+    }
+
+    if (lower.startsWith('uc-')) {
+      const rest = trimmed.slice(3);
+      const firstDash = rest.indexOf('-');
+      if (firstDash > 0) {
+        const userIdStr = rest.slice(0, firstDash);
+        const chatStr = rest.slice(firstDash + 1).trim();
+        const maybeUserId = Number(userIdStr);
+        if (!Number.isNaN(maybeUserId) && chatStr.length > 0) {
+          return {
+            kind: 'userChat',
+            userId: maybeUserId,
+            chatId: chatStr
+          };
+        }
+      }
+      return null;
+    }
+
+    if (lower.startsWith('u-')) {
+      const userIdStr = trimmed.slice(2);
+      const maybeUserId = Number(userIdStr);
+      if (!Number.isNaN(maybeUserId)) {
+        return { kind: 'user', userId: maybeUserId };
+      }
+      return null;
+    }
+
+    return null;
+  }
+
   static initializeUser(): UserData | null {
     try {
       // Check if WebApp is properly initialized
@@ -48,15 +106,19 @@ export class TelegramUtils {
 
       let targetUserId: number = currentUserId;
       let chatId: string | null = null;
+      let singleCardId: number | null = null;
 
-      const applyExternalPayload = (value: string, source: string) => {
-        if (!value) {
-          return;
+      let payloadType: 'card' | 'user' | 'userChat' | null = null;
+      let payloadSource: string | null = null;
+
+      const applyExternalPayload = (rawValue: string, source: string): boolean => {
+        if (!rawValue) {
+          return false;
         }
 
-        let decoded = value;
+        let decoded = rawValue;
         try {
-          decoded = decodeURIComponent(value);
+          decoded = decodeURIComponent(rawValue);
         } catch (decodeErr) {
           console.error(`Error decoding ${source}:`, decodeErr);
         }
@@ -64,53 +126,68 @@ export class TelegramUtils {
         const decodedToken = TelegramUtils.decodeToken(decoded);
         const tokenPayload = decodedToken ?? decoded;
 
-        // Parse the simple token format: user_id or user_id.chat_id
-        const trimmed = tokenPayload.trim();
-        if (!trimmed) {
-          return;
+        const parsed = TelegramUtils.parsePayload(tokenPayload);
+        if (!parsed) {
+          console.warn('Unrecognized token payload ignored', { source, tokenPayload });
+          return false;
         }
 
-        // Check if it's the simple token format (numbers and dots only)
-        if (/^[\d.-]+$/.test(trimmed)) {
-          const parts = trimmed.split('.');
-          const userIdStr = parts[0];
-          const chatIdStr = parts[1]; // Optional chat_id
-
-          const maybeUserId = Number(userIdStr);
-          if (!Number.isNaN(maybeUserId)) {
-            targetUserId = maybeUserId;
-          }
-
-          if (chatIdStr) {
-            chatId = chatIdStr;
-          }
-          return;
-        }
-
-        // Fallback: try to parse as a simple number
-        const maybeNumber = Number(trimmed);
-        if (!Number.isNaN(maybeNumber)) {
-          targetUserId = maybeNumber;
+        switch (parsed.kind) {
+          case 'card':
+            singleCardId = parsed.cardId;
+            payloadType = 'card';
+            payloadSource = source;
+            return true;
+          case 'user':
+            targetUserId = parsed.userId;
+            singleCardId = null;
+            payloadType = 'user';
+            payloadSource = source;
+            return true;
+          case 'userChat':
+            targetUserId = parsed.userId;
+            chatId = parsed.chatId;
+            singleCardId = null;
+            payloadType = 'userChat';
+            payloadSource = source;
+            return true;
+          default:
+            return false;
         }
       };
 
-      const payloadCandidates: (string | null)[] = [
-        WebApp.initDataUnsafe.start_param ?? null,
-      ];
-
-      const urlParams = new URLSearchParams(window.location.search);
-      payloadCandidates.push(urlParams.get('startapp'));
-      payloadCandidates.push(urlParams.get('v'));
-
-      for (const candidate of payloadCandidates) {
-        if (candidate) {
-          applyExternalPayload(candidate, 'mini app payload');
-          break;
-        }
+      const startParamRaw = WebApp.initDataUnsafe.start_param;
+      const startParam = startParamRaw ?? null;
+      if (startParam) {
+        applyExternalPayload(startParam, 'init data start_param');
       }
 
-      const isOwnCollection = targetUserId === currentUserId;
-      const enableTrade = isOwnCollection;
+      if (payloadType && payloadSource) {
+        switch (payloadType) {
+          case 'card':
+            console.info('Start parameter requested single card view', {
+              source: payloadSource
+            });
+            break;
+          case 'user':
+            console.info('Start parameter requested user collection', {
+              source: payloadSource
+            });
+            break;
+          case 'userChat':
+            console.info('Start parameter requested user collection scoped to chat', {
+              source: payloadSource
+            });
+            break;
+        }
+      } else {
+        console.info('No start parameter supplied; defaulting to init data user context', {
+          source: 'initDataUnsafe.user'
+        });
+      }
+
+      const isOwnCollection = singleCardId == null && targetUserId === currentUserId; // In single card mode collection semantics disabled
+      const enableTrade = isOwnCollection && singleCardId == null;
 
       return {
         currentUserId,
@@ -118,6 +195,10 @@ export class TelegramUtils {
         isOwnCollection,
         enableTrade,
         chatId,
+        singleCardId,
+        singleCardView: singleCardId != null,
+        collectionDisplayName: null,
+        collectionUsername: null,
       };
     } catch (err) {
       console.error('Error initializing user:', err);

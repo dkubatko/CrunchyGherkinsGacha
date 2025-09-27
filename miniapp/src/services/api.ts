@@ -99,6 +99,44 @@ export class ApiService {
     return response.json();
   }
 
+  static async fetchCardDetails(cardId: number, initData: string): Promise<CardData> {
+    const response = await fetch(`${API_BASE_URL}/cards/detail/${encodeURIComponent(String(cardId))}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Card not found. It may have been removed.');
+      } else if (response.status === 401) {
+        throw new Error('Authentication failed. Please reopen the app from Telegram.');
+      }
+      throw new Error(`Failed to load card (Error ${response.status})`);
+    }
+
+    return response.json();
+  }
+
+  static async shareCard(cardId: number, userId: number, initData: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/cards/share`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ card_id: cardId, user_id: userId })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to share card (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+  }
+
   static async fetchCardImage(cardId: number, initData: string): Promise<string> {
     const response = await fetch(`${API_BASE_URL}/cards/image/${cardId}`, {
       headers: this.getHeaders(initData)
