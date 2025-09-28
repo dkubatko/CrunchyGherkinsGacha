@@ -231,22 +231,6 @@ export class TelegramUtils {
     }
   }
 
-  static setupMainButton(buttonText: string, clickHandler: () => void) {
-    WebApp.MainButton.setText(buttonText);
-    WebApp.MainButton.show();
-    WebApp.MainButton.onClick(clickHandler);
-
-    return () => {
-      WebApp.MainButton.hide();
-      WebApp.MainButton.offClick(clickHandler);
-    };
-  }
-
-  static hideMainButton() {
-    WebApp.MainButton.hide();
-    return () => { };
-  }
-
   static setupBackButton(clickHandler: () => void) {
     if (!WebApp.BackButton) {
       return () => { };
