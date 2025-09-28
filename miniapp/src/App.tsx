@@ -7,7 +7,9 @@ import SingleCardView from './components/SingleCardView';
 import AllCards from './components/AllCards';
 import CardModal from './components/CardModal';
 import FilterSortControls from './components/FilterSortControls';
+import ActionPanel from './components/ActionPanel';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
+import type { ActionButton } from './components/ActionPanel';
 
 // Hooks
 import {
@@ -15,7 +17,6 @@ import {
   useAllCards,
   useOrientation,
   useModal,
-  useMainButton,
   useSwipeHandlers
 } from './hooks';
 
@@ -212,7 +213,6 @@ function App() {
   // Hide trade/navigation buttons when in single card mode
   useEffect(() => {
     if (userData?.singleCardView) {
-      TelegramUtils.hideMainButton();
       TelegramUtils.hideBackButton();
     }
   }, [userData?.singleCardView]);
@@ -358,20 +358,37 @@ function App() {
     return cleanup;
   }, [isTradeView]);
   
-  // Effects
-  const { isMainButtonVisible } = useMainButton(
-    loading,
-    error,
-    userData?.isOwnCollection ?? false,
-    userData?.enableTrade ?? false,
-    cards.length > 0, 
-    view,
-    isGridView,
-    selectedCardForTrade,
-    modalCard,
-    handleTradeClick,
-    handleSelectClick
-  );
+  // Action Panel logic (replaces useMainButton)
+  const getActionButtons = (): ActionButton[] => {
+    if (loading || error) {
+      return [];
+    }
+
+    // Show Trade button in current view for own collection (only if trading is enabled)
+    // Allow in gallery view always, or in grid view when a modal card is open
+    if (userData?.isOwnCollection && userData.enableTrade && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
+      return [{
+        id: 'trade',
+        text: 'Trade',
+        onClick: handleTradeClick,
+        variant: 'primary'
+      }];
+    }
+    // Show Select button in modal when trading and viewing others' cards (only if trading is enabled)
+    else if (userData?.enableTrade && selectedCardForTrade && modalCard && view === 'all' && modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
+      return [{
+        id: 'select',
+        text: 'Select',
+        onClick: handleSelectClick,
+        variant: 'primary'
+      }];
+    }
+
+    return [];
+  };
+
+  const actionButtons = getActionButtons();
+  const isActionPanelVisible = actionButtons.length > 0;
 
   const collectionOwnerLabel = (() => {
     if (!userData) {
@@ -419,7 +436,7 @@ function App() {
   }
 
   return (
-    <div className="app-container" {...(view === 'current' ? swipeHandlers : {})}>
+    <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' ? swipeHandlers : {})}>
       {/* Tab Navigation */}
       <div className="tabs">
         <button 
@@ -496,7 +513,7 @@ function App() {
                     )}
                   </>
                 ) : (
-                  <div className={`card-container ${isMainButtonVisible ? 'with-trade-button' : ''}`}>
+                  <div className={`card-container ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
                     {/* Current Card */}
                     <Card 
                       {...cards[currentIndex]} 
@@ -581,6 +598,12 @@ function App() {
           onShare={shareEnabled ? handleShareCard : undefined}
         />
       )}
+
+      {/* Action Panel */}
+      <ActionPanel
+        buttons={actionButtons}
+        visible={isActionPanelVisible}
+      />
     </div>
   );
 }

@@ -24,6 +24,10 @@
   background-color: var(--tg-theme-secondary-bg-color, #333);
   border: 1px solid var(--tg-theme-separator-color, rgba(255, 255, 255, 0.1));
   transition: transform 0.2s, box-shadow 0.2s;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
 }
 
 .grid-card:hover {
