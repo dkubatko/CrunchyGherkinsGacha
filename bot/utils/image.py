@@ -139,3 +139,43 @@ class ImageUtil:
         except Exception as exc:
             logger.error("Error compressing image: %s", exc)
             return image_bytes
+
+    @staticmethod
+    def crop_to_square(image_bytes: bytes) -> bytes:
+        """Crop image to 1:1 aspect ratio (square) by cropping from the center."""
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            original_format = image.format or "PNG"
+
+            width, height = image.size
+
+            # If already square, return as is
+            if width == height:
+                return image_bytes
+
+            # Determine the size of the square (smaller dimension)
+            square_size = min(width, height)
+
+            # Calculate crop coordinates to center the crop
+            left = (width - square_size) // 2
+            top = (height - square_size) // 2
+            right = left + square_size
+            bottom = top + square_size
+
+            # Crop to square
+            cropped_image = image.crop((left, top, right, bottom))
+
+            # Convert back to bytes
+            output_buffer = io.BytesIO()
+            cropped_image.save(output_buffer, format=original_format)
+            processed_bytes = output_buffer.getvalue()
+
+            logger.info(
+                f"Image cropped to square from {width}x{height} to {square_size}x{square_size}"
+            )
+            return processed_bytes
+
+        except Exception as e:
+            logger.error(f"Error cropping image to square: {e}")
+            # Return original image bytes if processing fails
+            return image_bytes

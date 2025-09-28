@@ -163,7 +163,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Update the user's display name and profile image in DM, or add a character in group chats."""
+    """Display current profile info (no args) or update user's profile in DM, or add a character in group chats."""
 
     message = update.message
     user = update.effective_user
@@ -188,7 +188,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if len(parts) < 2 or not parts[1].strip():
             await message.reply_text(
-                "Usage: /profile <character_name> (attach a photo with the command)."
+                "Usage: /profile <character_name> (attach a photo with the command).\n\nTo view your profile, please DM me with /profile (no arguments)."
             )
             return
 
@@ -206,14 +206,31 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await telegram_file.download_to_memory(out=buffer)
         image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-        chat_id = str(update.effective_chat.id)
-        character_id = await asyncio.to_thread(
-            database.add_character, chat_id, character_name, image_b64
-        )
+        # Set thinking reaction while processing
+        if not DEBUG_MODE:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
+            )
 
-        await message.reply_text(
-            f"Character '{character_name}' added with ID {character_id}! They will now be used for card generation."
-        )
+        try:
+            chat_id = str(update.effective_chat.id)
+            character_id = await asyncio.to_thread(
+                database.add_character, chat_id, character_name, image_b64
+            )
+
+            await message.reply_text(
+                f"Character '{character_name}' added with ID {character_id}! They will now be used for card generation."
+            )
+        finally:
+            # Remove thinking reaction
+            if not DEBUG_MODE:
+                await context.bot.set_message_reaction(
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    reaction=[],
+                )
         return
 
     # DM functionality - existing user profile update
@@ -233,10 +250,45 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     command_text = message.text or message.caption or ""
     parts = command_text.split(maxsplit=1)
 
+    # Handle /profile with no arguments - show current profile
     if len(parts) < 2 or not parts[1].strip():
-        await message.reply_text(
-            "Usage: /profile <display_name> (attach a photo with the command)."
-        )
+        # Get user's current profile data
+        user_data = await asyncio.to_thread(database.get_user, user.id)
+
+        if not user_data or not user_data.display_name:
+            await message.reply_text(
+                "You don't have a profile set up yet.\nUsage: /profile <display_name> (attach a photo with the command)."
+            )
+            return
+
+        # Build response message
+        profile_text = f"👤 <b>Your Profile</b>\n\n"
+        profile_text += f"Display Name: <b>{user_data.display_name}</b>\n"
+        profile_text += f"Username: @{user_data.username}"
+
+        # Prepare media to send
+        media_group = []
+
+        if user_data.profile_imageb64:
+            profile_image_data = base64.b64decode(user_data.profile_imageb64)
+            profile_media = InputMediaPhoto(media=profile_image_data, caption="🖼️ Profile Image")
+            media_group.append(profile_media)
+
+        if user_data.slot_iconb64:
+            slot_icon_data = base64.b64decode(user_data.slot_iconb64)
+            slot_media = InputMediaPhoto(media=slot_icon_data, caption="🎰 Slot Machine Icon")
+            media_group.append(slot_media)
+
+        # Send response
+        if media_group:
+            # Send profile text first
+            await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
+            # Then send images
+            await context.bot.send_media_group(chat_id=update.effective_chat.id, media=media_group)
+        else:
+            profile_text += "\n\n📷 No profile image available"
+            await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
+
         return
 
     display_name = parts[1].strip()
@@ -251,10 +303,27 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await telegram_file.download_to_memory(out=buffer)
     image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
 
-    await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
-    await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
+    # Set thinking reaction while processing
+    if not DEBUG_MODE:
+        await context.bot.set_message_reaction(
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
+        )
 
-    await message.reply_text("Profile updated! Your new display name and image are saved.")
+    try:
+        await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
+        await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
+
+        await message.reply_text("Profile updated! Your new display name and image are saved.")
+    finally:
+        # Remove thinking reaction
+        if not DEBUG_MODE:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[],
+            )
 
 
 async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
