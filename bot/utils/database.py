@@ -15,10 +15,38 @@ from settings.constants import DB_PATH
 from utils.image import ImageUtil
 
 logger = logging.getLogger(__name__)
+
+# Import GeminiUtil for slot icon generation
+try:
+    from utils.gemini import GeminiUtil
+
+    GEMINI_AVAILABLE = True
+except ImportError:
+    logger.warning("GeminiUtil not available. Slot icon generation will be skipped.")
+    GEMINI_AVAILABLE = False
+
 PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 ALEMBIC_INI_PATH = os.path.join(PROJECT_ROOT, "alembic.ini")
 ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
 INITIAL_ALEMBIC_REVISION = "20240924_0001"
+
+
+def _generate_slot_icon(image_b64: str) -> Optional[str]:
+    """Generate slot machine icon from base64 image. Returns base64 slot icon or None if failed."""
+    if not GEMINI_AVAILABLE:
+        return None
+
+    try:
+        gemini_util = GeminiUtil()
+        slot_icon_b64 = gemini_util.generate_slot_machine_icon(base_image_b64=image_b64)
+        if slot_icon_b64:
+            logger.info("Slot machine icon generated successfully")
+        else:
+            logger.warning("Failed to generate slot machine icon")
+        return slot_icon_b64
+    except Exception as e:
+        logger.error(f"Error generating slot machine icon: {e}")
+        return None
 
 
 class User(BaseModel):
@@ -26,6 +54,7 @@ class User(BaseModel):
     username: str
     display_name: Optional[str]
     profile_imageb64: Optional[str]
+    slot_iconb64: Optional[str] = None
 
 
 class Card(BaseModel):
@@ -87,7 +116,7 @@ class Character(BaseModel):
     id: int
     chat_id: str
     name: str
-    image: str
+    imageb64: str
 
 
 class ClaimStatus(Enum):
@@ -769,13 +798,26 @@ def upsert_user(
 
 
 def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
-    """Update the display name and profile image for a user."""
+    """Update the display name and profile image for a user, and generate slot icon."""
+    # Generate slot machine icon
+    slot_icon_b64 = _generate_slot_icon(profile_imageb64)
+
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute(
-        "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
-        (display_name, profile_imageb64, user_id),
-    )
+
+    if slot_icon_b64:
+        cursor.execute(
+            "UPDATE users SET display_name = ?, profile_imageb64 = ?, slot_iconb64 = ? WHERE user_id = ?",
+            (display_name, profile_imageb64, slot_icon_b64, user_id),
+        )
+        logger.info(f"Updated user profile and slot icon for user {user_id}")
+    else:
+        cursor.execute(
+            "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
+            (display_name, profile_imageb64, user_id),
+        )
+        logger.info(f"Updated user profile for user {user_id} (slot icon generation failed)")
+
     updated = cursor.rowcount > 0
     conn.commit()
     conn.close()
@@ -1049,14 +1091,27 @@ def is_rolled_card_reroll_expired(roll_id: int) -> bool:
     return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
-def add_character(chat_id: str, name: str, image: str) -> int:
-    """Add a new character to the database."""
+def add_character(chat_id: str, name: str, imageb64: str) -> int:
+    """Add a new character to the database and generate slot icon."""
+    # Generate slot machine icon
+    slot_icon_b64 = _generate_slot_icon(imageb64)
+
     conn = connect()
     cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO characters (chat_id, name, image) VALUES (?, ?, ?)",
-        (str(chat_id), name, image),
-    )
+
+    if slot_icon_b64:
+        cursor.execute(
+            "INSERT INTO characters (chat_id, name, imageb64, slot_iconb64) VALUES (?, ?, ?, ?)",
+            (str(chat_id), name, imageb64, slot_icon_b64),
+        )
+        logger.info(f"Added character '{name}' with slot icon to chat {chat_id}")
+    else:
+        cursor.execute(
+            "INSERT INTO characters (chat_id, name, imageb64) VALUES (?, ?, ?)",
+            (str(chat_id), name, imageb64),
+        )
+        logger.info(f"Added character '{name}' to chat {chat_id} (slot icon generation failed)")
+
     character_id = cursor.lastrowid
     conn.commit()
     conn.close()

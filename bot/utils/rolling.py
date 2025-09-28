@@ -61,7 +61,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     characters = database.get_characters_by_chat(chat_id)
     character_profiles = [
         SelectedProfile(
-            name=char.name, image_b64=char.image, source_type="character", source_id=char.id
+            name=char.name, image_b64=char.imageb64, source_type="character", source_id=char.id
         )
         for char in characters
     ]

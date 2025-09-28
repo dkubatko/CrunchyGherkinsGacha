@@ -47,6 +47,19 @@ Do NOT include any text other than the card name on the card.
 Add card name "{modification} {name}" to the bottom field, no description.
 """
 
+SLOT_MACHINE_INSTRUCTION = """
+Create a casino slot machine icon featuring the person's portrait.
+
+- Use the person's face, neck, and shoulders from the image
+- Keep facial features recognizable
+- Apply casino/slot machine themed styling
+- Make it look like a premium slot machine symbol with bold, eye-catching appearance
+- Use rich, saturated colors typical of slot machines (golds, reds, blues, purples)
+- High-impact visual style suitable for gambling/casino theme - no text or decorative elements
+- Do NOT add any border to the icon
+- Output MUST be exactly 1:1 square aspect ratio
+"""
+
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
