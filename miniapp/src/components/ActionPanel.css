@@ -1,0 +1,123 @@
+.action-panel {
+  --panel-bottom-padding: 12px; /* Apply mobile padding to both PC and mobile */
+  
+  width: 100%;
+  background: var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color, #ffffff));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  flex-shrink: 0; /* Don't shrink when space is limited */
+  padding-bottom: var(--panel-bottom-padding);
+  z-index: 1001; /* Above modal backdrop (z-index: 1000) */
+  position: relative;
+}
+
+.action-panel-content {
+  display: flex;
+  gap: 8px;
+  padding: 10px 12px;
+  max-width: 100%;
+  justify-content: center;
+  align-items: center;
+  /* Ensure content is visible */
+  opacity: 1;
+  visibility: visible;
+  min-height: 52px;
+}
+
+.action-button {
+  flex: 1;
+  min-height: 52px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  /* Defensive CSS to ensure visibility */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+  visibility: visible;
+  min-width: 80px;
+}
+
+.action-button.primary {
+  background: var(--tg-theme-button-color, #2196f3);
+  color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.action-button.primary:hover {
+  background: var(--tg-theme-button-color, #1976d2);
+  transform: translateY(-1px);
+}
+
+.action-button.primary:active,
+.action-button.primary:focus:active {
+  background: color-mix(in srgb, var(--tg-theme-button-color, #0d47a1) 80%, black 20%);
+  transform: translateY(1px);
+  outline: none;
+}
+
+.action-button.secondary {
+  background: var(--tg-theme-secondary-bg-color, #f5f5f5);
+  color: var(--tg-theme-text-color, #000000);
+  border: 1px solid var(--tg-theme-hint-color, #e0e0e0);
+}
+
+.action-button.secondary:hover {
+  background: var(--tg-theme-hint-color, #e0e0e0);
+  transform: translateY(-1px);
+}
+
+.action-button.secondary:active,
+.action-button.secondary:focus:active {
+  background: color-mix(in srgb, var(--tg-theme-hint-color, #c0c0c0) 80%, black 20%);
+  transform: translateY(1px);
+  outline: none;
+}
+
+/* When only one button is present */
+.action-panel-content:has(:only-child) {
+  justify-content: center;
+}
+
+.action-panel-content:has(:only-child) .action-button {
+  flex: 1;
+}
+
+/* Mobile device detection - using pointer and hover capabilities */
+@media (pointer: coarse) and (hover: none) {
+  .action-panel {
+    --panel-bottom-padding: 15px;
+  }
+  
+  .action-panel-content {
+    padding: 10px 16px;
+    gap: 8px;
+  }
+  
+  .action-button {
+    min-height: 52px;
+    font-size: 15px;
+  }
+}
+
+/* Safe area adjustments - uses the responsive --panel-bottom-padding value */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .action-panel {
+    padding-bottom: calc(var(--panel-bottom-padding) + env(safe-area-inset-bottom));
+  }
+}
+
+@supports (padding-bottom: constant(safe-area-inset-bottom)) {
+  .action-panel {
+    padding-bottom: calc(var(--panel-bottom-padding) + constant(safe-area-inset-bottom));
+  }
+}
