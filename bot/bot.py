@@ -60,7 +60,7 @@ from settings.constants import (
     RECYCLE_RESULT_APPENDIX,
 )
 from utils import gemini, database, rolling
-from utils.decorators import verify_user, verify_user_in_chat
+from utils.decorators import verify_user, verify_user_in_chat, verify_admin
 from utils.rolled_card import RolledCardManager
 from utils.miniapp import encode_miniapp_token, encode_slots_token
 
@@ -1885,6 +1885,102 @@ async def accept_trade(
     await query.answer()
 
 
+@verify_admin
+async def spins(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Add spins to all members of the current chat. Admin only."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    # Ensure it's used in a group chat
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        await message.reply_text(
+            "/spins can only be used in group chats.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Validate arguments
+    if not context.args or len(context.args) != 1:
+        await message.reply_text(
+            "Usage: /spins <number>\nExample: /spins 5",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    try:
+        spins_to_add = int(context.args[0])
+    except ValueError:
+        await message.reply_text(
+            "The number of spins must be a valid integer.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if spins_to_add <= 0:
+        await message.reply_text(
+            "The number of spins must be a positive number.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if spins_to_add > 100:
+        await message.reply_text(
+            "Cannot add more than 100 spins at once.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    try:
+        chat_id = str(chat.id)
+        # Get all users enrolled in this chat
+        all_user_ids = await asyncio.to_thread(database.get_all_chat_users, chat_id)
+
+        if not all_user_ids:
+            await message.reply_text(
+                "No users are enrolled in this chat yet.",
+                reply_to_message_id=message.message_id,
+            )
+            return
+
+        # Add spins to all users
+        successful_count = 0
+        for user_id in all_user_ids:
+            try:
+                await asyncio.to_thread(
+                    database.increment_user_spins, user_id, chat_id, spins_to_add
+                )
+                successful_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to add spins to user {user_id}: {e}")
+
+        # Report results
+        plural = "spin" if spins_to_add == 1 else "spins"
+        user_plural = "user" if successful_count == 1 else "users"
+
+        await message.reply_text(
+            f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!",
+            reply_to_message_id=message.message_id,
+        )
+
+        logger.info(
+            f"@{user.username} executed /spins {spins_to_add} command, affected {successful_count} users"
+        )
+
+    except Exception as e:
+        logger.error(f"Error in /spins command: {e}")
+        await message.reply_text(
+            "❌ An error occurred while adding spins. Please try again.",
+            reply_to_message_id=message.message_id,
+        )
+
+
 @verify_user_in_chat
 async def reload(
     update: Update,
@@ -1967,6 +2063,7 @@ def main() -> None:
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
+    application.add_handler(CommandHandler("spins", spins))
     application.add_handler(CommandHandler("reload", reload))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))

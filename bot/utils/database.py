@@ -960,6 +960,19 @@ def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     return exists
 
 
+def get_all_chat_users(chat_id: str) -> List[int]:
+    """Get all user IDs enrolled in a specific chat."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT user_id FROM chats WHERE chat_id = ?",
+        (str(chat_id),),
+    )
+    rows = cursor.fetchall()
+    conn.close()
+    return [row[0] for row in rows]
+
+
 def _row_to_rolled_card(row: sqlite3.Row | None) -> Optional[RolledCard]:
     return RolledCard(**row) if row else None
 
