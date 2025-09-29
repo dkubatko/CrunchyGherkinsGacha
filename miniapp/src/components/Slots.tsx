@@ -88,31 +88,27 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     };
   }, []);
 
-  const generateRandomResults = (): number[] => {
+  const generateServerVerifiedResults = useCallback(async (): Promise<{ isWin: boolean; results: number[] }> => {
     const availableSymbols = symbols.current.length;
-    if (availableSymbols === 0) return [0, 0, 0];
+    if (availableSymbols === 0) return { isWin: false, results: [0, 0, 0] };
 
-    // 2% chance to win
-    const isWin = Math.random() < 0.02;
-    
-    if (isWin) {
-      // All three reels show the same symbol
-      const winningSymbol = Math.floor(Math.random() * availableSymbols);
-      return [winningSymbol, winningSymbol, winningSymbol];
-    } else {
-      // Ensure it's a loss - at least one reel must be different
-      const firstSymbol = Math.floor(Math.random() * availableSymbols);
-      const secondSymbol = Math.floor(Math.random() * availableSymbols);
-      let thirdSymbol = Math.floor(Math.random() * availableSymbols);
-      
-      // If by chance all three are the same, force the third to be different
-      if (firstSymbol === secondSymbol && secondSymbol === thirdSymbol && availableSymbols > 1) {
-        thirdSymbol = (thirdSymbol + 1) % availableSymbols;
-      }
-      
-      return [firstSymbol, secondSymbol, thirdSymbol];
-    }
-  };
+    // Generate a random number to send to the server (client-side contribution)
+    const randomNumber = Math.floor(Math.random() * availableSymbols);
+
+    // Call server to verify the spin - no fallback allowed
+    const verifyResult = await ApiService.verifySlotSpin(
+      userId,
+      chatId,
+      randomNumber,
+      availableSymbols,
+      initData
+    );
+
+    return {
+      isWin: verifyResult.is_win,
+      results: verifyResult.results
+    };
+  }, [userId, chatId, initData]);
 
   const startRaritySpinner = useCallback(async (winningResultIndex: number) => {
     // Clear any existing rarity timeouts
@@ -296,34 +292,51 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         result: 0
       });
 
-      // Generate final results
-      const finalResults = generateRandomResults();
-      
-      // Set all reels to spinning fast
-      setSpinState({
-        spinning: true,
-        reelStates: ['fast', 'fast', 'fast'],
-        results: finalResults
-      });
+      try {
+        // Generate final results using server verification
+        const { results: finalResults } = await generateServerVerifiedResults();
+        
+        // Set all reels to spinning fast
+        setSpinState({
+          spinning: true,
+          reelStates: ['fast', 'fast', 'fast'],
+          results: finalResults
+        });
 
-      // Haptic feedback when spin starts
-      TelegramUtils.triggerHapticImpact('light');
+        // Haptic feedback when spin starts
+        TelegramUtils.triggerHapticImpact('light');
 
-      // Stop reels with staggered timing (left to right)
-      [0, 1, 2].forEach((reelIndex) => {
-        const timeout = setTimeout(() => {
-          stopReel(reelIndex, finalResults[reelIndex]);
-        }, 1000 + reelIndex * 300); // 1s base + 300ms stagger per reel
+        // Stop reels with staggered timing (left to right)
+        [0, 1, 2].forEach((reelIndex) => {
+          const timeout = setTimeout(() => {
+            stopReel(reelIndex, finalResults[reelIndex]);
+          }, 1000 + reelIndex * 300); // 1s base + 300ms stagger per reel
 
-        reelTimeouts.current.push(timeout);
-      });
+          reelTimeouts.current.push(timeout);
+        });
+
+      } catch (verificationError) {
+        console.error('Slot verification failed:', verificationError);
+        
+        // Show error alert to user
+        TelegramUtils.showAlert('Error spinning\n\nTry again later!');
+        
+        // Reset slot state to allow retry
+        setSpinState({
+          spinning: false,
+          reelStates: ['idle', 'idle', 'idle'],
+          results: providedSymbols.length >= 3 ? [0, 1, 2] : [0, 0, 0]
+        });
+        
+        return; // Exit early, don't continue with normal spin logic
+      }
 
     } catch (error) {
       console.error('Failed to consume spin:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process spin';
       TelegramUtils.showAlert(errorMessage);
     }
-  }, [spinState.spinning, userSpins.count, userSpins.loading, stopReel, userId, chatId, initData, onSpinConsumed]);
+  }, [spinState.spinning, userSpins.count, userSpins.loading, stopReel, userId, chatId, initData, onSpinConsumed, generateServerVerifiedResults, providedSymbols.length]);
 
   // Memoize reel symbols to prevent unnecessary recalculations
   const getReelSymbols = useCallback((reelIndex: number): SlotSymbol[] => {
@@ -483,18 +496,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
         {/* Spins Counter */}
         <div className="spins-container">
-          {userSpins.loading ? (
-            <div className="spins-display loading">
-              <div className="spins-icon">🎰</div>
-              <div className="spins-text">
-                <span>Loading spins...</span>
-              </div>
-            </div>
-          ) : userSpins.error ? (
+          {userSpins.error ? (
             <div className="spins-display error">
               <div className="spins-icon">⚠️</div>
               <div className="spins-text">
-                <span>Error loading spins</span>
+                <span className="spins-count">?</span>
+                <span className="spins-label">Error loading spins</span>
               </div>
             </div>
           ) : (
