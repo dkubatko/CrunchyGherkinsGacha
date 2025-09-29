@@ -24,9 +24,17 @@ if str(PROJECT_ROOT) not in sys.path:
 # Now that the path is correct, we can import from the bot directory
 from utils.database import connect  # noqa: E402
 
-load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
+# Determine if running in debug mode
+DEBUG_MODE = os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
-TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN") or os.getenv("TELEGRAM_AUTH_TOKEN")
+# Load environment variables from the correct path
+load_dotenv(dotenv_path=PROJECT_ROOT.parent / ".env", override=False)
+
+# Use debug token when in debug mode, otherwise use production token
+if DEBUG_MODE:
+    TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
+else:
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
 
 async def send_notification(chat_id: int, count: int) -> None:
@@ -35,7 +43,19 @@ async def send_notification(chat_id: int, count: int) -> None:
         print("Error: Telegram token not found. Cannot send notification.")
         return
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    builder = Application.builder().token(TELEGRAM_TOKEN)
+    if DEBUG_MODE:
+        # Use test environment for debug mode
+        builder.base_url("https://api.telegram.org/bot")
+        builder.base_file_url("https://api.telegram.org/file/bot")
+
+    app = builder.build()
+
+    if DEBUG_MODE:
+        # Manually set the test environment URL for the bot instance
+        app.bot._base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/test"
+        app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
+
     message = f"{count} spins added to all accounts! Happy gambling 🎰"
     try:
         await app.bot.send_message(chat_id=chat_id, text=message)
@@ -69,7 +89,8 @@ def main() -> None:
     print(f"Added {args.count} spins to {updated_rows} users in chat {args.chat_id}.")
 
     # Send notification
-    asyncio.run(send_notification(args.chat_id, args.count))
+    if updated_rows > 0:
+        asyncio.run(send_notification(args.chat_id, args.count))
 
 
 if __name__ == "__main__":
