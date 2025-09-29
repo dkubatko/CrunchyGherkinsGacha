@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import os
 import sys
 import logging
@@ -6,6 +7,7 @@ import hmac
 import hashlib
 import uvicorn
 import urllib.parse
+from io import BytesIO
 from typing import List, Optional, Dict, Any
 from telegram.constants import ParseMode
 from fastapi import FastAPI, HTTPException, Header, Query
@@ -19,9 +21,16 @@ load_dotenv()
 # Add project root to sys.path to allow importing from bot
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import database
+from utils import database, gemini, rolling
 from utils.database import Card as APICard
-from settings.constants import TRADE_REQUEST_MESSAGE
+from settings.constants import (
+    TRADE_REQUEST_MESSAGE,
+    RARITIES,
+    SLOTS_VICTORY_PENDING_MESSAGE,
+    SLOTS_VICTORY_RESULT_MESSAGE,
+    SLOTS_VICTORY_FAILURE_MESSAGE,
+    SLOTS_VIEW_IN_APP_LABEL,
+)
 from utils.miniapp import encode_single_card_token
 
 # Initialize logger
@@ -44,6 +53,8 @@ app = FastAPI()
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
 MINIAPP_URL = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+
+gemini_util = gemini.GeminiUtil()
 
 
 class UserSummary(BaseModel):
@@ -76,6 +87,34 @@ class ChatUserCharacterSummary(BaseModel):
     display_name: Optional[str] = None
     slot_iconb64: Optional[str] = None
     type: str  # "user" or "character"
+
+
+class SlotsVictorySource(BaseModel):
+    id: int
+    type: str
+
+
+class SlotsVictoryRequest(BaseModel):
+    user_id: int
+    chat_id: str
+    rarity: str
+    source: SlotsVictorySource
+
+
+class SpinsRequest(BaseModel):
+    user_id: int
+    chat_id: str
+
+
+class SpinsResponse(BaseModel):
+    spins: int
+    success: bool = True
+
+
+class ConsumeSpinResponse(BaseModel):
+    success: bool
+    spins_remaining: Optional[int] = None
+    message: Optional[str] = None
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
@@ -179,6 +218,37 @@ def extract_init_data_from_header(authorization: Optional[str]) -> Optional[str]
         return authorization[4:]
     else:
         return authorization
+
+
+def _normalize_rarity(rarity: Optional[str]) -> Optional[str]:
+    if not rarity:
+        return None
+
+    rarity_normalized = rarity.strip().lower()
+    for configured_rarity in RARITIES.keys():
+        if configured_rarity.lower() == rarity_normalized:
+            return configured_rarity
+    return None
+
+
+def _decode_image(image_b64: Optional[str]) -> bytes:
+    if not image_b64:
+        raise ValueError("Missing image data")
+
+    try:
+        return base64.b64decode(image_b64)
+    except Exception as exc:
+        raise ValueError("Invalid base64 image data") from exc
+
+
+def _build_single_card_url(card_id: int) -> str:
+    if not MINIAPP_URL:
+        logger.error("MINIAPP_URL not configured; cannot build card link")
+        raise HTTPException(status_code=500, detail="Mini app URL not configured")
+
+    share_token = encode_single_card_token(card_id)
+    separator = "&" if "?" in MINIAPP_URL else "?"
+    return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
 
 # CORS configuration
@@ -448,6 +518,226 @@ async def get_card_detail(
     )
 
     return APICard(**card_payload)
+
+
+@app.post("/slots/victory")
+async def slots_victory(
+    request: SlotsVictoryRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Handle a slot victory by generating a card and sharing it in the chat."""
+
+    global bot_token
+
+    # Validate authorization
+    if not authorization:
+        logger.warning("No authorization header provided for slots victory")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning("No init data found in authorization header for slots victory")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning("Invalid Telegram init data provided for slots victory")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    # Extract user data and validate
+    user_data: Dict[str, Any] = validated_data["user"] or {}
+    auth_user_id = user_data.get("id")
+    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
+        logger.warning("Invalid or mismatched user_id in slots victory")
+        raise HTTPException(status_code=403, detail="Unauthorized slots victory request")
+
+    # Get username
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    # Validate request parameters
+    normalized_rarity = _normalize_rarity(request.rarity)
+    if not normalized_rarity:
+        logger.warning("Unsupported rarity '%s' provided", request.rarity)
+        raise HTTPException(status_code=400, detail="Unsupported rarity value")
+
+    chat_id = str(request.chat_id).strip()
+    if not chat_id:
+        logger.warning("Empty chat_id provided for slots victory")
+        raise HTTPException(status_code=400, detail="chat_id is required")
+
+    source_type = (request.source.type or "").strip().lower()
+    if source_type not in ("user", "character"):
+        logger.warning("Unsupported source type '%s'", request.source.type)
+        raise HTTPException(status_code=400, detail="Invalid source type")
+
+    if not bot_token:
+        logger.error("Bot token not available for slots victory")
+        raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+    # Ensure the winner is enrolled in the chat
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in chat")
+
+    # Get source display name for validation
+    if source_type == "user":
+        source_user = await asyncio.to_thread(database.get_user, request.source.id)
+        if not source_user or not source_user.display_name:
+            raise HTTPException(status_code=404, detail="Source user not found or incomplete")
+        display_name = source_user.display_name
+    else:
+        source_character = await asyncio.to_thread(database.get_character_by_id, request.source.id)
+        if not source_character or not source_character.name:
+            raise HTTPException(status_code=404, detail="Source character not found")
+        if str(source_character.chat_id) != chat_id:
+            raise HTTPException(status_code=400, detail="Character does not belong to chat")
+        display_name = source_character.name
+
+    # All validation passed - respond immediately with success
+    response_data = {
+        "status": "processing",
+        "message": "Slots victory accepted, processing card...",
+    }
+
+    # Process card generation in background task (fire-and-forget)
+    asyncio.create_task(
+        _process_slots_victory_background(
+            bot_token=bot_token,
+            debug_mode=debug_mode,
+            username=username,
+            normalized_rarity=normalized_rarity,
+            display_name=display_name,
+            chat_id=chat_id,
+            source_type=source_type,
+            source_id=request.source.id,
+            user_id=request.user_id,
+            gemini_util=gemini_util,
+        )
+    )
+
+    return response_data
+
+
+async def _process_slots_victory_background(
+    bot_token: str,
+    debug_mode: bool,
+    username: str,
+    normalized_rarity: str,
+    display_name: str,
+    chat_id: str,
+    source_type: str,
+    source_id: int,
+    user_id: int,
+    gemini_util,
+):
+    """Process slots victory in background after responding to client."""
+    try:
+        # Initialize bot
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+        # Send pending message
+        pending_caption = SLOTS_VICTORY_PENDING_MESSAGE.format(
+            username=username,
+            rarity=normalized_rarity,
+            display_name=display_name,
+        )
+
+        pending_message = await bot.send_message(
+            chat_id=chat_id,
+            text=pending_caption,
+            parse_mode=ParseMode.HTML,
+        )
+
+        try:
+            # Generate card from source
+            generated_card = await asyncio.to_thread(
+                rolling.generate_card_from_source,
+                source_type,
+                source_id,
+                gemini_util,
+                normalized_rarity,
+            )
+
+            # Add card to database and assign to winner
+            card_id = await asyncio.to_thread(
+                database.add_card,
+                generated_card.base_name,
+                generated_card.modifier,
+                generated_card.rarity,
+                generated_card.image_b64,
+                chat_id,
+            )
+
+            await asyncio.to_thread(database.set_card_owner, card_id, username, user_id)
+
+            # Create final caption and keyboard
+            final_caption = SLOTS_VICTORY_RESULT_MESSAGE.format(
+                username=username,
+                rarity=normalized_rarity,
+                display_name=display_name,
+                card_id=card_id,
+                modifier=generated_card.modifier,
+                base_name=generated_card.base_name,
+            )
+
+            card_url = _build_single_card_url(card_id)
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
+            )
+
+            # Send the card image as a new message and delete the pending message
+            card_image = base64.b64decode(generated_card.image_b64)
+            card_message = await bot.send_photo(
+                chat_id=chat_id,
+                photo=card_image,
+                caption=final_caption,
+                reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+
+            # Delete the pending message
+            await bot.delete_message(chat_id=chat_id, message_id=pending_message.message_id)
+
+            # Save the file_id from the card message
+            if card_message.photo:
+                file_id = card_message.photo[-1].file_id
+                await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+
+            logger.info(
+                "Successfully processed slots victory for user %s: card %s", username, card_id
+            )
+
+        except Exception as exc:
+            logger.error("Error processing slots victory for user %s: %s", username, exc)
+            # Update pending message with failure
+            failure_caption = SLOTS_VICTORY_FAILURE_MESSAGE.format(
+                username=username,
+                rarity=normalized_rarity,
+                display_name=display_name,
+            )
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=pending_message.message_id,
+                    text=failure_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as edit_exc:
+                logger.error("Failed to update failure message: %s", edit_exc)
+
+    except Exception as exc:
+        logger.error("Critical error in slots victory background processing: %s", exc)
 
 
 @app.post("/cards/share")
@@ -736,6 +1026,130 @@ async def get_chat_users_and_characters_endpoint(
     except Exception as e:
         logger.error(f"Error fetching chat users/characters for chat_id {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch chat users and characters")
+
+
+@app.get("/slots/spins", response_model=SpinsResponse)
+async def get_user_spins(
+    user_id: int = Query(..., description="User ID"),
+    chat_id: str = Query(..., description="Chat ID"),
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Get the current number of spins for a user in a specific chat, with daily refresh logic."""
+
+    # Validate authorization
+    if not authorization:
+        logger.warning(
+            f"No authorization header provided for spins request (user: {user_id}, chat: {chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for spins request (user: {user_id}, chat: {chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(
+            f"Invalid Telegram init data provided for spins request (user: {user_id}, chat: {chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    # Validate user authorization
+    user_data: Dict[str, Any] = validated_data["user"] or {}
+    auth_user_id = user_data.get("id")
+    if not isinstance(auth_user_id, int) or auth_user_id != user_id:
+        logger.warning(
+            f"User ID mismatch in spins request (auth: {auth_user_id}, request: {user_id})"
+        )
+        raise HTTPException(status_code=403, detail="Unauthorized spins request")
+
+    try:
+        # Get spins with daily refresh logic
+        spins_count = await asyncio.to_thread(
+            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
+        )
+
+        return SpinsResponse(spins=spins_count, success=True)
+
+    except Exception as e:
+        logger.error(f"Error getting spins for user {user_id} in chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get spins")
+
+
+@app.post("/slots/spins", response_model=ConsumeSpinResponse)
+async def consume_user_spin(
+    request: SpinsRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Consume one spin for a user in a specific chat."""
+
+    # Validate authorization
+    if not authorization:
+        logger.warning(
+            f"No authorization header provided for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(
+            f"Invalid Telegram init data provided for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    # Validate user authorization
+    user_data: Dict[str, Any] = validated_data["user"] or {}
+    auth_user_id = user_data.get("id")
+    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
+        logger.warning(
+            f"User ID mismatch in spin consumption (auth: {auth_user_id}, request: {request.user_id})"
+        )
+        raise HTTPException(status_code=403, detail="Unauthorized spin consumption")
+
+    try:
+        # Attempt to consume a spin
+        success = await asyncio.to_thread(
+            database.consume_user_spin, request.user_id, request.chat_id
+        )
+
+        if success:
+            # Get remaining spins after consumption
+            remaining_spins = await asyncio.to_thread(
+                database.get_or_update_user_spins_with_daily_refresh,
+                request.user_id,
+                request.chat_id,
+            )
+
+            return ConsumeSpinResponse(
+                success=True, spins_remaining=remaining_spins, message="Spin consumed successfully"
+            )
+        else:
+            # Get current spins to show in error
+            current_spins = await asyncio.to_thread(
+                database.get_or_update_user_spins_with_daily_refresh,
+                request.user_id,
+                request.chat_id,
+            )
+
+            return ConsumeSpinResponse(
+                success=False, spins_remaining=current_spins, message="No spins available"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to consume spin")
 
 
 def run_server():

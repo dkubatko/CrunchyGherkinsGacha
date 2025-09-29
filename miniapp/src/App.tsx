@@ -40,8 +40,9 @@ function App() {
   
   // Core data hooks
   const { cards, loading, error, userData, initData } = useCards();
-  const { symbols: slotsSymbols, loading: slotsLoading, error: slotsError } = useSlots(
-    userData?.slotsView && userData.chatId ? userData.chatId : undefined
+  const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins } = useSlots(
+    userData?.slotsView && userData.chatId ? userData.chatId : undefined,
+    userData?.currentUserId
   );
   
   // UI state
@@ -428,11 +429,16 @@ function App() {
   }
 
   // Slots View
-  if (userData?.slotsView && userData.chatId) {
+  if (userData?.slotsView && userData.chatId && initData) {
     return (
       <div className="app-container">
         <Slots
           symbols={slotsSymbols}
+          spins={slotsSpins}
+          userId={userData.currentUserId}
+          chatId={userData.chatId}
+          initData={initData}
+          onSpinConsumed={refetchSpins}
         />
       </div>
     );

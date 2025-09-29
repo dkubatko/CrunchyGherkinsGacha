@@ -332,4 +332,35 @@ export class TelegramUtils {
       WebApp.DeviceOrientation.stop();
     };
   }
+
+  // Haptic Feedback Methods
+  static triggerHapticImpact(style: 'light' | 'medium' | 'heavy' = 'medium') {
+    try {
+      if (WebApp.HapticFeedback && WebApp.HapticFeedback.impactOccurred) {
+        WebApp.HapticFeedback.impactOccurred(style);
+      }
+    } catch (err) {
+      console.warn('Haptic feedback not available or failed:', err);
+    }
+  }
+
+  static triggerHapticNotification(type: 'success' | 'warning' | 'error' = 'success') {
+    try {
+      if (WebApp.HapticFeedback && WebApp.HapticFeedback.notificationOccurred) {
+        WebApp.HapticFeedback.notificationOccurred(type);
+      }
+    } catch (err) {
+      console.warn('Haptic feedback not available or failed:', err);
+    }
+  }
+
+  static triggerHapticSelection() {
+    try {
+      if (WebApp.HapticFeedback && WebApp.HapticFeedback.selectionChanged) {
+        WebApp.HapticFeedback.selectionChanged();
+      }
+    } catch (err) {
+      console.warn('Haptic feedback not available or failed:', err);
+    }
+  }
 }
