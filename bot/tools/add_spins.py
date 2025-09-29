@@ -17,12 +17,12 @@ from telegram.ext import Application
 
 # Ensure project root is on sys.path for module imports
 CURRENT_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = CURRENT_DIR.parent.parent  # tools -> bot -> project root
+PROJECT_ROOT = CURRENT_DIR.parent  # tools -> bot
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Now that the path is correct, we can import from the bot directory
-from bot.utils.database import connect  # noqa: E402
+from utils.database import connect  # noqa: E402
 
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
