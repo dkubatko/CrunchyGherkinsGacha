@@ -10,7 +10,7 @@ class ImageUtil:
     @staticmethod
     def crop_to_content(image_bytes: bytes, force_radius_px: int = 5) -> bytes:
         """
-        Crops the image to remove white and black borders/background.
+        Crops the image to remove white, black, and gray-ish borders/background.
 
         Args:
             image_bytes: The image data as bytes
@@ -24,43 +24,51 @@ class ImageUtil:
             if image.mode != "RGB":
                 image = image.convert("RGB")
 
-            # Define white and black color thresholds
+            # Define color thresholds
             white_threshold = 240  # Pixels with all RGB values >= 240 are considered white
             black_threshold = 15  # Pixels with all RGB values <= 15 are considered black
+            gray_threshold = 40  # Maximum difference between RGB values for gray detection
 
             # Get image dimensions
             width, height = image.size
 
-            # Find the bounding box of content that's neither white nor black
+            # Find the bounding box of content that's neither white, black, nor gray
             left = width
             top = height
             right = 0
             bottom = 0
 
-            # Scan all pixels to find the bounds of non-white and non-black content
+            # Scan all pixels to find the bounds of non-white, non-black, and non-gray content
             pixels = image.load()
             for y in range(height):
                 for x in range(width):
                     r, g, b = pixels[x, y]
-                    # Check if pixel is neither white nor black
+
+                    # Check if pixel is white
                     is_white = (
                         r >= white_threshold and g >= white_threshold and b >= white_threshold
                     )
+
+                    # Check if pixel is black
                     is_black = (
                         r <= black_threshold and g <= black_threshold and b <= black_threshold
                     )
 
-                    # If pixel is neither white nor black, include it in bounding box
-                    if not is_white and not is_black:
+                    # Check if pixel is gray-ish (RGB values are close to each other)
+                    rgb_values = [r, g, b]
+                    is_gray = (max(rgb_values) - min(rgb_values)) <= gray_threshold
+
+                    # If pixel is neither white, black, nor gray, include it in bounding box
+                    if not is_white and not is_black and not is_gray:
                         left = min(left, x)
                         right = max(right, x)
                         top = min(top, y)
                         bottom = max(bottom, y)
 
-            # If no content found (only white/black pixels), return original image
+            # If no content found (only white/black/gray pixels), return original image
             if left >= right or top >= bottom:
                 logger.warning(
-                    "No content found (only white/black pixels) in image, returning original"
+                    "No content found (only white/black/gray pixels) in image, returning original"
                 )
                 return image_bytes
 
