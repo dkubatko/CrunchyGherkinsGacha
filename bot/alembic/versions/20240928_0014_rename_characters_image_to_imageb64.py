@@ -30,7 +30,9 @@ def upgrade() -> None:
 
     if "imageb64" not in columns:
         # Add new column (make it NOT NULL since all characters should have images)
-        op.add_column("characters", sa.Column("imageb64", sa.Text(), nullable=False, default=""))
+        op.add_column(
+            "characters", sa.Column("imageb64", sa.Text(), nullable=False, server_default="")
+        )
         print("Added imageb64 column")
     else:
         print("imageb64 column already exists, skipping creation")
