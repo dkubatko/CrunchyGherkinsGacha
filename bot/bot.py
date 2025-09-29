@@ -1965,7 +1965,7 @@ async def spins(
         user_plural = "user" if successful_count == 1 else "users"
 
         await message.reply_text(
-            f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!",
+            f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!\n\nUse /slots -- happy gambling! 🎰",
             reply_to_message_id=message.message_id,
         )
 

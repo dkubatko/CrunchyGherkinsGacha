@@ -57,7 +57,7 @@ async def send_notification(chat_id: int, count: int) -> None:
         app.bot._base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/test"
         app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
 
-    message = f"<b>{count} spins</b> added to all accounts!\n\nHappy gambling 🎰"
+    message = f"<b>{count} spins</b> added to all accounts!\n\nUse /slots -- happy gambling 🎰"
     try:
         await app.bot.send_message(chat_id=chat_id, text=message, parse_mode=ParseMode.HTML)
         print(f"Successfully sent notification to chat {chat_id}.")
