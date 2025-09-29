@@ -4,7 +4,8 @@ import type { UserData, OrientationData } from '../types';
 type ParsedPayload =
   | { kind: 'card'; cardId: number }
   | { kind: 'user'; userId: number }
-  | { kind: 'userChat'; userId: number; chatId: string };
+  | { kind: 'userChat'; userId: number; chatId: string }
+  | { kind: 'slots'; userId: number; chatId: string };
 
 export class TelegramUtils {
   private static readonly TOKEN_PREFIX = 'tg1_';
@@ -14,6 +15,7 @@ export class TelegramUtils {
   //   c-<cardId>            => Single card view (display only this card)
   //   u-<userId>            => View user collection
   //   uc-<userId>-<chatId>  => View user collection scoped to chat
+  //   slots-<userId>-<chatId> => Open slots mini-game
   // Unrecognized payloads are ignored.
 
   static decodeToken(token: string): string | null {
@@ -84,6 +86,24 @@ export class TelegramUtils {
       return null;
     }
 
+    if (lower.startsWith('slots-')) {
+      const rest = trimmed.slice(6); // Remove 'slots-'
+      const firstDash = rest.indexOf('-');
+      if (firstDash > 0) {
+        const userIdStr = rest.slice(0, firstDash);
+        const chatStr = rest.slice(firstDash + 1).trim();
+        const maybeUserId = Number(userIdStr);
+        if (!Number.isNaN(maybeUserId) && chatStr.length > 0) {
+          return {
+            kind: 'slots',
+            userId: maybeUserId,
+            chatId: chatStr
+          };
+        }
+      }
+      return null;
+    }
+
     return null;
   }
 
@@ -108,7 +128,7 @@ export class TelegramUtils {
       let chatId: string | null = null;
       let singleCardId: number | null = null;
 
-      let payloadType: 'card' | 'user' | 'userChat' | null = null;
+      let payloadType: 'card' | 'user' | 'userChat' | 'slots' | null = null;
       let payloadSource: string | null = null;
 
       const applyExternalPayload = (rawValue: string, source: string): boolean => {
@@ -151,6 +171,13 @@ export class TelegramUtils {
             payloadType = 'userChat';
             payloadSource = source;
             return true;
+          case 'slots':
+            targetUserId = parsed.userId;
+            chatId = parsed.chatId;
+            singleCardId = null;
+            payloadType = 'slots';
+            payloadSource = source;
+            return true;
           default:
             return false;
         }
@@ -179,6 +206,11 @@ export class TelegramUtils {
               source: payloadSource
             });
             break;
+          case 'slots':
+            console.info('Start parameter requested slots mini-game', {
+              source: payloadSource
+            });
+            break;
         }
       } else {
         console.info('No start parameter supplied; defaulting to init data user context', {
@@ -188,6 +220,7 @@ export class TelegramUtils {
 
       const isOwnCollection = singleCardId == null && targetUserId === currentUserId; // In single card mode collection semantics disabled
       const enableTrade = isOwnCollection && singleCardId == null;
+      const slotsView = payloadType === 'slots';
 
       return {
         currentUserId,
@@ -197,6 +230,7 @@ export class TelegramUtils {
         chatId,
         singleCardId,
         singleCardView: singleCardId != null,
+        slotsView,
         collectionDisplayName: null,
         collectionUsername: null,
       };

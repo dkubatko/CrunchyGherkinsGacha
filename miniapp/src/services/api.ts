@@ -1,4 +1,4 @@
-import type { CardData, UserCollectionResponse } from '../types';
+import type { CardData, UserCollectionResponse, ChatUserCharacterSummary } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
@@ -146,6 +146,26 @@ export class ApiService {
       throw new Error('Failed to fetch image');
     }
     
+    return response.json();
+  }
+
+  static async fetchChatUsersAndCharacters(chatId: string, initData: string): Promise<ChatUserCharacterSummary[]> {
+    const response = await fetch(`${API_BASE_URL}/chat/${encodeURIComponent(chatId)}/users-characters`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Authentication failed. Please reopen the app from Telegram.');
+      } else if (response.status === 404) {
+        throw new Error('Chat not found.');
+      } else if (response.status >= 500) {
+        throw new Error('Server error. Please try again later.');
+      } else {
+        throw new Error(`Failed to fetch chat users and characters (Error ${response.status})`);
+      }
+    }
+
     return response.json();
   }
 }

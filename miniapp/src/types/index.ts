@@ -15,7 +15,7 @@ export interface OrientationData {
   isStarted: boolean;
 }
 
-export type View = 'current' | 'all';
+export type View = 'current' | 'all' | 'slots';
 
 export interface UserSummary {
   user_id: number;
@@ -26,6 +26,13 @@ export interface UserSummary {
 export interface UserCollectionResponse {
   user: UserSummary;
   cards: CardData[];
+}
+
+export interface ChatUserCharacterSummary {
+  id: number;
+  display_name?: string | null;
+  slot_iconb64?: string | null;
+  type: 'user' | 'character';
 }
 
 export interface UserData {
@@ -39,6 +46,8 @@ export interface UserData {
   // Single card view mode: if singleCardId is set, the app should render only that card
   singleCardId?: number | null;
   singleCardView?: boolean; // Convenience boolean to avoid recomputing
+  // Slots view mode: if slotsView is true, the app should render the slots mini-game
+  slotsView?: boolean;
 }
 
 export interface AppState {

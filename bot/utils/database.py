@@ -5,7 +5,7 @@ import os
 import sqlite3
 from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, Any, List
+from typing import Optional, Any, List, Dict
 
 from alembic import command
 from alembic.config import Config
@@ -117,6 +117,7 @@ class Character(BaseModel):
     chat_id: str
     name: str
     imageb64: str
+    slot_iconb64: Optional[str] = None
 
 
 class ClaimStatus(Enum):
@@ -1158,6 +1159,44 @@ def set_all_claim_balances_to(balance: int) -> int:
     conn.commit()
     conn.close()
     return affected_rows
+
+
+def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
+    """Get all users and characters for a specific chat with id, display_name/name, slot_iconb64, and type."""
+    conn = connect()
+    cursor = conn.cursor()
+
+    # Get users enrolled in the chat with their profile info
+    cursor.execute(
+        """
+        SELECT u.user_id as id, u.display_name, u.slot_iconb64, 'user' as type
+        FROM chats c
+        INNER JOIN users u ON c.user_id = u.user_id
+        WHERE c.chat_id = ?
+        """,
+        (str(chat_id),),
+    )
+    user_rows = cursor.fetchall()
+
+    # Get characters for the chat
+    cursor.execute(
+        """
+        SELECT id, name as display_name, slot_iconb64, 'character' as type
+        FROM characters
+        WHERE chat_id = ?
+        """,
+        (str(chat_id),),
+    )
+    character_rows = cursor.fetchall()
+
+    conn.close()
+
+    # Convert to dictionaries and combine
+    all_items = []
+    all_items.extend([dict(row) for row in user_rows])
+    all_items.extend([dict(row) for row in character_rows])
+
+    return all_items
 
 
 create_tables()
