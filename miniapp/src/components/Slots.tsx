@@ -91,7 +91,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const generateRandomResults = (): number[] => {
     const availableSymbols = symbols.current.length;
     if (availableSymbols === 0) return [0, 0, 0];
-    
+
     // 7% chance to win
     const isWin = Math.random() < 0.07;
     
@@ -114,7 +114,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
   };
 
-  const startRaritySpinner = useCallback(async () => {
+  const startRaritySpinner = useCallback(async (winningResultIndex: number) => {
     // Clear any existing rarity timeouts
     rarityTimeouts.current.forEach(timeout => clearTimeout(timeout));
     rarityTimeouts.current = [];
@@ -157,7 +157,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       
       // After a brief moment, process the victory
       const processVictoryTimeout = setTimeout(async () => {
-        const winningSymbol = symbols.current[spinState.results[0]];
+        const winningSymbol = symbols.current[winningResultIndex];
         const rarity = rarityOptions[result].name;
         const winnerName = winningSymbol?.displayName || 'Unknown';
         
@@ -207,7 +207,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }, 2000);
 
     rarityTimeouts.current.push(stopSpinTimeout);
-  }, [spinState.results, rarityOptions, providedSymbols, userId, chatId, initData]);
+  }, [rarityOptions, providedSymbols, userId, chatId, initData]);
 
   const stopReel = useCallback((reelIndex: number, finalResult: number) => {
     // Haptic feedback when reel starts to slow down
@@ -239,12 +239,13 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         
         // Check if all reels are stopped and if it's a win
         const allStopped = newReelStates.every(state => state === 'stopped');
+        const isWin = allStopped && prev.results[0] === prev.results[1] && prev.results[1] === prev.results[2];
         
-        if (allStopped && prev.results[0] === prev.results[1] && prev.results[1] === prev.results[2]) {
+        if (isWin) {
           // Haptic feedback for winning combination
           TelegramUtils.triggerHapticNotification('success');
           // Use setTimeout to ensure state update happens first
-          setTimeout(() => startRaritySpinner(), 0);
+          setTimeout(() => startRaritySpinner(prev.results[0]), 0);
         } else if (allStopped) {
           // Haptic feedback for losing combination
           TelegramUtils.triggerHapticNotification('error');
