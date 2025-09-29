@@ -187,8 +187,8 @@ body {
   position: relative;
 }
 
-.card-container.with-action-panel .card {
-  margin-bottom: 0rem;
+.app-container.with-action-panel {
+  padding-bottom: 70px; /* Height of the action panel */
 }
 
 .card-image-container {
