@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from functools import wraps
 from typing import Any, Awaitable, Callable
 
@@ -89,5 +90,28 @@ def verify_user_in_chat(handler: HandlerFunc) -> HandlerFunc:
 
         await _notify_user(update, context, enrollment_prompt)
         return None
+
+    return wrapper
+
+
+def verify_admin(handler: HandlerFunc) -> HandlerFunc:
+    """Ensure the calling user is the bot administrator."""
+
+    @verify_user
+    @wraps(handler)
+    async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+        admin_username = os.getenv("BOT_ADMIN")
+        db_user = kwargs.get("user")
+
+        if not admin_username:
+            logger.warning("BOT_ADMIN environment variable not set")
+            await _notify_user(update, context, "Admin functionality is not configured.")
+            return None
+
+        if not db_user or db_user.username != admin_username:
+            # Silently ignore non-admin users (like the reload command)
+            return None
+
+        return await handler(update, context, *args, **kwargs)
 
     return wrapper
