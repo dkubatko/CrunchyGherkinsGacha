@@ -1418,14 +1418,20 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
             if periods_elapsed > 0:
                 spins_to_add = periods_elapsed * spins_per_refresh
                 new_count = current_count + spins_to_add
-                current_timestamp = current_pdt.isoformat()
+
+                # Calculate the most recent refresh period boundary
+                # Move forward from the last refresh by the number of complete periods
+                new_refresh_dt = refresh_dt_pdt + datetime.timedelta(
+                    hours=periods_elapsed * hours_per_refresh
+                )
+                new_timestamp = new_refresh_dt.isoformat()
 
                 cursor.execute(
                     """
                     UPDATE spins SET count = ?, refresh_timestamp = ?
                     WHERE user_id = ? AND chat_id = ?
                     """,
-                    (new_count, current_timestamp, user_id, str(chat_id)),
+                    (new_count, new_timestamp, user_id, str(chat_id)),
                 )
                 conn.commit()
                 logger.info(
