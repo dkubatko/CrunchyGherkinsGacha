@@ -168,4 +168,94 @@ export class ApiService {
 
     return response.json();
   }
+
+  static async processSlotsVictory(
+    userId: number, 
+    chatId: string, 
+    rarity: string, 
+    sourceId: number, 
+    sourceType: 'user' | 'character', 
+    initData: string
+  ): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/slots/victory`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        rarity: rarity,
+        source: {
+          id: sourceId,
+          type: sourceType
+        }
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to process slots victory (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean }> {
+    const params = new URLSearchParams({
+      user_id: userId.toString(),
+      chat_id: chatId
+    });
+
+    const response = await fetch(`${API_BASE_URL}/slots/spins?${params.toString()}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to get user spins (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async consumeUserSpin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string }> {
+    const response = await fetch(`${API_BASE_URL}/slots/spins`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to consume spin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
 }

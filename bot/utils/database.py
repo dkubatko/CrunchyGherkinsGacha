@@ -3,9 +3,11 @@ import datetime
 import logging
 import os
 import sqlite3
+import json
 from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Any, List, Dict
+from zoneinfo import ZoneInfo
 
 from alembic import command
 from alembic.config import Config
@@ -29,6 +31,23 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 ALEMBIC_INI_PATH = os.path.join(PROJECT_ROOT, "alembic.ini")
 ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
 INITIAL_ALEMBIC_REVISION = "20240924_0001"
+
+
+def _load_config() -> Dict[str, Any]:
+    """Load configuration from config.json."""
+    config_path = os.path.join(PROJECT_ROOT, "config.json")
+    try:
+        with open(config_path, "r") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        logger.warning(f"Failed to load config: {e}. Using defaults.")
+        return {"SPINS_PER_DAY": 10}
+
+
+def _get_spins_per_day() -> int:
+    """Get SPINS_PER_DAY from config."""
+    config = _load_config()
+    return config.get("SPINS_PER_DAY", 10)
 
 
 def _generate_slot_icon(image_b64: str) -> Optional[str]:
@@ -118,6 +137,13 @@ class Character(BaseModel):
     name: str
     imageb64: str
     slot_iconb64: Optional[str] = None
+
+
+class Spins(BaseModel):
+    user_id: int
+    chat_id: str
+    count: int
+    refresh_timestamp: str
 
 
 class ClaimStatus(Enum):
@@ -728,6 +754,22 @@ def swap_card_owners(card_id1, card_id2):
         conn.close()
 
 
+def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
+    """Set the owner and optional user_id for a card without affecting claim balances."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
+            (owner, user_id, card_id),
+        )
+        updated = cursor.rowcount > 0
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
 def update_card_file_id(card_id, file_id):
     """Update the Telegram file_id for a card."""
     conn = connect()
@@ -1197,6 +1239,229 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     all_items.extend([dict(row) for row in character_rows])
 
     return all_items
+
+
+def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
+    """Get the spins record for a user in a specific chat."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "SELECT * FROM spins WHERE user_id = ? AND chat_id = ?",
+        (user_id, str(chat_id)),
+    )
+    row = cursor.fetchone()
+    conn.close()
+    return Spins(**row) if row else None
+
+
+def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp: str) -> bool:
+    """Update or insert a spins record for a user in a specific chat."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, chat_id) DO UPDATE SET
+            count = excluded.count,
+            refresh_timestamp = excluded.refresh_timestamp
+        """,
+        (user_id, str(chat_id), count, refresh_timestamp),
+    )
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
+    """Increment the spin count for a user in a specific chat. Returns new count or None if user not found."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        # First, try to update existing record
+        cursor.execute(
+            "UPDATE spins SET count = count + ? WHERE user_id = ? AND chat_id = ?",
+            (amount, user_id, str(chat_id)),
+        )
+
+        if cursor.rowcount > 0:
+            # Get the updated count
+            cursor.execute(
+                "SELECT count FROM spins WHERE user_id = ? AND chat_id = ?",
+                (user_id, str(chat_id)),
+            )
+            row = cursor.fetchone()
+            conn.commit()
+            return row[0] if row else None
+        else:
+            # No existing record, create one with the increment amount
+            from datetime import datetime
+
+            current_timestamp = datetime.now().isoformat()
+            cursor.execute(
+                """
+                INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, str(chat_id), amount, current_timestamp),
+            )
+            conn.commit()
+            return amount
+    finally:
+        conn.close()
+
+
+def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
+    """Decrement the spin count for a user in a specific chat. Returns new count or None if insufficient spins."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        # Get current count first
+        cursor.execute(
+            "SELECT count FROM spins WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            return None  # User not found
+
+        current_count = row[0]
+        if current_count < amount:
+            return None  # Insufficient spins
+
+        # Update the count
+        cursor.execute(
+            "UPDATE spins SET count = count - ? WHERE user_id = ? AND chat_id = ?",
+            (amount, user_id, str(chat_id)),
+        )
+
+        new_count = current_count - amount
+        conn.commit()
+        return new_count
+    finally:
+        conn.close()
+
+
+def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> int:
+    """Get user spins, refreshing daily in PDT timezone if needed. Returns current spins count."""
+    conn = connect()
+    cursor = conn.cursor()
+
+    try:
+        # Get current PDT time
+        pdt_tz = ZoneInfo("America/Los_Angeles")
+        current_pdt = datetime.datetime.now(pdt_tz)
+        current_pdt_date = current_pdt.date()
+
+        # Get existing spins record
+        cursor.execute(
+            "SELECT count, refresh_timestamp FROM spins WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        row = cursor.fetchone()
+
+        spins_per_day = _get_spins_per_day()
+
+        if not row:
+            # No existing record, create one with default spins
+            current_timestamp = current_pdt.isoformat()
+            cursor.execute(
+                """
+                INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
+                VALUES (?, ?, ?, ?)
+                """,
+                (user_id, str(chat_id), spins_per_day, current_timestamp),
+            )
+            conn.commit()
+            return spins_per_day
+
+        current_count = row[0]
+        refresh_timestamp_str = row[1]
+
+        try:
+            # Parse the stored timestamp as PDT
+            if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
+                # Handle UTC timestamps by converting to PDT
+                refresh_dt_utc = datetime.datetime.fromisoformat(
+                    refresh_timestamp_str.replace("Z", "+00:00")
+                )
+                refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
+            else:
+                # Assume it's already in PDT or naive (treat as PDT)
+                refresh_dt_naive = datetime.datetime.fromisoformat(
+                    refresh_timestamp_str.replace("Z", "")
+                )
+                refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
+
+            refresh_date = refresh_dt_pdt.date()
+
+            # Check if it's a new day in PDT
+            if current_pdt_date > refresh_date:
+                # It's a new day, refresh spins
+                new_count = current_count + spins_per_day
+                current_timestamp = current_pdt.isoformat()
+
+                cursor.execute(
+                    """
+                    UPDATE spins SET count = ?, refresh_timestamp = ?
+                    WHERE user_id = ? AND chat_id = ?
+                    """,
+                    (new_count, current_timestamp, user_id, str(chat_id)),
+                )
+                conn.commit()
+                return new_count
+            else:
+                # Same day, return current count
+                return current_count
+
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+            )
+            # If timestamp is invalid, treat as if it needs refresh
+            current_timestamp = current_pdt.isoformat()
+            new_count = current_count + spins_per_day
+
+            cursor.execute(
+                """
+                UPDATE spins SET count = ?, refresh_timestamp = ?
+                WHERE user_id = ? AND chat_id = ?
+                """,
+                (new_count, current_timestamp, user_id, str(chat_id)),
+            )
+            conn.commit()
+            return new_count
+
+    finally:
+        conn.close()
+
+
+def consume_user_spin(user_id: int, chat_id: str) -> bool:
+    """Consume one spin if available. Returns True if successful, False if no spins available."""
+    conn = connect()
+    cursor = conn.cursor()
+
+    try:
+        # Get current count (with daily refresh if needed)
+        current_count = get_or_update_user_spins_with_daily_refresh(user_id, chat_id)
+
+        if current_count <= 0:
+            return False
+
+        # Decrement the count
+        cursor.execute(
+            "UPDATE spins SET count = count - 1 WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+
+        success = cursor.rowcount > 0
+        conn.commit()
+        return success
+
+    finally:
+        conn.close()
 
 
 create_tables()

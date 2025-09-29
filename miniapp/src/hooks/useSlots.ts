@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
 
@@ -9,16 +9,55 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
-interface UseSlotsResult {
-  symbols: SlotSymbol[];
+interface UserSpinsData {
+  count: number;
   loading: boolean;
   error: string | null;
 }
 
-export const useSlots = (chatId?: string): UseSlotsResult => {
+interface UseSlotsResult {
+  symbols: SlotSymbol[];
+  spins: UserSpinsData;
+  loading: boolean;
+  error: string | null;
+  refetchSpins: () => Promise<void>;
+}
+
+export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
   const [symbols, setSymbols] = useState<SlotSymbol[]>([]);
+  const [spins, setSpins] = useState<UserSpinsData>({
+    count: 0,
+    loading: true,
+    error: null
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const fetchSpins = useCallback(async () => {
+    if (!chatId || !userId) {
+      setSpins(prev => ({ ...prev, loading: false, error: 'Missing chat ID or user ID' }));
+      return;
+    }
+
+    try {
+      setSpins(prev => ({ ...prev, loading: true, error: null }));
+
+      const initData = TelegramUtils.getInitData();
+      if (!initData) {
+        throw new Error('No Telegram init data found');
+      }
+
+      const spinsData = await ApiService.getUserSpins(userId, chatId, initData);
+      setSpins({ count: spinsData.spins, loading: false, error: null });
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load spins';
+      setSpins({ count: 0, loading: false, error: errorMessage });
+    }
+  }, [chatId, userId]);
+
+  const refetchSpins = async () => {
+    await fetchSpins();
+  };
 
   useEffect(() => {
     const fetchSlotsData = async () => {
@@ -37,10 +76,14 @@ export const useSlots = (chatId?: string): UseSlotsResult => {
           throw new Error('No Telegram init data found');
         }
 
-        const data = await ApiService.fetchChatUsersAndCharacters(chatId, initData);
+        // Fetch symbols and spins in parallel
+        const [symbolsData] = await Promise.all([
+          ApiService.fetchChatUsersAndCharacters(chatId, initData),
+          userId ? fetchSpins() : Promise.resolve()
+        ]);
         
         // Convert to symbols and ensure we have at least 3 for the slot machine
-        const convertedSymbols: SlotSymbol[] = data
+        const convertedSymbols: SlotSymbol[] = symbolsData
           .filter(item => item.slot_iconb64) // Only use items with icons
           .map(item => ({
             id: item.id,
@@ -65,11 +108,13 @@ export const useSlots = (chatId?: string): UseSlotsResult => {
     };
 
     fetchSlotsData();
-  }, [chatId]);
+  }, [chatId, userId, fetchSpins]);
 
   return {
     symbols,
+    spins,
     loading,
-    error
+    error,
+    refetchSpins
   };
 };

@@ -15,6 +15,10 @@ class ImageGenerationError(Exception):
     """Raised when the image generator fails to return data."""
 
 
+class InvalidSourceError(Exception):
+    """Raised when an invalid or unsupported source type/id is provided."""
+
+
 @dataclass
 class SelectedProfile:
     """A profile selected for card generation, either from a user or character."""
@@ -23,6 +27,8 @@ class SelectedProfile:
     image_b64: str
     source_type: str  # "user" or "character"
     source_id: Optional[int] = None  # user_id for users, character id for characters
+    user: Optional[database.User] = None
+    character: Optional[database.Character] = None
 
 
 @dataclass
@@ -54,6 +60,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
                     image_b64=profile_image,
                     source_type="user",
                     source_id=user.user_id,
+                    user=user,
                 )
             )
 
@@ -61,7 +68,11 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     characters = database.get_characters_by_chat(chat_id)
     character_profiles = [
         SelectedProfile(
-            name=char.name, image_b64=char.imageb64, source_type="character", source_id=char.id
+            name=char.name,
+            image_b64=char.imageb64,
+            source_type="character",
+            source_id=char.id,
+            character=char,
         )
         for char in characters
     ]
@@ -111,6 +122,99 @@ def get_downgraded_rarity(current_rarity: str) -> str:
     return rarity_order[current_index - 1] if current_index > 0 else "Common"
 
 
+def _create_generated_card(
+    profile: SelectedProfile,
+    gemini_util: GeminiUtil,
+    rarity: str,
+) -> GeneratedCard:
+    if rarity not in RARITIES:
+        raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
+
+    modifier = random.choice(RARITIES[rarity]["modifiers"])
+
+    image_b64 = gemini_util.generate_image(
+        profile.name,
+        modifier,
+        rarity,
+        base_image_b64=profile.image_b64,
+    )
+
+    if not image_b64:
+        raise ImageGenerationError
+
+    source_user = profile.user
+    source_character = profile.character
+
+    if source_user is None and profile.source_type == "user" and profile.source_id:
+        source_user = database.get_user(profile.source_id)
+    if source_character is None and profile.source_type == "character" and profile.source_id:
+        source_character = database.get_character_by_id(profile.source_id)
+
+    return GeneratedCard(
+        base_name=profile.name,
+        modifier=modifier,
+        rarity=rarity,
+        card_title=f"{modifier} {profile.name}",
+        image_b64=image_b64,
+        source_user=source_user,
+        source_character=source_character,
+    )
+
+
+def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
+    normalized_type = (source_type or "").strip().lower()
+
+    if normalized_type == "user":
+        user = database.get_user(source_id)
+        if not user:
+            raise InvalidSourceError(f"User {source_id} not found")
+
+        display_name = (user.display_name or "").strip()
+        image_b64 = (user.profile_imageb64 or "").strip()
+
+        if not display_name or not image_b64:
+            raise NoEligibleUserError
+
+        return SelectedProfile(
+            name=display_name,
+            image_b64=image_b64,
+            source_type="user",
+            source_id=user.user_id,
+            user=user,
+        )
+
+    if normalized_type == "character":
+        character = database.get_character_by_id(source_id)
+        if not character:
+            raise InvalidSourceError(f"Character {source_id} not found")
+
+        name = (character.name or "").strip()
+        image_b64 = (character.imageb64 or "").strip()
+
+        if not name or not image_b64:
+            raise NoEligibleUserError
+
+        return SelectedProfile(
+            name=name,
+            image_b64=image_b64,
+            source_type="character",
+            source_id=character.id,
+            character=character,
+        )
+
+    raise InvalidSourceError(f"Unsupported source type '{source_type}'")
+
+
+def generate_card_from_source(
+    source_type: str,
+    source_id: int,
+    gemini_util: GeminiUtil,
+    rarity: str,
+) -> GeneratedCard:
+    profile = get_profile_for_source(source_type, source_id)
+    return _create_generated_card(profile, gemini_util, rarity)
+
+
 def generate_card_for_chat(
     chat_id: str,
     gemini_util: GeminiUtil,
@@ -122,34 +226,4 @@ def generate_card_for_chat(
         raise NoEligibleUserError
 
     chosen_rarity = rarity or get_random_rarity()
-    modifier = random.choice(RARITIES[chosen_rarity]["modifiers"])
-
-    # Generate the card image
-    image_b64 = gemini_util.generate_image(
-        profile.name,
-        modifier,
-        chosen_rarity,
-        base_image_b64=profile.image_b64,
-    )
-
-    if not image_b64:
-        raise ImageGenerationError
-
-    # Get original source objects for backward compatibility
-    source_user = None
-    source_character = None
-
-    if profile.source_type == "user" and profile.source_id:
-        source_user = database.get_user(profile.source_id)
-    elif profile.source_type == "character" and profile.source_id:
-        source_character = database.get_character_by_id(profile.source_id)
-
-    return GeneratedCard(
-        base_name=profile.name,
-        modifier=modifier,
-        rarity=chosen_rarity,
-        card_title=f"{modifier} {profile.name}",
-        image_b64=image_b64,
-        source_user=source_user,
-        source_character=source_character,
-    )
+    return _create_generated_card(profile, gemini_util, chosen_rarity)
