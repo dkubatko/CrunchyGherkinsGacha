@@ -31,7 +31,7 @@ Less the creativeness factor less intense the card design should be.
 
 Character:
 Use flashy, eye-catching 2D digital art style for the character. 
-Always apply styling to the photos before using, no photorealistic images.
+Always apply styling above to the photos before using, do NOT use original photos unprocessed.
 Keep the face of the character consistent with their image, character must be recognizable.
 Modify the character image to reflect the card name. 
 
@@ -45,7 +45,8 @@ ABSOLUTELY NO blank/empty/white space around the card.
 Text:
 Do NOT include rarity information on the card.
 Do NOT include any text other than the card name on the card.
-Add card name "{modification} {name}" to the bottom field, no description.
+Add card name "{modification} {name}" in the bottom field of the layout.
+Do NOT add any additional description.
 """
 
 SLOT_MACHINE_INSTRUCTION = """
