@@ -18,7 +18,8 @@ import {
   useAllCards,
   useOrientation,
   useModal,
-  useSwipeHandlers
+  useSwipeHandlers,
+  useSlots
 } from './hooks';
 
 // Utils
@@ -39,6 +40,9 @@ function App() {
   
   // Core data hooks
   const { cards, loading, error, userData, initData } = useCards();
+  const { symbols: slotsSymbols, loading: slotsLoading, error: slotsError } = useSlots(
+    userData?.slotsView && userData.chatId ? userData.chatId : undefined
+  );
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -413,13 +417,14 @@ function App() {
   });
 
   // Loading state
-  if (loading) {
-    return <div className="app-container"><h1>Loading cards...</h1></div>;
+  if (loading || (userData?.slotsView && slotsLoading)) {
+    return <div className="app-container"><h1>Loading...</h1></div>;
   }
 
   // Error state
-  if (error) {
-    return <div className="app-container"><h1>Error: {error}</h1></div>;
+  if (error || (userData?.slotsView && slotsError)) {
+    const displayError = error || slotsError;
+    return <div className="app-container"><h1>Error: {displayError}</h1></div>;
   }
 
   // Slots View
@@ -427,8 +432,7 @@ function App() {
     return (
       <div className="app-container">
         <Slots
-          userId={userData.currentUserId}
-          chatId={userData.chatId}
+          symbols={slotsSymbols}
         />
       </div>
     );
