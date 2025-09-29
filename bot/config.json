@@ -2,7 +2,8 @@
   "DB_PATH": "/usr/local/gacha/database/cards.db",
   "BASE_IMAGE_PATH": "data/base_images",
   "CARD_TEMPLATES_PATH": "data/card_templates",
-  "SPINS_PER_DAY": 50,
+  "SPINS_REFRESH_HOURS": 3,
+  "SPINS_PER_REFRESH": 5,
   "SLOT_WIN_CHANCE": 0.02,
   "RARITIES": {
     "Common": {
