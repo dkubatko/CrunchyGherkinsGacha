@@ -10,7 +10,7 @@ import urllib.parse
 from io import BytesIO
 from typing import List, Optional, Dict, Any
 from telegram.constants import ParseMode
-from fastapi import FastAPI, HTTPException, Header, Query
+from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -233,6 +233,50 @@ def extract_init_data_from_header(authorization: Optional[str]) -> Optional[str]
         return authorization
 
 
+# FastAPI Dependency Functions for Auth
+async def get_validated_user(
+    authorization: Optional[str] = Header(None, alias="Authorization")
+) -> Dict[str, Any]:
+    """
+    FastAPI dependency that validates Telegram mini app authorization.
+    Returns the validated user data dictionary.
+    """
+    if not authorization:
+        logger.warning("No authorization header provided")
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning("No init data found in authorization header")
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning("Invalid Telegram init data provided")
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    return validated_data
+
+
+async def verify_user_match(request_user_id: int, validated_user: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Helper to verify that the authenticated user matches the request user_id.
+    Returns the validated user data if match is successful.
+    """
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    if not isinstance(auth_user_id, int):
+        logger.warning("Missing or invalid user_id in init data")
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
+
+    if auth_user_id != request_user_id:
+        logger.warning(f"User ID mismatch (auth: {auth_user_id}, request: {request_user_id})")
+        raise HTTPException(status_code=403, detail="Unauthorized request")
+
+    return validated_user
+
+
 def _normalize_rarity(rarity: Optional[str]) -> Optional[str]:
     if not rarity:
         return None
@@ -289,28 +333,10 @@ app.add_middleware(
 
 @app.get("/cards/all", response_model=List[APICard])
 async def get_all_cards_endpoint(
-    authorization: Optional[str] = Header(None, alias="Authorization"),
     chat_id: Optional[str] = Query(None, alias="chat_id"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get all cards that have been claimed."""
-
-    # Check if authorization header is provided
-    if not authorization:
-        logger.warning(f"No authorization header provided for /cards/all")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    # Extract init data from header
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(f"No init data found in authorization header for /cards/all")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    # Validate Telegram init data
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(f"Invalid Telegram init data provided for /cards/all")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     cards = await asyncio.to_thread(database.get_all_cards, chat_id)
     return [APICard(**card.__dict__) for card in cards]
 
@@ -318,28 +344,9 @@ async def get_all_cards_endpoint(
 @app.get("/trade/{card_id}/options", response_model=List[APICard])
 async def get_trade_options(
     card_id: int,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get trade options for a specific card, scoped to the same chat."""
-
-    if not authorization:
-        logger.warning(f"No authorization header provided for trade options of card_id: {card_id}")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for trade options of card_id: {card_id}"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(
-            f"Invalid Telegram init data provided for trade options of card_id: {card_id}"
-        )
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     card = await asyncio.to_thread(database.get_card, card_id)
     if not card:
         logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
@@ -367,30 +374,12 @@ async def get_trade_options(
 async def get_user_collection(
     user_id: int,
     chat_id: Optional[str] = Query(None, alias="chat_id"),
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get all cards owned by a user.
 
     This endpoint requires authentication via Authorization header with Telegram WebApp initData.
     """
-
-    # Check if authorization header is provided
-    if not authorization:
-        logger.warning(f"No authorization header provided for user_id: {user_id}")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    # Extract init data from header
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(f"No init data found in authorization header for user_id: {user_id}")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    # Validate Telegram init data
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(f"Invalid Telegram init data provided for user_id: {user_id}")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     cards = await asyncio.to_thread(database.get_user_collection, user_id, chat_id)
     user_record = await asyncio.to_thread(database.get_user, user_id)
     username = user_record.username if user_record else None
@@ -417,25 +406,10 @@ async def get_user_collection(
 
 @app.get("/cards/image/{card_id}", response_model=str)
 async def get_card_image_route(
-    card_id: int, authorization: Optional[str] = Header(None, alias="Authorization")
+    card_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the base64 encoded image for a card."""
-    if not authorization:
-        logger.warning(f"No authorization header provided for card_id: {card_id}")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    # Extract init data from header
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(f"No init data found in authorization header for card_id: {card_id}")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    # Validate Telegram init data
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(f"Invalid Telegram init data provided for card_id: {card_id}")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     image_b64 = await asyncio.to_thread(database.get_card_image, card_id)
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -445,23 +419,9 @@ async def get_card_image_route(
 @app.post("/cards/images", response_model=List[CardImageResponse])
 async def get_card_images_route(
     request: CardImagesRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get base64 encoded images for multiple cards in a single batch."""
-    if not authorization:
-        logger.warning("No authorization header provided for batch image request")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning("No init data found in authorization header for batch image request")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning("Invalid Telegram init data provided for batch image request")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     card_ids = request.card_ids or []
     unique_card_ids = list(dict.fromkeys(card_ids))
 
@@ -493,24 +453,9 @@ async def get_card_images_route(
 @app.get("/cards/detail/{card_id}", response_model=APICard)
 async def get_card_detail(
     card_id: int,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Fetch metadata for a single card."""
-
-    if not authorization:
-        logger.warning("No authorization header provided for card detail request")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning("No init data found in authorization header for card detail request")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning("Invalid Telegram init data provided for card detail request")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     card = await asyncio.to_thread(database.get_card, card_id)
     if not card:
         logger.warning("Card detail requested for non-existent card_id: %s", card_id)
@@ -536,33 +481,17 @@ async def get_card_detail(
 @app.post("/slots/victory")
 async def slots_victory(
     request: SlotsVictoryRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Handle a slot victory by generating a card and sharing it in the chat."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
 
     global bot_token
 
-    # Validate authorization
-    if not authorization:
-        logger.warning("No authorization header provided for slots victory")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning("No init data found in authorization header for slots victory")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning("Invalid Telegram init data provided for slots victory")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
-    # Extract user data and validate
-    user_data: Dict[str, Any] = validated_data["user"] or {}
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
-    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
-        logger.warning("Invalid or mismatched user_id in slots victory")
-        raise HTTPException(status_code=403, detail="Unauthorized slots victory request")
 
     # Get username
     username = user_data.get("username")
@@ -756,126 +685,30 @@ async def _process_slots_victory_background(
 @app.post("/cards/share")
 async def share_card(
     request: ShareCardRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Share a card to its chat via the Telegram bot."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
 
     global bot_token
 
-    if not authorization:
-        logger.warning("No authorization header provided for share request")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning("No init data found in authorization header for share request")
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning("Invalid Telegram init data provided for share request")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
-    user_data: Dict[str, Any] = validated_data["user"] or {}
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
-    if not isinstance(auth_user_id, int):
-        logger.warning("Missing or invalid user_id in init data for share request")
-        raise HTTPException(status_code=400, detail="Invalid user data in init data")
-
-    if auth_user_id != request.user_id:
-        logger.warning(
-            "Share request user_id mismatch (auth %s vs payload %s)", auth_user_id, request.user_id
-        )
-        raise HTTPException(status_code=403, detail="Unauthorized share request")
-
-    card = await asyncio.to_thread(database.get_card, request.card_id)
-    if not card:
-        logger.warning("Share requested for non-existent card_id: %s", request.card_id)
-        raise HTTPException(status_code=404, detail="Card not found")
-
-    card_chat_id = card.chat_id
-    if not card_chat_id:
-        logger.error("Card %s missing chat_id; cannot share", request.card_id)
-        raise HTTPException(status_code=500, detail="Card chat not configured")
-
-    username = user_data.get("username")
-    if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
-
-    if not username:
-        logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
-        raise HTTPException(status_code=400, detail="Username not found for user")
-
-    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
-    if not MINIAPP_URL:
-        logger.error("MINIAPP_URL not configured; cannot generate share link")
-        raise HTTPException(status_code=500, detail="Mini app URL not configured")
-
-    try:
-        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-
-        share_token = encode_single_card_token(request.card_id)
-        share_url = MINIAPP_URL
-        if "?" in MINIAPP_URL:
-            separator = "&"
-        else:
-            separator = "?"
-        share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
-
-        if not bot_token:
-            logger.error("Bot token not available for share request")
-            raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
-
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
-
-        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
-
-        await bot.send_message(
-            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
-        )
-
-        return {"success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to share card %s: %s", request.card_id, e)
-        raise HTTPException(status_code=500, detail="Failed to share card")
 
 
 @app.post("/trade/{card_id1}/{card_id2}")
 async def execute_trade(
-    card_id1: int, card_id2: int, authorization: Optional[str] = Header(None, alias="Authorization")
+    card_id1: int,
+    card_id2: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Execute a card trade between two cards."""
     global bot_token
 
-    # Check if authorization header is provided
-    if not authorization:
-        logger.warning(f"No authorization header provided for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    # Extract init data from header
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for trade {card_id1}/{card_id2}"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    # Validate Telegram init data
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(f"Invalid Telegram init data provided for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     # Get user data from validated init data
-    user_data = validated_data["user"]
+    user_data = validated_user["user"]
     user_id = user_data.get("id")
 
     if not user_id:
@@ -1002,33 +835,9 @@ async def execute_trade(
 @app.get("/chat/{chat_id}/users-characters", response_model=List[ChatUserCharacterSummary])
 async def get_chat_users_and_characters_endpoint(
     chat_id: str,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get all users and characters for a specific chat with their display names and slot icons."""
-
-    # Check if authorization header is provided
-    if not authorization:
-        logger.warning(
-            f"No authorization header provided for chat users/characters in chat_id: {chat_id}"
-        )
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    # Extract init data from header
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for chat users/characters in chat_id: {chat_id}"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    # Validate Telegram init data
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(
-            f"Invalid Telegram init data provided for chat users/characters in chat_id: {chat_id}"
-        )
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
     try:
         # Get users and characters data from database
         data = await asyncio.to_thread(database.get_chat_users_and_characters, chat_id)
@@ -1045,41 +854,13 @@ async def get_chat_users_and_characters_endpoint(
 async def get_user_spins(
     user_id: int = Query(..., description="User ID"),
     chat_id: str = Query(..., description="Chat ID"),
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the current number of spins for a user in a specific chat, with daily refresh logic."""
-
-    # Validate authorization
-    if not authorization:
-        logger.warning(
-            f"No authorization header provided for spins request (user: {user_id}, chat: {chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for spins request (user: {user_id}, chat: {chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(
-            f"Invalid Telegram init data provided for spins request (user: {user_id}, chat: {chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
-    # Validate user authorization
-    user_data: Dict[str, Any] = validated_data["user"] or {}
-    auth_user_id = user_data.get("id")
-    if not isinstance(auth_user_id, int) or auth_user_id != user_id:
-        logger.warning(
-            f"User ID mismatch in spins request (auth: {auth_user_id}, request: {user_id})"
-        )
-        raise HTTPException(status_code=403, detail="Unauthorized spins request")
-
     try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(user_id, validated_user)
+
         # Get spins with daily refresh logic
         spins_count = await asyncio.to_thread(
             database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
@@ -1095,41 +876,13 @@ async def get_user_spins(
 @app.post("/slots/spins", response_model=ConsumeSpinResponse)
 async def consume_user_spin(
     request: SpinsRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Consume one spin for a user in a specific chat."""
-
-    # Validate authorization
-    if not authorization:
-        logger.warning(
-            f"No authorization header provided for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(
-            f"Invalid Telegram init data provided for spin consumption (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
-    # Validate user authorization
-    user_data: Dict[str, Any] = validated_data["user"] or {}
-    auth_user_id = user_data.get("id")
-    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
-        logger.warning(
-            f"User ID mismatch in spin consumption (auth: {auth_user_id}, request: {request.user_id})"
-        )
-        raise HTTPException(status_code=403, detail="Unauthorized spin consumption")
-
     try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(request.user_id, validated_user)
+
         # Attempt to consume a spin
         success = await asyncio.to_thread(
             database.consume_user_spin, request.user_id, request.chat_id
@@ -1168,39 +921,11 @@ async def consume_user_spin(
 @app.post("/slots/verify", response_model=SlotVerifyResponse)
 async def verify_slot_spin(
     request: SlotVerifyRequest,
-    authorization: Optional[str] = Header(None, alias="Authorization"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Verify a slot spin result using server-side randomness and logic."""
-
-    # Validate authorization
-    if not authorization:
-        logger.warning(
-            f"No authorization header provided for slot verification (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Authorization header required")
-
-    init_data = extract_init_data_from_header(authorization)
-    if not init_data:
-        logger.warning(
-            f"No init data found in authorization header for slot verification (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid authorization format")
-
-    validated_data = validate_telegram_init_data(init_data)
-    if not validated_data or not validated_data.get("user"):
-        logger.warning(
-            f"Invalid Telegram init data provided for slot verification (user: {request.user_id}, chat: {request.chat_id})"
-        )
-        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
-
-    # Validate user authorization
-    user_data: Dict[str, Any] = validated_data["user"] or {}
-    auth_user_id = user_data.get("id")
-    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
-        logger.warning(
-            f"User ID mismatch in slot verification (auth: {auth_user_id}, request: {request.user_id})"
-        )
-        raise HTTPException(status_code=403, detail="Unauthorized slot verification")
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
 
     # Validate input parameters
     if request.symbol_count <= 0:
