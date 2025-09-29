@@ -134,3 +134,17 @@ TRADE_REJECTED_MESSAGE = (
     "🚫\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
+
+SLOTS_VICTORY_PENDING_MESSAGE = (
+    "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\nGenerating card..."
+)
+
+SLOTS_VICTORY_RESULT_MESSAGE = (
+    "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\n"
+    "<b>[{card_id}] {modifier} {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
+)
+
+SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed. Please try again later."
+
+SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
