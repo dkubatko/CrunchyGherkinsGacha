@@ -3,6 +3,7 @@
   "BASE_IMAGE_PATH": "data/base_images",
   "CARD_TEMPLATES_PATH": "data/card_templates",
   "SPINS_PER_DAY": 50,
+  "SLOT_WIN_CHANCE": 0.02,
   "RARITIES": {
     "Common": {
       "weight": 55,
