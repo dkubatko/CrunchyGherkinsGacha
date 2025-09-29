@@ -8,7 +8,9 @@
   flex-shrink: 0; /* Don't shrink when space is limited */
   padding-bottom: var(--panel-bottom-padding);
   z-index: 1001; /* Above modal backdrop (z-index: 1000) */
-  position: relative;
+  position: fixed;
+  bottom: 0;
+  left: 0;
 }
 
 .action-panel-content {
