@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
-import type { ChatUserCharacterSummary } from '../types';
 import './SlotMachine.css';
 
 interface SlotsProps {
-  userId: number;
-  chatId: string;
+  symbols: SlotSymbol[];
 }
 
 interface SlotSymbol {
@@ -28,10 +25,7 @@ interface RaritySpinState {
   result: number;
 }
 
-const Slots: React.FC<SlotsProps> = ({ chatId }) => {
-  const [usersAndCharacters, setUsersAndCharacters] = useState<ChatUserCharacterSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols }) => {
   const [spinState, setSpinState] = useState<SpinState>({
     spinning: false,
     reelStates: ['idle', 'idle', 'idle'],
@@ -43,81 +37,41 @@ const Slots: React.FC<SlotsProps> = ({ chatId }) => {
     result: 0
   });
   
-  const symbols = useRef<SlotSymbol[]>([]);
+  const symbols = useRef<SlotSymbol[]>(providedSymbols);
   const reelTimeouts = useRef<NodeJS.Timeout[]>([]);
   const rarityTimeouts = useRef<NodeJS.Timeout[]>([]);
   
   const rarityOptions = useMemo(() => [
     { name: 'Common', color: '#3498db', emoji: '⚪' }, // Blue
-    { name: 'Rare', color: '#2ecc71', emoji: '�' },   // Green
+    { name: 'Rare', color: '#2ecc71', emoji: '🟢' },   // Green
     { name: 'Epic', color: '#9b59b6', emoji: '🟣' },   // Purple
     { name: 'Legendary', color: '#f39c12', emoji: '🟡' } // Gold
   ], []);
 
+    // Update symbols when providedSymbols change
   useEffect(() => {
-    const fetchUsersAndCharacters = async () => {
-      try {
-        setLoading(true);
-        setError(null);
+    symbols.current = providedSymbols;
+    
+    // Set initial results to show the first 3 different symbols if available
+    const initialResults = providedSymbols.length >= 3 
+      ? [0, 1, 2] 
+      : [0, 0, 0];
+      
+    setSpinState(prev => ({
+      ...prev,
+      results: initialResults
+    }));
+  }, [providedSymbols]);
 
-        const initData = TelegramUtils.getInitData();
-        if (!initData) {
-          throw new Error('No Telegram init data found');
-        }
-
-        const data = await ApiService.fetchChatUsersAndCharacters(chatId, initData);
-        setUsersAndCharacters(data);
-        
-        // Convert to symbols and ensure we have at least 3 for the slot machine
-        const convertedSymbols: SlotSymbol[] = data
-          .filter(item => item.slot_iconb64) // Only use items with icons
-          .map(item => ({
-            id: item.id,
-            iconb64: item.slot_iconb64 || undefined,
-            displayName: item.display_name || `${item.type} ${item.id}`,
-            type: item.type
-          }));
-
-        // If we have less than 3 symbols, duplicate them to ensure we have enough
-        while (convertedSymbols.length < 3) {
-          convertedSymbols.push(...convertedSymbols.slice(0, Math.min(3 - convertedSymbols.length, convertedSymbols.length)));
-        }
-
-        symbols.current = convertedSymbols;
-        
-        // Set initial results to show the first 3 different symbols if available
-        const initialResults = convertedSymbols.length >= 3 
-          ? [0, 1, 2] 
-          : [0, 0, 0];
-          
-        setSpinState(prev => ({
-          ...prev,
-          results: initialResults
-        }));
-        
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (chatId) {
-      fetchUsersAndCharacters();
-    } else {
-      setError('No chat ID provided');
-      setLoading(false);
-    }
-
-    // Cleanup function to prevent memory leaks
+  // Cleanup function to prevent memory leaks  
+  useEffect(() => {
     return () => {
       reelTimeouts.current.forEach(timeout => clearTimeout(timeout));
       reelTimeouts.current = [];
       rarityTimeouts.current.forEach(timeout => clearTimeout(timeout));
       rarityTimeouts.current = [];
     };
-  }, [chatId]);
+  }, []);
 
   const generateRandomResults = (): number[] => {
     const availableSymbols = symbols.current.length;
@@ -324,29 +278,6 @@ const Slots: React.FC<SlotsProps> = ({ chatId }) => {
   };
 
   const isWinning = !spinState.spinning && checkForWin();
-
-  if (loading) {
-    return (
-      <div className="slots-container">
-        <h1>🎰 Slots</h1>
-        <div className="slot-machine-container">
-          <p>Loading slot machine...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="slots-container">
-        <h1>🎰 Slots</h1>
-        <div className="slot-machine-container">
-          <p>Error: {error}</p>
-          <p>Chat ID: {chatId}</p>
-        </div>
-      </div>
-    );
-  }
 
   if (symbols.current.length === 0) {
     return (
