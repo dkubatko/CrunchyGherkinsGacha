@@ -44,10 +44,10 @@ def _load_config() -> Dict[str, Any]:
         return {"SPINS_PER_DAY": 10}
 
 
-def _get_spins_per_day() -> int:
-    """Get SPINS_PER_DAY from config."""
+def _get_spins_config() -> tuple[int, int]:
+    """Get SPINS_PER_REFRESH and SPINS_REFRESH_HOURS from config. Returns (spins_per_refresh, hours_per_refresh)."""
     config = _load_config()
-    return config.get("SPINS_PER_DAY", 10)
+    return config.get("SPINS_PER_REFRESH", 5), config.get("SPINS_REFRESH_HOURS", 3)
 
 
 def _generate_slot_icon(image_b64: str) -> Optional[str]:
@@ -1358,7 +1358,7 @@ def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
 
 
 def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> int:
-    """Get user spins, refreshing daily in PDT timezone if needed. Returns current spins count."""
+    """Get user spins, adding SPINS_PER_REFRESH for each SPINS_REFRESH_HOURS period elapsed. Returns current spins count."""
     conn = connect()
     cursor = conn.cursor()
 
@@ -1366,7 +1366,6 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
         # Get current PDT time
         pdt_tz = ZoneInfo("America/Los_Angeles")
         current_pdt = datetime.datetime.now(pdt_tz)
-        current_pdt_date = current_pdt.date()
 
         # Get existing spins record
         cursor.execute(
@@ -1375,7 +1374,7 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
         )
         row = cursor.fetchone()
 
-        spins_per_day = _get_spins_per_day()
+        spins_per_refresh, hours_per_refresh = _get_spins_config()
 
         if not row:
             # No existing record, create one with default spins
@@ -1385,16 +1384,16 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
                 INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
                 VALUES (?, ?, ?, ?)
                 """,
-                (user_id, str(chat_id), spins_per_day, current_timestamp),
+                (user_id, str(chat_id), spins_per_refresh, current_timestamp),
             )
             conn.commit()
-            return spins_per_day
+            return spins_per_refresh
 
         current_count = row[0]
         refresh_timestamp_str = row[1]
 
         try:
-            # Parse the stored timestamp as PDT
+            # Parse the stored timestamp
             if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
                 # Handle UTC timestamps by converting to PDT
                 refresh_dt_utc = datetime.datetime.fromisoformat(
@@ -1408,12 +1407,17 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
                 )
                 refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
 
-            refresh_date = refresh_dt_pdt.date()
+            # Calculate elapsed time in hours
+            time_diff = current_pdt - refresh_dt_pdt
+            hours_elapsed = time_diff.total_seconds() / 3600
 
-            # Check if it's a new day in PDT
-            if current_pdt_date > refresh_date:
-                # It's a new day, refresh spins
-                new_count = current_count + spins_per_day
+            # Calculate how many refresh periods have passed
+            periods_elapsed = int(hours_elapsed // hours_per_refresh)
+
+            # If at least one period has elapsed, add spins and update timestamp
+            if periods_elapsed > 0:
+                spins_to_add = periods_elapsed * spins_per_refresh
+                new_count = current_count + spins_to_add
                 current_timestamp = current_pdt.isoformat()
 
                 cursor.execute(
@@ -1424,18 +1428,22 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
                     (new_count, current_timestamp, user_id, str(chat_id)),
                 )
                 conn.commit()
+                logger.info(
+                    f"Added {spins_to_add} spins to user {user_id} in chat {chat_id} "
+                    f"({periods_elapsed} periods of {hours_per_refresh}h elapsed)"
+                )
                 return new_count
             else:
-                # Same day, return current count
+                # No full period elapsed yet, return current count
                 return current_count
 
         except (ValueError, TypeError) as e:
             logger.warning(
                 f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
             )
-            # If timestamp is invalid, treat as if it needs refresh
+            # If timestamp is invalid, give them one refresh worth and reset timestamp
             current_timestamp = current_pdt.isoformat()
-            new_count = current_count + spins_per_day
+            new_count = current_count + spins_per_refresh
 
             cursor.execute(
                 """
