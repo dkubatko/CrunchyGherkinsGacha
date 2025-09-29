@@ -8,6 +8,7 @@ import AllCards from './components/AllCards';
 import CardModal from './components/CardModal';
 import FilterSortControls from './components/FilterSortControls';
 import ActionPanel from './components/ActionPanel';
+import Slots from './components/Slots';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
 import type { ActionButton } from './components/ActionPanel';
 
@@ -419,6 +420,18 @@ function App() {
   // Error state
   if (error) {
     return <div className="app-container"><h1>Error: {error}</h1></div>;
+  }
+
+  // Slots View
+  if (userData?.slotsView && userData.chatId) {
+    return (
+      <div className="app-container">
+        <Slots
+          userId={userData.currentUserId}
+          chatId={userData.chatId}
+        />
+      </div>
+    );
   }
 
   // Single Card View (no tabs, no navigation or trade UI)
