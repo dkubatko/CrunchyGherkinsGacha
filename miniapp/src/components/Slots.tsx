@@ -92,8 +92,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     const availableSymbols = symbols.current.length;
     if (availableSymbols === 0) return [0, 0, 0];
 
-    // 7% chance to win
-    const isWin = Math.random() < 0.07;
+    // 2% chance to win
+    const isWin = Math.random() < 0.02;
     
     if (isWin) {
       // All three reels show the same symbol
