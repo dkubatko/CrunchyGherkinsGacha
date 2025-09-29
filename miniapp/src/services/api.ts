@@ -1,4 +1,4 @@
-import type { CardData, UserCollectionResponse, ChatUserCharacterSummary } from '../types';
+import type { CardData, UserCollectionResponse, ChatUserCharacterSummary, SlotVerifyResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
@@ -245,6 +245,40 @@ export class ApiService {
 
     if (!response.ok) {
       let detail = `Failed to consume spin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async verifySlotSpin(
+    userId: number,
+    chatId: string,
+    randomNumber: number,
+    symbolCount: number,
+    initData: string
+  ): Promise<SlotVerifyResponse> {
+    const response = await fetch(`${API_BASE_URL}/slots/verify`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        random_number: randomNumber,
+        symbol_count: symbolCount
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to verify slot spin (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

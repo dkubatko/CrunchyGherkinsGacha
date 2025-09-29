@@ -20,6 +20,7 @@ RARITIES = config["RARITIES"]
 DB_PATH = config["DB_PATH"]
 BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
 CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
+SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
 
 IMAGE_GENERATOR_INSTRUCTION = """
 Using the provided sketch as the general guidance for layout, generate collectible trading card, based on the character in the picture with the following description:

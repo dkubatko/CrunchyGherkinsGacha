@@ -62,3 +62,8 @@ export interface AppState {
   showModal: boolean;
   modalCard: CardData | null;
 }
+
+export interface SlotVerifyResponse {
+  is_win: boolean;
+  results: number[]; // Array of 3 reel results (indices)
+}

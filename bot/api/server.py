@@ -30,6 +30,7 @@ from settings.constants import (
     SLOTS_VICTORY_RESULT_MESSAGE,
     SLOTS_VICTORY_FAILURE_MESSAGE,
     SLOTS_VIEW_IN_APP_LABEL,
+    SLOT_WIN_CHANCE,
 )
 from utils.miniapp import encode_single_card_token
 
@@ -115,6 +116,18 @@ class ConsumeSpinResponse(BaseModel):
     success: bool
     spins_remaining: Optional[int] = None
     message: Optional[str] = None
+
+
+class SlotVerifyRequest(BaseModel):
+    user_id: int
+    chat_id: str
+    random_number: int
+    symbol_count: int
+
+
+class SlotVerifyResponse(BaseModel):
+    is_win: bool
+    results: List[int]  # Array of 3 reel results (indices)
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
@@ -1150,6 +1163,101 @@ async def consume_user_spin(
             f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
         )
         raise HTTPException(status_code=500, detail="Failed to consume spin")
+
+
+@app.post("/slots/verify", response_model=SlotVerifyResponse)
+async def verify_slot_spin(
+    request: SlotVerifyRequest,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Verify a slot spin result using server-side randomness and logic."""
+
+    # Validate authorization
+    if not authorization:
+        logger.warning(
+            f"No authorization header provided for slot verification (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for slot verification (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(
+            f"Invalid Telegram init data provided for slot verification (user: {request.user_id}, chat: {request.chat_id})"
+        )
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    # Validate user authorization
+    user_data: Dict[str, Any] = validated_data["user"] or {}
+    auth_user_id = user_data.get("id")
+    if not isinstance(auth_user_id, int) or auth_user_id != request.user_id:
+        logger.warning(
+            f"User ID mismatch in slot verification (auth: {auth_user_id}, request: {request.user_id})"
+        )
+        raise HTTPException(status_code=403, detail="Unauthorized slot verification")
+
+    # Validate input parameters
+    if request.symbol_count <= 0:
+        raise HTTPException(status_code=400, detail="Symbol count must be positive")
+
+    if request.random_number < 0 or request.random_number >= request.symbol_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Random number must be between 0 and {request.symbol_count - 1}",
+        )
+
+    try:
+        import random
+        import time
+
+        # Use current time and client random number for better entropy
+        # Don't set a deterministic seed - let Python use system randomness
+        random.seed()  # Reset to system randomness
+
+        # Add some entropy from the request for security
+        entropy_source = hash(
+            f"{request.user_id}_{request.chat_id}_{request.random_number}_{time.time()}"
+        )
+        random.seed(entropy_source)
+
+        # Server-side win rate from config
+        is_win = random.random() < SLOT_WIN_CHANCE
+
+        if is_win:
+            # All three reels show the same symbol
+            winning_symbol = random.randint(0, request.symbol_count - 1)
+            results = [winning_symbol, winning_symbol, winning_symbol]
+        else:
+            # Generate truly random results for a loss
+            results = []
+            for _ in range(3):
+                results.append(random.randint(0, request.symbol_count - 1))
+
+            # If by coincidence all three are the same, make it a proper loss
+            if results[0] == results[1] == results[2] and request.symbol_count > 1:
+                # Change one random position to a different value
+                position_to_change = random.randint(0, 2)
+                new_value = (results[position_to_change] + 1) % request.symbol_count
+                results[position_to_change] = new_value
+
+        logger.info(
+            f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
+            f"win={is_win}, results={results}"
+        )
+
+        return SlotVerifyResponse(is_win=is_win, results=results)
+
+    except Exception as e:
+        logger.error(
+            f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to verify slot spin")
 
 
 def run_server():
