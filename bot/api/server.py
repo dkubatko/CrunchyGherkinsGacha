@@ -71,6 +71,13 @@ class ShareCardRequest(BaseModel):
     user_id: int
 
 
+class ChatUserCharacterSummary(BaseModel):
+    id: int
+    display_name: Optional[str] = None
+    slot_iconb64: Optional[str] = None
+    type: str  # "user" or "character"
+
+
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
     """
     Validate Telegram WebApp init data according to:
@@ -687,6 +694,48 @@ async def execute_trade(
     except Exception as e:
         logger.error(f"Unexpected error in trade endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@app.get("/chat/{chat_id}/users-characters", response_model=List[ChatUserCharacterSummary])
+async def get_chat_users_and_characters_endpoint(
+    chat_id: str,
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+):
+    """Get all users and characters for a specific chat with their display names and slot icons."""
+
+    # Check if authorization header is provided
+    if not authorization:
+        logger.warning(
+            f"No authorization header provided for chat users/characters in chat_id: {chat_id}"
+        )
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Extract init data from header
+    init_data = extract_init_data_from_header(authorization)
+    if not init_data:
+        logger.warning(
+            f"No init data found in authorization header for chat users/characters in chat_id: {chat_id}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid authorization format")
+
+    # Validate Telegram init data
+    validated_data = validate_telegram_init_data(init_data)
+    if not validated_data or not validated_data.get("user"):
+        logger.warning(
+            f"Invalid Telegram init data provided for chat users/characters in chat_id: {chat_id}"
+        )
+        raise HTTPException(status_code=401, detail="Invalid or expired Telegram data")
+
+    try:
+        # Get users and characters data from database
+        data = await asyncio.to_thread(database.get_chat_users_and_characters, chat_id)
+
+        # Convert to response models and return directly
+        return [ChatUserCharacterSummary(**item) for item in data]
+
+    except Exception as e:
+        logger.error(f"Error fetching chat users/characters for chat_id {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch chat users and characters")
 
 
 def run_server():

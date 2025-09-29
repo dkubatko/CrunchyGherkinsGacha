@@ -1,0 +1,439 @@
+.slot-machine-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px; /* Smaller gap for tighter spacing */
+  padding: 20px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.slot-machine {
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  border: 4px solid #f39c12;
+  border-radius: 20px;
+  padding: 15px 15px;
+  box-shadow: 
+    0 0 20px rgba(243, 156, 18, 0.3),
+    inset 0 0 20px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.slot-machine::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.1) 0%,
+    transparent 30%,
+    transparent 70%,
+    rgba(0, 0, 0, 0.1) 100%
+  );
+  pointer-events: none;
+}
+
+.slot-reels-container {
+  display: flex;
+  gap: 10px;
+  background: #1a1a1a;
+  border: 3px solid #333;
+  border-radius: 15px;
+  padding: 15px;
+  position: relative;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  width: 350px; /* Set explicit width for rarity spinner to match */
+}
+
+.slot-reel {
+  width: 100px;
+  height: 300px;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid #444;
+  border-radius: 10px;
+  background: #222;
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.slot-reel-inner {
+  position: absolute;
+  width: 100%;
+  top: 0;
+  left: 0;
+  transition: transform 0.1s ease-out;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.slot-reel.spinning .slot-reel-inner {
+  transition: none;
+  will-change: transform;
+}
+
+.slot-symbol {
+  width: 100px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #333 0%, #222 100%);
+  border-bottom: 1px solid #444;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.slot-symbol:last-child {
+  border-bottom: none;
+}
+
+.slot-symbol img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid #555;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  display: block;
+}
+
+.slot-symbol-placeholder {
+  width: 80px;
+  height: 80px;
+  background: linear-gradient(45deg, #333 25%, transparent 25%, transparent 75%, #333 75%, #333),
+              linear-gradient(45deg, #333 25%, transparent 25%, transparent 75%, #333 75%, #333);
+  background-size: 8px 8px;
+  background-position: 0 0, 4px 4px;
+  border-radius: 50%;
+  border: 2px solid #555;
+  opacity: 0.3;
+  display: block;
+}
+
+/* Middle row highlight */
+.slot-reel::before {
+  content: '';
+  position: absolute;
+  top: 100px;
+  left: 0;
+  right: 0;
+  height: 100px;
+  border: 3px solid #f39c12;
+  border-radius: 12px;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 
+    0 0 15px rgba(243, 156, 18, 0.6),
+    inset 0 0 15px rgba(243, 156, 18, 0.3);
+  box-sizing: border-box;
+}
+
+/* Curved perspective effect - simplified */
+.slot-reel .slot-symbol:nth-child(1) {
+  opacity: 0.7;
+  filter: brightness(0.8);
+}
+
+.slot-reel .slot-symbol:nth-child(2) {
+  opacity: 1;
+  filter: brightness(1);
+  box-shadow: inset 0 0 5px rgba(243, 156, 18, 0.3);
+}
+
+.slot-reel .slot-symbol:nth-child(3) {
+  opacity: 0.7;
+  filter: brightness(0.8);
+}
+
+.spin-button {
+  width: 100%;
+  max-width: 300px;
+  height: 60px;
+  background: linear-gradient(145deg, #e74c3c 0%, #c0392b 100%);
+  border: none;
+  border-radius: 30px;
+  color: white;
+  font-size: 24px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  box-shadow: 
+    0 8px 20px rgba(231, 76, 60, 0.3),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2);
+  transition: all 0.2s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.spin-button:hover:not(:disabled) {
+  background: linear-gradient(145deg, #e55a4e 0%, #c7453a 100%);
+  transform: translateY(-2px);
+  box-shadow: 
+    0 12px 25px rgba(231, 76, 60, 0.4),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2);
+}
+
+.spin-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 
+    0 4px 15px rgba(231, 76, 60, 0.3),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2);
+}
+
+.spin-button:disabled {
+  background: linear-gradient(145deg, #7f8c8d 0%, #95a5a6 100%);
+  cursor: not-allowed;
+  box-shadow: 
+    0 4px 10px rgba(127, 140, 141, 0.2),
+    inset 0 2px 0 rgba(255, 255, 255, 0.1);
+}
+
+.spin-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.spin-button:hover:not(:disabled)::before {
+  left: 100%;
+}
+
+/* Spinning animations - optimized for performance */
+@keyframes spin-fast {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, -300px, 0); }
+}
+
+@keyframes spin-slow {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(0, 0, 0); }
+}
+
+.reel-spinning-fast .slot-reel-inner {
+  animation: spin-fast 0.15s linear infinite;
+  will-change: transform;
+}
+
+.reel-spinning-slow .slot-reel-inner {
+  animation: spin-slow 0.3s ease-out;
+  will-change: transform;
+}
+
+/* Glow effect for winning combinations */
+.slot-reel.winning {
+  animation: winner-glow 1s ease-in-out infinite alternate;
+}
+
+@keyframes winner-glow {
+  from {
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.5),
+      0 0 20px rgba(46, 204, 113, 0.6);
+  }
+  to {
+    box-shadow: 
+      inset 0 0 10px rgba(0, 0, 0, 0.5),
+      0 0 30px rgba(46, 204, 113, 0.9);
+  }
+}
+
+/* Responsive design */
+@media (max-width: 480px) {
+  .slot-machine-container {
+    padding: 10px;
+  }
+
+  .slot-reels-container {
+    width: 320px;
+    padding: 13px;
+    gap: 9px;
+  }
+  
+  .slot-reel {
+    width: 90px;
+    height: 270px;
+  }
+  
+  .slot-symbol {
+    width: 90px;
+    height: 90px;
+  }
+  
+  .slot-symbol img {
+    width: 72px;
+    height: 72px;
+  }
+  
+  .slot-symbol-placeholder {
+    width: 72px;
+    height: 72px;
+  }
+  
+  .slot-reel::before {
+    top: 90px;
+    height: 90px;
+  }
+  
+  .spin-button {
+    height: 50px;
+    font-size: 20px;
+  }
+
+  @keyframes spin-fast-mobile {
+    from { transform: translate3d(0, 0, 0); }
+    to { transform: translate3d(0, -270px, 0); }
+  }
+
+  .reel-spinning-fast .slot-reel-inner {
+    animation: spin-fast-mobile 0.15s linear infinite;
+  }
+}
+
+/* Rarity Spinner Styles */
+.rarity-spinner-container {
+  width: 100%;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: all 0.4s ease-in-out;
+  margin: 0;
+  /* NO padding - let the inner spinner handle sizing */
+}
+
+.rarity-spinner-container.visible {
+  max-height: 80px;
+  opacity: 1;
+  margin: 10px 0; /* Small margin top/bottom, equal spacing */
+}
+
+.rarity-spinner {
+  /* EXACT same styling as slot-reels-container */
+  width: 350px;
+  margin: 0 auto;
+  height: 60px;
+  background: #1a1a1a;
+  border: 3px solid #333;
+  border-radius: 15px;
+  position: relative;
+  overflow: hidden;
+  /* Same as slot-reels-container */
+  padding: 0;
+}
+
+.rarity-viewport {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  position: relative;
+  background: #1a1a1a;
+  border-radius: 12px;
+}
+
+.rarity-reel {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  transition: none;
+  transform: translateY(0);
+}
+
+.rarity-reel.spinning {
+  animation: rarity-roll-fast 0.3s linear infinite;
+  transition: none;
+  justify-content: flex-start;
+}
+
+/* When stopped, center the single result item */
+.rarity-reel:not(.spinning) {
+  animation: none;
+  transform: translateY(0);
+  transition: none;
+  justify-content: center;
+}
+
+/* Fast spinning animation */
+@keyframes rarity-roll-fast {
+  from { transform: translateY(0); }
+  to { transform: translateY(-480px); } /* 8 items * 60px each */
+}
+
+.rarity-item {
+  width: 100%;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  background: linear-gradient(145deg, #333 0%, #222 100%);
+  border: none;
+  margin: 0;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  flex-shrink: 0;
+}
+
+.rarity-item-final {
+  position: relative;
+  animation: rarity-glow 0.8s ease-in-out;
+}
+
+@keyframes rarity-glow {
+  0% { 
+    transform: scale(1);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+  50% { 
+    transform: scale(1.05);
+    text-shadow: 0 0 20px currentColor, 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+  100% { 
+    transform: scale(1);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+  }
+}
+
+/* Responsive design for rarity spinner */
+@media (max-width: 480px) {
+  .rarity-spinner {
+    width: 320px;
+    height: 50px;
+  }
+  
+  .rarity-item {
+    height: 50px;
+    font-size: 16px;
+    letter-spacing: 1px;
+  }
+  
+  @keyframes rarity-roll-fast {
+    from { transform: translateY(0); }
+    to { transform: translateY(-400px); } /* 8 items * 50px each */
+  }
+  
+  .rarity-item-final {
+    height: 50px !important;
+  }
+}
