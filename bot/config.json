@@ -110,6 +110,7 @@
         "Vampire",
         "Gothic",
         "Redditor",
+        "Citizen",
         "Climbing",
         "Druid",
         "Bot",
@@ -216,7 +217,9 @@
         "Maiden",
         "Mecha",
         "Warcraft",
-        "Evangelion"
+        "Evangelion",
+        "Мытый",
+        "Вонючий"
       ]
     },
     "Legendary": {
@@ -224,19 +227,17 @@
       "color": "golden",
       "creativeness_factor": 110,
       "modifiers": [
-        "Мытый",
         "Кальянный",
         "Crunchy Gherkins",
-        "Вонючий",
         "Akatsuki",
         "Sigma",
         "Golden",
         "Black",
-        "Citizen",
         "Forbidden",
         "Russian",
         "LGBTQ+",
         "Oiled",
+        "American",
         "Coca-Cola",
         "Gachimuchi",
         "Power Ranger",
