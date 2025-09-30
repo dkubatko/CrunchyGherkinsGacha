@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { TelegramUtils } from '../utils/telegram';
 import { ApiService } from '../services/api';
+import { useSlotsStore } from '../stores/useSlotsStore';
 import './SlotMachine.css';
 
 interface UserSpinsData {
@@ -25,34 +26,19 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
-interface SpinState {
-  spinning: boolean;
-  reelStates: ('idle' | 'fast' | 'slow' | 'stopped')[];
-  results: number[];
-}
-
-interface RaritySpinState {
-  visible: boolean;
-  spinning: boolean;
-  result: number;
-}
-
 const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, userId, chatId, initData, onSpinConsumed }) => {
-  const [spinState, setSpinState] = useState<SpinState>({
-    spinning: false,
-    reelStates: ['idle', 'idle', 'idle'],
-    results: [0, 1, 2] // Default indices to show first 3 symbols
-  });
-  const [raritySpinState, setRaritySpinState] = useState<RaritySpinState>({
-    visible: false,
-    spinning: false,
-    result: 0
-  });
-
-  
-  const symbols = useRef<SlotSymbol[]>(providedSymbols);
-  const reelTimeouts = useRef<NodeJS.Timeout[]>([]);
-  const rarityTimeouts = useRef<NodeJS.Timeout[]>([]);
+  // Get state and actions from Zustand store
+  const spinState = useSlotsStore((state) => state.spinState);
+  const setSpinState = useSlotsStore((state) => state.setSpinState);
+  const raritySpinState = useSlotsStore((state) => state.raritySpinState);
+  const setRaritySpinState = useSlotsStore((state) => state.setRaritySpinState);
+  const symbols = useSlotsStore((state) => state.symbols);
+  const setSymbols = useSlotsStore((state) => state.setSymbols);
+  const addReelTimeout = useSlotsStore((state) => state.addReelTimeout);
+  const addRarityTimeout = useSlotsStore((state) => state.addRarityTimeout);
+  const clearReelTimeouts = useSlotsStore((state) => state.clearReelTimeouts);
+  const clearRarityTimeouts = useSlotsStore((state) => state.clearRarityTimeouts);
+  const clearAllTimeouts = useSlotsStore((state) => state.clearAllTimeouts);
   
   const rarityOptions = useMemo(() => [
     { name: 'Common', color: '#3498db', emoji: '⚪' }, // Blue
@@ -63,7 +49,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
     // Update symbols when providedSymbols change
   useEffect(() => {
-    symbols.current = providedSymbols;
+    setSymbols(providedSymbols);
     
     // Set initial results to show the first 3 different symbols if available
     const initialResults = providedSymbols.length >= 3 
@@ -74,22 +60,19 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       ...prev,
       results: initialResults
     }));
-  }, [providedSymbols]);
+  }, [providedSymbols, setSymbols, setSpinState]);
 
 
 
   // Cleanup function to prevent memory leaks  
   useEffect(() => {
     return () => {
-      reelTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      reelTimeouts.current = [];
-      rarityTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      rarityTimeouts.current = [];
+      clearAllTimeouts();
     };
-  }, []);
+  }, [clearAllTimeouts]);
 
   const generateServerVerifiedResults = useCallback(async (): Promise<{ isWin: boolean; results: number[] }> => {
-    const availableSymbols = symbols.current.length;
+    const availableSymbols = symbols.length;
     if (availableSymbols === 0) return { isWin: false, results: [0, 0, 0] };
 
     // Generate a random number to send to the server (client-side contribution)
@@ -108,12 +91,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       isWin: verifyResult.is_win,
       results: verifyResult.results
     };
-  }, [userId, chatId, initData]);
+  }, [userId, chatId, initData, symbols.length]);
 
   const startRaritySpinner = useCallback(async (winningResultIndex: number) => {
     // Clear any existing rarity timeouts
-    rarityTimeouts.current.forEach(timeout => clearTimeout(timeout));
-    rarityTimeouts.current = [];
+    clearRarityTimeouts();
 
     // Generate weighted random result (more common rarities have higher chance)
     const weights = [55, 25, 15, 5]; // Common, Rare, Epic, Legendary
@@ -153,7 +135,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       
       // After a brief moment, process the victory
       const processVictoryTimeout = setTimeout(async () => {
-        const winningSymbol = symbols.current[winningResultIndex];
+        const winningSymbol = symbols[winningResultIndex];
         const rarity = rarityOptions[result].name;
         const winnerName = winningSymbol?.displayName || 'Unknown';
         
@@ -199,11 +181,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         }
       }, 500);
       
-      rarityTimeouts.current.push(processVictoryTimeout);
+      addRarityTimeout(processVictoryTimeout);
     }, 2000);
 
-    rarityTimeouts.current.push(stopSpinTimeout);
-  }, [rarityOptions, providedSymbols, userId, chatId, initData]);
+    addRarityTimeout(stopSpinTimeout);
+  }, [rarityOptions, providedSymbols, userId, chatId, initData, symbols, clearRarityTimeouts, addRarityTimeout, setRaritySpinState, setSpinState]);
 
   const stopReel = useCallback((reelIndex: number, finalResult: number) => {
     // Haptic feedback when reel starts to slow down
@@ -254,16 +236,22 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         };
       });
     }, 300);
-  }, [startRaritySpinner]);
+  }, [startRaritySpinner, setSpinState]);
 
   const handleSpin = useCallback(async () => {
-    if (spinState.spinning || symbols.current.length === 0 || userSpins.loading) return;
+    if (spinState.spinning || symbols.length === 0 || userSpins.loading) return;
 
     // Check if user has spins available
     if (userSpins.count <= 0) {
       TelegramUtils.showAlert('No spins available! Spins refresh daily.');
       return;
     }
+
+    // Immediately disable the button by setting spinning to true
+    setSpinState(prev => ({
+      ...prev,
+      spinning: true
+    }));
 
     try {
       // Attempt to consume a spin first
@@ -273,6 +261,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         // Show server error message if available, otherwise default message
         const message = consumeResult.message || 'Failed to consume spin';
         TelegramUtils.showAlert(message);
+        // Re-enable button on error
+        setSpinState(prev => ({
+          ...prev,
+          spinning: false
+        }));
         return;
       }
 
@@ -280,10 +273,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       onSpinConsumed();
 
       // Clear any existing timeouts
-      reelTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      reelTimeouts.current = [];
-      rarityTimeouts.current.forEach(timeout => clearTimeout(timeout));
-      rarityTimeouts.current = [];
+      clearReelTimeouts();
+      clearRarityTimeouts();
 
       // Hide rarity spinner only when starting a new spin
       setRaritySpinState({
@@ -296,7 +287,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         // Generate final results using server verification
         const { results: finalResults } = await generateServerVerifiedResults();
         
-        // Set all reels to spinning fast
+        // Set all reels to spinning fast (keep spinning: true)
         setSpinState({
           spinning: true,
           reelStates: ['fast', 'fast', 'fast'],
@@ -312,7 +303,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
             stopReel(reelIndex, finalResults[reelIndex]);
           }, 1000 + reelIndex * 300); // 1s base + 300ms stagger per reel
 
-          reelTimeouts.current.push(timeout);
+          addReelTimeout(timeout);
         });
 
       } catch (verificationError) {
@@ -336,27 +327,27 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       const errorMessage = error instanceof Error ? error.message : 'Failed to process spin';
       TelegramUtils.showAlert(errorMessage);
     }
-  }, [spinState.spinning, userSpins.count, userSpins.loading, stopReel, userId, chatId, initData, onSpinConsumed, generateServerVerifiedResults, providedSymbols.length]);
+  }, [spinState.spinning, userSpins.count, userSpins.loading, stopReel, userId, chatId, initData, onSpinConsumed, generateServerVerifiedResults, providedSymbols.length, clearReelTimeouts, clearRarityTimeouts, setRaritySpinState, setSpinState, symbols, addReelTimeout]);
 
   // Memoize reel symbols to prevent unnecessary recalculations
   const getReelSymbols = useCallback((reelIndex: number): SlotSymbol[] => {
-    if (symbols.current.length === 0) return [];
+    if (symbols.length === 0) return [];
     
     const result = spinState.results[reelIndex];
     const extended: SlotSymbol[] = [];
     
     // Create sequence to show result symbol in the MIDDLE position
     // With translateY(0), we need: [top, MIDDLE (result), bottom]
-    const topIndex = (result - 1 + symbols.current.length) % symbols.current.length;
+    const topIndex = (result - 1 + symbols.length) % symbols.length;
     const middleIndex = result;
-    const bottomIndex = (result + 1) % symbols.current.length;
+    const bottomIndex = (result + 1) % symbols.length;
     
-    extended.push(symbols.current[topIndex]);    // Will be at top (90px from viewport top)
-    extended.push(symbols.current[middleIndex]); // Will be in middle (90-180px) - THE SELECTED ONE
-    extended.push(symbols.current[bottomIndex]); // Will be at bottom (180-270px)
+    extended.push(symbols[topIndex]);    // Will be at top (90px from viewport top)
+    extended.push(symbols[middleIndex]); // Will be in middle (90-180px) - THE SELECTED ONE
+    extended.push(symbols[bottomIndex]); // Will be at bottom (180-270px)
     
     return extended;
-  }, [spinState.results]);
+  }, [spinState.results, symbols]);
 
   const getReelTransform = (reelIndex: number): string => {
     const state = spinState.reelStates[reelIndex];
@@ -390,7 +381,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
   const checkForWin = (): boolean => {
     const { results } = spinState;
-    if (results.length !== 3 || symbols.current.length === 0) return false;
+    if (results.length !== 3 || symbols.length === 0) return false;
     
     // Check if all three results are the same
     return results[0] === results[1] && results[1] === results[2];
@@ -398,7 +389,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
   const isWinning = !spinState.spinning && checkForWin();
 
-  if (symbols.current.length === 0) {
+  if (symbols.length === 0) {
     return (
       <div className="slots-container">
         <h1>🎰 Slots</h1>
@@ -488,7 +479,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           <button 
             className="spin-button"
             onClick={handleSpin}
-            disabled={spinState.spinning || symbols.current.length === 0 || userSpins.loading || userSpins.count <= 0}
+            disabled={spinState.spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
           >
             {spinState.spinning ? 'SPINNING...' : 'SPIN'}
           </button>
