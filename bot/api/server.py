@@ -697,6 +697,65 @@ async def share_card(
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
 
+    card = await asyncio.to_thread(database.get_card, request.card_id)
+    if not card:
+        logger.warning("Share requested for non-existent card_id: %s", request.card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card_chat_id = card.chat_id
+    if not card_chat_id:
+        logger.error("Card %s missing chat_id; cannot share", request.card_id)
+        raise HTTPException(status_code=500, detail="Card chat not configured")
+
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
+    if not MINIAPP_URL:
+        logger.error("MINIAPP_URL not configured; cannot generate share link")
+        raise HTTPException(status_code=500, detail="Mini app URL not configured")
+
+    try:
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+        share_token = encode_single_card_token(request.card_id)
+        share_url = MINIAPP_URL
+        if "?" in MINIAPP_URL:
+            separator = "&"
+        else:
+            separator = "?"
+        share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
+
+        if not bot_token:
+            logger.error("Bot token not available for share request")
+            raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
+
+        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
+
+        await bot.send_message(
+            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
+        )
+
+        return {"success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to share card %s: %s", request.card_id, e)
+        raise HTTPException(status_code=500, detail="Failed to share card")
+
 
 @app.post("/trade/{card_id1}/{card_id2}")
 async def execute_trade(
