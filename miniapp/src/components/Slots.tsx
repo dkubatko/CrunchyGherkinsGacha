@@ -16,7 +16,6 @@ import {
   SLOT_STRIP_REPEAT_MULTIPLIER,
   SLOT_BASE_SPIN_DURATION_MS,
   SLOT_SPIN_DURATION_STAGGER_MS,
-  SLOT_STOPPING_LEAD_MS,
   computeSlotSpinTransforms,
   computeSlotStaticTransform,
 } from '../utils/slotWheel';
@@ -44,7 +43,7 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
-type ReelState = 'idle' | 'spinning' | 'stopping' | 'stopped';
+type ReelState = 'idle' | 'spinning' | 'stopped';
 
 interface PendingWin {
   symbol: SlotSymbol;
@@ -316,15 +315,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       });
 
       durations.forEach((duration, index) => {
-        const stoppingTimeout = setTimeout(() => {
-          setReelStates((prev) => {
-            const next = [...prev];
-            next[index] = 'stopping';
-            return next;
-          });
-        }, Math.max(0, duration - SLOT_STOPPING_LEAD_MS));
-        addReelTimeout(stoppingTimeout);
-
         const finalTimeout = setTimeout(() => {
           setReelStates((prev) => {
             const next = [...prev];
@@ -419,7 +409,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 style={{
                   transform: `translateY(${stripTransforms[reelIndex]}px)`,
                   transitionDuration: `${stripDurations[reelIndex]}ms`,
-                  transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0.15, 1)'
+                  transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
                 }}
               >
                 {stripSymbols.map((symbol, symbolIndex) => (
