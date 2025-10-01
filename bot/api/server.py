@@ -8,7 +8,7 @@ import hashlib
 import uvicorn
 import urllib.parse
 from io import BytesIO
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 from telegram.constants import ParseMode
 from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -128,6 +128,32 @@ class SlotVerifyRequest(BaseModel):
 class SlotVerifyResponse(BaseModel):
     is_win: bool
     results: List[int]  # Array of 3 reel results (indices)
+    rarity: Optional[str] = None
+
+
+_RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [
+    (name, int(details.get("weight", 0)))
+    for name, details in RARITIES.items()
+    if isinstance(details, dict) and int(details.get("weight", 0)) > 0
+]
+_RARITY_TOTAL_WEIGHT = sum(weight for _, weight in _RARITY_WEIGHT_PAIRS)
+
+
+def _pick_slot_rarity(random_module) -> str:
+    """Select a rarity based on configured weights."""
+    if not _RARITY_WEIGHT_PAIRS or _RARITY_TOTAL_WEIGHT <= 0:
+        # Fall back to the first configured rarity or Common
+        return next(iter(RARITIES.keys()), "Common")
+
+    threshold = random_module.uniform(0, _RARITY_TOTAL_WEIGHT)
+    cumulative = 0.0
+    for name, weight in _RARITY_WEIGHT_PAIRS:
+        cumulative += weight
+        if threshold <= cumulative:
+            return name
+
+    # Numeric instability fallback
+    return _RARITY_WEIGHT_PAIRS[-1][0]
 
 
 def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
@@ -1010,13 +1036,16 @@ async def verify_slot_spin(
         )
         random.seed(entropy_source)
 
-        # Server-side win rate from config
-        is_win = random.random() < SLOT_WIN_CHANCE
+        # Server-side win rate from config (boosted in debug mode)
+        win_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
+        is_win = random.random() < win_chance
+        rarity: Optional[str] = None
 
         if is_win:
             # All three reels show the same symbol
             winning_symbol = random.randint(0, request.symbol_count - 1)
             results = [winning_symbol, winning_symbol, winning_symbol]
+            rarity = _pick_slot_rarity(random)
         else:
             # Generate truly random results for a loss
             results = []
@@ -1032,10 +1061,10 @@ async def verify_slot_spin(
 
         logger.info(
             f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
-            f"win={is_win}, results={results}"
+            f"win={is_win}, win_chance={win_chance:.3f}, results={results}, rarity={rarity}"
         )
 
-        return SlotVerifyResponse(is_win=is_win, results=results)
+        return SlotVerifyResponse(is_win=is_win, results=results, rarity=rarity)
 
     except Exception as e:
         logger.error(
