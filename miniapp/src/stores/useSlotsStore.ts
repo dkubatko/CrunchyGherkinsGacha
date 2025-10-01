@@ -1,4 +1,6 @@
 import { create } from 'zustand';
+import { RARITY_SEQUENCE, type RarityName } from '../utils/rarityStyles';
+import { computeRarityWheelStaticTransform } from '../utils/rarityWheel';
 
 interface SlotSymbol {
   id: number;
@@ -7,97 +9,107 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
-interface SpinState {
-  spinning: boolean;
-  reelStates: ('idle' | 'fast' | 'slow' | 'stopped')[];
-  results: number[];
-}
-
-interface RaritySpinState {
-  visible: boolean;
-  spinning: boolean;
-  result: number;
-}
+type ReelState = 'idle' | 'spinning' | 'stopping' | 'stopped';
 
 interface SlotsState {
-  spinState: SpinState;
-  raritySpinState: RaritySpinState;
   symbols: SlotSymbol[];
+  results: number[];
+  spinning: boolean;
+  reelStates: ReelState[];
   reelTimeouts: NodeJS.Timeout[];
-  rarityTimeouts: NodeJS.Timeout[];
-  
-  // Actions
-  setSpinState: (spinState: SpinState | ((prev: SpinState) => SpinState)) => void;
-  setRaritySpinState: (raritySpinState: RaritySpinState | ((prev: RaritySpinState) => RaritySpinState)) => void;
+  rarityWheelActive: boolean;
+  rarityWheelTarget: RarityName | null;
+  rarityWheelSpinning: boolean;
+  rarityWheelTransform: number;
+  rarityWheelDuration: number;
+  rarityWheelTimeout: ReturnType<typeof setTimeout> | null;
   setSymbols: (symbols: SlotSymbol[]) => void;
+  setResults: (results: number[]) => void;
+  setSpinning: (spinning: boolean) => void;
+  setReelStates: (states: ReelState[] | ((prev: ReelState[]) => ReelState[])) => void;
   addReelTimeout: (timeout: NodeJS.Timeout) => void;
-  addRarityTimeout: (timeout: NodeJS.Timeout) => void;
   clearReelTimeouts: () => void;
-  clearRarityTimeouts: () => void;
-  clearAllTimeouts: () => void;
+  setRarityWheelState: (partial: Partial<RarityWheelState>) => void;
+  setRarityWheelTimeout: (timeout: ReturnType<typeof setTimeout> | null) => void;
+  clearRarityWheelTimeout: () => void;
+  resetRarityWheel: () => void;
   reset: () => void;
 }
 
-const initialSpinState: SpinState = {
-  spinning: false,
-  reelStates: ['idle', 'idle', 'idle'],
-  results: [0, 1, 2]
-};
+type RarityWheelState = Pick<
+  SlotsState,
+  | 'rarityWheelActive'
+  | 'rarityWheelTarget'
+  | 'rarityWheelSpinning'
+  | 'rarityWheelTransform'
+  | 'rarityWheelDuration'
+>;
 
-const initialRaritySpinState: RaritySpinState = {
-  visible: false,
-  spinning: false,
-  result: 0
-};
+const INITIAL_RESULTS: number[] = [0, 1, 2];
+const INITIAL_REEL_STATES: ReelState[] = ['idle', 'idle', 'idle'];
 
 export const useSlotsStore = create<SlotsState>((set, get) => ({
-  spinState: initialSpinState,
-  raritySpinState: initialRaritySpinState,
   symbols: [],
+  results: [...INITIAL_RESULTS],
+  spinning: false,
+  reelStates: [...INITIAL_REEL_STATES],
   reelTimeouts: [],
-  rarityTimeouts: [],
-  
-  setSpinState: (spinState) => set((state) => ({
-    spinState: typeof spinState === 'function' ? spinState(state.spinState) : spinState
-  })),
-  
-  setRaritySpinState: (raritySpinState) => set((state) => ({
-    raritySpinState: typeof raritySpinState === 'function' ? raritySpinState(state.raritySpinState) : raritySpinState
-  })),
-  
+  rarityWheelActive: false,
+  rarityWheelTarget: null,
+  rarityWheelSpinning: false,
+  rarityWheelTransform: computeRarityWheelStaticTransform(0, RARITY_SEQUENCE.length),
+  rarityWheelDuration: 0,
+  rarityWheelTimeout: null,
+
   setSymbols: (symbols) => set({ symbols }),
-  
+  setResults: (results) => set({ results }),
+  setSpinning: (spinning) => set({ spinning }),
+  setReelStates: (states) => set((state) => ({
+    reelStates: typeof states === 'function' ? states(state.reelStates) : states
+  })),
   addReelTimeout: (timeout) => set((state) => ({
     reelTimeouts: [...state.reelTimeouts, timeout]
   })),
-  
-  addRarityTimeout: (timeout) => set((state) => ({
-    rarityTimeouts: [...state.rarityTimeouts, timeout]
-  })),
-  
   clearReelTimeouts: () => {
     const { reelTimeouts } = get();
-    reelTimeouts.forEach(timeout => clearTimeout(timeout));
+    reelTimeouts.forEach((timeout) => clearTimeout(timeout));
     set({ reelTimeouts: [] });
   },
-  
-  clearRarityTimeouts: () => {
-    const { rarityTimeouts } = get();
-    rarityTimeouts.forEach(timeout => clearTimeout(timeout));
-    set({ rarityTimeouts: [] });
+  setRarityWheelState: (partial) => set(partial),
+  setRarityWheelTimeout: (timeout) => {
+    const { rarityWheelTimeout } = get();
+    if (rarityWheelTimeout && rarityWheelTimeout !== timeout) {
+      clearTimeout(rarityWheelTimeout);
+    }
+    set({ rarityWheelTimeout: timeout });
   },
-  
-  clearAllTimeouts: () => {
-    const state = get();
-    state.reelTimeouts.forEach(timeout => clearTimeout(timeout));
-    state.rarityTimeouts.forEach(timeout => clearTimeout(timeout));
-    set({ reelTimeouts: [], rarityTimeouts: [] });
+  clearRarityWheelTimeout: () => {
+    const { rarityWheelTimeout } = get();
+    if (rarityWheelTimeout) {
+      clearTimeout(rarityWheelTimeout);
+    }
+    set({ rarityWheelTimeout: null });
   },
-  
-  reset: () => set({
-    spinState: initialSpinState,
-    raritySpinState: initialRaritySpinState,
-    reelTimeouts: [],
-    rarityTimeouts: []
-  })
+  resetRarityWheel: () => {
+    const { clearRarityWheelTimeout } = get();
+    clearRarityWheelTimeout();
+    set({
+      rarityWheelActive: false,
+      rarityWheelTarget: null,
+      rarityWheelSpinning: false,
+      rarityWheelTransform: computeRarityWheelStaticTransform(0, RARITY_SEQUENCE.length),
+      rarityWheelDuration: 0,
+    });
+  },
+  reset: () => {
+    const { reelTimeouts, resetRarityWheel } = get();
+    reelTimeouts.forEach((timeout) => clearTimeout(timeout));
+    resetRarityWheel();
+    set({
+      results: [...INITIAL_RESULTS],
+      spinning: false,
+      reelStates: [...INITIAL_REEL_STATES],
+      reelTimeouts: []
+    });
+  }
 }));

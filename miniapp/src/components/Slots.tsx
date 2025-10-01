@@ -1,7 +1,25 @@
-import React, { useEffect, useCallback, useMemo } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { TelegramUtils } from '../utils/telegram';
 import { ApiService } from '../services/api';
 import { useSlotsStore } from '../stores/useSlotsStore';
+import { getIconObjectUrl } from '../lib/iconUrlCache';
+import { RARITY_SEQUENCE, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
+import type { RarityName } from '../utils/rarityStyles';
+import {
+  computeRarityWheelTransforms,
+  generateRarityWheelStrip,
+  RARITY_WHEEL_BASE_DURATION_MS,
+  RARITY_WHEEL_FINAL_SETTLE_DELAY_MS,
+} from '../utils/rarityWheel';
+import {
+  SLOT_REEL_COUNT,
+  SLOT_STRIP_REPEAT_MULTIPLIER,
+  SLOT_BASE_SPIN_DURATION_MS,
+  SLOT_SPIN_DURATION_STAGGER_MS,
+  SLOT_STOPPING_LEAD_MS,
+  computeSlotSpinTransforms,
+  computeSlotStaticTransform,
+} from '../utils/slotWheel';
 import './SlotMachine.css';
 
 interface UserSpinsData {
@@ -26,59 +44,150 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
+type ReelState = 'idle' | 'spinning' | 'stopping' | 'stopped';
+
+interface PendingWin {
+  symbol: SlotSymbol;
+  rarity: RarityName;
+}
+
+const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
+const INITIAL_REEL_STATES: ReelState[] = Array.from(
+  { length: SLOT_REEL_COUNT },
+  () => 'idle' as ReelState
+);
+
+
 const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, userId, chatId, initData, onSpinConsumed }) => {
-  // Get state and actions from Zustand store
-  const spinState = useSlotsStore((state) => state.spinState);
-  const setSpinState = useSlotsStore((state) => state.setSpinState);
-  const raritySpinState = useSlotsStore((state) => state.raritySpinState);
-  const setRaritySpinState = useSlotsStore((state) => state.setRaritySpinState);
   const symbols = useSlotsStore((state) => state.symbols);
   const setSymbols = useSlotsStore((state) => state.setSymbols);
+  const results = useSlotsStore((state) => state.results);
+  const setResults = useSlotsStore((state) => state.setResults);
+  const spinning = useSlotsStore((state) => state.spinning);
+  const setSpinning = useSlotsStore((state) => state.setSpinning);
+  const reelStates = useSlotsStore((state) => state.reelStates);
+  const setReelStates = useSlotsStore((state) => state.setReelStates);
   const addReelTimeout = useSlotsStore((state) => state.addReelTimeout);
-  const addRarityTimeout = useSlotsStore((state) => state.addRarityTimeout);
   const clearReelTimeouts = useSlotsStore((state) => state.clearReelTimeouts);
-  const clearRarityTimeouts = useSlotsStore((state) => state.clearRarityTimeouts);
-  const clearAllTimeouts = useSlotsStore((state) => state.clearAllTimeouts);
-  
-  const rarityOptions = useMemo(() => [
-    { name: 'Common', color: '#3498db', emoji: '⚪' }, // Blue
-    { name: 'Rare', color: '#2ecc71', emoji: '🟢' },   // Green
-    { name: 'Epic', color: '#9b59b6', emoji: '🟣' },   // Purple
-    { name: 'Legendary', color: '#f39c12', emoji: '🟡' } // Gold
-  ], []);
 
-    // Update symbols when providedSymbols change
+  const [stripTransforms, setStripTransforms] = useState<number[]>(Array(SLOT_REEL_COUNT).fill(0));
+  const [stripDurations, setStripDurations] = useState<number[]>(Array(SLOT_REEL_COUNT).fill(0));
+  const rarityWheelActive = useSlotsStore((state) => state.rarityWheelActive);
+  const rarityWheelSpinning = useSlotsStore((state) => state.rarityWheelSpinning);
+  const rarityWheelTransform = useSlotsStore((state) => state.rarityWheelTransform);
+  const rarityWheelDuration = useSlotsStore((state) => state.rarityWheelDuration);
+  const setRarityWheelState = useSlotsStore((state) => state.setRarityWheelState);
+  const setRarityWheelTimeout = useSlotsStore((state) => state.setRarityWheelTimeout);
+  const clearRarityWheelTimeout = useSlotsStore((state) => state.clearRarityWheelTimeout);
+  const resetRarityWheel = useSlotsStore((state) => state.resetRarityWheel);
+  const pendingWinRef = useRef<PendingWin | null>(null);
+  const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
+
+  const startRarityWheelAnimation = useCallback(
+    (targetRarity: RarityName | null): Promise<void> | null => {
+      if (!targetRarity) {
+        return null;
+      }
+
+      const targetIndex = RARITY_SEQUENCE.findIndex((name) => name === targetRarity);
+      if (targetIndex < 0) {
+        return null;
+      }
+
+      clearRarityWheelTimeout();
+
+      const { initial, final } = computeRarityWheelTransforms(targetIndex, RARITY_SEQUENCE.length);
+
+      setRarityWheelState({
+        rarityWheelActive: true,
+        rarityWheelTarget: targetRarity,
+        rarityWheelSpinning: true,
+        rarityWheelTransform: initial,
+        rarityWheelDuration: 0,
+      });
+
+      TelegramUtils.triggerHapticImpact('light');
+
+      return new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            setRarityWheelState({
+              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS,
+              rarityWheelTransform: final,
+            });
+          });
+        });
+
+        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS + RARITY_WHEEL_FINAL_SETTLE_DELAY_MS;
+        const timeout = setTimeout(() => {
+          TelegramUtils.triggerHapticImpact('heavy');
+          setRarityWheelState({
+            rarityWheelSpinning: false,
+            rarityWheelTransform: final,
+            rarityWheelDuration: 0,
+          });
+          setRarityWheelTimeout(null);
+          resolve();
+        }, settleDelay);
+
+        setRarityWheelTimeout(timeout);
+      });
+    },
+    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout]
+  );
+
   useEffect(() => {
     setSymbols(providedSymbols);
-    
-    // Set initial results to show the first 3 different symbols if available
-    const initialResults = providedSymbols.length >= 3 
-      ? [0, 1, 2] 
-      : [0, 0, 0];
-      
-    setSpinState(prev => ({
-      ...prev,
-      results: initialResults
-    }));
-  }, [providedSymbols, setSymbols, setSpinState]);
+    const initialResults =
+      providedSymbols.length >= SLOT_REEL_COUNT
+        ? [...INITIAL_RESULTS]
+        : Array(SLOT_REEL_COUNT).fill(0);
+    setResults(initialResults);
+    setReelStates([...INITIAL_REEL_STATES]);
+  }, [providedSymbols, setSymbols, setResults, setReelStates]);
 
-
-
-  // Cleanup function to prevent memory leaks  
   useEffect(() => {
     return () => {
-      clearAllTimeouts();
+      clearReelTimeouts();
     };
-  }, [clearAllTimeouts]);
+  }, [clearReelTimeouts]);
 
-  const generateServerVerifiedResults = useCallback(async (): Promise<{ isWin: boolean; results: number[] }> => {
+  const stripSymbols = useMemo(() => {
+    if (symbols.length === 0) {
+      return [] as SlotSymbol[];
+    }
+
+    const repeated: SlotSymbol[] = [];
+    const total = symbols.length * SLOT_STRIP_REPEAT_MULTIPLIER;
+
+    for (let i = 0; i < total; i += 1) {
+      repeated.push(symbols[i % symbols.length]);
+    }
+
+    return repeated;
+  }, [symbols]);
+
+  useEffect(() => {
+    if (spinning || symbols.length === 0) {
+      return;
+    }
+
+    const transforms = results
+      .slice(0, SLOT_REEL_COUNT)
+      .map((result) => computeSlotStaticTransform(result, symbols.length));
+    setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+    setStripTransforms(transforms);
+  }, [results, symbols.length, spinning]);
+
+  const generateServerVerifiedResults = useCallback(async (): Promise<{ isWin: boolean; results: number[]; rarity: string | null }> => {
     const availableSymbols = symbols.length;
-    if (availableSymbols === 0) return { isWin: false, results: [0, 0, 0] };
 
-    // Generate a random number to send to the server (client-side contribution)
+    if (availableSymbols === 0) {
+      return { isWin: false, results: Array(SLOT_REEL_COUNT).fill(0), rarity: null };
+    }
+
     const randomNumber = Math.floor(Math.random() * availableSymbols);
 
-    // Call server to verify the spin - no fallback allowed
     const verifyResult = await ApiService.verifySlotSpin(
       userId,
       chatId,
@@ -89,314 +198,207 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
     return {
       isWin: verifyResult.is_win,
-      results: verifyResult.results
+      results: verifyResult.results,
+      rarity: verifyResult.rarity ?? null
     };
   }, [userId, chatId, initData, symbols.length]);
 
-  const startRaritySpinner = useCallback(async (winningResultIndex: number) => {
-    // Clear any existing rarity timeouts
-    clearRarityTimeouts();
+  const finalizeSpin = useCallback(() => {
+    const pendingWin = pendingWinRef.current;
+    pendingWinRef.current = null;
 
-    // Generate weighted random result (more common rarities have higher chance)
-    const weights = [55, 25, 15, 5]; // Common, Rare, Epic, Legendary
-    const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-    const random = Math.random() * totalWeight;
-    
-    let result = 0;
-    let cumulativeWeight = 0;
-    for (let i = 0; i < weights.length; i++) {
-      cumulativeWeight += weights[i];
-      if (random <= cumulativeWeight) {
-        result = i;
-        break;
-      }
+    const resetReels = () => {
+      setReelStates([...INITIAL_REEL_STATES]);
+      setSpinning(false);
+      resetRarityWheel();
+    };
+
+    if (!pendingWin) {
+      TelegramUtils.triggerHapticNotification('error');
+      resetReels();
+      return;
     }
 
-    // Show and start spinning immediately
-    setRaritySpinState({
-      visible: true,
-      spinning: true,
-      result
-    });
+    const { symbol, rarity } = pendingWin;
+    TelegramUtils.triggerHapticNotification('success');
 
-    // Haptic feedback when rarity spinner starts
-    TelegramUtils.triggerHapticImpact('heavy');
+    const completeVictory = async () => {
+      try {
+        await ApiService.processSlotsVictory(
+          userId,
+          chatId,
+          rarity.toLowerCase(),
+          symbol.id,
+          symbol.type,
+          initData
+        );
 
-    // Spin for 2 seconds, then process the victory
-    const stopSpinTimeout = setTimeout(async () => {
-      // First stop the fast spinning animation
-      setRaritySpinState(prev => ({
-        ...prev,
-        spinning: false
-      }));
+        TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
+        setTimeout(() => {
+          TelegramUtils.closeApp();
+        }, 400);
+      } catch (error) {
+        console.error('Failed to process slots victory:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Failed to process victory';
+        TelegramUtils.showAlert(`Error: ${errorMessage}`);
+      } finally {
+        resetReels();
+      }
+    };
 
-      // Haptic feedback when rarity is revealed
-      TelegramUtils.triggerHapticNotification('success');
-      
-      // After a brief moment, process the victory
-      const processVictoryTimeout = setTimeout(async () => {
-        const winningSymbol = symbols[winningResultIndex];
-        const rarity = rarityOptions[result].name;
-        const winnerName = winningSymbol?.displayName || 'Unknown';
-        
-        try {
-          // Call the API to process the slots victory
-          await ApiService.processSlotsVictory(
-            userId,
-            chatId,
-            rarity.toLowerCase(), // API expects lowercase rarity
-            winningSymbol.id,
-            winningSymbol.type,
-            initData
-          );
-          
-          // If API call successful, show win notification and close app
-          TelegramUtils.showAlert(`Won ${rarity} ${winnerName}!\n\nGenerating card...`);
-          
-          // Close the miniapp after showing the alert
-          setTimeout(() => {
-            TelegramUtils.closeApp();
-          }, 100);
-          
-        } catch (error) {
-          console.error('Failed to process slots victory:', error);
-          
-          // Show error alert
-          const errorMessage = error instanceof Error ? error.message : 'Failed to process victory';
-          TelegramUtils.showAlert(`Error: ${errorMessage}`);
-          
-          // Reset slot state to allow retry
-          setSpinState({
-            spinning: false,
-            reelStates: ['idle', 'idle', 'idle'],
-            results: providedSymbols.length >= 3 ? [0, 1, 2] : [0, 0, 0]
-          });
-          
-          // Hide rarity spinner
-          setRaritySpinState({
-            visible: false,
-            spinning: false,
-            result: 0
-          });
-        }
-      }, 500);
-      
-      addRarityTimeout(processVictoryTimeout);
-    }, 2000);
-
-    addRarityTimeout(stopSpinTimeout);
-  }, [rarityOptions, providedSymbols, userId, chatId, initData, symbols, clearRarityTimeouts, addRarityTimeout, setRaritySpinState, setSpinState]);
-
-  const stopReel = useCallback((reelIndex: number, finalResult: number) => {
-    // Haptic feedback when reel starts to slow down
-    TelegramUtils.triggerHapticImpact('medium');
-
-    setSpinState(prev => {
-      const newReelStates = [...prev.reelStates];
-      const newResults = [...prev.results];
-      
-      newReelStates[reelIndex] = 'slow';
-      newResults[reelIndex] = finalResult;
-      
-      // Enable spin button immediately when the last reel (index 2) stops
-      const isLastReel = reelIndex === 2;
-      
-      return {
-        ...prev,
-        reelStates: newReelStates,
-        results: newResults,
-        spinning: !isLastReel // Enable spin button when last reel starts slowing down
-      };
-    });
-
-    // After slow animation, set to stopped (visual state only, doesn't affect spinning)
-    setTimeout(() => {
-      setSpinState(prev => {
-        const newReelStates = [...prev.reelStates];
-        newReelStates[reelIndex] = 'stopped';
-        
-        // Check if all reels are stopped and if it's a win
-        const allStopped = newReelStates.every(state => state === 'stopped');
-        const isWin = allStopped && prev.results[0] === prev.results[1] && prev.results[1] === prev.results[2];
-        
-        if (isWin) {
-          // Haptic feedback for winning combination
-          TelegramUtils.triggerHapticNotification('success');
-          // Use setTimeout to ensure state update happens first
-          setTimeout(() => startRaritySpinner(prev.results[0]), 0);
-        } else if (allStopped) {
-          // Haptic feedback for losing combination
-          TelegramUtils.triggerHapticNotification('error');
-        }
-        
-        return {
-          ...prev,
-          reelStates: newReelStates
-          // Don't change spinning here - it's already false
-        };
+    const animation = startRarityWheelAnimation(rarity);
+    if (animation) {
+      animation.then(completeVictory).catch(() => {
+        completeVictory();
       });
-    }, 300);
-  }, [startRaritySpinner, setSpinState]);
+    } else {
+      completeVictory();
+    }
+  }, [chatId, initData, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
 
   const handleSpin = useCallback(async () => {
-    if (spinState.spinning || symbols.length === 0 || userSpins.loading) return;
+    if (spinning || symbols.length === 0 || userSpins.loading) {
+      return;
+    }
 
-    // Check if user has spins available
     if (userSpins.count <= 0) {
       TelegramUtils.showAlert('No spins available! Spins refresh daily.');
       return;
     }
 
-    // Immediately disable the button by setting spinning to true
-    setSpinState(prev => ({
-      ...prev,
-      spinning: true
-    }));
+    resetRarityWheel();
+    setSpinning(true);
+    setReelStates(Array.from({ length: SLOT_REEL_COUNT }, () => 'spinning' as ReelState));
+    clearReelTimeouts();
+    pendingWinRef.current = null;
 
     try {
-      // Attempt to consume a spin first
       const consumeResult = await ApiService.consumeUserSpin(userId, chatId, initData);
-      
+
       if (!consumeResult.success) {
-        // Show server error message if available, otherwise default message
         const message = consumeResult.message || 'Failed to consume spin';
         TelegramUtils.showAlert(message);
-        // Re-enable button on error
-        setSpinState(prev => ({
-          ...prev,
-          spinning: false
-        }));
+        setSpinning(false);
+        setReelStates([...INITIAL_REEL_STATES]);
         return;
       }
 
-      // Notify parent that a spin was consumed
       onSpinConsumed();
 
-      // Clear any existing timeouts
-      clearReelTimeouts();
-      clearRarityTimeouts();
+      const { results: finalResults, isWin, rarity: serverRarity } = await generateServerVerifiedResults();
+      const normalizedResults = finalResults.slice(0, SLOT_REEL_COUNT);
 
-      // Hide rarity spinner only when starting a new spin
-      setRaritySpinState({
-        visible: false,
-        spinning: false,
-        result: 0
-      });
-
-      try {
-        // Generate final results using server verification
-        const { results: finalResults } = await generateServerVerifiedResults();
-        
-        // Set all reels to spinning fast (keep spinning: true)
-        setSpinState({
-          spinning: true,
-          reelStates: ['fast', 'fast', 'fast'],
-          results: finalResults
-        });
-
-        // Haptic feedback when spin starts
-        TelegramUtils.triggerHapticImpact('light');
-
-        // Stop reels with staggered timing (left to right)
-        [0, 1, 2].forEach((reelIndex) => {
-          const timeout = setTimeout(() => {
-            stopReel(reelIndex, finalResults[reelIndex]);
-          }, 1000 + reelIndex * 300); // 1s base + 300ms stagger per reel
-
-          addReelTimeout(timeout);
-        });
-
-      } catch (verificationError) {
-        console.error('Slot verification failed:', verificationError);
-        
-        // Show error alert to user
-        TelegramUtils.showAlert('Error spinning\n\nTry again later!');
-        
-        // Reset slot state to allow retry
-        setSpinState({
-          spinning: false,
-          reelStates: ['idle', 'idle', 'idle'],
-          results: providedSymbols.length >= 3 ? [0, 1, 2] : [0, 0, 0]
-        });
-        
-        return; // Exit early, don't continue with normal spin logic
+      if (normalizedResults.length < SLOT_REEL_COUNT) {
+        while (normalizedResults.length < SLOT_REEL_COUNT) {
+          normalizedResults.push(0);
+        }
       }
 
+      setResults(normalizedResults);
+
+      const spinTransforms = normalizedResults.map((result) =>
+        computeSlotSpinTransforms(result, symbols.length)
+      );
+      const finalTransforms = spinTransforms.map((value) => value.final);
+      const initialTransforms = spinTransforms.map((value) => value.initial);
+      const durations = normalizedResults.map(
+        (_, index) => SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS
+      );
+
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(initialTransforms);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setStripDurations(durations);
+          setStripTransforms(finalTransforms);
+        });
+      });
+
+      durations.forEach((duration, index) => {
+        const stoppingTimeout = setTimeout(() => {
+          setReelStates((prev) => {
+            const next = [...prev];
+            next[index] = 'stopping';
+            return next;
+          });
+        }, Math.max(0, duration - SLOT_STOPPING_LEAD_MS));
+        addReelTimeout(stoppingTimeout);
+
+        const finalTimeout = setTimeout(() => {
+          setReelStates((prev) => {
+            const next = [...prev];
+            next[index] = 'stopped';
+            return next;
+          });
+
+          TelegramUtils.triggerHapticImpact('medium');
+
+          if (index === SLOT_REEL_COUNT - 1) {
+            finalizeSpin();
+          }
+        }, duration);
+        addReelTimeout(finalTimeout);
+      });
+
+      if (isWin) {
+        const winningIndex = normalizedResults[0];
+        const winningSymbol = symbols[winningIndex];
+
+        if (!winningSymbol) {
+          console.warn('Winning symbol not found for index:', winningIndex);
+        } else if (!serverRarity) {
+          console.warn('Server did not supply rarity for winning spin');
+        } else {
+          const normalizedRarity = normalizeRarityName(serverRarity);
+          if (!normalizedRarity) {
+            console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
+          } else {
+            pendingWinRef.current = { symbol: winningSymbol, rarity: normalizedRarity };
+          }
+        }
+      }
     } catch (error) {
-      console.error('Failed to consume spin:', error);
+      console.error('Failed to spin slots:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process spin';
       TelegramUtils.showAlert(errorMessage);
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(Array(SLOT_REEL_COUNT).fill(0));
+      setReelStates([...INITIAL_REEL_STATES]);
+      setSpinning(false);
     }
-  }, [spinState.spinning, userSpins.count, userSpins.loading, stopReel, userId, chatId, initData, onSpinConsumed, generateServerVerifiedResults, providedSymbols.length, clearReelTimeouts, clearRarityTimeouts, setRaritySpinState, setSpinState, symbols, addReelTimeout]);
+  }, [
+    spinning,
+    symbols,
+    userSpins,
+    userId,
+    chatId,
+    initData,
+    onSpinConsumed,
+    clearReelTimeouts,
+    setReelStates,
+    generateServerVerifiedResults,
+    setResults,
+    addReelTimeout,
+    finalizeSpin,
+    setSpinning,
+    resetRarityWheel
+  ]);
 
-  // Memoize reel symbols to prevent unnecessary recalculations
-  const getReelSymbols = useCallback((reelIndex: number): SlotSymbol[] => {
-    if (symbols.length === 0) return [];
-    
-    const result = spinState.results[reelIndex];
-    const extended: SlotSymbol[] = [];
-    
-    // Create sequence to show result symbol in the MIDDLE position
-    // With translateY(0), we need: [top, MIDDLE (result), bottom]
-    const topIndex = (result - 1 + symbols.length) % symbols.length;
-    const middleIndex = result;
-    const bottomIndex = (result + 1) % symbols.length;
-    
-    extended.push(symbols[topIndex]);    // Will be at top (90px from viewport top)
-    extended.push(symbols[middleIndex]); // Will be in middle (90-180px) - THE SELECTED ONE
-    extended.push(symbols[bottomIndex]); // Will be at bottom (180-270px)
-    
-    return extended;
-  }, [spinState.results, symbols]);
-
-  const getReelTransform = (reelIndex: number): string => {
-    const state = spinState.reelStates[reelIndex];
-    
-    switch (state) {
-      case 'idle':
-      case 'stopped':
-        return 'translateY(0px)'; // Show all 3 symbols with result in middle position
-      case 'fast':
-        return 'translateY(0px)'; // Will be animated by CSS
-      case 'slow':
-        return 'translateY(0px)'; // Animate to final position
-      default:
-        return 'translateY(0px)';
+  const isWinning = useMemo(() => {
+    if (symbols.length === 0) {
+      return false;
     }
-  };
-
-  const getReelClassName = (reelIndex: number): string => {
-    const state = spinState.reelStates[reelIndex];
-    const baseClass = 'slot-reel';
-    
-    switch (state) {
-      case 'fast':
-        return `${baseClass} spinning reel-spinning-fast`;
-      case 'slow':
-        return `${baseClass} spinning reel-spinning-slow`;
-      default:
-        return baseClass;
-    }
-  };
-
-  const checkForWin = (): boolean => {
-    const { results } = spinState;
-    if (results.length !== 3 || symbols.length === 0) return false;
-    
-    // Check if all three results are the same
-    return results[0] === results[1] && results[1] === results[2];
-  };
-
-  const isWinning = !spinState.spinning && checkForWin();
+    const hasMatchingResults =
+      results.length === SLOT_REEL_COUNT && results.every((value) => value === results[0]);
+    const reelsStopped = reelStates.every((state) => state === 'stopped');
+    return hasMatchingResults && reelsStopped;
+  }, [results, reelStates, symbols.length]);
 
   if (symbols.length === 0) {
     return (
-      <div className="slots-container">
-        <h1>🎰 Slots</h1>
-        <div className="slot-machine-container">
-          <p>No symbols available for the slot machine.</p>
-          <p>Make sure users and characters have slot icons configured.</p>
-        </div>
+      <div className="slots-container slots-container-loading" role="status" aria-live="polite">
+        <h1>Loading...</h1>
       </div>
     );
   }
@@ -404,110 +406,107 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   return (
     <div className="slots-container">
       <h1>🎰 Slots</h1>
-      
+
       <div className="slot-machine-container">
-        <div className="slot-machine">
-          <div className="slot-reels-container">
-            {[0, 1, 2].map((reelIndex) => (
-              <div 
-                key={reelIndex}
-                className={`${getReelClassName(reelIndex)} ${isWinning ? 'winning' : ''}`}
+        <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''}`}>
+          {Array.from({ length: SLOT_REEL_COUNT }, (_, reelIndex) => reelIndex).map((reelIndex) => (
+            <div
+              key={`reel-${reelIndex}`}
+              className={`slot-reel reel-${reelIndex} state-${reelStates[reelIndex]}`}
+            >
+              <div
+                className="slot-reel-strip"
+                style={{
+                  transform: `translateY(${stripTransforms[reelIndex]}px)`,
+                  transitionDuration: `${stripDurations[reelIndex]}ms`,
+                  transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0.15, 1)'
+                }}
               >
-                <div 
-                  className="slot-reel-inner"
-                  style={{ 
-                    transform: getReelTransform(reelIndex)
+                {stripSymbols.map((symbol, symbolIndex) => (
+                  <div key={`reel-${reelIndex}-symbol-${symbolIndex}`} className="slot-cell">
+                    {symbol.iconb64 ? (
+                      <img
+                        src={getIconObjectUrl(symbol.iconb64)}
+                        alt={symbol.displayName}
+                        decoding="async"
+                      />
+                    ) : (
+                      <div className="slot-symbol-placeholder" />
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="slot-highlight" />
+            </div>
+          ))}
+        </div>
+
+        <div className="slot-controls-area">
+          {rarityWheelActive ? (
+            <div className={`rarity-wheel-wrapper ${rarityWheelSpinning ? 'rarity-wheel-wrapper-spinning' : ''}`}>
+              <div className="rarity-wheel-reel">
+                <div
+                  className="rarity-wheel-strip"
+                  style={{
+                    transform: `translateY(${rarityWheelTransform}px)`,
+                    transitionDuration: `${rarityWheelDuration}ms`,
+                    transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0.15, 1)'
                   }}
                 >
-                  {getReelSymbols(reelIndex).map((symbol, symbolIndex) => (
-                    <div key={`${reelIndex}-${symbolIndex}`} className="slot-symbol">
-                      {symbol.iconb64 ? (
-                        <img 
-                          src={`data:image/png;base64,${symbol.iconb64}`}
-                          alt={symbol.displayName}
-                        />
-                      ) : (
-                        <div className="slot-symbol-placeholder" />
-                      )}
+                  {rarityWheelSymbols.map((rarityName, index) => (
+                    <div key={`rarity-strip-${index}`} className="rarity-wheel-cell">
+                      <span
+                        className="rarity-wheel-label"
+                        style={{
+                          background: getRarityGradient(rarityName),
+                          WebkitBackgroundClip: 'text',
+                          WebkitTextFillColor: 'transparent',
+                          backgroundClip: 'text'
+                        }}
+                      >
+                        {rarityName}
+                      </span>
                     </div>
                   ))}
                 </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Rarity Spinner */}
-        <div className={`rarity-spinner-container ${raritySpinState.visible ? 'visible' : ''}`}>
-          <div className="rarity-spinner">
-            <div className="rarity-viewport">
-              <div className={`rarity-reel ${raritySpinState.spinning ? 'spinning' : ''}`}>
-                {raritySpinState.spinning ? (
-                  // Show all rarities cycling for spinning animation
-                  Array.from({ length: 8 }, (_, i) => {
-                    const rarityIndex = i % rarityOptions.length;
-                    const rarity = rarityOptions[rarityIndex];
-                    return (
-                      <div 
-                        key={`spin-${i}`}
-                        className="rarity-item"
-                        style={{ color: rarity.color }}
-                      >
-                        {rarity.name}
-                      </div>
-                    );
-                  })
-                ) : (
-                  // Show only the final result, properly centered
-                  <div 
-                    key={`result-${raritySpinState.result}`}
-                    className="rarity-item rarity-item-final"
-                    style={{ 
-                      color: rarityOptions[raritySpinState.result]?.color || '#3498db'
-                    }}
-                  >
-                    {rarityOptions[raritySpinState.result]?.name || 'Common'}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Hide spin button when winning and rarity spinner is visible */}
-        {!(isWinning && raritySpinState.visible) && (
-          <button 
-            className="spin-button"
-            onClick={handleSpin}
-            disabled={spinState.spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
-          >
-            {spinState.spinning ? 'SPINNING...' : 'SPIN'}
-          </button>
-        )}
-
-        {/* Spins Counter */}
-        <div className="spins-container">
-          {userSpins.error ? (
-            <div className="spins-display error">
-              <div className="spins-icon">⚠️</div>
-              <div className="spins-text">
-                <span className="spins-count">?</span>
-                <span className="spins-label">Error loading spins</span>
+                <div className="rarity-wheel-highlight" />
               </div>
             </div>
           ) : (
-            <div className="spins-display">
-              <div className="spins-icon">✨</div>
-              <div className="spins-text">
-                <span className="spins-count">{userSpins.count}</span>
-                <span className="spins-label">Spins Available</span>
+            <>
+              <button
+                className="spin-button"
+                onClick={handleSpin}
+                disabled={spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
+              >
+                {spinning ? 'SPINNING…' : 'SPIN'}
+              </button>
+
+              <div className="spins-container">
+                {userSpins.error ? (
+                  <div className="spins-display error">
+                    <div className="spins-icon">⚠️</div>
+                    <div className="spins-text">
+                      <span className="spins-count">?</span>
+                      <span className="spins-label">Error loading spins</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="spins-display">
+                    <div className="spins-text">
+                      <div className="spins-count-row">
+                        <div className="spins-coin" aria-hidden="true" />
+                        <span className="spins-count">{userSpins.count}</span>
+                      </div>
+                      <span className="spins-label">Spins Available</span>
+                    </div>
+                    {userSpins.count === 0 && (
+                      <div className="spins-refresh-hint">Spins refresh daily!</div>
+                    )}
+                  </div>
+                )}
               </div>
-              {userSpins.count === 0 && (
-                <div className="spins-refresh-hint">
-                  Spins refresh daily!
-                </div>
-              )}
-            </div>
+            </>
           )}
         </div>
       </div>
