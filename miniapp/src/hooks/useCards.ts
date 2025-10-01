@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { CardData, UserData } from '../types';
 import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
@@ -17,8 +17,14 @@ export const useCards = (): UseCardsResult => {
   const [error, setError] = useState<string | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [initData, setInitData] = useState<string | null>(null);
+  const initializationStartedRef = useRef(false);
 
   useEffect(() => {
+    if (initializationStartedRef.current) {
+      return;
+    }
+    initializationStartedRef.current = true;
+
     const initializeAndFetch = async () => {
       try {
         // Initialize user data
@@ -39,8 +45,9 @@ export const useCards = (): UseCardsResult => {
         }
         setInitData(telegramInitData);
 
-        // If single card view, we do not fetch a collection.
-        if (!user.singleCardView) {
+        const shouldFetchCollection = !user.singleCardView && !user.slotsView;
+
+        if (shouldFetchCollection) {
           const userCardsResponse = await ApiService.fetchUserCards(
             user.targetUserId,
             telegramInitData,
@@ -67,6 +74,8 @@ export const useCards = (): UseCardsResult => {
               enableTrade: isOwn,
             };
           });
+        } else {
+          setCards([]);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
