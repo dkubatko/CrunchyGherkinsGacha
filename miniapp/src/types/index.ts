@@ -66,4 +66,5 @@ export interface AppState {
 export interface SlotVerifyResponse {
   is_win: boolean;
   results: number[]; // Array of 3 reel results (indices)
+  rarity?: string | null;
 }

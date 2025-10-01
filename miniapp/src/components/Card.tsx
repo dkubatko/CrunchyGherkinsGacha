@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ShinyImage from './ShinyImage';
 import { imageCache } from '../lib/imageCache';
+import { getRarityGradient } from '../utils/rarityStyles';
 import type { OrientationData } from '../types';
 
 interface CardProps {
@@ -60,7 +61,7 @@ const Card: React.FC<CardProps> = ({
           throw new Error('Failed to fetch image');
         }
         const imageData = await response.json();
-  imageCache.set(id, imageData, 'full');
+        imageCache.set(id, imageData, 'full');
         setImageB64(imageData);
       } catch (error) {
         console.error("Error fetching card image:", error);
@@ -71,22 +72,6 @@ const Card: React.FC<CardProps> = ({
 
     fetchImage();
   }, [id, initData]);
-
-  const getRarityGradient = (rarity: string) => {
-    const rarityLower = rarity.toLowerCase();
-    switch (rarityLower) {
-      case 'common':
-        return 'linear-gradient(45deg, #4A90E2, #7BB3F0)'; // Blue gradient
-      case 'rare':
-        return 'linear-gradient(45deg, #4CAF50, #81C784)'; // Green gradient
-      case 'epic':
-        return 'linear-gradient(45deg, #9C27B0, #BA68C8)'; // Purple gradient
-      case 'legendary':
-        return 'linear-gradient(45deg, #FFD700, #FFF176)'; // Gold gradient
-      default:
-        return 'linear-gradient(45deg, #4A90E2, #7BB3F0)'; // Default to blue
-    }
-  };
 
   const imageUrl = imageB64 ? `data:image/png;base64,${imageB64}` : '';
 
