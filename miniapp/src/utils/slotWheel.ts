@@ -1,11 +1,10 @@
 export const SLOT_REEL_COUNT = 3;
 export const SLOT_VISIBLE_ROWS = 3;
-export const SLOT_STRIP_REPEAT_MULTIPLIER = 12;
-export const SLOT_SYMBOL_HEIGHT = 88;
-export const SLOT_BASE_SPIN_DURATION_MS = 1100;
-export const SLOT_SPIN_DURATION_STAGGER_MS = 250;
-export const SLOT_STOPPING_LEAD_MS = 200;
-export const SLOT_MIN_SYMBOLS_PER_SECOND = 18;
+export const SLOT_STRIP_REPEAT_MULTIPLIER = 15;
+export const SLOT_SYMBOL_HEIGHT = 90;
+export const SLOT_BASE_SPIN_DURATION_MS = 2000;
+export const SLOT_SPIN_DURATION_STAGGER_MS = 750;
+export const SLOT_MIN_SYMBOLS_PER_SECOND = 15;
 
 export const computeSlotSpinTransforms = (
   symbolIndex: number,

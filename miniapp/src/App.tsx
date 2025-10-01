@@ -418,7 +418,7 @@ function App() {
   });
 
   // Loading state
-  if (loading || (userData?.slotsView && slotsLoading)) {
+  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0))) {
     return <div className="app-container"><h1>Loading...</h1></div>;
   }
 
