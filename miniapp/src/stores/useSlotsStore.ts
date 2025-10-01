@@ -9,7 +9,7 @@ interface SlotSymbol {
   type: 'user' | 'character';
 }
 
-type ReelState = 'idle' | 'spinning' | 'stopping' | 'stopped';
+type ReelState = 'idle' | 'spinning' | 'stopped';
 
 interface SlotsState {
   symbols: SlotSymbol[];
