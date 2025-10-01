@@ -81,6 +81,7 @@ export const useBatchLoader = (
 
   // Track which cards we've already attempted to load to prevent re-processing
   const processedCardsRef = useRef(new Set<number>());
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Track visible cards
   const [visibleCardIds, setVisibleCardIds] = useState<Set<number>>(new Set());
@@ -121,7 +122,7 @@ export const useBatchLoader = (
 
       const imageResponses: CardImageResponse[] = await response.json();
       imageResponses.forEach(imageResponse => {
-    imageCache.set(imageResponse.card_id, imageResponse.image_b64, 'thumb');
+        imageCache.set(imageResponse.card_id, imageResponse.image_b64, 'thumb');
       });
 
       const batchCardIds = batch.map(c => c.id);
@@ -174,12 +175,21 @@ export const useBatchLoader = (
 
   // Process pending cards in batches
   const processPendingBatch = useCallback(() => {
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
+
+    if (!initData) {
+      return;
+    }
+
     if (pendingCardsRef.current.size === 0) return;
 
     const pendingCardIds = Array.from(pendingCardsRef.current);
-    const visibleCards = cards.filter(card => 
-      pendingCardIds.includes(card.id) && 
-  !imageCache.has(card.id, 'thumb') && 
+    const visibleCards = cards.filter(card =>
+      pendingCardIds.includes(card.id) &&
+      !imageCache.has(card.id, 'thumb') &&
       !processedCardsRef.current.has(card.id)
     );
 
@@ -190,7 +200,7 @@ export const useBatchLoader = (
 
     // Clear pending cards
     pendingCardsRef.current.clear();
-  }, [cards, loadCardsInBatches]);
+  }, [cards, initData, loadCardsInBatches]);
 
   // Add card to pending batch and schedule processing
   const addToPendingBatch = useCallback((cardId: number) => {
@@ -198,9 +208,16 @@ export const useBatchLoader = (
 
     if (pendingCardsRef.current.size >= BATCH_SIZE) {
       console.log(`Pending batch reached ${BATCH_SIZE} cards, processing immediately`);
+      processPendingBatch();
+      return;
     }
 
-    processPendingBatch();
+    if (flushTimerRef.current === null) {
+      flushTimerRef.current = setTimeout(() => {
+        flushTimerRef.current = null;
+        processPendingBatch();
+      }, 50);
+    }
   }, [processPendingBatch]);
 
   // Function to be called by individual cards when visibility changes
@@ -239,13 +256,32 @@ export const useBatchLoader = (
     }
   }, [cards, initData, loadCardsInBatches]);
 
+  useEffect(() => {
+    if (initData && pendingCardsRef.current.size > 0) {
+      processPendingBatch();
+    }
+  }, [initData, processPendingBatch]);
+
   // Reset state when cards change significantly
   useEffect(() => {
     dispatch({ type: 'reset' });
     processedCardsRef.current.clear();
     pendingCardsRef.current.clear();
     setVisibleCardIds(new Set());
+    if (flushTimerRef.current) {
+      clearTimeout(flushTimerRef.current);
+      flushTimerRef.current = null;
+    }
   }, [cardIdsString]);
+
+  useEffect(() => {
+    return () => {
+      if (flushTimerRef.current) {
+        clearTimeout(flushTimerRef.current);
+        flushTimerRef.current = null;
+      }
+    };
+  }, []);
 
   return {
     loadingCards: state.loadingCards,
