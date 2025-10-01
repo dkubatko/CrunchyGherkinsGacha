@@ -78,7 +78,7 @@ function App() {
   const cardsScopeChatId = isTradeView && selectedCardForTrade?.chat_id
     ? selectedCardForTrade.chat_id
     : userData?.chatId ?? null;
-  const shouldFetchAllCards = hasChatScope || activeTradeCardId !== null;
+  const shouldFetchAllCards = !userData?.slotsView && (hasChatScope || activeTradeCardId !== null);
 
   const {
     allCards,

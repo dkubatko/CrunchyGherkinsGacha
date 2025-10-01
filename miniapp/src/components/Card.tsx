@@ -4,6 +4,8 @@ import { imageCache } from '../lib/imageCache';
 import { getRarityGradient } from '../utils/rarityStyles';
 import type { OrientationData } from '../types';
 
+const inFlightFullImageRequests = new Map<number, Promise<string>>();
+
 interface CardProps {
   rarity: string;
   modifier: string;
@@ -51,17 +53,32 @@ const Card: React.FC<CardProps> = ({
 
       setLoadingImage(true);
       try {
-        const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
-        const response = await fetch(`${apiBaseUrl}/cards/image/${id}`, {
-          headers: {
-            'Authorization': `tma ${initData}`
-          }
-        });
-        if (!response.ok) {
-          throw new Error('Failed to fetch image');
+        let imageRequest = inFlightFullImageRequests.get(id);
+        if (!imageRequest) {
+          imageRequest = (async () => {
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+            const response = await fetch(`${apiBaseUrl}/cards/image/${id}`, {
+              headers: {
+                'Authorization': `tma ${initData}`
+              }
+            });
+
+            if (!response.ok) {
+              throw new Error('Failed to fetch image');
+            }
+
+            const imageData = await response.json();
+            imageCache.set(id, imageData, 'full');
+            return imageData;
+          })()
+            .finally(() => {
+              inFlightFullImageRequests.delete(id);
+            });
+
+          inFlightFullImageRequests.set(id, imageRequest);
         }
-        const imageData = await response.json();
-        imageCache.set(id, imageData, 'full');
+
+        const imageData = await imageRequest;
         setImageB64(imageData);
       } catch (error) {
         console.error("Error fetching card image:", error);
