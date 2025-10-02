@@ -561,9 +561,19 @@ async def share_card(
 
         message = f"@{username} shared card:\n\n<b>{card_title}</b>"
 
-        await bot.send_message(
-            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
-        )
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, card_chat_id)
+
+        send_params = {
+            "chat_id": card_chat_id,
+            "text": message,
+            "reply_markup": keyboard,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
 
         return {"success": True}
 
@@ -776,10 +786,20 @@ async def execute_trade(
             else:
                 bot = Bot(token=bot_token)
 
+            # Get thread_id if available
+            thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id))
+
+            send_params = {
+                "chat_id": chat_id,
+                "text": trade_message,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+            }
+            if thread_id is not None:
+                send_params["message_thread_id"] = thread_id
+
             # Send message using the new bot instance
-            await bot.send_message(
-                chat_id=chat_id, text=trade_message, parse_mode="HTML", reply_markup=reply_markup
-            )
+            await bot.send_message(**send_params)
         except Exception as e:
             logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")
             raise HTTPException(status_code=500, detail="Failed to send trade request")
@@ -1044,11 +1064,18 @@ async def _process_slots_victory_background(
             display_name=display_name,
         )
 
-        pending_message = await bot.send_message(
-            chat_id=chat_id,
-            text=pending_caption,
-            parse_mode=ParseMode.HTML,
-        )
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": pending_caption,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        pending_message = await bot.send_message(**send_params)
 
         try:
             # Generate card from source
@@ -1089,13 +1116,18 @@ async def _process_slots_victory_background(
 
             # Send the card image as a new message and delete the pending message
             card_image = base64.b64decode(generated_card.image_b64)
-            card_message = await bot.send_photo(
-                chat_id=chat_id,
-                photo=card_image,
-                caption=final_caption,
-                reply_markup=keyboard,
-                parse_mode=ParseMode.HTML,
-            )
+
+            photo_params = {
+                "chat_id": chat_id,
+                "photo": card_image,
+                "caption": final_caption,
+                "reply_markup": keyboard,
+                "parse_mode": ParseMode.HTML,
+            }
+            if thread_id is not None:
+                photo_params["message_thread_id"] = thread_id
+
+            card_message = await bot.send_photo(**photo_params)
 
             # Delete the pending message
             await bot.delete_message(chat_id=chat_id, message_id=pending_message.message_id)
