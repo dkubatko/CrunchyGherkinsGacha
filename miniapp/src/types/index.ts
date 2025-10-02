@@ -6,6 +6,7 @@ export interface CardData {
   owner?: string;
   user_id?: number | null;
   chat_id?: string | null;
+  locked?: boolean;
 }
 
 export interface OrientationData {

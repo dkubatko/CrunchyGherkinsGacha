@@ -137,6 +137,54 @@ export class ApiService {
     }
   }
 
+  static async lockCard(cardId: number, userId: number, chatId: string, lock: boolean, initData: string): Promise<{ success: boolean; locked: boolean; balance: number; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/cards/lock`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ card_id: cardId, user_id: userId, chat_id: chatId, lock })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to lock/unlock card (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async fetchClaimBalance(userId: number, chatId: string, initData: string): Promise<{ balance: number; user_id: number; chat_id: string }> {
+    const params = new URLSearchParams({
+      chat_id: chatId
+    });
+
+    const response = await fetch(`${API_BASE_URL}/user/${encodeURIComponent(String(userId))}/claims?${params.toString()}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to fetch claim balance (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
   static async fetchCardImage(cardId: number, initData: string): Promise<string> {
     const response = await fetch(`${API_BASE_URL}/cards/image/${cardId}`, {
       headers: this.getHeaders(initData)

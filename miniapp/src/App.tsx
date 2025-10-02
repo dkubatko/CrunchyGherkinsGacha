@@ -54,6 +54,9 @@ function App() {
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [isTradeGridActive, setIsTradeGridActive] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
+  const [showLockDialog, setShowLockDialog] = useState(false);
+  const [lockingCard, setLockingCard] = useState(false);
+  const [claimBalance, setClaimBalance] = useState<number | null>(null);
 
   // Filter and sort state
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -82,6 +85,23 @@ function App() {
     ? selectedCardForTrade.chat_id
     : userData?.chatId ?? null;
   const shouldFetchAllCards = !userData?.slotsView && (hasChatScope || activeTradeCardId !== null);
+
+  // Fetch claim balance on mount if we have user data
+  useEffect(() => {
+    const fetchBalance = async () => {
+      if (!userData || !initData || !userData.chatId) return;
+      
+      try {
+        const result = await ApiService.fetchClaimBalance(userData.currentUserId, userData.chatId, initData);
+        setClaimBalance(result.balance);
+      } catch (error) {
+        console.error('Failed to fetch claim balance:', error);
+        // Don't show error to user, just log it
+      }
+    };
+
+    fetchBalance();
+  }, [userData, initData]);
 
   const {
     allCards,
@@ -218,7 +238,7 @@ function App() {
   
   // Feature hooks
   const { orientation, orientationKey, resetTiltReference } = useOrientation();
-  const { showModal, modalCard, openModal, closeModal } = useModal();
+  const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
   // Expand app and lock viewport height
   useEffect(() => {
     // Immediately expand the app to full height
@@ -433,33 +453,119 @@ function App() {
     return cleanup;
   }, [isTradeView]);
   
+  // Lock button handler
+  const handleLockClick = async () => {
+    if (!userData || !initData || !userData.chatId) return;
+    
+    // Fetch current balance before showing dialog
+    try {
+      const result = await ApiService.fetchClaimBalance(userData.currentUserId, userData.chatId, initData);
+      setClaimBalance(result.balance);
+    } catch (error) {
+      console.error('Failed to fetch claim balance:', error);
+      // Still show dialog even if balance fetch fails
+    }
+    
+    setShowLockDialog(true);
+  };
+
+  // Helper function to update card lock state immutably
+  const updateCardLockState = (cardId: number, locked: boolean) => {
+    // Update modal card if it matches
+    if (modalCard && modalCard.id === cardId) {
+      updateModalCard({ locked });
+    }
+    
+    // Note: We don't update the cards array because it comes from useCards hook
+    // and is read-only. The card objects are mutable references, so we update them directly.
+    // When the modal closes and reopens, or when navigating, the cards will have the updated state.
+    const cardInArray = cards.find(c => c.id === cardId);
+    if (cardInArray) {
+      cardInArray.locked = locked;
+    }
+  };
+
+  const handleLockConfirm = async () => {
+    if (!userData || !initData || lockingCard) return;
+
+    // Use modal card if open (grid view), otherwise use current index card
+    const targetCard = modalCard || cards[currentIndex];
+    if (!targetCard) return;
+
+    try {
+      setLockingCard(true);
+      const isCurrentlyLocked = targetCard.locked || false;
+      const result = await ApiService.lockCard(
+        targetCard.id,
+        userData.currentUserId,
+        userData.chatId || '',
+        !isCurrentlyLocked, // Toggle lock state
+        initData
+      );
+
+      // Update card lock state properly
+      updateCardLockState(targetCard.id, result.locked);
+
+      // Update balance
+      setClaimBalance(result.balance);
+
+      // Show success message
+      TelegramUtils.showAlert(result.message);
+    } catch (error) {
+      console.error('Failed to lock/unlock card:', error);
+      TelegramUtils.showAlert(error instanceof Error ? error.message : 'Failed to lock/unlock card');
+    } finally {
+      setLockingCard(false);
+      setShowLockDialog(false);
+    }
+  };
+
+  const handleLockCancel = () => {
+    setShowLockDialog(false);
+  };
+
   // Action Panel logic (replaces useMainButton)
   const getActionButtons = (): ActionButton[] => {
     if (loading || error) {
       return [];
     }
 
+    const buttons: ActionButton[] = [];
+
+    // Show Lock button in current view for own collection when chat_id is available
+    if (userData?.isOwnCollection && userData.chatId && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
+      // Use modal card if open (grid view), otherwise use current index card
+      const currentCard = modalCard || cards[currentIndex];
+      const isLocked = currentCard?.locked || false;
+      buttons.push({
+        id: 'lock',
+        text: isLocked ? 'Unlock' : 'Lock',
+        onClick: handleLockClick,
+        variant: 'secondary'
+      });
+    }
+
     // Show Trade button in current view for own collection (only if trading is enabled)
     // Allow in gallery view always, or in grid view when a modal card is open
     if (userData?.isOwnCollection && userData.enableTrade && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
-      return [{
+      buttons.push({
         id: 'trade',
         text: 'Trade',
         onClick: handleTradeClick,
         variant: 'primary'
-      }];
+      });
     }
     // Show Select button in modal when trading and viewing others' cards (only if trading is enabled)
     else if (userData?.enableTrade && selectedCardForTrade && modalCard && view === 'all' && modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
-      return [{
+      buttons.push({
         id: 'select',
         text: 'Select',
         onClick: handleSelectClick,
         variant: 'primary'
-      }];
+      });
     }
 
-    return [];
+    return buttons;
   };
 
   const actionButtons = getActionButtons();
@@ -528,7 +634,63 @@ function App() {
   }
 
   return (
-    <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' ? swipeHandlers : {})}>
+    <>
+      {showLockDialog && (
+        <div 
+          className="share-dialog-overlay" 
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowLockDialog(false);
+          }}
+        >
+          <div 
+            className="share-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {(() => {
+              // Use modal card if open (grid view), otherwise use current index card
+              const currentCard = modalCard || cards[currentIndex];
+              const isLocked = currentCard?.locked || false;
+              
+              if (isLocked) {
+                return (
+                  <>
+                    <p>Unlock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
+                    <p className="lock-dialog-subtitle">Claim point will <strong>not</strong> be refunded.</p>
+                  </>
+                );
+              } else {
+                return (
+                  <>
+                    <p>Lock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
+                    <p className="lock-dialog-subtitle">This will consume <strong>1 claim point</strong></p>
+                    {claimBalance !== null && (
+                      <p className="lock-dialog-balance">Balance: <strong>{claimBalance}</strong></p>
+                    )}
+                  </>
+                );
+              }
+            })()}
+            <div className="share-dialog-buttons">
+              <button 
+                onClick={handleLockConfirm} 
+                className="share-confirm-btn"
+                disabled={lockingCard}
+              >
+                {lockingCard ? 'Processing...' : 'Yes'}
+              </button>
+              <button 
+                onClick={handleLockCancel} 
+                className="share-cancel-btn"
+                disabled={lockingCard}
+              >
+                No
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' ? swipeHandlers : {})}>
       {/* Tab Navigation */}
       <div className="tabs">
         <button 
@@ -696,8 +858,9 @@ function App() {
         buttons={actionButtons}
         visible={isActionPanelVisible}
       />
-    </div>
+      </div>
+    </>
   );
-}
+};
 
 export default App;

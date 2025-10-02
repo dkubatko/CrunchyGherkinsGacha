@@ -200,3 +200,42 @@
     padding: 4px;
   }
 }
+
+/* Lock indicator styles for grid cards */
+.grid-card-lock-indicator {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+.grid-lock-icon {
+  width: 1rem;
+  height: 1rem;
+  filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.6));
+  transform-origin: 50% 20%; /* Rotate around top point (shackle) */
+  /* No animation in grid view */
+}
+
+@media (max-width: 480px) {
+  .grid-card-lock-indicator {
+    top: 4px;
+    left: 4px;
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .grid-lock-icon {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+}
