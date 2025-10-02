@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import ShinyImage from './ShinyImage';
 import { imageCache } from '../lib/imageCache';
 import { getRarityGradient } from '../utils/rarityStyles';
-import type { OrientationData } from '../types';
+import type { OrientationData, CardData } from '../types';
 
 const inFlightFullImageRequests = new Map<number, Promise<string>>();
 
@@ -16,10 +16,12 @@ interface CardProps {
   initData: string | null;
   shiny: boolean;
   owner?: string;
+  chat_id?: string | null;
   showOwner?: boolean;
   onShare?: (cardId: number) => Promise<void> | void;
   showShareButton?: boolean;
   locked?: boolean;
+  onCardOpen?: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -32,16 +34,24 @@ const Card: React.FC<CardProps> = ({
   initData,
   shiny,
   owner,
+  chat_id,
   showOwner = false,
   onShare,
   showShareButton = false,
-  locked = false
+  locked = false,
+  onCardOpen
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+
+  useEffect(() => {
+    if (onCardOpen) {
+      onCardOpen({ id, chat_id: chat_id ?? null });
+    }
+  }, [id, chat_id, onCardOpen]);
 
   useEffect(() => {
     const fetchImage = async () => {
