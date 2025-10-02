@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import sys
 from functools import wraps
 from typing import Any, Awaitable, Callable
 
@@ -13,6 +14,9 @@ from . import database
 HandlerFunc = Callable[..., Awaitable[Any]]
 
 logger = logging.getLogger(__name__)
+
+# Check for debug mode at module level
+DEBUG_MODE = "--debug" in sys.argv
 
 
 async def _notify_user(update: Update, context: ContextTypes.DEFAULT_TYPE, message: str) -> None:
@@ -100,11 +104,13 @@ def verify_admin(handler: HandlerFunc) -> HandlerFunc:
     @verify_user
     @wraps(handler)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        admin_username = os.getenv("BOT_ADMIN")
+        # Use DEBUG_BOT_ADMIN in debug mode, otherwise use BOT_ADMIN
+        admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
         db_user = kwargs.get("user")
 
         if not admin_username:
-            logger.warning("BOT_ADMIN environment variable not set")
+            env_var = "DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN"
+            logger.warning(f"{env_var} environment variable not set")
             await _notify_user(update, context, "Admin functionality is not configured.")
             return None
 
