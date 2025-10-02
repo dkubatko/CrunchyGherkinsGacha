@@ -8,7 +8,7 @@ import hashlib
 import uvicorn
 import urllib.parse
 from io import BytesIO
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, Set
 from telegram.constants import ParseMode
 from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -334,6 +334,71 @@ def _build_single_card_url(card_id: int) -> str:
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
 
+def _generate_slot_loss_pattern(random_module, symbol_count: int) -> List[int]:
+    """
+    Generate a dramatic slot machine loss pattern.
+
+    Valid patterns:
+    - [a, b, c] (all different) - no matching symbols
+    - [a, a, b] (first two same, third different) - creates tension with near-miss
+
+    Invalid patterns:
+    - [a, b, a] - too cruel, looks like a near-miss sandwich pattern
+    - [a, b, b] - not allowed, must be first two same
+
+    Args:
+        random_module: Random module instance for generating random numbers
+        symbol_count: Total number of available symbols
+
+    Returns:
+        List of 3 integers representing the slot results
+    """
+    if symbol_count < 2:
+        # Edge case: if only one symbol exists, just return three of them
+        return [0, 0, 0]
+
+    # Choose loss pattern type
+    pattern_type = random_module.choice(["all_different", "two_same_start"])
+
+    def _weighted_choice(exclude: Set[int], near_targets: List[int]) -> int:
+        """Pick a symbol favouring those closer to the would-be winning targets."""
+        candidates = [idx for idx in range(symbol_count) if idx not in exclude]
+        if not candidates:
+            return near_targets[0]
+
+        weights: List[float] = []
+        for candidate in candidates:
+            min_distance = min(abs(candidate - target) for target in near_targets)
+            # Invert distance (with +1 to avoid division by zero) to weight near misses higher
+            weights.append(1.0 / (min_distance + 1.0))
+
+        total_weight = sum(weights)
+        if total_weight <= 0:
+            return random_module.choice(candidates)
+
+        threshold = random_module.random() * total_weight
+        cumulative = 0.0
+        for candidate, weight in zip(candidates, weights):
+            cumulative += weight
+            if cumulative >= threshold:
+                return candidate
+
+        return candidates[-1]
+
+    if pattern_type == "all_different" and symbol_count >= 3:
+        # Generate three different symbols with weighted near-miss preference
+        first = random_module.randint(0, symbol_count - 1)
+        second = _weighted_choice({first}, [first])
+        third = _weighted_choice({first, second}, [first, second])
+        return [first, second, third]
+    else:
+        # Generate pattern [a, a, b] - first two same, third different
+        same_symbol = random_module.randint(0, symbol_count - 1)
+        different_symbol = _weighted_choice({same_symbol}, [same_symbol])
+
+        return [same_symbol, same_symbol, different_symbol]  # [a, a, b]
+
+
 # CORS configuration
 allowed_origins = [
     "https://app.crunchygherkins.com",
@@ -357,6 +422,11 @@ app.add_middleware(
 )
 
 
+# =============================================================================
+# CARD ENDPOINTS
+# =============================================================================
+
+
 @app.get("/cards/all", response_model=List[APICard])
 async def get_all_cards_endpoint(
     chat_id: Optional[str] = Query(None, alias="chat_id"),
@@ -365,35 +435,6 @@ async def get_all_cards_endpoint(
     """Get all cards that have been claimed."""
     cards = await asyncio.to_thread(database.get_all_cards, chat_id)
     return [APICard(**card.__dict__) for card in cards]
-
-
-@app.get("/trade/{card_id}/options", response_model=List[APICard])
-async def get_trade_options(
-    card_id: int,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Get trade options for a specific card, scoped to the same chat."""
-    card = await asyncio.to_thread(database.get_card, card_id)
-    if not card:
-        logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
-        raise HTTPException(status_code=404, detail="Card not found")
-
-    if not card.chat_id:
-        logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
-        raise HTTPException(status_code=400, detail="Card is not associated with a chat")
-
-    cards = await asyncio.to_thread(database.get_all_cards, card.chat_id)
-
-    initiating_owner = card.owner
-    filtered_cards = [
-        card_option
-        for card_option in cards
-        if card_option.id != card_id
-        and card_option.owner is not None
-        and card_option.owner != initiating_owner
-    ]
-
-    return [APICard(**card_option.__dict__) for card_option in filtered_cards]
 
 
 @app.get("/cards/{user_id}", response_model=UserCollectionResponse)
@@ -428,6 +469,114 @@ async def get_user_collection(
         ),
         cards=api_cards,
     )
+
+
+@app.get("/cards/detail/{card_id}", response_model=APICard)
+async def get_card_detail(
+    card_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Fetch metadata for a single card."""
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        logger.warning("Card detail requested for non-existent card_id: %s", card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card_payload = card.model_dump(
+        include={
+            "id",
+            "base_name",
+            "modifier",
+            "rarity",
+            "owner",
+            "user_id",
+            "file_id",
+            "chat_id",
+            "created_at",
+        }
+    )
+
+    return APICard(**card_payload)
+
+
+@app.post("/cards/share")
+async def share_card(
+    request: ShareCardRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Share a card to its chat via the Telegram bot."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    global bot_token
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user["user"] or {}
+    auth_user_id = user_data.get("id")
+
+    card = await asyncio.to_thread(database.get_card, request.card_id)
+    if not card:
+        logger.warning("Share requested for non-existent card_id: %s", request.card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    card_chat_id = card.chat_id
+    if not card_chat_id:
+        logger.error("Card %s missing chat_id; cannot share", request.card_id)
+        raise HTTPException(status_code=500, detail="Card chat not configured")
+
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
+    if not MINIAPP_URL:
+        logger.error("MINIAPP_URL not configured; cannot generate share link")
+        raise HTTPException(status_code=500, detail="Mini app URL not configured")
+
+    try:
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+
+        share_token = encode_single_card_token(request.card_id)
+        share_url = MINIAPP_URL
+        if "?" in MINIAPP_URL:
+            separator = "&"
+        else:
+            separator = "?"
+        share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
+
+        if not bot_token:
+            logger.error("Bot token not available for share request")
+            raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
+
+        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
+
+        await bot.send_message(
+            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
+        )
+
+        return {"success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to share card %s: %s", request.card_id, e)
+        raise HTTPException(status_code=500, detail="Failed to share card")
+
+
+# =============================================================================
+# CARD IMAGE ENDPOINTS
+# =============================================================================
 
 
 @app.get("/cards/image/{card_id}", response_model=str)
@@ -476,32 +625,306 @@ async def get_card_images_route(
     return response_payload
 
 
-@app.get("/cards/detail/{card_id}", response_model=APICard)
-async def get_card_detail(
+# =============================================================================
+# TRADE ENDPOINTS
+# =============================================================================
+
+
+@app.get("/trade/{card_id}/options", response_model=List[APICard])
+async def get_trade_options(
     card_id: int,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Fetch metadata for a single card."""
+    """Get trade options for a specific card, scoped to the same chat."""
     card = await asyncio.to_thread(database.get_card, card_id)
     if not card:
-        logger.warning("Card detail requested for non-existent card_id: %s", card_id)
+        logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
         raise HTTPException(status_code=404, detail="Card not found")
 
-    card_payload = card.model_dump(
-        include={
-            "id",
-            "base_name",
-            "modifier",
-            "rarity",
-            "owner",
-            "user_id",
-            "file_id",
-            "chat_id",
-            "created_at",
-        }
-    )
+    if not card.chat_id:
+        logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
+        raise HTTPException(status_code=400, detail="Card is not associated with a chat")
 
-    return APICard(**card_payload)
+    cards = await asyncio.to_thread(database.get_all_cards, card.chat_id)
+
+    initiating_owner = card.owner
+    filtered_cards = [
+        card_option
+        for card_option in cards
+        if card_option.id != card_id
+        and card_option.owner is not None
+        and card_option.owner != initiating_owner
+    ]
+
+    return [APICard(**card_option.__dict__) for card_option in filtered_cards]
+
+
+@app.post("/trade/{card_id1}/{card_id2}")
+async def execute_trade(
+    card_id1: int,
+    card_id2: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Execute a card trade between two cards."""
+    global bot_token
+
+    # Get user data from validated init data
+    user_data = validated_user["user"]
+    user_id = user_data.get("id")
+
+    if not user_id:
+        logger.warning(f"Missing user_id in init data for trade {card_id1}/{card_id2}")
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
+
+    # Check if bot token is available
+    if not bot_token:
+        logger.error("Bot token not available for trade execution")
+        raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+    try:
+        # Get cards from database
+        card1 = await asyncio.to_thread(database.get_card, card_id1)
+        card2 = await asyncio.to_thread(database.get_card, card_id2)
+
+        if not card1 or not card2:
+            raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
+
+        if debug_mode:
+            # In debug mode, target the requesting user directly
+            chat_id = user_id
+        else:
+            card1_chat_id = card1.chat_id
+            card2_chat_id = card2.chat_id
+
+            if not card1_chat_id or not card2_chat_id:
+                fallback_chat_id = os.getenv("GROUP_CHAT_ID")
+                if fallback_chat_id:
+                    logger.warning(
+                        "Missing chat_id on one or both cards for trade %s/%s; falling back to GROUP_CHAT_ID",
+                        card_id1,
+                        card_id2,
+                    )
+                    chat_id = fallback_chat_id
+                else:
+                    logger.error(
+                        "Missing chat_id on cards %s and %s with no GROUP_CHAT_ID fallback configured",
+                        card_id1,
+                        card_id2,
+                    )
+                    raise HTTPException(status_code=500, detail="Card chat not configured")
+            else:
+                if card1_chat_id != card2_chat_id:
+                    logger.warning(
+                        "Trade attempted between cards %s and %s from different chats (%s vs %s)",
+                        card_id1,
+                        card_id2,
+                        card1_chat_id,
+                        card2_chat_id,
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Both cards must belong to the same chat to trade",
+                    )
+                chat_id = card1_chat_id
+
+        # Get current user's username from the validated init data
+        current_username = user_data.get("username")
+        if not current_username:
+            logger.error(f"Username not found in init data for user_id {user_id}")
+            raise HTTPException(status_code=400, detail="Username not found in init data")
+
+        # Validate trade
+        if card1.owner != current_username:
+            raise HTTPException(
+                status_code=403, detail=f"You do not own card {card1.modifier} {card1.base_name}"
+            )
+
+        if card2.owner == current_username:
+            raise HTTPException(
+                status_code=400, detail=f"You already own card {card2.modifier} {card2.base_name}"
+            )
+
+        # Send trade request message with accept/reject buttons
+        trade_message = TRADE_REQUEST_MESSAGE.format(
+            user1_username=current_username,
+            card1_title=f"{card1.modifier} {card1.base_name}",
+            user2_username=card2.owner,
+            card2_title=f"{card2.modifier} {card2.base_name}",
+        )
+
+        # Create inline keyboard with accept/reject buttons
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        keyboard = [
+            [
+                InlineKeyboardButton("Accept", callback_data=f"trade_accept_{card_id1}_{card_id2}"),
+                InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        try:
+            # Create a new bot instance to avoid event loop conflicts
+            from telegram import Bot
+
+            if debug_mode:
+                # Use test environment endpoints when in debug mode
+                bot = Bot(token=bot_token)
+                # Override the bot's base URLs to use test environment (same as main bot)
+                bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+                bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+            else:
+                bot = Bot(token=bot_token)
+
+            # Send message using the new bot instance
+            await bot.send_message(
+                chat_id=chat_id, text=trade_message, parse_mode="HTML", reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send trade request")
+
+        return {"success": True, "message": "Trade request sent successfully"}
+
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except Exception as e:
+        logger.error(f"Unexpected error in trade endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# =============================================================================
+# SLOTS ENDPOINTS
+# =============================================================================
+
+
+@app.get("/slots/spins", response_model=SpinsResponse)
+async def get_user_spins(
+    user_id: int = Query(..., description="User ID"),
+    chat_id: str = Query(..., description="Chat ID"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the current number of spins for a user in a specific chat, with daily refresh logic."""
+    try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(user_id, validated_user)
+
+        # Get spins with daily refresh logic
+        spins_count = await asyncio.to_thread(
+            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
+        )
+
+        return SpinsResponse(spins=spins_count, success=True)
+
+    except Exception as e:
+        logger.error(f"Error getting spins for user {user_id} in chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get spins")
+
+
+@app.post("/slots/spins", response_model=ConsumeSpinResponse)
+async def consume_user_spin(
+    request: SpinsRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Consume one spin for a user in a specific chat."""
+    try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(request.user_id, validated_user)
+
+        # Attempt to consume a spin
+        success = await asyncio.to_thread(
+            database.consume_user_spin, request.user_id, request.chat_id
+        )
+
+        if success:
+            # Get remaining spins after consumption
+            remaining_spins = await asyncio.to_thread(
+                database.get_or_update_user_spins_with_daily_refresh,
+                request.user_id,
+                request.chat_id,
+            )
+
+            return ConsumeSpinResponse(
+                success=True, spins_remaining=remaining_spins, message="Spin consumed successfully"
+            )
+        else:
+            # Get current spins to show in error
+            current_spins = await asyncio.to_thread(
+                database.get_or_update_user_spins_with_daily_refresh,
+                request.user_id,
+                request.chat_id,
+            )
+
+            return ConsumeSpinResponse(
+                success=False, spins_remaining=current_spins, message="No spins available"
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to consume spin")
+
+
+@app.post("/slots/verify", response_model=SlotVerifyResponse)
+async def verify_slot_spin(
+    request: SlotVerifyRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Verify a slot spin result using server-side randomness and logic."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Validate input parameters
+    if request.symbol_count <= 0:
+        raise HTTPException(status_code=400, detail="Symbol count must be positive")
+
+    if request.random_number < 0 or request.random_number >= request.symbol_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Random number must be between 0 and {request.symbol_count - 1}",
+        )
+
+    try:
+        import random
+        import time
+
+        # Use current time and client random number for better entropy
+        # Don't set a deterministic seed - let Python use system randomness
+        random.seed()  # Reset to system randomness
+
+        # Add some entropy from the request for security
+        entropy_source = hash(
+            f"{request.user_id}_{request.chat_id}_{request.random_number}_{time.time()}"
+        )
+        random.seed(entropy_source)
+
+        # Server-side win rate from config (boosted in debug mode)
+        win_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
+        is_win = random.random() < win_chance
+        rarity: Optional[str] = None
+
+        if is_win:
+            # All three reels show the same symbol
+            winning_symbol = random.randint(0, request.symbol_count - 1)
+            results = [winning_symbol, winning_symbol, winning_symbol]
+            rarity = _pick_slot_rarity(random)
+        else:
+            # Generate a dramatic loss pattern (no [a, b, a] near-miss patterns)
+            results = _generate_slot_loss_pattern(random, request.symbol_count)
+
+        logger.info(
+            f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
+            f"win={is_win}, win_chance={win_chance:.3f}, results={results}, rarity={rarity}"
+        )
+
+        return SlotVerifyResponse(is_win=is_win, results=results, rarity=rarity)
+
+    except Exception as e:
+        logger.error(
+            f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to verify slot spin")
 
 
 @app.post("/slots/victory")
@@ -708,213 +1131,9 @@ async def _process_slots_victory_background(
         logger.error("Critical error in slots victory background processing: %s", exc)
 
 
-@app.post("/cards/share")
-async def share_card(
-    request: ShareCardRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Share a card to its chat via the Telegram bot."""
-    # Verify the authenticated user matches the requested user_id
-    await verify_user_match(request.user_id, validated_user)
-
-    global bot_token
-
-    # Extract user data from validated data
-    user_data: Dict[str, Any] = validated_user["user"] or {}
-    auth_user_id = user_data.get("id")
-
-    card = await asyncio.to_thread(database.get_card, request.card_id)
-    if not card:
-        logger.warning("Share requested for non-existent card_id: %s", request.card_id)
-        raise HTTPException(status_code=404, detail="Card not found")
-
-    card_chat_id = card.chat_id
-    if not card_chat_id:
-        logger.error("Card %s missing chat_id; cannot share", request.card_id)
-        raise HTTPException(status_code=500, detail="Card chat not configured")
-
-    username = user_data.get("username")
-    if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
-
-    if not username:
-        logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
-        raise HTTPException(status_code=400, detail="Username not found for user")
-
-    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
-    if not MINIAPP_URL:
-        logger.error("MINIAPP_URL not configured; cannot generate share link")
-        raise HTTPException(status_code=500, detail="Mini app URL not configured")
-
-    try:
-        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
-
-        share_token = encode_single_card_token(request.card_id)
-        share_url = MINIAPP_URL
-        if "?" in MINIAPP_URL:
-            separator = "&"
-        else:
-            separator = "?"
-        share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
-
-        if not bot_token:
-            logger.error("Bot token not available for share request")
-            raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
-
-        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
-
-        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
-
-        await bot.send_message(
-            chat_id=card_chat_id, text=message, reply_markup=keyboard, parse_mode=ParseMode.HTML
-        )
-
-        return {"success": True}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Failed to share card %s: %s", request.card_id, e)
-        raise HTTPException(status_code=500, detail="Failed to share card")
-
-
-@app.post("/trade/{card_id1}/{card_id2}")
-async def execute_trade(
-    card_id1: int,
-    card_id2: int,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Execute a card trade between two cards."""
-    global bot_token
-
-    # Get user data from validated init data
-    user_data = validated_user["user"]
-    user_id = user_data.get("id")
-
-    if not user_id:
-        logger.warning(f"Missing user_id in init data for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=400, detail="Invalid user data in init data")
-
-    # Check if bot token is available
-    if not bot_token:
-        logger.error("Bot token not available for trade execution")
-        raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-    try:
-        # Get cards from database
-        card1 = await asyncio.to_thread(database.get_card, card_id1)
-        card2 = await asyncio.to_thread(database.get_card, card_id2)
-
-        if not card1 or not card2:
-            raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
-
-        if debug_mode:
-            # In debug mode, target the requesting user directly
-            chat_id = user_id
-        else:
-            card1_chat_id = card1.chat_id
-            card2_chat_id = card2.chat_id
-
-            if not card1_chat_id or not card2_chat_id:
-                fallback_chat_id = os.getenv("GROUP_CHAT_ID")
-                if fallback_chat_id:
-                    logger.warning(
-                        "Missing chat_id on one or both cards for trade %s/%s; falling back to GROUP_CHAT_ID",
-                        card_id1,
-                        card_id2,
-                    )
-                    chat_id = fallback_chat_id
-                else:
-                    logger.error(
-                        "Missing chat_id on cards %s and %s with no GROUP_CHAT_ID fallback configured",
-                        card_id1,
-                        card_id2,
-                    )
-                    raise HTTPException(status_code=500, detail="Card chat not configured")
-            else:
-                if card1_chat_id != card2_chat_id:
-                    logger.warning(
-                        "Trade attempted between cards %s and %s from different chats (%s vs %s)",
-                        card_id1,
-                        card_id2,
-                        card1_chat_id,
-                        card2_chat_id,
-                    )
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Both cards must belong to the same chat to trade",
-                    )
-                chat_id = card1_chat_id
-
-        # Get current user's username from the validated init data
-        current_username = user_data.get("username")
-        if not current_username:
-            logger.error(f"Username not found in init data for user_id {user_id}")
-            raise HTTPException(status_code=400, detail="Username not found in init data")
-
-        # Validate trade
-        if card1.owner != current_username:
-            raise HTTPException(
-                status_code=403, detail=f"You do not own card {card1.modifier} {card1.base_name}"
-            )
-
-        if card2.owner == current_username:
-            raise HTTPException(
-                status_code=400, detail=f"You already own card {card2.modifier} {card2.base_name}"
-            )
-
-        # Send trade request message with accept/reject buttons
-        trade_message = TRADE_REQUEST_MESSAGE.format(
-            user1_username=current_username,
-            card1_title=f"{card1.modifier} {card1.base_name}",
-            user2_username=card2.owner,
-            card2_title=f"{card2.modifier} {card2.base_name}",
-        )
-
-        # Create inline keyboard with accept/reject buttons
-        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
-
-        keyboard = [
-            [
-                InlineKeyboardButton("Accept", callback_data=f"trade_accept_{card_id1}_{card_id2}"),
-                InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
-            ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        try:
-            # Create a new bot instance to avoid event loop conflicts
-            from telegram import Bot
-
-            if debug_mode:
-                # Use test environment endpoints when in debug mode
-                bot = Bot(token=bot_token)
-                # Override the bot's base URLs to use test environment (same as main bot)
-                bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-                bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
-            else:
-                bot = Bot(token=bot_token)
-
-            # Send message using the new bot instance
-            await bot.send_message(
-                chat_id=chat_id, text=trade_message, parse_mode="HTML", reply_markup=reply_markup
-            )
-        except Exception as e:
-            logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to send trade request")
-
-        return {"success": True, "message": "Trade request sent successfully"}
-
-    except HTTPException:
-        raise  # Re-raise HTTP exceptions
-    except Exception as e:
-        logger.error(f"Unexpected error in trade endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+# =============================================================================
+# CHAT ENDPOINTS
+# =============================================================================
 
 
 @app.get("/chat/{chat_id}/users-characters", response_model=List[ChatUserCharacterSummary])
@@ -933,144 +1152,6 @@ async def get_chat_users_and_characters_endpoint(
     except Exception as e:
         logger.error(f"Error fetching chat users/characters for chat_id {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch chat users and characters")
-
-
-@app.get("/slots/spins", response_model=SpinsResponse)
-async def get_user_spins(
-    user_id: int = Query(..., description="User ID"),
-    chat_id: str = Query(..., description="Chat ID"),
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Get the current number of spins for a user in a specific chat, with daily refresh logic."""
-    try:
-        # Verify the authenticated user matches the requested user_id
-        await verify_user_match(user_id, validated_user)
-
-        # Get spins with daily refresh logic
-        spins_count = await asyncio.to_thread(
-            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
-        )
-
-        return SpinsResponse(spins=spins_count, success=True)
-
-    except Exception as e:
-        logger.error(f"Error getting spins for user {user_id} in chat {chat_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get spins")
-
-
-@app.post("/slots/spins", response_model=ConsumeSpinResponse)
-async def consume_user_spin(
-    request: SpinsRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Consume one spin for a user in a specific chat."""
-    try:
-        # Verify the authenticated user matches the requested user_id
-        await verify_user_match(request.user_id, validated_user)
-
-        # Attempt to consume a spin
-        success = await asyncio.to_thread(
-            database.consume_user_spin, request.user_id, request.chat_id
-        )
-
-        if success:
-            # Get remaining spins after consumption
-            remaining_spins = await asyncio.to_thread(
-                database.get_or_update_user_spins_with_daily_refresh,
-                request.user_id,
-                request.chat_id,
-            )
-
-            return ConsumeSpinResponse(
-                success=True, spins_remaining=remaining_spins, message="Spin consumed successfully"
-            )
-        else:
-            # Get current spins to show in error
-            current_spins = await asyncio.to_thread(
-                database.get_or_update_user_spins_with_daily_refresh,
-                request.user_id,
-                request.chat_id,
-            )
-
-            return ConsumeSpinResponse(
-                success=False, spins_remaining=current_spins, message="No spins available"
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
-        )
-        raise HTTPException(status_code=500, detail="Failed to consume spin")
-
-
-@app.post("/slots/verify", response_model=SlotVerifyResponse)
-async def verify_slot_spin(
-    request: SlotVerifyRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Verify a slot spin result using server-side randomness and logic."""
-    # Verify the authenticated user matches the requested user_id
-    await verify_user_match(request.user_id, validated_user)
-
-    # Validate input parameters
-    if request.symbol_count <= 0:
-        raise HTTPException(status_code=400, detail="Symbol count must be positive")
-
-    if request.random_number < 0 or request.random_number >= request.symbol_count:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Random number must be between 0 and {request.symbol_count - 1}",
-        )
-
-    try:
-        import random
-        import time
-
-        # Use current time and client random number for better entropy
-        # Don't set a deterministic seed - let Python use system randomness
-        random.seed()  # Reset to system randomness
-
-        # Add some entropy from the request for security
-        entropy_source = hash(
-            f"{request.user_id}_{request.chat_id}_{request.random_number}_{time.time()}"
-        )
-        random.seed(entropy_source)
-
-        # Server-side win rate from config (boosted in debug mode)
-        win_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
-        is_win = random.random() < win_chance
-        rarity: Optional[str] = None
-
-        if is_win:
-            # All three reels show the same symbol
-            winning_symbol = random.randint(0, request.symbol_count - 1)
-            results = [winning_symbol, winning_symbol, winning_symbol]
-            rarity = _pick_slot_rarity(random)
-        else:
-            # Generate truly random results for a loss
-            results = []
-            for _ in range(3):
-                results.append(random.randint(0, request.symbol_count - 1))
-
-            # If by coincidence all three are the same, make it a proper loss
-            if results[0] == results[1] == results[2] and request.symbol_count > 1:
-                # Change one random position to a different value
-                position_to_change = random.randint(0, 2)
-                new_value = (results[position_to_change] + 1) % request.symbol_count
-                results[position_to_change] = new_value
-
-        logger.info(
-            f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
-            f"win={is_win}, win_chance={win_chance:.3f}, results={results}, rarity={rarity}"
-        )
-
-        return SlotVerifyResponse(is_win=is_win, results=results, rarity=rarity)
-
-    except Exception as e:
-        logger.error(
-            f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
-        )
-        raise HTTPException(status_code=500, detail="Failed to verify slot spin")
 
 
 def run_server():
