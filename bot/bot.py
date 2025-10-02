@@ -623,6 +623,7 @@ async def recycle(
         rarity_name,
         chat_id_str,
         RECYCLE_MINIMUM_REQUIRED,
+        True,  # unlocked=True - only consider non-locked cards
     )
 
     if len(cards) < RECYCLE_MINIMUM_REQUIRED:
@@ -736,6 +737,7 @@ async def handle_recycle_callback(
             rarity_name,
             str(chat_id),
             RECYCLE_MINIMUM_REQUIRED,
+            True,  # unlocked=True - only consider non-locked cards
         )
 
         if len(cards) < RECYCLE_MINIMUM_REQUIRED:
@@ -1368,10 +1370,12 @@ async def collection(
         return
 
     card = cards[current_index]
+    lock_icon = "🔒" if card.locked else ""
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
 
     caption = COLLECTION_CAPTION.format(
+        lock_icon=lock_icon,
         card_id=card.id,
         card_title=card_title,
         rarity=rarity,
@@ -1533,10 +1537,12 @@ async def handle_collection_navigation(
         return
 
     card = cards[current_index]
+    lock_icon = "🔒 " if card.locked else ""
     card_title = f"{card.modifier} {card.base_name}"
     rarity = card.rarity
 
     caption = COLLECTION_CAPTION.format(
+        lock_icon=lock_icon,
         card_id=card.id,
         card_title=card_title,
         rarity=rarity,
@@ -1797,6 +1803,204 @@ async def trade(
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML,
     )
+
+
+@verify_user_in_chat
+async def lock_card_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Initiate lock/unlock for a card by ID."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text("Only allowed to lock cards in the group chat.")
+        return
+
+    if len(context.args) != 1:
+        await message.reply_text("Usage: /lock [card_id]")
+        return
+
+    try:
+        card_id = int(context.args[0])
+    except ValueError:
+        await message.reply_text("Card ID must be a number.")
+        return
+
+    card = await asyncio.to_thread(database.get_card, card_id)
+
+    if not card:
+        await message.reply_text("Card ID is invalid.")
+        return
+
+    # Check if the user owns this card
+    if card.owner != user.username:
+        await message.reply_text(
+            f"You do not own card <b>{card.title()}</b>.", parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Check current lock status and prepare appropriate message
+    if card.locked:
+        # Card is already locked - offer to unlock (no refund)
+        prompt_text = f"Unlock <b>{card.title()}</b>? Claim point will <b>not</b> be refunded."
+    else:
+        # Card is not locked - offer to lock (costs 1 claim point)
+        # Balance will be checked when user confirms
+        prompt_text = f"Consume 1 claim point to lock <b>{card.title()}</b>?"
+
+    keyboard = [
+        [
+            InlineKeyboardButton("Yes", callback_data=f"lockcard_yes_{card_id}_{user.user_id}"),
+            InlineKeyboardButton("No", callback_data=f"lockcard_no_{card_id}_{user.user_id}"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await message.reply_text(
+        prompt_text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML,
+        reply_to_message_id=message.message_id,
+    )
+
+
+@verify_user_in_chat
+async def handle_lock_card_confirm(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle confirmation (yes) for locking/unlocking a card."""
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer("Invalid request.", show_alert=True)
+        return
+
+    _, action, card_id_str, target_user_id_str = data_parts[:4]
+
+    try:
+        card_id = int(card_id_str)
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Invalid card or user ID.", show_alert=True)
+        return
+
+    # Verify the user clicking is the same as the one who initiated
+    if user.user_id != target_user_id:
+        await query.answer("This action is not for you!", show_alert=True)
+        return
+
+    if action == "no":
+        await query.answer("Lock action cancelled.")
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text("Lock action cancelled.")
+            except Exception:
+                pass
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    # Get the card and verify ownership
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        await query.answer("Card not found!", show_alert=True)
+        try:
+            await query.edit_message_text("Card not found.")
+        except Exception:
+            pass
+        return
+
+    if card.owner != user.username:
+        await query.answer("You don't own this card!", show_alert=True)
+        try:
+            await query.edit_message_text("You don't own this card.")
+        except Exception:
+            pass
+        return
+
+    chat = update.effective_chat
+    if not chat:
+        await query.answer("Chat context unavailable.", show_alert=True)
+        return
+
+    chat_id = str(chat.id)
+    card_title = card.title()
+
+    if card.locked:
+        # Unlock the card (no cost)
+        await asyncio.to_thread(database.set_card_locked, card_id, False)
+        response_text = f"🔓 <b>{card_title}</b> unlocked!"
+        await query.answer(f"{card_title} unlocked!", show_alert=False)
+    else:
+        # Lock the card (costs 1 claim point)
+        # First check if user has enough balance
+        current_balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id)
+
+        if current_balance < 1:
+            # Insufficient balance
+            await query.answer(
+                f"Not enough claim points!\n\nBalance: {current_balance}",
+                show_alert=True,
+            )
+            try:
+                await query.edit_message_text(
+                    f"Not enough claim points to lock <b>{card_title}</b>!\n\nBalance: {current_balance}",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            return
+
+        # Now try to consume the claim point
+        remaining_balance = await asyncio.to_thread(
+            database.reduce_claim_points, user.user_id, chat_id, 1
+        )
+
+        if remaining_balance is None:
+            # This shouldn't happen since we checked above, but handle it anyway
+            current_balance = await asyncio.to_thread(
+                database.get_claim_balance, user.user_id, chat_id
+            )
+            await query.answer(
+                f"Not enough claim points!\n\nBalance: {current_balance}",
+                show_alert=True,
+            )
+            try:
+                await query.edit_message_text(
+                    f"Not enough claim points to lock <b>{card_title}</b>!\n\nBalance: {current_balance}",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            return
+
+        # Lock the card
+        await asyncio.to_thread(database.set_card_locked, card_id, True)
+        response_text = f"🔒 <b>{card_title}</b> locked!\n\nRemaining balance: {remaining_balance}"
+        await query.answer(
+            f"{card_title} locked!\n\nRemaining balance: {remaining_balance}",
+            show_alert=True,
+        )
+
+    try:
+        await query.edit_message_text(response_text, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
 
 
 @verify_user_in_chat
@@ -2118,11 +2322,13 @@ def main() -> None:
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
+    application.add_handler(CommandHandler("lock", lock_card_command))
     application.add_handler(CommandHandler("spins", spins))
     application.add_handler(CommandHandler("reload", reload))
     application.add_handler(CommandHandler("set_thread", set_thread))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))
+    application.add_handler(CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(
