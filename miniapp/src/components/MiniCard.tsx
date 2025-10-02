@@ -12,16 +12,17 @@ interface MiniCardProps {
   setCardVisible: (cardId: number, isVisible: boolean) => void;
 }
 
-const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
+const MiniCard: React.FC<MiniCardProps> = ({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
   // Check if we have cached data immediately to set initial state
   const cachedImage = imageCache.has(card.id, 'thumb') ? imageCache.get(card.id, 'thumb') : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
 
   // Use react-intersection-observer for reliable visibility detection
   const { ref, inView } = useInView({
-    threshold: 0.1,
-    rootMargin: '300px', // Load images 300px before they become visible
+    threshold: 0,
+    rootMargin: '400px', // Load images 400px before they become visible
     triggerOnce: false, // Keep monitoring visibility changes
+    skip: !!imageB64, // Skip observer if image already loaded
   });
 
   // Notify parent when visibility changes
@@ -103,8 +104,19 @@ const MiniCard: React.FC<MiniCardProps> = memo(({ card, onClick, isLoading = fal
       )}
     </div>
   );
-});
+};
 
 MiniCard.displayName = 'MiniCard';
 
-export default MiniCard;
+// Custom comparison function to prevent unnecessary re-renders
+const arePropsEqual = (prevProps: MiniCardProps, nextProps: MiniCardProps) => {
+  return (
+    prevProps.card.id === nextProps.card.id &&
+    prevProps.isLoading === nextProps.isLoading &&
+    prevProps.hasFailed === nextProps.hasFailed &&
+    prevProps.onClick === nextProps.onClick &&
+    prevProps.setCardVisible === nextProps.setCardVisible
+  );
+};
+
+export default memo(MiniCard, arePropsEqual);
