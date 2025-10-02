@@ -160,6 +160,15 @@ class RolledCardManager:
             if rolled_card.is_locked:
                 caption += CARD_STATUS_LOCKED
 
+            # Show reroll status even when claimed
+            if rolled_card.rerolled:
+                original_card = database.get_card(rolled_card.original_card_id)
+                original_rarity = original_card.rarity if original_card else "Unknown"
+                caption += CARD_STATUS_REROLLED.format(
+                    original_rarity=original_rarity,
+                    downgraded_rarity=card.rarity,
+                )
+
             return caption
         else:
             caption = base_caption + CARD_STATUS_UNCLAIMED
