@@ -101,7 +101,7 @@ RECYCLE_CONFIRM_MESSAGE = (
     "Burn {burn_count} unlocked <b>{rarity}</b> cards to generate 1 <b>{upgraded_rarity}</b> card?"
 )
 RECYCLE_INSUFFICIENT_CARDS_MESSAGE = (
-    "You need at least {required} {rarity} cards in this chat to recycle."
+    "You need at least {required} unlocked {rarity} cards in this chat to recycle."
 )
 RECYCLE_ALREADY_RUNNING_MESSAGE = "You already have a recycle in progress."
 RECYCLE_NOT_YOURS_MESSAGE = "This recycle prompt isn't for you!"

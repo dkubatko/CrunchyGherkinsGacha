@@ -83,6 +83,13 @@ class ShareCardRequest(BaseModel):
     user_id: int
 
 
+class LockCardRequest(BaseModel):
+    card_id: int
+    user_id: int
+    chat_id: str
+    lock: bool  # True to lock, False to unlock
+
+
 class ChatUserCharacterSummary(BaseModel):
     id: int
     display_name: Optional[str] = None
@@ -110,6 +117,12 @@ class SpinsRequest(BaseModel):
 class SpinsResponse(BaseModel):
     spins: int
     success: bool = True
+
+
+class ClaimBalanceResponse(BaseModel):
+    balance: int
+    user_id: int
+    chat_id: str
 
 
 class ConsumeSpinResponse(BaseModel):
@@ -584,6 +597,121 @@ async def share_card(
         raise HTTPException(status_code=500, detail="Failed to share card")
 
 
+@app.post("/cards/lock")
+async def lock_card(
+    request: LockCardRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Lock or unlock a card owned by the user.
+
+    Locking a card costs 1 claim point. Unlocking does not refund the point.
+    """
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user["user"] or {}
+    auth_user_id = user_data.get("id")
+
+    # Get the card from database
+    card = await asyncio.to_thread(database.get_card, request.card_id)
+    if not card:
+        logger.warning("Lock requested for non-existent card_id: %s", request.card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Verify ownership
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s during lock", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    if card.owner != username:
+        logger.warning(
+            "User %s (%s) attempted to lock card %s owned by %s",
+            username,
+            auth_user_id,
+            request.card_id,
+            card.owner,
+        )
+        raise HTTPException(status_code=403, detail="You do not own this card")
+
+    # Verify user is enrolled in the chat
+    chat_id = str(request.chat_id)
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, auth_user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+
+    # Check current lock status
+    if request.lock:
+        # User wants to lock the card
+        if card.locked:
+            raise HTTPException(status_code=400, detail="Card is already locked")
+
+        # Check if user has enough claim points
+        current_balance = await asyncio.to_thread(database.get_claim_balance, auth_user_id, chat_id)
+
+        if current_balance < 1:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough claim points.\n\nBalance: {current_balance}",
+            )
+
+        # Consume 1 claim point
+        remaining_balance = await asyncio.to_thread(
+            database.reduce_claim_points, auth_user_id, chat_id, 1
+        )
+
+        if remaining_balance is None:
+            # This shouldn't happen since we checked above, but handle it anyway
+            current_balance = await asyncio.to_thread(
+                database.get_claim_balance, auth_user_id, chat_id
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=f"Not enough claim points.\n\nBalance: {current_balance}",
+            )
+
+        # Lock the card
+        await asyncio.to_thread(database.set_card_locked, request.card_id, True)
+
+        logger.info(
+            "User %s locked card %s. Remaining balance: %s",
+            username,
+            request.card_id,
+            remaining_balance,
+        )
+
+        return {
+            "success": True,
+            "locked": True,
+            "balance": remaining_balance,
+            "message": "Card locked successfully",
+        }
+    else:
+        # User wants to unlock the card
+        if not card.locked:
+            raise HTTPException(status_code=400, detail="Card is not locked")
+
+        # Unlock the card (no refund)
+        await asyncio.to_thread(database.set_card_locked, request.card_id, False)
+
+        # Get current balance for response
+        current_balance = await asyncio.to_thread(database.get_claim_balance, auth_user_id, chat_id)
+
+        logger.info("User %s unlocked card %s", username, request.card_id)
+
+        return {
+            "success": True,
+            "locked": False,
+            "balance": current_balance,
+            "message": "Card unlocked successfully",
+        }
+
+
 # =============================================================================
 # CARD IMAGE ENDPOINTS
 # =============================================================================
@@ -811,6 +939,32 @@ async def execute_trade(
     except Exception as e:
         logger.error(f"Unexpected error in trade endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")
+
+
+# =============================================================================
+# USER ENDPOINTS
+# =============================================================================
+
+
+@app.get("/user/{user_id}/claims", response_model=ClaimBalanceResponse)
+async def get_user_claim_balance(
+    user_id: int,
+    chat_id: str = Query(..., description="Chat ID"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the current claim balance for a user in a specific chat."""
+    try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(user_id, validated_user)
+
+        # Get claim balance
+        balance = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
+
+        return ClaimBalanceResponse(balance=balance, user_id=user_id, chat_id=chat_id)
+
+    except Exception as e:
+        logger.error(f"Error getting claim balance for user {user_id} in chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get claim balance")
 
 
 # =============================================================================

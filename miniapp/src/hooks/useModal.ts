@@ -6,6 +6,7 @@ interface UseModalResult {
   modalCard: CardData | null;
   openModal: (card: CardData) => void;
   closeModal: () => void;
+  updateModalCard: (updates: Partial<CardData>) => void;
 }
 
 export const useModal = (): UseModalResult => {
@@ -20,6 +21,10 @@ export const useModal = (): UseModalResult => {
   const closeModal = () => {
     setShowModal(false);
     setModalCard(null);
+  };
+
+  const updateModalCard = (updates: Partial<CardData>) => {
+    setModalCard(prev => prev ? { ...prev, ...updates } : null);
   };
 
   // Handle Escape key to close modal
@@ -51,6 +56,7 @@ export const useModal = (): UseModalResult => {
     showModal,
     modalCard,
     openModal,
-    closeModal
+    closeModal,
+    updateModalCard
   };
 };

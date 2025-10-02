@@ -374,7 +374,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
   animation: fadeIn 0.15s ease-out;
 }
 
@@ -397,7 +397,7 @@ body {
 .share-dialog {
   background: rgba(28, 28, 30, 0.92);
   backdrop-filter: blur(30px);
-  padding: 1.75rem 1.5rem 1.5rem;
+  padding: 0.7rem 1rem;
   border-radius: 1.25rem;
   box-shadow: 
     0 16px 40px rgba(0, 0, 0, 0.5),
@@ -411,15 +411,27 @@ body {
 }
 
 .share-dialog p {
-  margin: 0 0 1.75rem 0;
-  font-size: 1.05rem;
+  font-size: 1.1rem;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.95);
-  line-height: 1.35;
+  line-height: 1;
   letter-spacing: -0.01em;
 }
 
+.lock-dialog-subtitle {
+  margin: 1.2rem;
+  font-size: 0.9rem !important;
+  opacity: 0.8;
+}
+
+.lock-dialog-balance {
+  margin: 1.2rem;
+  font-size: 0.85rem !important;
+  opacity: 0.7;
+}
+
 .share-dialog-buttons {
+  margin: 0.5rem;
   display: flex;
   gap: 0.5rem;
   justify-content: center;
@@ -843,4 +855,71 @@ body {
   height: 100%;
   max-width: none;
   max-height: none;
+}
+
+/* Lock indicator styles */
+.card-lock-indicator {
+  position: absolute;
+  top: 0.75rem;
+  left: 0.75rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: none;
+  outline: none;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.lock-icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.6));
+  transform-origin: 50% 20%; /* Rotate around top point (shackle) */
+  animation: lockShake 6s ease-in-out infinite;
+}
+
+@keyframes lockShake {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  2% {
+    transform: rotate(-6deg);
+  }
+  4% {
+    transform: rotate(6deg);
+  }
+  6% {
+    transform: rotate(-5deg);
+  }
+  8% {
+    transform: rotate(4deg);
+  }
+  10% {
+    transform: rotate(-2deg);
+  }
+  12% {
+    transform: rotate(0deg);
+  }
+}
+
+/* Mobile-specific lock indicator styles */
+@media (max-width: 480px) {
+  .card-lock-indicator {
+    top: 0.6rem;
+    left: 0.6rem;
+    width: 2.2rem;
+    height: 2.2rem;
+  }
+
+  .lock-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
 }
