@@ -58,9 +58,27 @@ async def send_notification(chat_id: int, count: int) -> None:
         app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
 
     message = f"<b>{count} spins</b> added to all accounts!\n\nUse /slots -- happy gambling 🎰"
+
+    # Get thread_id if available
+    from utils.database import get_thread_id
+
+    thread_id = get_thread_id(str(chat_id))
+
+    send_params = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": ParseMode.HTML,
+    }
+    if thread_id is not None:
+        send_params["message_thread_id"] = thread_id
+
     try:
-        await app.bot.send_message(chat_id=chat_id, text=message, parse_mode=ParseMode.HTML)
-        print(f"Successfully sent notification to chat {chat_id}.")
+        await app.bot.send_message(**send_params)
+        print(
+            f"Successfully sent notification to chat {chat_id}"
+            + (f" (thread {thread_id})" if thread_id else "")
+            + "."
+        )
     except Exception as e:
         print(f"Failed to send notification to chat {chat_id}: {e}")
 

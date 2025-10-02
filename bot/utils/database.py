@@ -1491,4 +1491,36 @@ def consume_user_spin(user_id: int, chat_id: str) -> bool:
         conn.close()
 
 
+def get_thread_id(chat_id: str) -> Optional[int]:
+    """Get the thread_id for a chat_id, or None if not set."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT thread_id FROM threads WHERE chat_id = ?", (str(chat_id),))
+        row = cursor.fetchone()
+        return row[0] if row else None
+    finally:
+        conn.close()
+
+
+def set_thread_id(chat_id: str, thread_id: int) -> bool:
+    """Set the thread_id for a chat_id. Returns True if successful."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            INSERT INTO threads (chat_id, thread_id)
+            VALUES (?, ?)
+            ON CONFLICT(chat_id) DO UPDATE SET thread_id = excluded.thread_id
+            """,
+            (str(chat_id), thread_id),
+        )
+        success = cursor.rowcount > 0
+        conn.commit()
+        return success
+    finally:
+        conn.close()
+
+
 create_tables()

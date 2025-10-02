@@ -174,7 +174,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Check if it's a group chat or DM
     if update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         # Group chat - add character functionality (admin only)
-        admin_username = os.getenv("BOT_ADMIN")
+        admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
 
         # Check if user is admin
         if not admin_username or user.username != admin_username:
@@ -336,7 +336,7 @@ async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     # Restrict to admin only
-    admin_username = os.getenv("BOT_ADMIN")
+    admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
 
     # Check if user is admin
     if not admin_username or user.username != admin_username:
@@ -2015,6 +2015,61 @@ async def reload(
         )
 
 
+@verify_admin
+async def set_thread(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Set the thread ID for the current chat. Admin only."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    # Ensure it's used in a group chat
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        await message.reply_text(
+            "/thread can only be used in group chats.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Get the thread_id from the message
+    thread_id = message.message_thread_id
+
+    if thread_id is None:
+        await message.reply_text(
+            "❌ No thread detected. This command must be used within a forum topic/thread.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    try:
+        chat_id = str(chat.id)
+        success = await asyncio.to_thread(database.set_thread_id, chat_id, thread_id)
+
+        if success:
+            await message.reply_text(
+                f"✅ Thread ID {thread_id} has been set for this chat.\n\nBot notifications will now be posted to this thread.",
+                reply_to_message_id=message.message_id,
+            )
+            logger.info(f"@{user.username} set thread_id={thread_id} for chat_id={chat_id}")
+        else:
+            await message.reply_text(
+                "❌ Failed to set thread ID. Please try again.",
+                reply_to_message_id=message.message_id,
+            )
+
+    except Exception as e:
+        logger.error(f"Error in /thread command: {e}")
+        await message.reply_text(
+            "❌ An error occurred while setting the thread ID.",
+            reply_to_message_id=message.message_id,
+        )
+
+
 def main() -> None:
     """Start the bot and the FastAPI server."""
     from api.server import run_server as run_fastapi_server, set_bot_token
@@ -2065,6 +2120,7 @@ def main() -> None:
     application.add_handler(CommandHandler("trade", trade))
     application.add_handler(CommandHandler("spins", spins))
     application.add_handler(CommandHandler("reload", reload))
+    application.add_handler(CommandHandler("set_thread", set_thread))
     application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
     application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
