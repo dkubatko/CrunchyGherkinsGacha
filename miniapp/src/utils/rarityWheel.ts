@@ -2,10 +2,18 @@ import { RARITY_SEQUENCE, type RarityName } from './rarityStyles';
 
 export const RARITY_WHEEL_VISIBLE_ROWS = 3;
 export const RARITY_WHEEL_SYMBOL_HEIGHT = 48;
-export const RARITY_WHEEL_STRIP_REPEAT_MULTIPLIER = 8;
-export const RARITY_WHEEL_MIN_SYMBOLS_PER_SECOND = 10;
-export const RARITY_WHEEL_BASE_DURATION_MS = 2000; // slightly quicker easing tail
-export const RARITY_WHEEL_FINAL_SETTLE_DELAY_MS = 420;
+// Extra repeats keep enough headroom for longer high-speed runs without visible repeats.
+export const RARITY_WHEEL_STRIP_REPEAT_MULTIPLIER = 48;
+// Lower target speed eases the opening phase to reduce tearing on older devices.
+export const RARITY_WHEEL_MIN_SYMBOLS_PER_SECOND = 18;
+// Longer base duration buys breathing room for the eased-in start while keeping the finale dramatic.
+export const RARITY_WHEEL_BASE_DURATION_MS = 4200;
+// Prevent the early phase from tearing through too many rarities.
+export const RARITY_WHEEL_MAX_FORWARD_LOOPS = 12;
+// Short linger after motion completes before triggering win handling.
+export const RARITY_WHEEL_FINAL_SETTLE_DELAY_MS = 250;
+// Softer acceleration at the start with a lingering finish for an even smoother experience.
+export const RARITY_WHEEL_TIMING_FUNCTION = 'cubic-bezier(0.32, 0.94, 0.2, 1)';
 
 export const generateRarityWheelStrip = (): RarityName[] => {
   const repeated: RarityName[] = [];
@@ -45,7 +53,10 @@ export const computeRarityWheelTransforms = (
         (RARITY_WHEEL_MIN_SYMBOLS_PER_SECOND / symbolCount)
     )
   );
-  const loopsForward = Math.max(2, Math.min(availableForwardLoops, minLoopsForDuration));
+  const loopsForward = Math.max(
+    2,
+    Math.min(availableForwardLoops, minLoopsForDuration, RARITY_WHEEL_MAX_FORWARD_LOOPS)
+  );
   const startIndex = Math.min(
     totalSymbols - RARITY_WHEEL_VISIBLE_ROWS,
     topIndex + loopsForward * symbolCount
