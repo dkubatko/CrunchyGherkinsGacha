@@ -301,6 +301,36 @@ export class TelegramUtils {
     }
   }
 
+  static expandApp() {
+    if (WebApp && WebApp.expand) {
+      WebApp.expand();
+    }
+  }
+
+  static isExpanded(): boolean {
+    return WebApp && WebApp.isExpanded ? WebApp.isExpanded : false;
+  }
+
+  static getViewportStableHeight(): number | null {
+    return WebApp && WebApp.viewportStableHeight ? WebApp.viewportStableHeight : null;
+  }
+
+  static onViewportChanged(callback: (event: { isStateStable: boolean }) => void) {
+    if (!WebApp || !WebApp.onEvent) return () => { };
+
+    const handler = (event: { isStateStable: boolean }) => {
+      callback(event);
+    };
+
+    WebApp.onEvent('viewportChanged', handler);
+
+    return () => {
+      if (WebApp.offEvent) {
+        WebApp.offEvent('viewportChanged', handler);
+      }
+    };
+  }
+
   static startOrientationTracking(callback: (data: OrientationData) => void) {
     if (!WebApp.DeviceOrientation) return () => { };
 
