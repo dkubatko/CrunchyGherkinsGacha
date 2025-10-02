@@ -34,6 +34,12 @@ import type { CardData, View } from './types';
 // Build info
 import { BUILD_INFO } from './build-info';
 
+type ClaimBalanceState = {
+  balance: number | null;
+  loading: boolean;
+  error?: string;
+};
+
 function App() {
   // Log build info to console for debugging
   console.log('App build info:', BUILD_INFO);
@@ -56,7 +62,9 @@ function App() {
   const [isGridView, setIsGridView] = useState(false);
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockingCard, setLockingCard] = useState(false);
-  const [claimBalance, setClaimBalance] = useState<number | null>(null);
+  const [chatClaimBalances, setChatClaimBalances] = useState<Record<string, ClaimBalanceState>>({});
+  const claimBalanceRequestsRef = useRef<Map<string, Promise<number | null>>>(new Map());
+  const pendingChatIdsRef = useRef<Set<string>>(new Set());
 
   // Filter and sort state
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -86,22 +94,96 @@ function App() {
     : userData?.chatId ?? null;
   const shouldFetchAllCards = !userData?.slotsView && (hasChatScope || activeTradeCardId !== null);
 
-  // Fetch claim balance on mount if we have user data
-  useEffect(() => {
-    const fetchBalance = async () => {
-      if (!userData || !initData || !userData.chatId) return;
-      
-      try {
-        const result = await ApiService.fetchClaimBalance(userData.currentUserId, userData.chatId, initData);
-        setClaimBalance(result.balance);
-      } catch (error) {
-        console.error('Failed to fetch claim balance:', error);
-        // Don't show error to user, just log it
-      }
-    };
+  const ensureClaimBalance = useCallback(async (
+    chatId: string,
+    options: { force?: boolean } = {}
+  ): Promise<number | null> => {
+    if (!chatId) {
+      return null;
+    }
 
-    fetchBalance();
-  }, [userData, initData]);
+    if (!userData || !initData) {
+      pendingChatIdsRef.current.add(chatId);
+      return null;
+    }
+
+    pendingChatIdsRef.current.delete(chatId);
+
+    const existingState = chatClaimBalances[chatId];
+    const fallbackBalance = existingState?.balance ?? null;
+
+    if (!options.force && existingState && fallbackBalance !== null && !existingState.error) {
+      return fallbackBalance;
+    }
+
+    if (!options.force && claimBalanceRequestsRef.current.has(chatId)) {
+      return claimBalanceRequestsRef.current.get(chatId)!;
+    }
+
+    const fetchPromise = (async () => {
+      setChatClaimBalances(prev => ({
+        ...prev,
+        [chatId]: {
+          balance: prev[chatId]?.balance ?? null,
+          loading: true,
+          error: undefined
+        }
+      }));
+
+      try {
+        const result = await ApiService.fetchClaimBalance(userData.currentUserId, chatId, initData);
+        setChatClaimBalances(prev => ({
+          ...prev,
+          [chatId]: {
+            balance: result.balance,
+            loading: false,
+            error: undefined
+          }
+        }));
+        return result.balance ?? null;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch claim balance';
+        console.error(`Failed to fetch claim balance for chat ${chatId}`, err);
+        setChatClaimBalances(prev => ({
+          ...prev,
+          [chatId]: {
+            balance: prev[chatId]?.balance ?? fallbackBalance,
+            loading: false,
+            error: message
+          }
+        }));
+        return fallbackBalance;
+      }
+    })();
+
+    claimBalanceRequestsRef.current.set(chatId, fetchPromise);
+
+    const resolvedBalance = await fetchPromise;
+    claimBalanceRequestsRef.current.delete(chatId);
+
+    return resolvedBalance;
+  }, [chatClaimBalances, initData, userData]);
+
+  const handleCardOpen = useCallback((card: Pick<CardData, 'id' | 'chat_id'>) => {
+    if (!card.chat_id) {
+      return;
+    }
+
+    void ensureClaimBalance(card.chat_id);
+  }, [ensureClaimBalance]);
+
+  useEffect(() => {
+    if (!userData || !initData || pendingChatIdsRef.current.size === 0) {
+      return;
+    }
+
+    const queuedChatIds = Array.from(pendingChatIdsRef.current);
+    pendingChatIdsRef.current.clear();
+
+    queuedChatIds.forEach(chatId => {
+      void ensureClaimBalance(chatId, { force: true });
+    });
+  }, [ensureClaimBalance, initData, userData]);
 
   const {
     allCards,
@@ -454,18 +536,19 @@ function App() {
   }, [isTradeView]);
   
   // Lock button handler
-  const handleLockClick = async () => {
-    if (!userData || !initData || !userData.chatId) return;
-    
-    // Fetch current balance before showing dialog
-    try {
-      const result = await ApiService.fetchClaimBalance(userData.currentUserId, userData.chatId, initData);
-      setClaimBalance(result.balance);
-    } catch (error) {
-      console.error('Failed to fetch claim balance:', error);
-      // Still show dialog even if balance fetch fails
+  const handleLockClick = () => {
+    if (!userData || !initData) return;
+
+    const targetCard = modalCard || cards[currentIndex];
+    if (!targetCard) return;
+
+    if (!targetCard.chat_id) {
+      TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
+      return;
     }
-    
+
+    void ensureClaimBalance(targetCard.chat_id);
+
     setShowLockDialog(true);
   };
 
@@ -488,9 +571,14 @@ function App() {
   const handleLockConfirm = async () => {
     if (!userData || !initData || lockingCard) return;
 
-    // Use modal card if open (grid view), otherwise use current index card
     const targetCard = modalCard || cards[currentIndex];
     if (!targetCard) return;
+
+    const chatId = targetCard.chat_id;
+    if (!chatId) {
+      TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
+      return;
+    }
 
     try {
       setLockingCard(true);
@@ -498,21 +586,35 @@ function App() {
       const result = await ApiService.lockCard(
         targetCard.id,
         userData.currentUserId,
-        userData.chatId || '',
-        !isCurrentlyLocked, // Toggle lock state
+        chatId,
+        !isCurrentlyLocked,
         initData
       );
 
-      // Update card lock state properly
       updateCardLockState(targetCard.id, result.locked);
 
-      // Update balance
-      setClaimBalance(result.balance);
+      setChatClaimBalances(prev => ({
+        ...prev,
+        [chatId]: {
+          balance: result.balance,
+          loading: false,
+          error: undefined
+        }
+      }));
 
-      // Show success message
       TelegramUtils.showAlert(result.message);
     } catch (error) {
       console.error('Failed to lock/unlock card:', error);
+      setChatClaimBalances(prev => {
+        const existing = prev[chatId];
+        const message = error instanceof Error ? error.message : 'Failed to lock/unlock card';
+        return {
+          ...prev,
+          [chatId]: existing
+            ? { ...existing, loading: false, error: message }
+            : { balance: null, loading: false, error: message }
+        };
+      });
       TelegramUtils.showAlert(error instanceof Error ? error.message : 'Failed to lock/unlock card');
     } finally {
       setLockingCard(false);
@@ -533,16 +635,17 @@ function App() {
     const buttons: ActionButton[] = [];
 
     // Show Lock button in current view for own collection when chat_id is available
-    if (userData?.isOwnCollection && userData.chatId && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
-      // Use modal card if open (grid view), otherwise use current index card
+    if (userData?.isOwnCollection && initData && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
       const currentCard = modalCard || cards[currentIndex];
-      const isLocked = currentCard?.locked || false;
-      buttons.push({
-        id: 'lock',
-        text: isLocked ? 'Unlock' : 'Lock',
-        onClick: handleLockClick,
-        variant: 'secondary'
-      });
+      if (currentCard?.chat_id) {
+        const isLocked = currentCard.locked || false;
+        buttons.push({
+          id: 'lock',
+          text: isLocked ? 'Unlock' : 'Lock',
+          onClick: handleLockClick,
+          variant: 'secondary'
+        });
+      }
     }
 
     // Show Trade button in current view for own collection (only if trading is enabled)
@@ -651,12 +754,50 @@ function App() {
               // Use modal card if open (grid view), otherwise use current index card
               const currentCard = modalCard || cards[currentIndex];
               const isLocked = currentCard?.locked || false;
+              const claimState = currentCard?.chat_id ? chatClaimBalances[currentCard.chat_id] : undefined;
+
+              if (!currentCard) {
+                return <p>No card selected.</p>;
+              }
+
+              const renderBalance = () => {
+                if (!claimState) {
+                  return null;
+                }
+
+                if (claimState.loading) {
+                  return (
+                    <p className="lock-dialog-balance">
+                      Balance: <em>Loading...</em>
+                    </p>
+                  );
+                }
+
+                if (claimState.error) {
+                  return (
+                    <p className="lock-dialog-balance">
+                      Balance unavailable
+                    </p>
+                  );
+                }
+
+                if (claimState.balance !== null) {
+                  return (
+                    <p className="lock-dialog-balance">
+                      Balance: <strong>{claimState.balance}</strong>
+                    </p>
+                  );
+                }
+
+                return null;
+              };
               
               if (isLocked) {
                 return (
                   <>
                     <p>Unlock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
                     <p className="lock-dialog-subtitle">Claim point will <strong>not</strong> be refunded.</p>
+                    {renderBalance()}
                   </>
                 );
               } else {
@@ -664,9 +805,7 @@ function App() {
                   <>
                     <p>Lock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
                     <p className="lock-dialog-subtitle">This will consume <strong>1 claim point</strong></p>
-                    {claimBalance !== null && (
-                      <p className="lock-dialog-balance">Balance: <strong>{claimBalance}</strong></p>
-                    )}
+                    {renderBalance()}
                   </>
                 );
               }
@@ -777,6 +916,7 @@ function App() {
                       shiny={true}
                       onShare={shareEnabled ? handleShareCard : undefined}
                       showShareButton={shareEnabled}
+                      onCardOpen={handleCardOpen}
                     />
                   </div>
                 )}
@@ -850,6 +990,7 @@ function App() {
           initData={initData}
           onClose={closeModal}
           onShare={shareEnabled ? handleShareCard : undefined}
+          onCardOpen={handleCardOpen}
         />
       )}
 

@@ -10,6 +10,7 @@ interface CardModalProps {
   initData: string | null;
   onClose: () => void;
   onShare?: (cardId: number) => Promise<void> | void;
+  onCardOpen?: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
 }
 
 const CardModal: React.FC<CardModalProps> = ({
@@ -19,7 +20,8 @@ const CardModal: React.FC<CardModalProps> = ({
   orientationKey,
   initData,
   onClose,
-  onShare
+  onShare,
+  onCardOpen
 }) => {
   if (!isOpen) return null;
 
@@ -36,6 +38,7 @@ const CardModal: React.FC<CardModalProps> = ({
           showOwner={true}
           onShare={onShare}
           showShareButton={false}
+          onCardOpen={onCardOpen}
         />
       </div>
     </div>
