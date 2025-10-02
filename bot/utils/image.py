@@ -111,7 +111,7 @@ class ImageUtil:
             return image_bytes
 
     @staticmethod
-    def compress_to_fraction(image_bytes: bytes, scale_factor: float = 1 / 3) -> bytes:
+    def compress_to_fraction(image_bytes: bytes, scale_factor: float = 1 / 4) -> bytes:
         """Resize the image to a fraction of its original width and height."""
         if scale_factor <= 0:
             raise ValueError("scale_factor must be greater than 0")
