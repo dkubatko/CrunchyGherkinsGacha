@@ -38,6 +38,9 @@ function App() {
   // Log build info to console for debugging
   console.log('App build info:', BUILD_INFO);
   
+  // Viewport height management - lock in the maximum height
+  const [lockedViewportHeight, setLockedViewportHeight] = useState<number | null>(null);
+  
   // Core data hooks
   const { cards, loading, error, userData, initData } = useCards();
   const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins } = useSlots(
@@ -216,6 +219,72 @@ function App() {
   // Feature hooks
   const { orientation, orientationKey, resetTiltReference } = useOrientation();
   const { showModal, modalCard, openModal, closeModal } = useModal();
+  // Expand app and lock viewport height
+  useEffect(() => {
+    // Immediately expand the app to full height
+    TelegramUtils.expandApp();
+
+    // Check if already expanded and capture height
+    const checkAndSetHeight = () => {
+      if (TelegramUtils.isExpanded()) {
+        const height = TelegramUtils.getViewportStableHeight();
+        if (height) {
+          console.log('Captured expanded viewport height:', height);
+          setLockedViewportHeight(prev => {
+            // Only update if we don't have a height yet, or if new height is larger
+            if (!prev || height > prev) {
+              return height;
+            }
+            return prev;
+          });
+        }
+      }
+    };
+
+    // Check immediately
+    checkAndSetHeight();
+
+    // Also check after a short delay (in case expand is async)
+    const timeoutId = setTimeout(checkAndSetHeight, 100);
+
+    // Listen for viewport changes
+    const cleanup = TelegramUtils.onViewportChanged((event) => {
+      console.log('Viewport changed, isStateStable:', event.isStateStable);
+      
+      // Only capture height when the viewport is in a stable state and expanded
+      if (event.isStateStable && TelegramUtils.isExpanded()) {
+        const height = TelegramUtils.getViewportStableHeight();
+        if (height) {
+          console.log('Captured stable expanded viewport height:', height);
+          setLockedViewportHeight(prev => {
+            // Only update if we don't have a height yet, or if new height is larger
+            if (!prev || height > prev) {
+              return height;
+            }
+            return prev;
+          });
+        }
+      }
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      cleanup();
+    };
+  }, []);
+
+  // Apply locked viewport height to the app container
+  useEffect(() => {
+    if (lockedViewportHeight) {
+      const appContainer = document.querySelector('.app-container') as HTMLElement;
+      if (appContainer) {
+        appContainer.style.height = `${lockedViewportHeight}px`;
+        appContainer.style.minHeight = `${lockedViewportHeight}px`;
+        console.log('Applied locked viewport height to app container:', lockedViewportHeight);
+      }
+    }
+  }, [lockedViewportHeight]);
+
   // Hide trade/navigation buttons when in single card mode
   useEffect(() => {
     if (userData?.singleCardView) {
