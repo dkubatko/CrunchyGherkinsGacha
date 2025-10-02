@@ -323,6 +323,11 @@
   align-items: center;
   gap: 12px;
 }
+.rarity-wheel-wrapper-final .rarity-wheel-reel {
+  box-shadow: 0 0 22px var(--rarity-wrapper-glow-inner, rgba(255, 210, 120, 0.35)),
+    0 0 48px var(--rarity-wrapper-glow-outer, rgba(255, 180, 60, 0.25));
+  transition: box-shadow 280ms ease-out;
+}
 
 .rarity-wheel-reel {
   position: relative;
@@ -368,6 +373,38 @@
   border: 3px solid rgba(243, 156, 18, 0.9);
   box-shadow: 0 0 16px rgba(243, 156, 18, 0.45);
   pointer-events: none;
+}
+.rarity-wheel-highlight-final {
+  border-color: var(--rarity-highlight-border, rgba(255, 216, 94, 0.95));
+  box-shadow: 0 0 18px var(--rarity-highlight-shadow-inner, rgba(255, 201, 92, 0.6)),
+    0 0 36px var(--rarity-highlight-shadow-outer, rgba(255, 170, 40, 0.4));
+}
+
+.rarity-wheel-highlight-final::after {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: inherit;
+  background: radial-gradient(
+    circle,
+    var(--rarity-highlight-glow-inner, rgba(255, 220, 120, 0.45)) 0%,
+    var(--rarity-highlight-glow-mid, rgba(255, 215, 90, 0.25)) 45%,
+    rgba(255, 160, 40, 0) 100%
+  );
+  filter: blur(2px);
+  animation: rarity-wheel-glow 2.8s ease-in-out infinite;
+  pointer-events: none;
+  z-index: -1;
+}
+
+@keyframes rarity-wheel-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 0.95;
+  }
 }
 
 @media (max-width: 480px) {

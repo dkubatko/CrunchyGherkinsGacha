@@ -3,13 +3,13 @@ import { TelegramUtils } from '../utils/telegram';
 import { ApiService } from '../services/api';
 import { useSlotsStore } from '../stores/useSlotsStore';
 import { getIconObjectUrl } from '../lib/iconUrlCache';
-import { RARITY_SEQUENCE, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
+import { RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
 import type { RarityName } from '../utils/rarityStyles';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
   RARITY_WHEEL_BASE_DURATION_MS,
-  RARITY_WHEEL_FINAL_SETTLE_DELAY_MS,
+  RARITY_WHEEL_TIMING_FUNCTION,
 } from '../utils/rarityWheel';
 import {
   SLOT_REEL_COUNT,
@@ -56,6 +56,45 @@ const INITIAL_REEL_STATES: ReelState[] = Array.from(
   () => 'idle' as ReelState
 );
 
+const clampAlpha = (value: number): number => Math.min(1, Math.max(0, value));
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const normalized = hex.replace('#', '');
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split('')
+          .map((char) => `${char}${char}`)
+          .join('')
+      : normalized;
+
+  if (expanded.length !== 6) {
+    return hex;
+  }
+
+  const parsed = Number.parseInt(expanded, 16);
+  if (Number.isNaN(parsed)) {
+    return hex;
+  }
+
+  const r = (parsed >> 16) & 0xff;
+  const g = (parsed >> 8) & 0xff;
+  const b = parsed & 0xff;
+  const clamped = clampAlpha(alpha);
+
+  return `rgba(${r}, ${g}, ${b}, ${clamped})`;
+};
+
+const buildRarityHighlightVariables = (primary: string, secondary: string): Record<string, string> => ({
+  '--rarity-highlight-border': secondary,
+  '--rarity-highlight-shadow-inner': hexToRgba(secondary, 0.65),
+  '--rarity-highlight-shadow-outer': hexToRgba(primary, 0.4),
+  '--rarity-highlight-glow-inner': hexToRgba(secondary, 0.55),
+  '--rarity-highlight-glow-mid': hexToRgba(primary, 0.35),
+  '--rarity-wrapper-glow-inner': hexToRgba(secondary, 0.4),
+  '--rarity-wrapper-glow-outer': hexToRgba(primary, 0.3),
+});
+
 
 const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, userId, chatId, initData, onSpinConsumed }) => {
   const symbols = useSlotsStore((state) => state.symbols);
@@ -75,12 +114,23 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const rarityWheelSpinning = useSlotsStore((state) => state.rarityWheelSpinning);
   const rarityWheelTransform = useSlotsStore((state) => state.rarityWheelTransform);
   const rarityWheelDuration = useSlotsStore((state) => state.rarityWheelDuration);
+  const rarityWheelTarget = useSlotsStore((state) => state.rarityWheelTarget);
   const setRarityWheelState = useSlotsStore((state) => state.setRarityWheelState);
   const setRarityWheelTimeout = useSlotsStore((state) => state.setRarityWheelTimeout);
   const clearRarityWheelTimeout = useSlotsStore((state) => state.clearRarityWheelTimeout);
   const resetRarityWheel = useSlotsStore((state) => state.resetRarityWheel);
   const pendingWinRef = useRef<PendingWin | null>(null);
   const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
+
+  const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
+    if (!rarityWheelTarget) {
+      return undefined;
+    }
+
+    const [primary, secondary] = getRarityColors(rarityWheelTarget);
+    const variables = buildRarityHighlightVariables(primary, secondary);
+    return variables as React.CSSProperties;
+  }, [rarityWheelTarget]);
 
   const startRarityWheelAnimation = useCallback(
     (targetRarity: RarityName | null): Promise<void> | null => {
@@ -113,11 +163,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
             setRarityWheelState({
               rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS,
               rarityWheelTransform: final,
+              rarityWheelSpinning: true,
             });
           });
         });
 
-        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS + RARITY_WHEEL_FINAL_SETTLE_DELAY_MS;
+        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS;
         const timeout = setTimeout(() => {
           TelegramUtils.triggerHapticImpact('heavy');
           setRarityWheelState({
@@ -223,6 +274,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
     const completeVictory = async () => {
       try {
+        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
         await ApiService.processSlotsVictory(
           userId,
           chatId,
@@ -264,6 +316,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       TelegramUtils.showAlert('No spins available! Spins refresh daily.');
       return;
     }
+
+    TelegramUtils.triggerHapticImpact('medium');
 
     resetRarityWheel();
     setSpinning(true);
@@ -433,14 +487,19 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
         <div className="slot-controls-area">
           {rarityWheelActive ? (
-            <div className={`rarity-wheel-wrapper ${rarityWheelSpinning ? 'rarity-wheel-wrapper-spinning' : ''}`}>
+            <div
+              className={`rarity-wheel-wrapper ${
+                rarityWheelSpinning ? 'rarity-wheel-wrapper-spinning' : 'rarity-wheel-wrapper-final'
+              }`}
+              style={rarityHighlightVariables}
+            >
               <div className="rarity-wheel-reel">
                 <div
                   className="rarity-wheel-strip"
                   style={{
                     transform: `translateY(${rarityWheelTransform}px)`,
                     transitionDuration: `${rarityWheelDuration}ms`,
-                    transitionTimingFunction: 'cubic-bezier(0.32, 0.72, 0.15, 1)'
+                    transitionTimingFunction: RARITY_WHEEL_TIMING_FUNCTION
                   }}
                 >
                   {rarityWheelSymbols.map((rarityName, index) => (
@@ -459,7 +518,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                     </div>
                   ))}
                 </div>
-                <div className="rarity-wheel-highlight" />
+                <div
+                  className={`rarity-wheel-highlight ${
+                    rarityWheelSpinning ? '' : 'rarity-wheel-highlight-final'
+                  }`}
+                />
               </div>
             </div>
           ) : (
