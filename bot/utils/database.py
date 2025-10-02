@@ -222,7 +222,7 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
     if image_b64:
         try:
             image_bytes = base64.b64decode(image_b64)
-            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes)
+            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
             image_thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for new card: %s", exc)
@@ -594,7 +594,7 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
 
             try:
                 image_bytes = base64.b64decode(full)
-                thumb_bytes = ImageUtil.compress_to_fraction(image_bytes)
+                thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
                 thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
                 cursor.execute(
                     "UPDATE cards SET image_thumb_b64 = ? WHERE id = ?",
