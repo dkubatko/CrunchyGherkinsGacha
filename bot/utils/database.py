@@ -86,6 +86,7 @@ class Card(BaseModel):
     file_id: Optional[str]
     chat_id: Optional[str]
     created_at: Optional[str]
+    locked: bool = False
 
 
 class CardWithImage(Card):
@@ -447,7 +448,7 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None):
             parameters.append(username)
 
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
             "FROM cards WHERE (" + " OR ".join(conditions) + ")"
         )
 
@@ -473,6 +474,7 @@ def get_user_cards_by_rarity(
     rarity: str,
     chat_id: Optional[str] = None,
     limit: Optional[int] = None,
+    unlocked: bool = False,
 ):
     """Return cards owned by the user for a specific rarity, optionally limited in count."""
 
@@ -495,7 +497,7 @@ def get_user_cards_by_rarity(
             return []
 
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64 "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64, locked "
             "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
         )
         parameters.append(rarity)
@@ -503,6 +505,9 @@ def get_user_cards_by_rarity(
         if chat_id is not None:
             query += " AND chat_id = ?"
             parameters.append(str(chat_id))
+
+        if unlocked:
+            query += " AND locked = 0"
 
         query += " ORDER BY COALESCE(created_at, ''), id"
 
@@ -523,7 +528,7 @@ def get_all_cards(chat_id: Optional[str] = None):
     try:
         cursor = conn.cursor()
         query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at "
+            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
             "FROM cards WHERE owner IS NOT NULL"
         )
         parameters: list[Any] = []
@@ -778,6 +783,16 @@ def update_card_file_id(card_id, file_id):
     conn.commit()
     conn.close()
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
+
+
+def set_card_locked(card_id: int, is_locked: bool) -> None:
+    """Set the locked status for a card."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE cards SET locked = ? WHERE id = ?", (1 if is_locked else 0, card_id))
+    conn.commit()
+    conn.close()
+    logger.info(f"Set locked={is_locked} for card {card_id}")
 
 
 def clear_all_file_ids():
