@@ -13,11 +13,12 @@ import {
 } from '../utils/rarityWheel';
 import {
   SLOT_REEL_COUNT,
-  SLOT_STRIP_REPEAT_MULTIPLIER,
   SLOT_BASE_SPIN_DURATION_MS,
   SLOT_SPIN_DURATION_STAGGER_MS,
+  SLOT_SPIN_TIMING_FUNCTION,
   computeSlotSpinTransforms,
   computeSlotStaticTransform,
+  computeTotalSlotSymbols,
 } from '../utils/slotWheel';
 import './SlotMachine.css';
 
@@ -208,7 +209,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
 
     const repeated: SlotSymbol[] = [];
-    const total = symbols.length * SLOT_STRIP_REPEAT_MULTIPLIER;
+    const total = computeTotalSlotSymbols(symbols.length);
 
     for (let i = 0; i < total; i += 1) {
       repeated.push(symbols[i % symbols.length]);
@@ -455,7 +456,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 style={{
                   transform: `translateY(${stripTransforms[reelIndex]}px)`,
                   transitionDuration: `${stripDurations[reelIndex]}ms`,
-                  transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)'
+                  transitionTimingFunction: SLOT_SPIN_TIMING_FUNCTION
                 }}
               >
                 {stripSymbols.map((symbol, symbolIndex) => (
