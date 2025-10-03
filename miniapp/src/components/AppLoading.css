@@ -4,11 +4,13 @@
   width: 100vw;
   height: 100vh;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  padding-top: 2vh;
   background: var(--tg-theme-bg-color, #0e1116);
   color: var(--tg-theme-text-color, #ffffff);
-  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-size: clamp(2rem, 4vw, 2.4rem);
   font-weight: 600;
   text-align: center;
   z-index: 1000;
