@@ -53,6 +53,7 @@ function App() {
     userData?.slotsView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
+  const [slotsImagesLoaded, setSlotsImagesLoaded] = useState(false);
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -695,8 +696,53 @@ function App() {
     onTiltReset: resetTiltReference
   });
 
+  // Preload slots images when in slots view
+  useEffect(() => {
+    if (!userData?.slotsView || slotsSymbols.length === 0) {
+      setSlotsImagesLoaded(false);
+      return;
+    }
+
+    const imagesToLoad = slotsSymbols
+      .filter(symbol => symbol.iconb64)
+      .map(symbol => symbol.iconb64!);
+
+    if (imagesToLoad.length === 0) {
+      setSlotsImagesLoaded(true);
+      return;
+    }
+
+    setSlotsImagesLoaded(false);
+    let loadedCount = 0;
+    const totalImages = imagesToLoad.length;
+
+    imagesToLoad.forEach((iconb64) => {
+      const img = new Image();
+      // Use the same helper that Slots component uses
+      const objectUrl = `data:image/png;base64,${iconb64}`;
+      
+      const handleLoad = () => {
+        loadedCount += 1;
+        if (loadedCount === totalImages) {
+          setSlotsImagesLoaded(true);
+        }
+      };
+
+      const handleError = () => {
+        loadedCount += 1;
+        if (loadedCount === totalImages) {
+          setSlotsImagesLoaded(true);
+        }
+      };
+
+      img.addEventListener('load', handleLoad);
+      img.addEventListener('error', handleError);
+      img.src = objectUrl;
+    });
+  }, [userData?.slotsView, slotsSymbols]);
+
   // Loading state
-  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0))) {
+  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0 || !slotsImagesLoaded))) {
     return <div className="app-container"><h1>Loading...</h1></div>;
   }
 
