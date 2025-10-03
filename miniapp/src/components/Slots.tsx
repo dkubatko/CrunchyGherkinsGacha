@@ -439,14 +439,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     return hasMatchingResults && reelsStopped;
   }, [results, reelStates, symbols.length]);
 
-  if (symbols.length === 0) {
-    return (
-      <div className="slots-container slots-container-loading" role="status" aria-live="polite">
-        <h1>Loading...</h1>
-      </div>
-    );
-  }
-
   return (
     <div className="slots-container">
       <h1>🎰 Slots</h1>
