@@ -38,7 +38,9 @@ else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
 
 
-async def send_notification(chat_id: int, count: int) -> None:
+async def send_notification(
+    chat_id: int, count: int, username: str | None = None, custom_message: str | None = None
+) -> None:
     """Send a notification message to the specified chat."""
     if not TELEGRAM_TOKEN:
         print("Error: Telegram token not found. Cannot send notification.")
@@ -57,7 +59,18 @@ async def send_notification(chat_id: int, count: int) -> None:
         app.bot._base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/test"
         app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
 
-    message = f"<b>{count} spins</b> added to all accounts!\n\nUse /slots -- happy gambling 🎰"
+    if custom_message:
+        # Use custom message format
+        if username:
+            message = f"{custom_message}\n\n<b>{count} spins</b> added to @{username}."
+        else:
+            message = f"{custom_message}\n\n<b>{count} spins</b> added to all accounts!"
+    elif username:
+        # Default message for specific user
+        message = f"<b>{count} spins</b> added to @{username}.\n\nUse /slots -- happy gambling 🎰"
+    else:
+        # Default message for all users
+        message = f"<b>{count} spins</b> added to all accounts!\n\nUse /slots -- happy gambling 🎰"
 
     # Get thread_id if available
     from utils.database import get_thread_id
@@ -88,28 +101,52 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Add spins to users in a specific chat.")
     parser.add_argument("--chat-id", type=int, required=True, help="The ID of the chat to update.")
     parser.add_argument("--count", type=int, required=True, help="The number of spins to add.")
+    parser.add_argument(
+        "--user", type=str, help="Username of a specific user to add spins to (without @)."
+    )
+    parser.add_argument("--message", type=str, help="Custom message to send with the notification.")
     args = parser.parse_args()
 
     conn = connect()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        UPDATE spins
-        SET count = count + ?
-        WHERE chat_id = ?
-        """,
-        (args.count, str(args.chat_id)),
-    )
-    updated_rows = cursor.rowcount
+    if args.user:
+        # Add spins to a specific user
+        cursor.execute(
+            """
+            UPDATE spins
+            SET count = count + ?
+            WHERE chat_id = ? AND user_id IN (
+                SELECT user_id FROM users WHERE username = ?
+            )
+            """,
+            (args.count, str(args.chat_id), args.user),
+        )
+        updated_rows = cursor.rowcount
+
+        if updated_rows > 0:
+            print(f"Added {args.count} spins to user @{args.user} in chat {args.chat_id}.")
+        else:
+            print(f"No user found with username @{args.user} in chat {args.chat_id}.")
+    else:
+        # Add spins to all users in the chat
+        cursor.execute(
+            """
+            UPDATE spins
+            SET count = count + ?
+            WHERE chat_id = ?
+            """,
+            (args.count, str(args.chat_id)),
+        )
+        updated_rows = cursor.rowcount
+        print(f"Added {args.count} spins to {updated_rows} users in chat {args.chat_id}.")
+
     conn.commit()
     conn.close()
 
-    print(f"Added {args.count} spins to {updated_rows} users in chat {args.chat_id}.")
-
     # Send notification
     if updated_rows > 0:
-        asyncio.run(send_notification(args.chat_id, args.count))
+        asyncio.run(send_notification(args.chat_id, args.count, args.user, args.message))
 
 
 if __name__ == "__main__":
