@@ -5,6 +5,7 @@ import { useSlotsStore } from '../stores/useSlotsStore';
 import { getIconObjectUrl } from '../lib/iconUrlCache';
 import { RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
 import type { RarityName } from '../utils/rarityStyles';
+import type { SlotSymbolInfo } from '../types';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
@@ -41,7 +42,7 @@ interface SlotSymbol {
   id: number;
   iconb64?: string;
   displayName?: string;
-  type: 'user' | 'character';
+  type: 'user' | 'character' | 'claim';
 }
 
 type ReelState = 'idle' | 'spinning' | 'stopped';
@@ -230,29 +231,36 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     setStripTransforms(transforms);
   }, [results, symbols.length, spinning]);
 
-  const generateServerVerifiedResults = useCallback(async (): Promise<{ isWin: boolean; results: number[]; rarity: string | null }> => {
+  const generateServerVerifiedResults = useCallback(async (): Promise<{ 
+    isWin: boolean;
+    slotResults: SlotSymbolInfo[];
+    rarity: string | null;
+  }> => {
     const availableSymbols = symbols.length;
 
     if (availableSymbols === 0) {
-      return { isWin: false, results: Array(SLOT_REEL_COUNT).fill(0), rarity: null };
+      return { isWin: false, slotResults: [], rarity: null };
     }
 
     const randomNumber = Math.floor(Math.random() * availableSymbols);
+
+    // Send the full symbol list to the server
+    const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
 
     const verifyResult = await ApiService.verifySlotSpin(
       userId,
       chatId,
       randomNumber,
-      availableSymbols,
+      symbolsInfo,
       initData
     );
 
     return {
       isWin: verifyResult.is_win,
-      results: verifyResult.results,
+      slotResults: verifyResult.slot_results,
       rarity: verifyResult.rarity ?? null
     };
-  }, [userId, chatId, initData, symbols.length]);
+  }, [userId, chatId, initData, symbols]);
 
   const finalizeSpin = useCallback(() => {
     const pendingWin = pendingWinRef.current;
@@ -271,6 +279,36 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
 
     const { symbol, rarity } = pendingWin;
+    
+    // Check if this is a claim win (special handling)
+    if (symbol.type === 'claim') {
+      TelegramUtils.triggerHapticNotification('success');
+      
+      const processClaimWin = async () => {
+        try {
+          await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+          
+          const claimAmount = 1;
+          const result = await ApiService.processClaimWin(userId, chatId, claimAmount, initData);
+          
+          const pointsText = claimAmount === 1 ? 'claim point' : 'claim points';
+          const message = `Won ${claimAmount} ${pointsText}!\n\nBalance: ${result.balance}`;
+          TelegramUtils.showAlert(message);
+          TelegramUtils.triggerHapticNotification('success');
+        } catch (error) {
+          console.error('Failed to process claim win:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Failed to process claim win';
+          TelegramUtils.showAlert(`Error: ${errorMessage}`);
+        } finally {
+          resetReels();
+        }
+      };
+      
+      processClaimWin();
+      return;
+    }
+
+    // Card win - existing logic
     TelegramUtils.triggerHapticNotification('success');
 
     const completeVictory = async () => {
@@ -339,16 +377,20 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
       onSpinConsumed();
 
-      const { results: finalResults, isWin, rarity: serverRarity } = await generateServerVerifiedResults();
-      const normalizedResults = finalResults.slice(0, SLOT_REEL_COUNT);
+      const { isWin, slotResults, rarity: serverRarity } = await generateServerVerifiedResults();
+      
+      // Convert server-provided symbol results to indices
+      const normalizedResults = slotResults.map(symbolInfo => {
+        const index = symbols.findIndex(s => s.id === symbolInfo.id && s.type === symbolInfo.type);
+        return index !== -1 ? index : 0; // Fallback to 0 if symbol not found
+      });
 
-      if (normalizedResults.length < SLOT_REEL_COUNT) {
-        while (normalizedResults.length < SLOT_REEL_COUNT) {
-          normalizedResults.push(0);
-        }
+      // Ensure we have exactly 3 results
+      while (normalizedResults.length < SLOT_REEL_COUNT) {
+        normalizedResults.push(0);
       }
 
-      setResults(normalizedResults);
+      setResults(normalizedResults.slice(0, SLOT_REEL_COUNT));
 
       const spinTransforms = normalizedResults.map((result) =>
         computeSlotSpinTransforms(result, symbols.length)
@@ -386,20 +428,37 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         addReelTimeout(finalTimeout);
       });
 
-      if (isWin) {
-        const winningIndex = normalizedResults[0];
-        const winningSymbol = symbols[winningIndex];
+      if (isWin && slotResults.length > 0) {
+        const winningSymbolInfo = slotResults[0];
+        
+        if (winningSymbolInfo.type === 'claim') {
+          // Claim win - find the claim symbol and set it with a dummy rarity
+          const winningIndex = normalizedResults[0];
+          const winningSymbolFromArray = symbols[winningIndex];
 
-        if (!winningSymbol) {
-          console.warn('Winning symbol not found for index:', winningIndex);
-        } else if (!serverRarity) {
-          console.warn('Server did not supply rarity for winning spin');
-        } else {
-          const normalizedRarity = normalizeRarityName(serverRarity);
-          if (!normalizedRarity) {
-            console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
+          if (!winningSymbolFromArray) {
+            console.warn('Winning claim symbol not found for index:', winningIndex);
           } else {
-            pendingWinRef.current = { symbol: winningSymbol, rarity: normalizedRarity };
+            // Use 'Common' as a placeholder rarity for claim wins (won't be used)
+            pendingWinRef.current = { 
+              symbol: winningSymbolFromArray, 
+              rarity: 'Common' as RarityName 
+            };
+          }
+        } else if (serverRarity) {
+          // Card win - process victory
+          const winningIndex = normalizedResults[0];
+          const winningSymbolFromArray = symbols[winningIndex];
+
+          if (!winningSymbolFromArray) {
+            console.warn('Winning symbol not found for index:', winningIndex);
+          } else {
+            const normalizedRarity = normalizeRarityName(serverRarity);
+            if (!normalizedRarity) {
+              console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
+            } else {
+              pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity };
+            }
           }
         }
       }

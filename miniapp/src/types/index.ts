@@ -29,11 +29,16 @@ export interface UserCollectionResponse {
   cards: CardData[];
 }
 
-export interface ChatUserCharacterSummary {
+export interface SlotSymbolSummary {
   id: number;
   display_name?: string | null;
   slot_iconb64?: string | null;
-  type: 'user' | 'character';
+  type: 'user' | 'character' | 'claim';
+}
+
+export interface SlotSymbolInfo {
+  id: number;
+  type: string;
 }
 
 export interface UserData {
@@ -66,6 +71,6 @@ export interface AppState {
 
 export interface SlotVerifyResponse {
   is_win: boolean;
-  results: number[]; // Array of 3 reel results (indices)
+  slot_results: SlotSymbolInfo[];
   rarity?: string | null;
 }

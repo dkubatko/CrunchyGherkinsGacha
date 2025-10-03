@@ -6,7 +6,7 @@ interface SlotSymbol {
   id: number;
   iconb64?: string;
   displayName?: string;
-  type: 'user' | 'character';
+  type: 'user' | 'character' | 'claim';
 }
 
 type ReelState = 'idle' | 'spinning' | 'stopped';
