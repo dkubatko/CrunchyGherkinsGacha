@@ -1290,7 +1290,6 @@ async def slots_claim_win(
             new_balance,
         )
 
-        points_text = "claim point" if amount == 1 else "claim points"
         return SlotsClaimWinResponse(
             success=True,
             balance=new_balance,
