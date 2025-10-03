@@ -29,16 +29,22 @@ CLAIM_ICON_INSTRUCTION = """
 Generate a casino-themed icon with the letter "C" prominently displayed in the middle.
 
 Style requirements:
-- 1:1 aspect ratio (square icon)
-- Casino/slot machine aesthetic with vibrant colors
+- 1:1 aspect ratio with a ROUND/CIRCULAR shape (like a casino chip or coin)
+- Dark background (black or very dark gray) around the circular icon
+- Casino/slot machine aesthetic with moderately rich colors (slightly darker than bright - think rich golds, warm reds, royal purples)
 - Bold, eye-catching letter "C" as the centerpiece
 - Clean, modern design - avoid excessive details or clutter
+- Circular border or edge design (like a poker chip or medal)
+- The icon should be round with no square corners
 - Subtle casino elements (like a simple gold border or soft glow effect)
+- Use a balanced color scheme - not too bright, not too dark
 - The "C" should be clearly readable and stand out
 - High contrast and visual appeal suitable for a game interface
-- Professional quality with clean edges
+- Professional quality with smooth circular edges
 - IMPORTANT: Only the letter "C" should appear - no other text, words, or labels
+- IMPORTANT: The background outside the circular icon should be dark (black or very dark gray), not white
 - Keep it sleek and minimalistic while maintaining the exciting casino vibe
+- Think of it as a circular token, coin, or casino chip design on a dark background
 """
 
 
@@ -81,13 +87,6 @@ def generate_claim_icon(output_path: str):
                     f.write(processed_image_bytes)
 
                 logger.info(f"Claim icon generated and saved to: {output_path}")
-
-                # Also save as base64 for easy database insertion
-                base64_str = base64.b64encode(processed_image_bytes).decode("utf-8")
-                base64_output_path = output_path.replace(".png", "_b64.txt")
-                with open(base64_output_path, "w") as f:
-                    f.write(base64_str)
-                logger.info(f"Base64 version saved to: {base64_output_path}")
 
                 return processed_image_bytes
 
