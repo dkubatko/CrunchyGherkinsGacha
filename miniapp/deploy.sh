@@ -5,6 +5,41 @@ set -e
 
 echo "🚀 Starting deployment process..."
 
+# Auto-increment patch version
+echo "📝 Incrementing version..."
+CURRENT_VERSION=$(node -p "require('./package.json').version")
+echo "   Current version: $CURRENT_VERSION"
+
+# Split version into parts (major.minor.patch)
+IFS='.' read -r -a VERSION_PARTS <<< "$CURRENT_VERSION"
+MAJOR=${VERSION_PARTS[0]:-0}
+MINOR=${VERSION_PARTS[1]:-0}
+PATCH=${VERSION_PARTS[2]:-0}
+
+# Increment patch version
+PATCH=$((PATCH + 1))
+NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+
+echo "   New version: $NEW_VERSION"
+
+# Update package.json version
+npm version $NEW_VERSION --no-git-tag-version
+
+# Generate build info with version, git hash, and timestamp
+echo "📋 Generating build info..."
+GIT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+echo "export const BUILD_INFO = {
+  buildTime: '${BUILD_TIME}',
+  gitHash: '${GIT_HASH}',
+  version: '${NEW_VERSION}'
+};" > src/build-info.ts
+
+echo "   Version: $NEW_VERSION"
+echo "   Git Hash: $GIT_HASH"
+echo "   Build Time: $BUILD_TIME"
+
 # Build the application
 echo "📦 Building application..."
 npm run build
@@ -101,7 +136,9 @@ fi
 # Display deployment info
 echo "✅ Deployment completed successfully!"
 echo "📊 Deployment summary:"
-echo "   - Build time: $(date)"
+echo "   - Version: $NEW_VERSION"
+echo "   - Git Hash: $GIT_HASH"
+echo "   - Build time: $BUILD_TIME"
 echo "   - Files deployed: $(find $SERVER_PATH -type f | wc -l)"
 echo "   - Total size: $(du -sh $SERVER_PATH | cut -f1)"
 
