@@ -28,6 +28,9 @@ import { TelegramUtils } from './utils/telegram';
 // Services
 import { ApiService } from './services/api';
 
+// Lib
+import { getIconObjectUrl } from './lib/iconUrlCache';
+
 // Types
 import type { CardData, View } from './types';
 
@@ -718,8 +721,8 @@ function App() {
 
     imagesToLoad.forEach((iconb64) => {
       const img = new Image();
-      // Use the same helper that Slots component uses
-      const objectUrl = `data:image/png;base64,${iconb64}`;
+      // Use the same helper that Slots component uses to ensure URLs are cached
+      const objectUrl = getIconObjectUrl(iconb64);
       
       const handleLoad = () => {
         loadedCount += 1;
