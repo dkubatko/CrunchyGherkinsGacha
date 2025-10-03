@@ -9,6 +9,7 @@ import CardModal from './components/CardModal';
 import FilterSortControls from './components/FilterSortControls';
 import ActionPanel from './components/ActionPanel';
 import Slots from './components/Slots';
+import AppLoading from './components/AppLoading';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
 import type { ActionButton } from './components/ActionPanel';
 
@@ -27,9 +28,6 @@ import { TelegramUtils } from './utils/telegram';
 
 // Services
 import { ApiService } from './services/api';
-
-// Lib
-import { getIconObjectUrl } from './lib/iconUrlCache';
 
 // Types
 import type { CardData, View } from './types';
@@ -56,7 +54,6 @@ function App() {
     userData?.slotsView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
-  const [slotsImagesLoaded, setSlotsImagesLoaded] = useState(false);
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -699,84 +696,9 @@ function App() {
     onTiltReset: resetTiltReference
   });
 
-  // Preload slots images when in slots view
-  useEffect(() => {
-    if (!userData?.slotsView || slotsSymbols.length === 0) {
-      setSlotsImagesLoaded(false);
-      return;
-    }
-
-    const imagesToLoad = slotsSymbols
-      .filter(symbol => symbol.iconb64)
-      .map(symbol => symbol.iconb64!);
-
-    if (imagesToLoad.length === 0) {
-      setSlotsImagesLoaded(true);
-      return;
-    }
-
-    setSlotsImagesLoaded(false);
-    let loadedCount = 0;
-    const totalImages = imagesToLoad.length;
-    const promises: Promise<void>[] = [];
-
-    imagesToLoad.forEach((iconb64) => {
-      const promise = new Promise<void>((resolve) => {
-        const img = new Image();
-        // Use the same helper that Slots component uses to ensure URLs are cached
-        const objectUrl = getIconObjectUrl(iconb64);
-        
-        const handleLoad = async () => {
-          try {
-            // Ensure the image is fully decoded before considering it loaded
-            await img.decode();
-            loadedCount += 1;
-            if (loadedCount === totalImages) {
-              // Add a small delay to ensure all images are fully painted
-              setTimeout(() => {
-                setSlotsImagesLoaded(true);
-              }, 50);
-            }
-            resolve();
-          } catch {
-            loadedCount += 1;
-            if (loadedCount === totalImages) {
-              setTimeout(() => {
-                setSlotsImagesLoaded(true);
-              }, 50);
-            }
-            resolve();
-          }
-        };
-
-        const handleError = () => {
-          loadedCount += 1;
-          if (loadedCount === totalImages) {
-            setTimeout(() => {
-              setSlotsImagesLoaded(true);
-            }, 50);
-          }
-          resolve();
-        };
-
-        img.addEventListener('load', handleLoad);
-        img.addEventListener('error', handleError);
-        img.src = objectUrl;
-      });
-      
-      promises.push(promise);
-    });
-
-    // Wait for all images to be loaded and decoded
-    Promise.all(promises).catch(() => {
-      // If anything fails, still mark as loaded to not block forever
-      setSlotsImagesLoaded(true);
-    });
-  }, [userData?.slotsView, slotsSymbols]);
-
   // Loading state
-  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0 || !slotsImagesLoaded))) {
-    return <div className="app-container"><h1>Loading...</h1></div>;
+  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0))) {
+    return <AppLoading />;
   }
 
   // Error state
@@ -1014,9 +936,7 @@ function App() {
         {view === 'all' && (
           <>
             {allCardsLoading ? (
-              <div className="loading-container">
-                <h2>{isTradeView ? 'Loading trade options...' : 'Loading all cards...'}</h2>
-              </div>
+              <AppLoading />
             ) : allCardsError ? (
               <div className="error-container">
                 <h2>{isTradeView ? 'Error loading trade options' : 'Error loading cards'}</h2>
