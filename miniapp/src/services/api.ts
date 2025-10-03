@@ -1,4 +1,4 @@
-import type { CardData, UserCollectionResponse, ChatUserCharacterSummary, SlotVerifyResponse } from '../types';
+import type { CardData, UserCollectionResponse, SlotSymbolSummary, SlotVerifyResponse, SlotSymbolInfo } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
@@ -197,8 +197,8 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchChatUsersAndCharacters(chatId: string, initData: string): Promise<ChatUserCharacterSummary[]> {
-    const response = await fetch(`${API_BASE_URL}/chat/${encodeURIComponent(chatId)}/users-characters`, {
+  static async fetchSlotSymbols(chatId: string, initData: string): Promise<SlotSymbolSummary[]> {
+    const response = await fetch(`${API_BASE_URL}/chat/${encodeURIComponent(chatId)}/slot-symbols`, {
       headers: this.getHeaders(initData)
     });
 
@@ -210,7 +210,7 @@ export class ApiService {
       } else if (response.status >= 500) {
         throw new Error('Server error. Please try again later.');
       } else {
-        throw new Error(`Failed to fetch chat users and characters (Error ${response.status})`);
+        throw new Error(`Failed to fetch slot symbols (Error ${response.status})`);
       }
     }
 
@@ -222,7 +222,7 @@ export class ApiService {
     chatId: string, 
     rarity: string, 
     sourceId: number, 
-    sourceType: 'user' | 'character', 
+    sourceType: 'user' | 'character' | 'claim', 
     initData: string
   ): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/slots/victory`, {
@@ -311,7 +311,7 @@ export class ApiService {
     userId: number,
     chatId: string,
     randomNumber: number,
-    symbolCount: number,
+    symbols: SlotSymbolInfo[],
     initData: string
   ): Promise<SlotVerifyResponse> {
     const response = await fetch(`${API_BASE_URL}/slots/verify`, {
@@ -321,12 +321,44 @@ export class ApiService {
         user_id: userId,
         chat_id: chatId,
         random_number: randomNumber,
-        symbol_count: symbolCount
+        symbols: symbols
       })
     });
 
     if (!response.ok) {
       let detail = `Failed to verify slot spin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async processClaimWin(
+    userId: number,
+    chatId: string,
+    amount: number,
+    initData: string
+  ): Promise<{ success: boolean; balance: number }> {
+    const response = await fetch(`${API_BASE_URL}/slots/claim-win`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        amount: amount
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to process claim win (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {
