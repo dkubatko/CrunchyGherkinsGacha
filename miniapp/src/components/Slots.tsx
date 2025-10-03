@@ -6,6 +6,7 @@ import { getIconObjectUrl } from '../lib/iconUrlCache';
 import { RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
 import type { RarityName } from '../utils/rarityStyles';
 import type { SlotSymbolInfo } from '../types';
+import AppLoading from './AppLoading';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
@@ -123,6 +124,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const resetRarityWheel = useSlotsStore((state) => state.resetRarityWheel);
   const pendingWinRef = useRef<PendingWin | null>(null);
   const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
+  const [imagesReady, setImagesReady] = useState(false);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
     if (!rarityWheelTarget) {
@@ -197,6 +199,87 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     setResults(initialResults);
     setReelStates([...INITIAL_REEL_STATES]);
   }, [providedSymbols, setSymbols, setResults, setReelStates]);
+
+  useEffect(() => {
+    const activeSymbols = symbols.length > 0 ? symbols : providedSymbols;
+
+    if (typeof window === 'undefined') {
+      setImagesReady(true);
+      return;
+    }
+
+    if (activeSymbols.length === 0) {
+      setImagesReady(true);
+      return;
+    }
+
+    const uniqueIcons = Array.from(
+      new Set(
+        activeSymbols
+          .map((symbol) => symbol.iconb64)
+          .filter((icon): icon is string => Boolean(icon))
+      )
+    );
+
+    if (uniqueIcons.length === 0) {
+      setImagesReady(true);
+      return;
+    }
+
+    let cancelled = false;
+    let remaining = uniqueIcons.length;
+
+    setImagesReady(false);
+
+    const markDone = () => {
+      if (cancelled) {
+        return;
+      }
+      remaining -= 1;
+      if (remaining <= 0) {
+        const complete = () => {
+          if (!cancelled) {
+            setImagesReady(true);
+          }
+        };
+
+        if (typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(() => {
+            if (!cancelled) {
+              window.requestAnimationFrame(complete);
+            }
+          });
+        } else {
+          complete();
+        }
+      }
+    };
+
+    uniqueIcons.forEach((icon) => {
+      const img = new Image();
+      const objectUrl = getIconObjectUrl(icon);
+
+      const handleComplete = () => {
+        markDone();
+      };
+
+      img.addEventListener('load', async () => {
+        try {
+          await img.decode();
+        } catch {
+          // ignore decode failures, still treat as ready
+        }
+        handleComplete();
+      });
+
+      img.addEventListener('error', handleComplete);
+      img.src = objectUrl;
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [symbols, providedSymbols]);
 
   useEffect(() => {
     return () => {
@@ -498,6 +581,10 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     const reelsStopped = reelStates.every((state) => state === 'stopped');
     return hasMatchingResults && reelsStopped;
   }, [results, reelStates, symbols.length]);
+
+  if (!imagesReady) {
+    return <AppLoading />;
+  }
 
   return (
     <div className="slots-container">
