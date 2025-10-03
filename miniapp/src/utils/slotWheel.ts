@@ -1,10 +1,29 @@
 export const SLOT_REEL_COUNT = 3;
 export const SLOT_VISIBLE_ROWS = 3;
-export const SLOT_STRIP_REPEAT_MULTIPLIER = 15;
+export const SLOT_STRIP_REPEAT_MULTIPLIER = 5;
+export const SLOT_MIN_STRIP_SYMBOLS = 50;
 export const SLOT_SYMBOL_HEIGHT = 90;
-export const SLOT_BASE_SPIN_DURATION_MS = 2000;
-export const SLOT_SPIN_DURATION_STAGGER_MS = 750;
-export const SLOT_MIN_SYMBOLS_PER_SECOND = 15;
+export const SLOT_BASE_SPIN_DURATION_MS = 2500;
+export const SLOT_SPIN_DURATION_STAGGER_MS = 600;
+export const SLOT_MIN_SYMBOLS_PER_SECOND = 30;
+export const SLOT_SPIN_TIMING_FUNCTION = 'cubic-bezier(0.2, 0.86, 0.5, 1.02)';
+
+const resolveStripRepeatMultiplier = (symbolCount: number): number => {
+  if (symbolCount <= 0) {
+    return SLOT_STRIP_REPEAT_MULTIPLIER;
+  }
+
+  const minMultiplier = Math.ceil(SLOT_MIN_STRIP_SYMBOLS / symbolCount);
+  return Math.max(SLOT_STRIP_REPEAT_MULTIPLIER, minMultiplier);
+};
+
+export const computeTotalSlotSymbols = (symbolCount: number): number => {
+  if (symbolCount <= 0) {
+    return 0;
+  }
+
+  return symbolCount * resolveStripRepeatMultiplier(symbolCount);
+};
 
 export const computeSlotSpinTransforms = (
   symbolIndex: number,
@@ -15,8 +34,13 @@ export const computeSlotSpinTransforms = (
   }
 
   const safeIndex = ((symbolIndex % symbolCount) + symbolCount) % symbolCount;
-  const totalSymbols = symbolCount * SLOT_STRIP_REPEAT_MULTIPLIER;
-  const middleOffsetLoops = Math.max(2, Math.floor(SLOT_STRIP_REPEAT_MULTIPLIER / 2));
+  const totalSymbols = computeTotalSlotSymbols(symbolCount);
+  if (totalSymbols <= 0) {
+    return { initial: 0, final: 0 };
+  }
+
+  const stripRepeatMultiplier = totalSymbols / symbolCount;
+  const middleOffsetLoops = Math.max(2, Math.floor(stripRepeatMultiplier / 2));
   const targetPosition = safeIndex + symbolCount * middleOffsetLoops;
   const clampedPosition = Math.min(totalSymbols - 2, Math.max(1, targetPosition));
   const topIndex = clampedPosition - 1;
