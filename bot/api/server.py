@@ -31,6 +31,7 @@ from settings.constants import (
     SLOTS_VICTORY_FAILURE_MESSAGE,
     SLOTS_VIEW_IN_APP_LABEL,
     SLOT_WIN_CHANCE,
+    SLOT_CLAIM_CHANCE,
 )
 from utils.miniapp import encode_single_card_token
 
@@ -90,11 +91,11 @@ class LockCardRequest(BaseModel):
     lock: bool  # True to lock, False to unlock
 
 
-class ChatUserCharacterSummary(BaseModel):
+class SlotSymbolSummary(BaseModel):
     id: int
     display_name: Optional[str] = None
     slot_iconb64: Optional[str] = None
-    type: str  # "user" or "character"
+    type: str  # "user", "character", or "claim"
 
 
 class SlotsVictorySource(BaseModel):
@@ -107,6 +108,17 @@ class SlotsVictoryRequest(BaseModel):
     chat_id: str
     rarity: str
     source: SlotsVictorySource
+
+
+class SlotsClaimWinRequest(BaseModel):
+    user_id: int
+    chat_id: str
+    amount: int
+
+
+class SlotsClaimWinResponse(BaseModel):
+    success: bool
+    balance: int
 
 
 class SpinsRequest(BaseModel):
@@ -131,16 +143,21 @@ class ConsumeSpinResponse(BaseModel):
     message: Optional[str] = None
 
 
+class SlotSymbolInfo(BaseModel):
+    id: int
+    type: str  # "user", "character", or "claim"
+
+
 class SlotVerifyRequest(BaseModel):
     user_id: int
     chat_id: str
     random_number: int
-    symbol_count: int
+    symbols: List[SlotSymbolInfo]
 
 
 class SlotVerifyResponse(BaseModel):
     is_win: bool
-    results: List[int]  # Array of 3 reel results (indices)
+    slot_results: List[SlotSymbolInfo]
     rarity: Optional[str] = None
 
 
@@ -347,7 +364,9 @@ def _build_single_card_url(card_id: int) -> str:
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
 
-def _generate_slot_loss_pattern(random_module, symbol_count: int) -> List[int]:
+def _generate_slot_loss_pattern(
+    random_module, symbols: List[SlotSymbolInfo]
+) -> List[SlotSymbolInfo]:
     """
     Generate a dramatic slot machine loss pattern.
 
@@ -361,54 +380,62 @@ def _generate_slot_loss_pattern(random_module, symbol_count: int) -> List[int]:
 
     Args:
         random_module: Random module instance for generating random numbers
-        symbol_count: Total number of available symbols
+        symbols: List of available SlotSymbolInfo objects
 
     Returns:
-        List of 3 integers representing the slot results
+        List of 3 SlotSymbolInfo objects representing the slot results
     """
+    symbol_count = len(symbols)
+
     if symbol_count < 2:
         # Edge case: if only one symbol exists, just return three of them
-        return [0, 0, 0]
+        return [symbols[0], symbols[0], symbols[0]]
 
     # Choose loss pattern type
     pattern_type = random_module.choice(["all_different", "two_same_start"])
 
-    def _weighted_choice(exclude: Set[int], near_targets: List[int]) -> int:
+    def _weighted_choice_symbol(
+        exclude_indices: Set[int], near_target_indices: List[int]
+    ) -> SlotSymbolInfo:
         """Pick a symbol favouring those closer to the would-be winning targets."""
-        candidates = [idx for idx in range(symbol_count) if idx not in exclude]
+        candidates = [idx for idx in range(symbol_count) if idx not in exclude_indices]
         if not candidates:
-            return near_targets[0]
+            return symbols[near_target_indices[0]]
 
         weights: List[float] = []
         for candidate in candidates:
-            min_distance = min(abs(candidate - target) for target in near_targets)
+            min_distance = min(abs(candidate - target) for target in near_target_indices)
             # Invert distance (with +1 to avoid division by zero) to weight near misses higher
             weights.append(1.0 / (min_distance + 1.0))
 
         total_weight = sum(weights)
         if total_weight <= 0:
-            return random_module.choice(candidates)
+            return symbols[random_module.choice(candidates)]
 
         threshold = random_module.random() * total_weight
         cumulative = 0.0
         for candidate, weight in zip(candidates, weights):
             cumulative += weight
             if cumulative >= threshold:
-                return candidate
+                return symbols[candidate]
 
-        return candidates[-1]
+        return symbols[candidates[-1]]
 
     if pattern_type == "all_different" and symbol_count >= 3:
         # Generate three different symbols with weighted near-miss preference
-        first = random_module.randint(0, symbol_count - 1)
-        second = _weighted_choice({first}, [first])
-        third = _weighted_choice({first, second}, [first, second])
+        first_idx = random_module.randint(0, symbol_count - 1)
+        first = symbols[first_idx]
+        second = _weighted_choice_symbol({first_idx}, [first_idx])
+        second_idx = next(
+            i for i, s in enumerate(symbols) if s.id == second.id and s.type == second.type
+        )
+        third = _weighted_choice_symbol({first_idx, second_idx}, [first_idx, second_idx])
         return [first, second, third]
     else:
         # Generate pattern [a, a, b] - first two same, third different
-        same_symbol = random_module.randint(0, symbol_count - 1)
-        different_symbol = _weighted_choice({same_symbol}, [same_symbol])
-
+        same_idx = random_module.randint(0, symbol_count - 1)
+        same_symbol = symbols[same_idx]
+        different_symbol = _weighted_choice_symbol({same_idx}, [same_idx])
         return [same_symbol, same_symbol, different_symbol]  # [a, a, b]
 
 
@@ -1050,13 +1077,15 @@ async def verify_slot_spin(
     await verify_user_match(request.user_id, validated_user)
 
     # Validate input parameters
-    if request.symbol_count <= 0:
-        raise HTTPException(status_code=400, detail="Symbol count must be positive")
+    if not request.symbols or len(request.symbols) == 0:
+        raise HTTPException(status_code=400, detail="Symbols list cannot be empty")
 
-    if request.random_number < 0 or request.random_number >= request.symbol_count:
+    symbol_count = len(request.symbols)
+
+    if request.random_number < 0 or request.random_number >= symbol_count:
         raise HTTPException(
             status_code=400,
-            detail=f"Random number must be between 0 and {request.symbol_count - 1}",
+            detail=f"Random number must be between 0 and {symbol_count - 1}",
         )
 
     try:
@@ -1075,24 +1104,61 @@ async def verify_slot_spin(
 
         # Server-side win rate from config (boosted in debug mode)
         win_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
-        is_win = random.random() < win_chance
+        is_card_win = random.random() < win_chance
         rarity: Optional[str] = None
+        winning_symbol: Optional[SlotSymbolInfo] = None
+        slot_results: List[SlotSymbolInfo] = []
+        is_win = False
 
-        if is_win:
-            # All three reels show the same symbol
-            winning_symbol = random.randint(0, request.symbol_count - 1)
-            results = [winning_symbol, winning_symbol, winning_symbol]
-            rarity = _pick_slot_rarity(random)
+        if is_card_win:
+            # Player wins a card - select a random user or character symbol
+            # Filter out claim symbols for card wins
+            eligible_symbols = [s for s in request.symbols if s.type != "claim"]
+
+            if not eligible_symbols:
+                # Fallback: no eligible symbols, treat as loss
+                is_card_win = False
+            else:
+                # Pick a random eligible symbol
+                winning_symbol = random.choice(eligible_symbols)
+                rarity = _pick_slot_rarity(random)
+                # All three reels show the winning symbol
+                slot_results = [winning_symbol, winning_symbol, winning_symbol]
+                is_win = True
+
+        if not is_card_win:
+            # Check for claim win (only if they didn't win a card)
+            claim_chance = 0.5 if DEBUG_MODE else SLOT_CLAIM_CHANCE
+            claim_win = random.random() < claim_chance
+
+            if claim_win:
+                # Find the claim symbol
+                claim_symbols = [s for s in request.symbols if s.type == "claim"]
+                if claim_symbols:
+                    winning_symbol = claim_symbols[0]  # Should only be one claim symbol
+                    # All three reels show the claim symbol
+                    slot_results = [winning_symbol, winning_symbol, winning_symbol]
+                    is_win = True  # Claim win is still a win!
+
+        # Generate loss pattern if no win
+        if not slot_results:
+            slot_results = _generate_slot_loss_pattern(random, request.symbols)
+
+        # Build descriptive log message
+        if is_card_win and rarity:
+            win_type = f"card ({rarity})"
+        elif winning_symbol and winning_symbol.type == "claim":
+            win_type = "claim point"
         else:
-            # Generate a dramatic loss pattern (no [a, b, a] near-miss patterns)
-            results = _generate_slot_loss_pattern(random, request.symbol_count)
+            win_type = "loss"
 
         logger.info(
             f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
-            f"win={is_win}, win_chance={win_chance:.3f}, results={results}, rarity={rarity}"
+            f"result={win_type}, win_chance={win_chance:.3f}, "
+            f"winning_symbol={winning_symbol}, slot_results={[f'{s.type}:{s.id}' for s in slot_results]}"
         )
 
-        return SlotVerifyResponse(is_win=is_win, results=results, rarity=rarity)
+        return SlotVerifyResponse(is_win=is_win, slot_results=slot_results, rarity=rarity)
 
     except Exception as e:
         logger.error(
@@ -1187,6 +1253,57 @@ async def slots_victory(
     )
 
     return response_data
+
+
+@app.post("/slots/claim-win", response_model=SlotsClaimWinResponse)
+async def slots_claim_win(
+    request: SlotsClaimWinRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Handle a slot claim win by adding 1 claim point to the user's balance."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    chat_id = str(request.chat_id).strip()
+    if not chat_id:
+        logger.warning("Empty chat_id provided for slots claim win")
+        raise HTTPException(status_code=400, detail="chat_id is required")
+
+    # Ensure the winner is enrolled in the chat
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in chat")
+
+    try:
+        # Add claim points to the user's balance
+        amount = max(1, request.amount)  # Ensure at least 1 point is added
+        new_balance = await asyncio.to_thread(
+            database.increment_claim_balance, request.user_id, chat_id, amount
+        )
+
+        logger.info(
+            "User %s won %s claim point(s) in chat %s. New balance: %s",
+            request.user_id,
+            amount,
+            chat_id,
+            new_balance,
+        )
+
+        points_text = "claim point" if amount == 1 else "claim points"
+        return SlotsClaimWinResponse(
+            success=True,
+            balance=new_balance,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Error adding claim point for user %s in chat %s: %s",
+            request.user_id,
+            chat_id,
+            exc,
+        )
+        raise HTTPException(status_code=500, detail="Failed to add claim point")
 
 
 async def _process_slots_victory_background(
@@ -1322,22 +1439,47 @@ async def _process_slots_victory_background(
 # =============================================================================
 
 
-@app.get("/chat/{chat_id}/users-characters", response_model=List[ChatUserCharacterSummary])
-async def get_chat_users_and_characters_endpoint(
+@app.get("/chat/{chat_id}/slot-symbols", response_model=List[SlotSymbolSummary])
+async def get_slot_symbols_endpoint(
     chat_id: str,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get all users and characters for a specific chat with their display names and slot icons."""
+    """Get all slot symbols (users, characters, and claim) for a specific chat with their display names and icons."""
     try:
         # Get users and characters data from database
         data = await asyncio.to_thread(database.get_chat_users_and_characters, chat_id)
 
+        # Load claim icon from file
+        claim_icon_path = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)), "data", "slots", "claim_icon.png"
+        )
+
+        claim_icon_b64: Optional[str] = None
+        try:
+            with open(claim_icon_path, "rb") as f:
+                claim_icon_bytes = f.read()
+                claim_icon_b64 = base64.b64encode(claim_icon_bytes).decode("utf-8")
+        except Exception as e:
+            logger.error(f"Failed to load claim icon: {e}")
+            # Continue without claim icon rather than failing the whole request
+
+        # Add claim point as a special symbol if icon was loaded successfully
+        if claim_icon_b64:
+            # Use a special ID that won't conflict with user/character IDs (e.g., -1)
+            claim_symbol = {
+                "id": -1,
+                "display_name": "Claim",
+                "slot_iconb64": claim_icon_b64,
+                "type": "claim",
+            }
+            data.append(claim_symbol)
+
         # Convert to response models and return directly
-        return [ChatUserCharacterSummary(**item) for item in data]
+        return [SlotSymbolSummary(**item) for item in data]
 
     except Exception as e:
-        logger.error(f"Error fetching chat users/characters for chat_id {chat_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to fetch chat users and characters")
+        logger.error(f"Error fetching slot symbols for chat_id {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch slot symbols")
 
 
 def run_server():

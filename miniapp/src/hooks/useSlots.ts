@@ -6,7 +6,7 @@ interface SlotSymbol {
   id: number;
   iconb64?: string;
   displayName?: string;
-  type: 'user' | 'character';
+  type: 'user' | 'character' | 'claim';
 }
 
 interface UserSpinsData {
@@ -78,7 +78,7 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
 
         // Fetch symbols and spins in parallel
         const [symbolsData] = await Promise.all([
-          ApiService.fetchChatUsersAndCharacters(chatId, initData),
+          ApiService.fetchSlotSymbols(chatId, initData),
           userId ? fetchSpins() : Promise.resolve()
         ]);
         
