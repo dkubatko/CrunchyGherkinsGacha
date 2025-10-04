@@ -58,6 +58,21 @@ from settings.constants import (
     RECYCLE_FAILURE_IMAGE,
     RECYCLE_FAILURE_UNEXPECTED,
     RECYCLE_RESULT_APPENDIX,
+    RARITIES,
+    BURN_USAGE_MESSAGE,
+    BURN_DM_RESTRICTED_MESSAGE,
+    BURN_INVALID_ID_MESSAGE,
+    BURN_CARD_NOT_FOUND_MESSAGE,
+    BURN_NOT_YOURS_MESSAGE,
+    BURN_LOCKED_MESSAGE,
+    BURN_CHAT_MISMATCH_MESSAGE,
+    BURN_CONFIRM_MESSAGE,
+    BURN_CANCELLED_MESSAGE,
+    BURN_ALREADY_RUNNING_MESSAGE,
+    BURN_PROCESSING_MESSAGE,
+    BURN_FAILURE_MESSAGE,
+    BURN_FAILURE_SPINS_MESSAGE,
+    BURN_SUCCESS_MESSAGE,
 )
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat, verify_admin
@@ -576,6 +591,309 @@ def _build_burning_text(card_titles: list[str], revealed: int, strike_all: bool 
         lines.append(line)
 
     return "Burning cards...\n\n" + "\n".join(lines)
+
+
+@verify_user_in_chat
+async def burn(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text(
+            BURN_DM_RESTRICTED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if not context.args:
+        await message.reply_text(
+            BURN_USAGE_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card_id_arg = context.args[0]
+    try:
+        card_id = int(card_id_arg)
+    except ValueError:
+        await message.reply_text(
+            BURN_INVALID_ID_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        await message.reply_text(
+            BURN_CARD_NOT_FOUND_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    chat_id_str = str(chat.id)
+    if not card.chat_id or card.chat_id != chat_id_str:
+        await message.reply_text(
+            BURN_CHAT_MISMATCH_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    username = user.username
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+
+    owns_card = card.user_id == user.user_id or (username and card.owner == username)
+    if not owns_card:
+        await message.reply_text(
+            BURN_NOT_YOURS_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if card.locked:
+        await message.reply_text(
+            BURN_LOCKED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    rarity_config = RARITIES.get(card.rarity)
+    spin_reward = 0
+    if isinstance(rarity_config, dict):
+        try:
+            spin_reward = int(rarity_config.get("spin_reward", 0))
+        except (TypeError, ValueError):
+            spin_reward = 0
+
+    if spin_reward <= 0:
+        logger.error("No spin reward configured for rarity %s", card.rarity)
+        await message.reply_text(
+            BURN_FAILURE_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card_title = f"{card.modifier} {card.base_name}".strip()
+    escaped_title = html.escape(card_title)
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Burn it!", callback_data=f"burn_yes_{card_id}_{user.user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Cancel", callback_data=f"burn_cancel_{card_id}_{user.user_id}"
+                ),
+            ]
+        ]
+    )
+
+    await message.reply_text(
+        BURN_CONFIRM_MESSAGE.format(
+            card_id=card.id,
+            rarity=card.rarity,
+            card_title=escaped_title,
+            spin_reward=spin_reward,
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+    )
+
+
+@verify_user_in_chat
+async def handle_burn_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer()
+        return
+
+    _, action, card_id_str, target_user_id_str = data_parts[:4]
+
+    try:
+        card_id = int(card_id_str)
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer(BURN_NOT_YOURS_MESSAGE, show_alert=True)
+        return
+
+    if action == "cancel":
+        await query.answer(BURN_CANCELLED_MESSAGE)
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text(BURN_CANCELLED_MESSAGE)
+            except Exception:
+                pass
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    burning_users = context.bot_data.setdefault("burning_users", set())
+    if user.user_id in burning_users:
+        await query.answer(BURN_ALREADY_RUNNING_MESSAGE, show_alert=True)
+        return
+
+    burning_users.add(user.user_id)
+
+    chat = update.effective_chat
+    chat_id_str = str(chat.id) if chat else None
+
+    try:
+        if not chat_id_str:
+            await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
+            return
+
+        card = await asyncio.to_thread(database.get_card, card_id)
+        if not card:
+            await query.answer(BURN_CARD_NOT_FOUND_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_CARD_NOT_FOUND_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        if not card.chat_id or card.chat_id != chat_id_str:
+            await query.answer(BURN_CHAT_MISMATCH_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_CHAT_MISMATCH_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        username = user.username
+        if not username:
+            username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+
+        owns_card = card.user_id == user.user_id or (username and card.owner == username)
+        if not owns_card:
+            await query.answer(BURN_NOT_YOURS_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_NOT_YOURS_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        if card.locked:
+            await query.answer(BURN_LOCKED_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_LOCKED_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        rarity_config = RARITIES.get(card.rarity)
+        spin_reward = 0
+        if isinstance(rarity_config, dict):
+            try:
+                spin_reward = int(rarity_config.get("spin_reward", 0))
+            except (TypeError, ValueError):
+                spin_reward = 0
+
+        if spin_reward <= 0:
+            logger.error("No spin reward configured for rarity %s", card.rarity)
+            await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_FAILURE_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        card_title = f"{card.modifier} {card.base_name}".strip()
+        escaped_title = html.escape(card_title)
+
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        try:
+            await query.edit_message_text(BURN_PROCESSING_MESSAGE)
+        except Exception:
+            pass
+
+        success = await asyncio.to_thread(database.delete_card, card_id)
+        if not success:
+            await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_FAILURE_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        new_spin_total = await asyncio.to_thread(
+            database.increment_user_spins, user.user_id, chat_id_str, spin_reward
+        )
+
+        if new_spin_total is None:
+            logger.error(
+                "Card %s burned but failed to award spins to user %s in chat %s",
+                card_id,
+                user.user_id,
+                chat_id_str,
+            )
+            await query.answer(BURN_FAILURE_SPINS_MESSAGE, show_alert=True)
+            try:
+                await query.edit_message_text(BURN_FAILURE_SPINS_MESSAGE)
+            except Exception:
+                pass
+            return
+
+        username_safe = html.escape(username or f"user_{user.user_id}")
+        header = f"<b><s>🔥[{card_id}] {card.rarity} {escaped_title}🔥</s></b>"
+        success_block = BURN_SUCCESS_MESSAGE.format(
+            spin_reward=spin_reward,
+            new_spin_total=new_spin_total,
+        )
+
+        final_text = f"{header}\n\n{success_block}"
+
+        await query.edit_message_text(
+            final_text,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer("Burn complete!")
+
+        logger.info(
+            "User %s (%s) burned card %s in chat %s for %s spins",
+            username or f"user_{user.user_id}",
+            user.user_id,
+            card_id,
+            chat_id_str,
+            spin_reward,
+        )
+    except Exception as exc:
+        logger.exception("Unexpected error during burn for card %s: %s", card_id, exc)
+        await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
+        try:
+            await query.edit_message_text(BURN_FAILURE_MESSAGE)
+        except Exception:
+            pass
+    finally:
+        burning_users.discard(user.user_id)
 
 
 @verify_user_in_chat
@@ -1250,18 +1568,29 @@ async def balance(
     balance_value = await asyncio.to_thread(database.get_claim_balance, target_user_id, chat_id)
     point_label = "point" if balance_value == 1 else "points"
 
+    spin_count = await asyncio.to_thread(
+        database.get_or_update_user_spins_with_daily_refresh,
+        target_user_id,
+        chat_id,
+    )
+    spin_label = "spin" if spin_count == 1 else "spins"
+
+    claim_line = f"Claim balance: <b>{balance_value} {point_label}</b>"
+    spin_line = f"Spin balance: <b>{spin_count} {spin_label}</b>"
+
     if target_user_id == user.user_id:
-        response_text = f"You have {balance_value} claim {point_label} available in this chat."
+        response_text = f"{claim_line}\n{spin_line}"
         if balance_value == 0:
             response_text += "\n\nUse /roll to get a claim point!"
     else:
         handle = f"@{display_username}" if display_username else str(target_user_id)
-        response_text = f"{handle} has {balance_value} claim {point_label} available in this chat."
+        response_text = f"{handle}\n{claim_line}\n{spin_line}"
 
     if message:
         await message.reply_text(
             response_text,
             reply_to_message_id=getattr(message, "message_id", None),
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -1677,9 +2006,18 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
     if user_id is not None:
         balance_value = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
         point_label = "point" if balance_value == 1 else "points"
-        balance_line = f"{balance_value} claim {point_label}"
+        balance_line = f"{balance_value} {point_label}"
+
+        spin_count = await asyncio.to_thread(
+            database.get_or_update_user_spins_with_daily_refresh,
+            user_id,
+            chat_id,
+        )
+        spin_label = "spin" if spin_count == 1 else "spins"
+        spins_line = f"{spin_count} {spin_label}"
     else:
         balance_line = "unknown (no linked user ID)"
+        spins_line = "unknown (no linked user ID)"
 
     handle_display = f"@{username}" if username else "unknown"
 
@@ -1689,7 +2027,8 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
         f"E: {user_stats['rarities']['Epic']}, "
         f"R: {user_stats['rarities']['Rare']}, "
         f"C: {user_stats['rarities']['Common']}\n"
-        f"Balance: {balance_line}"
+        f"Claims: {balance_line}\n"
+        f"Spins: {spins_line}"
     )
 
 
@@ -2319,6 +2658,7 @@ def main() -> None:
     application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("recycle", recycle))
+    application.add_handler(CommandHandler("burn", burn))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
@@ -2330,6 +2670,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))
     application.add_handler(CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
+    application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^burn_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(
         CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")
