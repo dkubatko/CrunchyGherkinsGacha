@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import ShinyImage from './ShinyImage';
+import AnimatedImage from './AnimatedImage';
 import { imageCache } from '../lib/imageCache';
 import { getRarityGradient } from '../utils/rarityStyles';
 import type { OrientationData, CardData } from '../types';
+import ConfirmDialog from './ConfirmDialog';
 
 const inFlightFullImageRequests = new Map<number, Promise<string>>();
 
@@ -22,6 +23,8 @@ interface CardProps {
   showShareButton?: boolean;
   locked?: boolean;
   onCardOpen?: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
+  triggerBurn?: boolean;
+  onBurnComplete?: () => void;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -39,7 +42,9 @@ const Card: React.FC<CardProps> = ({
   onShare,
   showShareButton = false,
   locked = false,
-  onCardOpen
+  onCardOpen,
+  triggerBurn = false,
+  onBurnComplete
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -136,26 +141,14 @@ const Card: React.FC<CardProps> = ({
 
   return (
     <div className="card" onClick={handleCardClick}>
-      {showShareDialog && (
-        <div 
-          className="share-dialog-overlay" 
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowShareDialog(false);
-          }}
-        >
-          <div 
-            className="share-dialog"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <p>Share to the group?</p>
-            <div className="share-dialog-buttons">
-              <button onClick={confirmShare} className="share-confirm-btn">Yes</button>
-              <button onClick={cancelShare} className="share-cancel-btn">No</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        isOpen={showShareDialog}
+        onRequestClose={cancelShare}
+        onConfirm={confirmShare}
+        onCancel={cancelShare}
+      >
+        <p>Share to the group?</p>
+      </ConfirmDialog>
       {locked && (
         <div className="card-lock-indicator">
           <svg
@@ -195,13 +188,15 @@ const Card: React.FC<CardProps> = ({
         </div>
       ) : (
         shiny ? (
-          <ShinyImage 
+          <AnimatedImage 
             imageUrl={imageUrl}
             alt={`${modifier} ${base_name}`}
             rarity={rarity}
             orientation={orientation}
             effectsEnabled={effectsEnabled}
             tiltKey={tiltKey}
+            triggerBurn={triggerBurn}
+            onBurnComplete={onBurnComplete}
           />
         ) : (
           <div className="card-image-container">

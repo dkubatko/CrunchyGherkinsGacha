@@ -13,13 +13,15 @@ interface TiltValues {
   y: number;
 }
 
-interface ShinyImageProps {
+interface AnimatedImageProps {
   imageUrl: string;
   alt: string;
   rarity: string;
   orientation: OrientationData;
   effectsEnabled: boolean;
   tiltKey: number;
+  triggerBurn?: boolean;
+  onBurnComplete?: () => void;
 }
 
 // Performance constants
@@ -70,14 +72,18 @@ const normalizeAngleDelta = (current: number, reference: number) => {
   return wrapAngleDelta(current - reference);
 };
 
-const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey }) => {
+const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey, triggerBurn = false, onBurnComplete }) => {
   const [referenceOrientation, setReferenceOrientation] = useState<OrientationData | null>(null);
   const [animationState, setAnimationState] = useState({ tick: 0, smoothedTilt: createZeroTilt() });
+  const [burnProgress, setBurnProgress] = useState<number>(0);
+  const [isBurning, setIsBurning] = useState(false);
 
   const tiltTargetRef = useRef<TiltValues>(createZeroTilt());
   const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.18 : 0.12);
   const lastFrameTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | undefined>(undefined);
+  const burnStartTimeRef = useRef<number | null>(null);
+  const BURN_DURATION = 5000; // 5 seconds
 
   // Reset reference when tiltKey changes (new card)
   useEffect(() => {
@@ -103,7 +109,19 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
     }
   }, [effectsEnabled]);
 
-  // Consolidated animation loop
+  // Burn animation trigger
+  useEffect(() => {
+    if (triggerBurn && !isBurning) {
+      setIsBurning(true);
+      burnStartTimeRef.current = null; // Will be set on first frame
+      setBurnProgress(0);
+      // Reset tilt to center the card
+      tiltTargetRef.current = createZeroTilt();
+      setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
+    }
+  }, [triggerBurn, isBurning]);
+
+  // Consolidated animation loop (includes burn animation)
   useEffect(() => {
     const animate = (currentTime: number) => {
       // Throttle animation based on device performance
@@ -113,6 +131,28 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
       }
       
       lastFrameTimeRef.current = currentTime;
+
+      // Update burn animation
+      if (isBurning) {
+        if (burnStartTimeRef.current === null) {
+          burnStartTimeRef.current = currentTime;
+        }
+        
+        const elapsed = currentTime - burnStartTimeRef.current;
+        const progress = Math.min(elapsed / BURN_DURATION, 1);
+        
+        setBurnProgress(progress);
+        
+        if (progress >= 1) {
+          // Animation complete - reset
+          setIsBurning(false);
+          setBurnProgress(0);
+          burnStartTimeRef.current = null;
+          if (onBurnComplete) {
+            onBurnComplete();
+          }
+        }
+      }
 
       setAnimationState(prevState => {
         const target = tiltTargetRef.current;
@@ -150,7 +190,7 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, []);
+  }, [isBurning, onBurnComplete]);
 
   const orientationDelta = useMemo(() => {
     if (!referenceOrientation || !orientation.isStarted) {
@@ -249,8 +289,8 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
   }), []);
 
   const shadowStyle = useMemo<React.CSSProperties>(() => ({
-    boxShadow: `${shadowMetrics.offsetX}px ${shadowMetrics.offsetY}px ${shadowMetrics.blur}px ${shadowMetrics.spread}px rgba(0, 0, 0, ${shadowMetrics.alpha})`
-  }), [shadowMetrics]);
+    boxShadow: isBurning ? 'none' : `${shadowMetrics.offsetX}px ${shadowMetrics.offsetY}px ${shadowMetrics.blur}px ${shadowMetrics.spread}px rgba(0, 0, 0, ${shadowMetrics.alpha})`
+  }), [shadowMetrics, isBurning]);
 
   // Memoized shine calculations for better performance
   const shineMetrics = useMemo(() => {
@@ -295,9 +335,9 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
   return (
     <Tilt
       className="card-image-container"
-      tiltEnable={effectsEnabled}
-      tiltAngleXManual={manualTiltAngles ? manualTiltAngles.x : null}
-      tiltAngleYManual={manualTiltAngles ? manualTiltAngles.y : null}
+      tiltEnable={effectsEnabled && !isBurning}
+      tiltAngleXManual={isBurning ? 0 : (manualTiltAngles ? manualTiltAngles.x : null)}
+      tiltAngleYManual={isBurning ? 0 : (manualTiltAngles ? manualTiltAngles.y : null)}
       tiltMaxAngleX={15}
       tiltMaxAngleY={15}
       perspective={1000}
@@ -311,14 +351,40 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
         className="card-shadow"
         style={shadowStyle}
       />
-      <div className="card-image-content">
+      <div 
+        className={`card-image-content ${isBurning ? 'burning' : ''}`}
+        style={isBurning ? { background: 'transparent' } : undefined}
+      >
         <img 
           src={imageUrl} 
           alt={alt}
+          style={isBurning ? {
+            clipPath: `polygon(
+              0% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10) * 1.5)}%,
+              10% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 0.5) * 2)}%,
+              20% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 1) * 1.8)}%,
+              30% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 1.5) * 2.2)}%,
+              40% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 2) * 1.6)}%,
+              50% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 2.5) * 2.1)}%,
+              60% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 3) * 1.9)}%,
+              70% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 3.5) * 2.3)}%,
+              80% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 4) * 1.7)}%,
+              90% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 4.5) * 2)}%,
+              100% ${Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + 5) * 1.8)}%,
+              100% 0,
+              0 0
+            )`,
+            background: 'transparent',
+            transform: 'scale(1.01)',
+            imageRendering: 'crisp-edges',
+            WebkitBackfaceVisibility: 'hidden',
+            backfaceVisibility: 'hidden'
+          } : undefined}
         />
         <div 
           className="card-shine"
           style={{
+            opacity: isBurning ? 0 : 1,
             background: DEVICE_PERFORMANCE === 'low' 
               ? `linear-gradient(${75 + (shineMetrics.x - 50) * 0.1}deg,
                   transparent 0%,
@@ -341,9 +407,65 @@ const ShinyImage: React.FC<ShinyImageProps> = ({ imageUrl, alt, rarity, orientat
             transition: DEVICE_PERFORMANCE === 'high' ? 'background 0.15s ease-out' : 'none'
           }}
         />
+        {isBurning && (
+          <>
+            {/* SVG-based continuous wave with layered strokes for fire effect */}
+            <svg
+              style={{
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                width: '100%',
+                height: '100%',
+                pointerEvents: 'none',
+                zIndex: 11,
+                mixBlendMode: 'screen'
+              }}
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+            >
+              {/* Draw multiple paths with different colors and thicknesses for fire effect */}
+              {[
+                // Bottom: dark base
+                { thickness: 2, color: 'rgba(0, 0, 0, 0.6)', blur: 1.5, opacity: 0.4, offset: 2 },
+                // Core: bright red/orange
+                { thickness: 3, color: 'rgba(200, 20, 0, 1)', blur: 1.5, opacity: 0.95, offset: 0 },
+                { thickness: 2.5, color: 'rgba(255, 50, 0, 1)', blur: 1, opacity: 1, offset: 0 },
+                // Upper flames: yellow/orange dispersing upward
+                { thickness: 4.5, color: 'rgba(255, 150, 30, 0.7)', blur: 2.5, opacity: 0.8, offset: -1.5 },
+                { thickness: 6, color: 'rgba(255, 200, 80, 0.4)', blur: 4.5, opacity: 0.65, offset: -3 },
+                { thickness: 8, color: 'rgba(255, 240, 150, 0.15)', blur: 6.5, opacity: 0.4, offset: -5.5 },
+              ].map((layer, idx) => {
+                const pathData = (() => {
+                  const points = [];
+                  for (let i = 0; i <= 100; i++) {
+                    const x = i;
+                    const phaseOffset = (i / 100) * 5;
+                    const waveAmplitude = 1.5 + 0.5 * Math.sin((i / 100) * Math.PI * 2);
+                    const y = Math.max(0, 100 - burnProgress * 100 + 2 + Math.sin(burnProgress * 10 + phaseOffset) * waveAmplitude + layer.offset);
+                    points.push(`${i === 0 ? 'M' : 'L'} ${x} ${y}`);
+                  }
+                  return points.join(' ');
+                })();
+                
+                return (
+                  <path
+                    key={idx}
+                    d={pathData}
+                    stroke={layer.color}
+                    strokeWidth={layer.thickness}
+                    fill="none"
+                    opacity={layer.opacity}
+                    filter={`blur(${layer.blur}px)`}
+                  />
+                );
+              })}
+            </svg>
+          </>
+        )}
       </div>
     </Tilt>
   );
 };
 
-export default ShinyImage;
+export default AnimatedImage;
