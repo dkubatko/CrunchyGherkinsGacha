@@ -31,6 +31,7 @@ interface CurrentViewProps {
   isOwnCollection: boolean;
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
+  isBurning?: boolean;
 }
 
 interface AllViewProps {
@@ -80,6 +81,7 @@ const CardView = ({
         <button
           className={`tab ${view === 'current' ? 'active' : ''}`}
           onClick={tabs.onCurrentTabClick}
+          disabled={currentView.isBurning}
         >
           Current
         </button>
@@ -87,6 +89,7 @@ const CardView = ({
           <button
             className={`tab ${view === 'all' && !isTradeGridActive ? 'active' : ''}`}
             onClick={tabs.onAllTabClick}
+            disabled={currentView.isBurning}
           >
             All
           </button>
@@ -108,6 +111,7 @@ const CardView = ({
               onClick={currentView.onGridToggle}
               onTouchStart={(e) => e.stopPropagation()}
               onTouchEnd={(e) => e.stopPropagation()}
+              disabled={currentView.isBurning}
               aria-label={currentView.isGridView ? 'Currently in grid view' : 'Currently in gallery view'}
             >
               {currentView.isGridView ? 'Grid' : 'Gallery'}

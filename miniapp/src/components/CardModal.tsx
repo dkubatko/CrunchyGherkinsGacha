@@ -11,6 +11,9 @@ interface CardModalProps {
   onClose: () => void;
   onShare?: (cardId: number) => Promise<void> | void;
   onCardOpen?: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
+  triggerBurn?: boolean;
+  onBurnComplete?: () => void;
+  isBurning?: boolean;
 }
 
 const CardModal: React.FC<CardModalProps> = ({
@@ -21,25 +24,32 @@ const CardModal: React.FC<CardModalProps> = ({
   initData,
   onClose,
   onShare,
-  onCardOpen
+  onCardOpen,
+  triggerBurn,
+  onBurnComplete,
+  isBurning = false
 }) => {
   if (!isOpen) return null;
 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        <button className="modal-close" onClick={onClose}>×</button>
-        <Card 
-          {...card} 
-          orientation={orientation}
-          tiltKey={orientationKey}
-          initData={initData}
-          shiny={true}
-          showOwner={true}
-          onShare={onShare}
-          showShareButton={false}
-          onCardOpen={onCardOpen}
-        />
+        {!isBurning && <button className="modal-close" onClick={onClose}>×</button>}
+        <div className="modal-card-shell">
+          <Card 
+            {...card} 
+            orientation={orientation}
+            tiltKey={orientationKey}
+            initData={initData}
+            shiny={true}
+            showOwner={true}
+            onShare={onShare}
+            showShareButton={false}
+            onCardOpen={onCardOpen}
+            triggerBurn={triggerBurn}
+            onBurnComplete={onBurnComplete}
+          />
+        </div>
       </div>
     </div>
   );
