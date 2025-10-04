@@ -778,14 +778,14 @@ function App() {
           id: 'burn',
           text: 'Burn',
           onClick: handleBurnClick,
-          variant: 'secondary',
+          variant: 'burn-red',
           disabled: shouldDisableActions
         });
         buttons.push({
           id: 'lock',
           text: isLocked ? 'Unlock' : 'Lock',
           onClick: handleLockClick,
-          variant: 'secondary',
+          variant: 'lock-grey',
           disabled: shouldDisableActions || lockingCard
         });
       }
