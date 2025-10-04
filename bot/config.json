@@ -4,7 +4,7 @@
   "CARD_TEMPLATES_PATH": "data/card_templates",
   "SPINS_REFRESH_HOURS": 3,
   "SPINS_PER_REFRESH": 5,
-  "SLOT_WIN_CHANCE": 0.03,
+  "SLOT_WIN_CHANCE": 0.025,
   "SLOT_CLAIM_CHANCE": 0.05,
   "RARITIES": {
     "Common": {
