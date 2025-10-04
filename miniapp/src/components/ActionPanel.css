@@ -50,6 +50,14 @@
   min-width: 80px;
 }
 
+.action-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  pointer-events: none;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
 .action-button.primary {
   background: var(--tg-theme-button-color, #2196f3);
   color: var(--tg-theme-button-text-color, #ffffff);

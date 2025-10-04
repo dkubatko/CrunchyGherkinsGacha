@@ -43,7 +43,7 @@ function App() {
   const [lockedViewportHeight, setLockedViewportHeight] = useState<number | null>(null);
   
   // Core data hooks
-  const { cards, loading, error, userData, initData } = useCards();
+  const { cards, loading, error, userData, initData, refetch: refetchCards } = useCards();
   const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins } = useSlots(
     userData?.slotsView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
@@ -58,10 +58,21 @@ function App() {
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockingCard, setLockingCard] = useState(false);
+  const [burningCard, setBurningCard] = useState(false);
   const [triggerBurn, setTriggerBurn] = useState(false);
+  const [isBurningInProgress, setIsBurningInProgress] = useState(false);
   const [chatClaimBalances, setChatClaimBalances] = useState<Record<string, ClaimBalanceState>>({});
   const claimBalanceRequestsRef = useRef<Map<string, Promise<number | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
+  const [burnRewards, setBurnRewards] = useState<Record<string, number> | null>(null);
+  const burnResultRef = useRef<{
+    rarity: string;
+    cardName: string;
+    spinsAwarded: number;
+    newSpinTotal: number;
+    cardId: number;
+    burnedCardIndex: number;
+  } | null>(null);
 
   // Filter and sort state
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
@@ -181,6 +192,26 @@ function App() {
       void ensureClaimBalance(chatId, { force: true });
     });
   }, [ensureClaimBalance, initData, userData]);
+
+  // Load burn rewards when card view is first loaded
+  useEffect(() => {
+    if (!initData || !userData || userData.slotsView || userData.singleCardView) {
+      return;
+    }
+
+    const loadBurnRewards = async () => {
+      try {
+        const rewards = await ApiService.fetchBurnRewards(initData);
+        setBurnRewards(rewards);
+        console.log('Burn rewards loaded:', rewards);
+      } catch (err) {
+        console.error('Failed to fetch burn rewards:', err);
+        // Non-critical error, continue without burn rewards
+      }
+    };
+
+    void loadBurnRewards();
+  }, [initData, userData]);
 
   const {
     allCards,
@@ -553,14 +584,91 @@ function App() {
     setShowBurnDialog(true);
   };
 
-  const handleBurnConfirm = () => {
-    setShowBurnDialog(false);
-    setTriggerBurn(true);
+  const handleBurnConfirm = async () => {
+    if (!userData || !initData || burningCard) return;
+
+    const targetCard = modalCard || cards[currentIndex];
+    if (!targetCard) return;
+
+    const chatId = targetCard.chat_id;
+    if (!chatId) {
+      TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
+      return;
+    }
+
+    try {
+      setBurningCard(true);
+      
+      // Call burn API
+      const result = await ApiService.burnCard(
+        targetCard.id,
+        userData.currentUserId,
+        chatId,
+        initData
+      );
+
+      // Store the result for later use
+      const cardName = `${targetCard.modifier} ${targetCard.base_name}`.trim();
+      const burnResult = {
+        rarity: targetCard.rarity,
+        cardName,
+        spinsAwarded: result.spins_awarded,
+        newSpinTotal: result.new_spin_total,
+        cardId: targetCard.id,
+        burnedCardIndex: cards.findIndex(c => c.id === targetCard.id),
+      };
+
+      // Store in ref for onBurnComplete to access
+      burnResultRef.current = burnResult;
+
+      // Close the dialog and trigger burn animation
+      setShowBurnDialog(false);
+      setTriggerBurn(true);
+      setIsBurningInProgress(true);
+
+    } catch (error) {
+      console.error('Failed to burn card:', error);
+      setShowBurnDialog(false);
+      setBurningCard(false);
+      TelegramUtils.showAlert(error instanceof Error ? error.message : 'Failed to burn card');
+    }
   };
 
-  const handleBurnComplete = () => {
+  const handleBurnComplete = async () => {
     // Reset the animation trigger
     setTriggerBurn(false);
+    setBurningCard(false);
+    setIsBurningInProgress(false);
+
+    // Get the stored burn result
+    const burnResult = burnResultRef.current;
+    if (!burnResult) return;
+
+    burnResultRef.current = null;
+
+    // Close modal if open
+    if (modalCard) {
+      closeModal();
+    } else if (burnResult.burnedCardIndex !== -1) {
+      // In gallery view, adjust current index
+      if (cards.length > 1) {
+        // If we're at the last card, go to the previous one
+        if (burnResult.burnedCardIndex === cards.length - 1) {
+          setCurrentIndex(Math.max(0, burnResult.burnedCardIndex - 1));
+        }
+        // Otherwise stay at the same index (which will now point to the next card)
+      } else {
+        // Last card burned, reset to 0
+        setCurrentIndex(0);
+      }
+    }
+
+    // Show success notification
+    const notification = `${burnResult.rarity} ${burnResult.cardName} burned!\n\nReceived ${burnResult.spinsAwarded} spins\n\nBalance: ${burnResult.newSpinTotal}`;
+    TelegramUtils.showAlert(notification);
+
+    // Refetch cards from server to get updated list
+    await refetchCards();
   };
 
   const handleBurnCancel = () => {
@@ -584,20 +692,14 @@ function App() {
     setShowLockDialog(true);
   };
 
-  // Helper function to update card lock state immutably
+  // Helper function to update card lock state
   const updateCardLockState = (cardId: number, locked: boolean) => {
     // Update modal card if it matches
     if (modalCard && modalCard.id === cardId) {
       updateModalCard({ locked });
     }
-    
-    // Note: We don't update the cards array because it comes from useCards hook
-    // and is read-only. The card objects are mutable references, so we update them directly.
-    // When the modal closes and reopens, or when navigating, the cards will have the updated state.
-    const cardInArray = cards.find(c => c.id === cardId);
-    if (cardInArray) {
-      cardInArray.locked = locked;
-    }
+    // Note: The cards array will be refetched on next navigation/interaction
+    // For immediate UI feedback, we update the modal card
   };
 
   const handleLockConfirm = async () => {
@@ -665,6 +767,7 @@ function App() {
     }
 
     const buttons: ActionButton[] = [];
+    const shouldDisableActions = burningCard || isBurningInProgress;
 
     // Show Lock button in current view for own collection when chat_id is available
     if (userData?.isOwnCollection && initData && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
@@ -675,13 +778,15 @@ function App() {
           id: 'burn',
           text: 'Burn',
           onClick: handleBurnClick,
-          variant: 'secondary'
+          variant: 'secondary',
+          disabled: shouldDisableActions
         });
         buttons.push({
           id: 'lock',
           text: isLocked ? 'Unlock' : 'Lock',
           onClick: handleLockClick,
-          variant: 'secondary'
+          variant: 'secondary',
+          disabled: shouldDisableActions || lockingCard
         });
       }
     }
@@ -693,7 +798,8 @@ function App() {
         id: 'trade',
         text: 'Trade',
         onClick: handleTradeClick,
-        variant: 'primary'
+        variant: 'primary',
+        disabled: shouldDisableActions
       });
     }
     // Show Select button in modal when trading and viewing others' cards (only if trading is enabled)
@@ -702,7 +808,8 @@ function App() {
         id: 'select',
         text: 'Select',
         onClick: handleSelectClick,
-        variant: 'primary'
+        variant: 'primary',
+        disabled: shouldDisableActions
       });
     }
 
@@ -774,6 +881,10 @@ function App() {
     );
   }
 
+  const currentDialogSpinReward = currentDialogCard && burnRewards
+    ? burnRewards[currentDialogCard.rarity] ?? null
+    : null;
+
   return (
     <>
       <BurnConfirmDialog
@@ -781,6 +892,8 @@ function App() {
         onConfirm={handleBurnConfirm}
         onCancel={handleBurnCancel}
         cardName={currentDialogCardName}
+        spinReward={currentDialogSpinReward}
+        processing={burningCard}
       />
       <LockConfirmDialog
         isOpen={showLockDialog}
@@ -790,7 +903,7 @@ function App() {
         onConfirm={handleLockConfirm}
         onCancel={handleLockCancel}
       />
-      <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' ? swipeHandlers : {})}>
+      <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' && !isBurningInProgress ? swipeHandlers : {})}>
         <CardView
           view={view}
           hasChatScope={hasChatScope}
@@ -823,7 +936,8 @@ function App() {
             collectionOwnerLabel,
             isOwnCollection: Boolean(userData?.isOwnCollection),
             triggerBurn,
-            onBurnComplete: handleBurnComplete
+            onBurnComplete: handleBurnComplete,
+            isBurning: isBurningInProgress
           }}
           allView={{
             baseCards: baseDisplayedCards,
@@ -848,9 +962,12 @@ function App() {
           orientation={orientation}
           orientationKey={orientationKey}
           initData={initData}
-          onClose={closeModal}
+          onClose={isBurningInProgress ? () => {} : closeModal}
           onShare={shareEnabled ? handleShareCard : undefined}
           onCardOpen={handleCardOpen}
+          triggerBurn={triggerBurn}
+          onBurnComplete={handleBurnComplete}
+          isBurning={isBurningInProgress}
         />
       )}
 
