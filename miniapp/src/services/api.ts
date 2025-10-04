@@ -160,6 +160,29 @@ export class ApiService {
     return response.json();
   }
 
+  static async burnCard(cardId: number, userId: number, chatId: string, initData: string): Promise<{ success: boolean; message: string; spins_awarded: number; new_spin_total: number }> {
+    const response = await fetch(`${API_BASE_URL}/cards/burn`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ card_id: cardId, user_id: userId, chat_id: chatId })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to burn card (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
   static async fetchClaimBalance(userId: number, chatId: string, initData: string): Promise<{ balance: number; user_id: number; chat_id: string }> {
     const params = new URLSearchParams({
       chat_id: chatId
@@ -195,6 +218,25 @@ export class ApiService {
     }
     
     return response.json();
+  }
+
+  static async fetchBurnRewards(initData: string): Promise<Record<string, number>> {
+    const response = await fetch(`${API_BASE_URL}/cards/burn-rewards`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Authentication failed. Please reopen the app from Telegram.');
+      } else if (response.status >= 500) {
+        throw new Error('Server error. Please try again later.');
+      } else {
+        throw new Error(`Failed to fetch burn rewards (Error ${response.status})`);
+      }
+    }
+
+    const payload: { rewards: Record<string, number> } = await response.json();
+    return payload.rewards;
   }
 
   static async fetchSlotSymbols(chatId: string, initData: string): Promise<SlotSymbolSummary[]> {

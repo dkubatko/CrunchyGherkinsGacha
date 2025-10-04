@@ -151,3 +151,7 @@ SLOTS_VICTORY_RESULT_MESSAGE = (
 SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed. Please try again later."
 
 SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
+
+BURN_RESULT_MESSAGE = (
+    "@{username} burned <b>{rarity} {display_name}</b> and received <b>{spin_amount} spins!</b>"
+)

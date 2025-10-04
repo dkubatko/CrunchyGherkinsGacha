@@ -6,6 +6,7 @@ export interface ActionButton {
   text: string;
   onClick: () => void;
   variant?: 'primary' | 'secondary';
+  disabled?: boolean;
 }
 
 interface ActionPanelProps {
@@ -26,6 +27,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({ buttons, visible }) => {
             key={button.id}
             className={`action-button ${button.variant || 'primary'}`}
             onClick={button.onClick}
+            disabled={button.disabled}
           >
             {button.text}
           </button>

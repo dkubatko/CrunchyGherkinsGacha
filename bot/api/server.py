@@ -32,6 +32,7 @@ from settings.constants import (
     SLOTS_VIEW_IN_APP_LABEL,
     SLOT_WIN_CHANCE,
     SLOT_CLAIM_CHANCE,
+    BURN_RESULT_MESSAGE,
 )
 from utils.miniapp import encode_single_card_token
 
@@ -91,6 +92,19 @@ class LockCardRequest(BaseModel):
     lock: bool  # True to lock, False to unlock
 
 
+class BurnCardRequest(BaseModel):
+    card_id: int
+    user_id: int
+    chat_id: str
+
+
+class BurnCardResponse(BaseModel):
+    success: bool
+    message: str
+    spins_awarded: int
+    new_spin_total: int
+
+
 class SlotSymbolSummary(BaseModel):
     id: int
     display_name: Optional[str] = None
@@ -135,6 +149,10 @@ class ClaimBalanceResponse(BaseModel):
     balance: int
     user_id: int
     chat_id: str
+
+
+class BurnRewardsResponse(BaseModel):
+    rewards: Dict[str, int]
 
 
 class ConsumeSpinResponse(BaseModel):
@@ -467,6 +485,19 @@ app.add_middleware(
 # =============================================================================
 
 
+@app.get("/cards/burn-rewards", response_model=BurnRewardsResponse)
+async def get_burn_rewards(
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the rarity to spin reward mapping for burning cards."""
+    rewards = {}
+    for rarity_name, rarity_details in RARITIES.items():
+        if isinstance(rarity_details, dict) and "spin_reward" in rarity_details:
+            rewards[rarity_name] = rarity_details["spin_reward"]
+
+    return BurnRewardsResponse(rewards=rewards)
+
+
 @app.get("/cards/all", response_model=List[APICard])
 async def get_all_cards_endpoint(
     chat_id: Optional[str] = Query(None, alias="chat_id"),
@@ -737,6 +768,142 @@ async def lock_card(
             "balance": current_balance,
             "message": "Card unlocked successfully",
         }
+
+
+@app.post("/cards/burn", response_model=BurnCardResponse)
+async def burn_card(
+    request: BurnCardRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Burn a card owned by the user, removing ownership and awarding spins based on rarity."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    # Get the card from database
+    card = await asyncio.to_thread(database.get_card, request.card_id)
+    if not card:
+        logger.warning("Burn requested for non-existent card_id: %s", request.card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Verify ownership
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s during burn", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    if card.owner != username:
+        logger.warning(
+            "User %s (%s) attempted to burn card %s owned by %s",
+            username,
+            auth_user_id,
+            request.card_id,
+            card.owner,
+        )
+        raise HTTPException(status_code=403, detail="You do not own this card")
+
+    # Check if card is locked
+    if card.locked:
+        logger.warning(
+            "User %s (%s) attempted to burn locked card %s",
+            username,
+            auth_user_id,
+            request.card_id,
+        )
+        raise HTTPException(status_code=400, detail="Cannot burn a locked card. Unlock it first.")
+
+    # Verify card is associated with the specified chat
+    if card.chat_id != str(request.chat_id):
+        logger.warning(
+            "Card %s chat_id mismatch. Card chat: %s, Request chat: %s",
+            request.card_id,
+            card.chat_id,
+            request.chat_id,
+        )
+        raise HTTPException(status_code=400, detail="Card is not associated with this chat")
+
+    # Verify user is enrolled in the chat
+    chat_id = str(request.chat_id)
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, auth_user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+
+    # Get spin reward for the card's rarity
+    rarity_config = RARITIES.get(card.rarity)
+    if not rarity_config or not isinstance(rarity_config, dict):
+        logger.error("Invalid rarity configuration for card %s: %s", request.card_id, card.rarity)
+        raise HTTPException(status_code=500, detail="Invalid card rarity configuration")
+
+    spin_reward = rarity_config.get("spin_reward", 0)
+    if spin_reward <= 0:
+        logger.error("No spin reward configured for rarity %s", card.rarity)
+        raise HTTPException(status_code=500, detail="No spin reward configured for this rarity")
+
+    # Delete the card from the database
+    success = await asyncio.to_thread(database.delete_card, request.card_id)
+
+    if not success:
+        logger.error("Failed to delete card %s", request.card_id)
+        raise HTTPException(status_code=500, detail="Failed to burn card")
+
+    # Award spins to the user
+    new_spin_total = await asyncio.to_thread(
+        database.increment_user_spins, auth_user_id, chat_id, spin_reward
+    )
+
+    if new_spin_total is None:
+        logger.error(
+            "Failed to award spins to user %s in chat %s after burning card %s",
+            auth_user_id,
+            chat_id,
+            request.card_id,
+        )
+        # Card is already burned, but spins weren't awarded - this is a critical error
+        raise HTTPException(status_code=500, detail="Card burned but failed to award spins")
+
+    logger.info(
+        "Card %s (%s %s %s) burned by user %s (%s) in chat %s. Awarded %s spins. New total: %s",
+        request.card_id,
+        card.rarity,
+        card.modifier,
+        card.base_name,
+        username,
+        auth_user_id,
+        chat_id,
+        spin_reward,
+        new_spin_total,
+    )
+
+    # Store card details before returning response
+    card_display_name = f"{card.modifier} {card.base_name}".strip()
+    card_rarity = card.rarity
+
+    # Spawn background task to send notification to chat
+    asyncio.create_task(
+        _process_burn_notification(
+            bot_token=bot_token,
+            debug_mode=debug_mode,
+            username=username,
+            card_rarity=card_rarity,
+            card_display_name=card_display_name,
+            spin_amount=spin_reward,
+            chat_id=chat_id,
+        )
+    )
+
+    return BurnCardResponse(
+        success=True,
+        message=f"Card burned successfully! Awarded {spin_reward} spins.",
+        spins_awarded=spin_reward,
+        new_spin_total=new_spin_total,
+    )
 
 
 # =============================================================================
@@ -1431,6 +1598,57 @@ async def _process_slots_victory_background(
 
     except Exception as exc:
         logger.error("Critical error in slots victory background processing: %s", exc)
+
+
+async def _process_burn_notification(
+    bot_token: str,
+    debug_mode: bool,
+    username: str,
+    card_rarity: str,
+    card_display_name: str,
+    spin_amount: int,
+    chat_id: str,
+):
+    """Send burn notification to chat in background after responding to client."""
+    try:
+        # Initialize bot
+        from telegram import Bot
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+        # Format the burn result message
+        burn_message = BURN_RESULT_MESSAGE.format(
+            username=username,
+            rarity=card_rarity,
+            display_name=card_display_name,
+            spin_amount=spin_amount,
+        )
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": burn_message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info("Sent burn notification for user %s in chat %s", username, chat_id)
+
+    except Exception as exc:
+        logger.error(
+            "Failed to send burn notification for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
 
 
 # =============================================================================

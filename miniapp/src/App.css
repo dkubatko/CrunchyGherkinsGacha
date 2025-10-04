@@ -185,6 +185,8 @@ body {
   min-height: 0;
   box-sizing: border-box;
   position: relative;
+  overflow: hidden;
+  isolation: isolate;
 }
 
 .app-container.with-action-panel {
@@ -211,11 +213,13 @@ body {
   position: relative;
   width: 100%;
   height: 100%;
-  border-radius: 30px;
+  border-radius: 25px;
   overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  isolation: isolate;
+  clip-path: inset(0 round 25px);
 }
 
 .spinner {
@@ -238,7 +242,7 @@ body {
   height: auto;
   width: auto;
   object-fit: contain;
-  border-radius: 30px;
+  border-radius: 25px;
   display: block;
   position: relative;
   z-index: 1;
@@ -805,7 +809,13 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  padding: clamp(0.75rem, 2vw, 1.25rem);
   animation: modalSlideIn 0.3s ease-out;
+  border-radius: 32px;
+  background: linear-gradient(145deg, rgba(28, 28, 32, 0.94), rgba(20, 20, 24, 0.9));
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  isolation: isolate;
 }
 
 @keyframes modalSlideIn {
@@ -821,12 +831,12 @@ body {
 
 .modal-close {
   position: absolute;
-  top: -5px;
-  right: -5px;
+  top: 12px;
+  right: 12px;
   width: 32px;
   height: 32px;
   border-radius: 16px;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.55);
   border: none;
   color: rgba(255, 255, 255, 0.9);
   font-size: 1.3rem;
@@ -861,6 +871,29 @@ body {
   height: 100%;
   max-width: none;
   max-height: none;
+}
+
+.modal-card-shell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  border-radius: 25px;
+  overflow: hidden;
+  isolation: isolate;
+  background: rgba(18, 18, 22, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  clip-path: inset(0 round 25px);
+}
+
+.modal-card-shell .card {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  background: rgba(40, 40, 42, 0.95);
+  clip-path: inset(0 round 25px);
 }
 
 /* Lock indicator styles */
