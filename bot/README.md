@@ -51,6 +51,56 @@ The `/profile` DM command lets players upload a display name and portrait. The `
 
 Alembic runs with `render_as_batch=True`, which enables schema migrations against SQLite. No extra database engine is required; the existing `DB_PATH` configuration continues to work.
 
+## Spin Reward Economics
+
+When players burn cards using `/burn <card_id>`, they receive spins based on the card's rarity. The spin rewards are calculated to maintain expected value equilibrium across rarities, using the following formula:
+
+$$N_r = \frac{(w_L / w_r)}{p \times \sum(w_i \times (w_L / w_i))}$$
+
+Where:
+
+| Symbol | Description |
+|--------|-------------|
+| $N_r$ | Spins granted for burning a card of rarity $r$ |
+| $w_r$ | Drop probability (weight) of rarity $r$ |
+| $w_L$ | Drop probability of the Legendary rarity (used as value baseline = 1) |
+| $p$ | Per-spin card win probability (e.g. 0.025 = 2.5%) |
+| $\sum(...)$ | Summation over all rarities |
+
+### Example Calculation
+
+With the current configuration:
+
+- **Card win chance per spin**: $p = 0.025$
+- **Rarity drop weights**:
+  - Common: $w_{Common} = 0.55$
+  - Rare: $w_{Rare} = 0.25$
+  - Epic: $w_{Epic} = 0.15$
+  - Legendary: $w_{Legendary} = 0.05$
+- **Sum of weighted values**: $\sum(w_i \times (w_L / w_i)) = 0.2$
+
+This yields the following theoretical spin rewards:
+
+| Rarity | Theoretical Spins ($N_r$) | Calculation |
+|--------|---------------------------|-------------|
+| Common | 18 | $(0.05 / 0.55) / (0.025 \times 0.2)$ |
+| Rare | 40 | $(0.05 / 0.25) / (0.025 \times 0.2)$ |
+| Epic | 67 | $(0.05 / 0.15) / (0.025 \times 0.2)$ |
+| Legendary | 200 | $(0.05 / 0.05) / (0.025 \times 0.2)$ |
+
+### Actual Implementation
+
+The actual spin rewards configured in `config.json` are rounded for better user perception:
+
+| Rarity | Configured Spins | Notes |
+|--------|------------------|-------|
+| Common | 20 | Rounded from 18 |
+| Rare | 40 | Matches theoretical |
+| Epic | 80 | Rounded from 67 |
+| Legendary | 150 | Adjusted from 200 |
+
+These values ensure that burning cards maintains approximate expected value equilibrium while providing intuitive, round numbers for players.
+
 ## Chat commands
 
 - `/balance [@username]` — Displays the remaining claim points in the current chat. If you omit the argument it reports your own balance; otherwise it resolves the provided username (must be enrolled in the chat) and shows their balance. Claim balances are scoped per chat, so this command only works in group chats.
