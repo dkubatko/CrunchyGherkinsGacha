@@ -5,7 +5,7 @@ export interface ActionButton {
   id: string;
   text: string;
   onClick: () => void;
-  variant?: 'primary' | 'secondary';
+  variant?: 'primary' | 'secondary' | 'burn-red' | 'lock-grey';
   disabled?: boolean;
 }
 
