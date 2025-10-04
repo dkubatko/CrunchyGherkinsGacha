@@ -190,7 +190,7 @@ body {
 }
 
 .app-container.with-action-panel {
-  padding-bottom: 70px; /* Height of the action panel */
+  padding-bottom: 65px; /* Height of the action panel: content padding (20px) + button (52px) + bottom padding (20px) */
 }
 
 .card-image-container {
@@ -648,6 +648,13 @@ body {
 
   .single-card-container .card-image-container {
     max-height: clamp(220px, 60vh, 420px);
+  }
+}
+
+/* Mobile device detection - using pointer and hover capabilities */
+@media (pointer: coarse) and (hover: none) {
+  .app-container.with-action-panel {
+    padding-bottom: 75px; /* Height of the action panel on mobile */
   }
 }
 

@@ -1,5 +1,5 @@
 .action-panel {
-  --panel-bottom-padding: 12px; /* Apply mobile padding to both PC and mobile */
+  --panel-bottom-padding: 20px; /* Apply mobile padding to both PC and mobile */
   
   width: 100%;
   background: var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color, #ffffff));
@@ -17,6 +17,7 @@
   display: flex;
   gap: 8px;
   padding: 10px 12px;
+  padding-bottom: 0;
   max-width: 100%;
   justify-content: center;
   align-items: center;
@@ -93,6 +94,42 @@
   outline: none;
 }
 
+.action-button.burn-red {
+  background: #d94a4a;
+  color: #ffffff;
+  border: 1px solid #c43c3c;
+}
+
+.action-button.burn-red:hover {
+  background: #c43c3c;
+  transform: translateY(-1px);
+}
+
+.action-button.burn-red:active,
+.action-button.burn-red:focus:active {
+  background: #b03030;
+  transform: translateY(1px);
+  outline: none;
+}
+
+.action-button.lock-grey {
+  background: #6b6b6b;
+  color: #ffffff;
+  border: 1px solid #5a5a5a;
+}
+
+.action-button.lock-grey:hover {
+  background: #7a7a7a;
+  transform: translateY(-1px);
+}
+
+.action-button.lock-grey:active,
+.action-button.lock-grey:focus:active {
+  background: #5a5a5a;
+  transform: translateY(1px);
+  outline: none;
+}
+
 /* When only one button is present */
 .action-panel-content:has(:only-child) {
   justify-content: center;
@@ -105,11 +142,12 @@
 /* Mobile device detection - using pointer and hover capabilities */
 @media (pointer: coarse) and (hover: none) {
   .action-panel {
-    --panel-bottom-padding: 15px;
+    --panel-bottom-padding: 20px;
   }
   
   .action-panel-content {
     padding: 10px 16px;
+    padding-bottom: 10px;
     gap: 8px;
   }
   
