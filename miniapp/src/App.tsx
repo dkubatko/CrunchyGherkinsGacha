@@ -2,12 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 
 // Components
-import Card from './components/Card';
 import SingleCardView from './components/SingleCardView';
-import AllCards from './components/AllCards';
 import CardModal from './components/CardModal';
-import FilterSortControls from './components/FilterSortControls';
 import ActionPanel from './components/ActionPanel';
+import BurnConfirmDialog from './components/BurnConfirmDialog';
+import CardView from './components/CardView';
+import LockConfirmDialog from './components/LockConfirmDialog';
 import Slots from './components/Slots';
 import AppLoading from './components/AppLoading';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
@@ -30,16 +30,10 @@ import { TelegramUtils } from './utils/telegram';
 import { ApiService } from './services/api';
 
 // Types
-import type { CardData, View } from './types';
+import type { CardData, ClaimBalanceState, View } from './types';
 
 // Build info
 import { BUILD_INFO } from './build-info';
-
-type ClaimBalanceState = {
-  balance: number | null;
-  loading: boolean;
-  error?: string;
-};
 
 function App() {
   // Log build info to console for debugging
@@ -61,8 +55,10 @@ function App() {
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [isTradeGridActive, setIsTradeGridActive] = useState(false);
   const [isGridView, setIsGridView] = useState(false);
+  const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockingCard, setLockingCard] = useState(false);
+  const [triggerBurn, setTriggerBurn] = useState(false);
   const [chatClaimBalances, setChatClaimBalances] = useState<Record<string, ClaimBalanceState>>({});
   const claimBalanceRequestsRef = useRef<Map<string, Promise<number | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
@@ -322,6 +318,13 @@ function App() {
   // Feature hooks
   const { orientation, orientationKey, resetTiltReference } = useOrientation();
   const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
+  const currentDialogCard = modalCard ?? cards[currentIndex] ?? null;
+  const currentDialogClaimState = currentDialogCard?.chat_id
+    ? chatClaimBalances[currentDialogCard.chat_id]
+    : undefined;
+  const currentDialogCardName = currentDialogCard
+    ? `${currentDialogCard.modifier} ${currentDialogCard.base_name}`.trim()
+    : null;
   // Expand app and lock viewport height
   useEffect(() => {
     // Immediately expand the app to full height
@@ -536,6 +539,34 @@ function App() {
     return cleanup;
   }, [isTradeView]);
   
+  const handleBurnClick = () => {
+    if (!userData || !initData) return;
+
+    const targetCard = modalCard || cards[currentIndex];
+    if (!targetCard) return;
+
+    if (!targetCard.chat_id) {
+      TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
+      return;
+    }
+
+    setShowBurnDialog(true);
+  };
+
+  const handleBurnConfirm = () => {
+    setShowBurnDialog(false);
+    setTriggerBurn(true);
+  };
+
+  const handleBurnComplete = () => {
+    // Reset the animation trigger
+    setTriggerBurn(false);
+  };
+
+  const handleBurnCancel = () => {
+    setShowBurnDialog(false);
+  };
+
   // Lock button handler
   const handleLockClick = () => {
     if (!userData || !initData) return;
@@ -641,6 +672,12 @@ function App() {
       if (currentCard?.chat_id) {
         const isLocked = currentCard.locked || false;
         buttons.push({
+          id: 'burn',
+          text: 'Burn',
+          onClick: handleBurnClick,
+          variant: 'secondary'
+        });
+        buttons.push({
           id: 'lock',
           text: isLocked ? 'Unlock' : 'Lock',
           onClick: handleLockClick,
@@ -739,245 +776,69 @@ function App() {
 
   return (
     <>
-      {showLockDialog && (
-        <div 
-          className="share-dialog-overlay" 
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowLockDialog(false);
-          }}
-        >
-          <div 
-            className="share-dialog"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              // Use modal card if open (grid view), otherwise use current index card
-              const currentCard = modalCard || cards[currentIndex];
-              const isLocked = currentCard?.locked || false;
-              const claimState = currentCard?.chat_id ? chatClaimBalances[currentCard.chat_id] : undefined;
-
-              if (!currentCard) {
-                return <p>No card selected.</p>;
-              }
-
-              const renderBalance = () => {
-                if (!claimState) {
-                  return null;
-                }
-
-                if (claimState.loading) {
-                  return (
-                    <p className="lock-dialog-balance">
-                      Balance: <em>Loading...</em>
-                    </p>
-                  );
-                }
-
-                if (claimState.error) {
-                  return (
-                    <p className="lock-dialog-balance">
-                      Balance unavailable
-                    </p>
-                  );
-                }
-
-                if (claimState.balance !== null) {
-                  return (
-                    <p className="lock-dialog-balance">
-                      Balance: <strong>{claimState.balance}</strong>
-                    </p>
-                  );
-                }
-
-                return null;
-              };
-              
-              if (isLocked) {
-                return (
-                  <>
-                    <p>Unlock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
-                    <p className="lock-dialog-subtitle">Claim point will <strong>not</strong> be refunded.</p>
-                    {renderBalance()}
-                  </>
-                );
-              } else {
-                return (
-                  <>
-                    <p>Lock <strong>{currentCard?.modifier} {currentCard?.base_name}</strong>?</p>
-                    <p className="lock-dialog-subtitle">This will consume <strong>1 claim point</strong></p>
-                    {renderBalance()}
-                  </>
-                );
-              }
-            })()}
-            <div className="share-dialog-buttons">
-              <button 
-                onClick={handleLockConfirm} 
-                className="share-confirm-btn"
-                disabled={lockingCard}
-              >
-                {lockingCard ? 'Processing...' : 'Yes'}
-              </button>
-              <button 
-                onClick={handleLockCancel} 
-                className="share-cancel-btn"
-                disabled={lockingCard}
-              >
-                No
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BurnConfirmDialog
+        isOpen={showBurnDialog}
+        onConfirm={handleBurnConfirm}
+        onCancel={handleBurnCancel}
+        cardName={currentDialogCardName}
+      />
+      <LockConfirmDialog
+        isOpen={showLockDialog}
+        locking={lockingCard}
+        card={currentDialogCard}
+        claimState={currentDialogClaimState}
+        onConfirm={handleLockConfirm}
+        onCancel={handleLockCancel}
+      />
       <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' ? swipeHandlers : {})}>
-      {/* Tab Navigation */}
-      <div className="tabs">
-        <button 
-          className={`tab ${view === 'current' ? 'active' : ''}`} 
-          onClick={handleCurrentTabClick}
-        >
-          Current
-        </button>
-        {hasChatScope && (
-          <button 
-            className={`tab ${view === 'all' && !isTradeGridActive ? 'active' : ''}`} 
-            onClick={handleAllTabClick}
-          >
-            All
-          </button>
-        )}
-      </div>
-
-      <div className="app-content">
-        <div className="title-container">
-          {view === 'current' && cards.length > 0 && !isGridView && (
-            <div className="card-position-indicator">
-              <span className="position-current">{currentIndex + 1}</span>
-              <span className="position-separator"> / </span>
-              <span className="position-total">{cards.length}</span>
-            </div>
-          )}
-          {view === 'current' && cards.length > 0 && (
-            <button 
-              className="view-toggle-button"
-              onClick={handleGridToggle}
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchEnd={(e) => e.stopPropagation()}
-              aria-label={isGridView ? "Currently in grid view" : "Currently in gallery view"}
-            >
-              {isGridView ? "Grid" : "Gallery"}
-            </button>
-          )}
-          <h1 className="app-title">
-            {view === 'all'
-              ? isTradeView && tradeCardName
-                ? `Trade for ${tradeCardName}`
-                : 'All cards'
-              : `${collectionOwnerLabel}'s collection`}
-          </h1>
-        </div>
-        
-        {/* Current View */}
-        {view === 'current' && (
-          <>
-            {cards.length > 0 ? (
-              <>
-                {isGridView ? (
-                  <>
-                    <FilterSortControls
-                      cards={cards}
-                      filterOptions={currentGridFilterOptions}
-                      sortOptions={currentGridSortOptions}
-                      onFilterChange={handleCurrentGridFilterChange}
-                      onSortChange={handleCurrentGridSortChange}
-                      showOwnerFilter={false}
-                    />
-                    {filteredCurrentCards.length === 0 ? (
-                      <div className="no-cards-container">
-                        <h2>No cards match your filter</h2>
-                        <p>Try selecting a different rarity or clearing the filter.</p>
-                      </div>
-                    ) : (
-                      <AllCards
-                        cards={filteredCurrentCards}
-                        onCardClick={openModal}
-                        initData={initData}
-                      />
-                    )}
-                  </>
-                ) : (
-                  <div className={`card-container ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
-                    {/* Current Card */}
-                    <Card 
-                      {...cards[currentIndex]} 
-                      orientation={orientation}
-                      tiltKey={orientationKey}
-                      initData={initData}
-                      shiny={true}
-                      onShare={shareEnabled ? handleShareCard : undefined}
-                      showShareButton={shareEnabled}
-                      onCardOpen={handleCardOpen}
-                    />
-                  </div>
-                )}
-              </>
-            ) : (
-              <p>
-                {userData?.isOwnCollection
-                  ? "You don't own any cards yet."
-                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
-              </p>
-            )}
-          </>
-        )}
-
-        {/* All Cards View */}
-        {view === 'all' && (
-          <>
-            {allCardsLoading ? (
-              <AppLoading />
-            ) : allCardsError ? (
-              <div className="error-container">
-                <h2>{isTradeView ? 'Error loading trade options' : 'Error loading cards'}</h2>
-                <p>{allCardsError}</p>
-                <button onClick={refetchAllCards}>Retry</button>
-              </div>
-            ) : baseDisplayedCards.length === 0 ? (
-              <div className="no-cards-container">
-                <h2>{isTradeView ? 'No trade options' : 'No cards found'}</h2>
-                <p>
-                  {isTradeView
-                    ? 'No other cards are available in this chat right now.'
-                    : 'There are no cards in the system yet.'}
-                </p>
-              </div>
-            ) : (
-              <>
-                <FilterSortControls
-                  cards={baseDisplayedCards}
-                  filterOptions={filterOptions}
-                  sortOptions={sortOptions}
-                  onFilterChange={handleFilterChange}
-                  onSortChange={handleSortChange}
-                />
-                {displayedCards.length === 0 ? (
-                  <div className="no-cards-container">
-                    <h2>No cards match your filters</h2>
-                    <p>Try adjusting your filter settings to see more cards.</p>
-                  </div>
-                ) : (
-                  <AllCards
-                    cards={displayedCards}
-                    onCardClick={openModal}
-                    initData={initData}
-                  />
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
+        <CardView
+          view={view}
+          hasChatScope={hasChatScope}
+          isTradeGridActive={isTradeGridActive}
+          isTradeView={isTradeView}
+          tradeCardName={tradeCardName}
+          collectionOwnerLabel={collectionOwnerLabel}
+          currentIndex={currentIndex}
+          tabs={{
+            onCurrentTabClick: handleCurrentTabClick,
+            onAllTabClick: handleAllTabClick
+          }}
+          currentView={{
+            cards,
+            filteredCards: filteredCurrentCards,
+            isGridView,
+            isActionPanelVisible,
+            shareEnabled,
+            orientation,
+            orientationKey,
+            initData,
+            onGridToggle: handleGridToggle,
+            onCardOpen: handleCardOpen,
+            onOpenModal: openModal,
+            onShare: shareEnabled ? handleShareCard : undefined,
+            currentGridFilterOptions,
+            currentGridSortOptions,
+            onCurrentGridFilterChange: handleCurrentGridFilterChange,
+            onCurrentGridSortChange: handleCurrentGridSortChange,
+            collectionOwnerLabel,
+            isOwnCollection: Boolean(userData?.isOwnCollection),
+            triggerBurn,
+            onBurnComplete: handleBurnComplete
+          }}
+          allView={{
+            baseCards: baseDisplayedCards,
+            displayedCards,
+            loading: allCardsLoading,
+            error: allCardsError ?? null,
+            onRetry: refetchAllCards,
+            filterOptions,
+            sortOptions,
+            onFilterChange: handleFilterChange,
+            onSortChange: handleSortChange,
+            initData,
+            onOpenModal: openModal
+          }}
+        />
 
       {/* Card Modal */}
       {modalCard && (

@@ -74,3 +74,9 @@ export interface SlotVerifyResponse {
   slot_results: SlotSymbolInfo[];
   rarity?: string | null;
 }
+
+export interface ClaimBalanceState {
+  balance: number | null;
+  loading: boolean;
+  error?: string;
+}
