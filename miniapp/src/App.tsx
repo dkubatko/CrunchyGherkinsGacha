@@ -43,7 +43,15 @@ function App() {
   const [lockedViewportHeight, setLockedViewportHeight] = useState<number | null>(null);
   
   // Core data hooks
-  const { cards, loading, error, userData, initData, refetch: refetchCards } = useCards();
+  const {
+    cards,
+    loading,
+    error,
+    userData,
+    initData,
+    refetch: refetchCards,
+    updateCard: updateCardInCollection
+  } = useCards();
   const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins } = useSlots(
     userData?.slotsView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
@@ -222,6 +230,13 @@ function App() {
     enabled: shouldFetchAllCards,
     tradeCardId: activeTradeCardId
   });
+
+  const refreshCardsData = useCallback(async () => {
+    await refetchCards();
+    if (shouldFetchAllCards) {
+      await refetchAllCards();
+    }
+  }, [refetchCards, refetchAllCards, shouldFetchAllCards]);
 
   const tradeCardName = selectedCardForTrade
     ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
@@ -668,7 +683,7 @@ function App() {
     TelegramUtils.showAlert(notification);
 
     // Refetch cards from server to get updated list
-    await refetchCards();
+    await refreshCardsData();
   };
 
   const handleBurnCancel = () => {
@@ -698,8 +713,18 @@ function App() {
     if (modalCard && modalCard.id === cardId) {
       updateModalCard({ locked });
     }
-    // Note: The cards array will be refetched on next navigation/interaction
-    // For immediate UI feedback, we update the modal card
+    updateCardInCollection(cardId, { locked });
+    if (selectedCardForTrade?.id === cardId) {
+      setSelectedCardForTrade((previous) =>
+        previous
+          ? {
+              ...previous,
+              locked
+            }
+          : previous
+      );
+    }
+    // The cards array is updated optimistically for immediate UI feedback (and refetched after API calls)
   };
 
   const handleLockConfirm = async () => {
@@ -725,8 +750,6 @@ function App() {
         initData
       );
 
-      updateCardLockState(targetCard.id, result.locked);
-
       setChatClaimBalances(prev => ({
         ...prev,
         [chatId]: {
@@ -736,7 +759,13 @@ function App() {
         }
       }));
 
+      setLockingCard(false);
+      setShowLockDialog(false);
+      updateCardLockState(targetCard.id, result.locked);
+
       TelegramUtils.showAlert(result.message);
+
+      await refreshCardsData();
     } catch (error) {
       console.error('Failed to lock/unlock card:', error);
       setChatClaimBalances(prev => {

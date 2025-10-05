@@ -37,6 +37,7 @@ const BurnConfirmDialog = ({
       confirmLabel={processing ? 'Processing...' : 'Yes'}
       confirmDisabled={processing}
       cancelDisabled={processing}
+      disableClose={processing}
     >
       <p className="burn-confirm-text">{promptContent}</p>
     </ConfirmDialog>

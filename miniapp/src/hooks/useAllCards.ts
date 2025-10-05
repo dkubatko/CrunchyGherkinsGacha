@@ -7,7 +7,7 @@ interface UseAllCardsResult {
   allCards: CardData[];
   loading: boolean;
   error: string | null;
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 interface UseAllCardsOptions {
@@ -79,8 +79,8 @@ export const useAllCards = (
     fetchAllCards();
   }, [fetchAllCards]);
 
-  const refetch = useCallback(() => {
-    fetchAllCards(true);
+  const refetch = useCallback(async () => {
+    await fetchAllCards(true);
   }, [fetchAllCards]);
 
   return {
