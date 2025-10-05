@@ -39,7 +39,7 @@ interface AllViewProps {
   displayedCards: CardData[];
   loading: boolean;
   error: string | null;
-  onRetry: () => void;
+  onRetry: () => Promise<void>;
   filterOptions: FilterOptions;
   sortOptions: SortOptions;
   onFilterChange: (filters: FilterOptions) => void;
@@ -187,7 +187,7 @@ const CardView = ({
             <div className="error-container">
               <h2>{isTradeView ? 'Error loading trade options' : 'Error loading cards'}</h2>
               <p>{allView.error}</p>
-              <button onClick={allView.onRetry}>Retry</button>
+              <button onClick={() => { void allView.onRetry(); }}>Retry</button>
             </div>
           ) : allView.baseCards.length === 0 ? (
             <div className="no-cards-container">
