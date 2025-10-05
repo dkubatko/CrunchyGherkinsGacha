@@ -486,28 +486,39 @@ async def roll(
             )
         return
 
-    if not DEBUG_MODE:
-        await context.bot.set_message_reaction(
-            chat_id=update.effective_chat.id,
-            message_id=update.message.message_id,
-            reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
+    rolling_users = context.bot_data.setdefault("rolling_users", set())
+
+    if user.user_id in rolling_users:
+        await update.message.reply_text(
+            "Hang tight, I'm still finishing your previous roll.",
+            reply_to_message_id=update.message.message_id,
         )
-    if not DEBUG_MODE:
-        if not await asyncio.to_thread(database.can_roll, user.user_id, chat_id_str):
-            hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
-            await update.message.reply_text(
-                f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
-                reply_to_message_id=update.message.message_id,
-            )
-            if not DEBUG_MODE:
-                await context.bot.set_message_reaction(
-                    chat_id=update.effective_chat.id,
-                    message_id=update.message.message_id,
-                    reaction=[],
-                )
-            return
+        return
+
+    rolling_users.add(user.user_id)
 
     try:
+        if not DEBUG_MODE:
+            await context.bot.set_message_reaction(
+                chat_id=update.effective_chat.id,
+                message_id=update.message.message_id,
+                reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
+            )
+        if not DEBUG_MODE:
+            if not await asyncio.to_thread(database.can_roll, user.user_id, chat_id_str):
+                hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
+                await update.message.reply_text(
+                    f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
+                    reply_to_message_id=update.message.message_id,
+                )
+                if not DEBUG_MODE:
+                    await context.bot.set_message_reaction(
+                        chat_id=update.effective_chat.id,
+                        message_id=update.message.message_id,
+                        reaction=[],
+                    )
+                return
+
         generated_card = await asyncio.to_thread(
             rolling.generate_card_for_chat,
             chat_id_str,
@@ -572,6 +583,7 @@ async def roll(
             reply_to_message_id=update.message.message_id,
         )
     finally:
+        rolling_users.discard(user.user_id)
         if not DEBUG_MODE:
             await context.bot.set_message_reaction(
                 chat_id=update.effective_chat.id,
