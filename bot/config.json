@@ -8,8 +8,9 @@
   "SLOT_CLAIM_CHANCE": 0.05,
   "RARITIES": {
     "Common": {
-      "spin_reward": 20,
+      "spin_reward": 10,
       "weight": 55,
+      "recycle_cost": 0,
       "color": "blue",
       "creativeness_factor": 70,
       "modifiers": [
@@ -94,8 +95,9 @@
       ]
     },
     "Rare": {
-      "spin_reward": 40,
-      "weight": 25,
+      "spin_reward": 25,
+      "weight": 30,
+      "recycle_cost": 3,
       "color": "green",
       "creativeness_factor": 80,
       "modifiers": [
@@ -213,8 +215,9 @@
       ]
     },
     "Epic": {
-      "spin_reward": 70,
-      "weight": 15,
+      "spin_reward": 60,
+      "weight": 12,
+      "recycle_cost": 3,
       "color": "purple",
       "creativeness_factor": 90,
       "modifiers": [
@@ -318,8 +321,9 @@
       ]
     },
     "Legendary": {
-      "spin_reward": 150,
-      "weight": 5,
+      "spin_reward": 200,
+      "weight": 3,
+      "recycle_cost": 4,
       "color": "golden",
       "creativeness_factor": 110,
       "modifiers": [

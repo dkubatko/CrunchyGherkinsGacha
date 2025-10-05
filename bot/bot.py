@@ -6,6 +6,7 @@ import base64
 import datetime
 import html
 import json
+import random
 import threading
 import urllib.parse
 from typing import Optional
@@ -45,8 +46,6 @@ from settings.constants import (
     TRADE_CANCELLED_MESSAGE,
     RECYCLE_ALLOWED_RARITIES,
     RECYCLE_UPGRADE_MAP,
-    RECYCLE_BURN_COUNT,
-    RECYCLE_MINIMUM_REQUIRED,
     RECYCLE_USAGE_MESSAGE,
     RECYCLE_DM_RESTRICTED_MESSAGE,
     RECYCLE_CONFIRM_MESSAGE,
@@ -60,6 +59,7 @@ from settings.constants import (
     RECYCLE_FAILURE_UNEXPECTED,
     RECYCLE_RESULT_APPENDIX,
     RARITIES,
+    get_recycle_required_cards,
     BURN_USAGE_MESSAGE,
     BURN_DM_RESTRICTED_MESSAGE,
     BURN_INVALID_ID_MESSAGE,
@@ -945,6 +945,7 @@ async def recycle(
 
     rarity_name = RECYCLE_ALLOWED_RARITIES[rarity_key]
     upgrade_rarity = RECYCLE_UPGRADE_MAP[rarity_name]
+    required_cards = get_recycle_required_cards(rarity_name)
     chat_id_str = str(chat.id)
 
     cards = await asyncio.to_thread(
@@ -953,14 +954,14 @@ async def recycle(
         user.username,
         rarity_name,
         chat_id_str,
-        RECYCLE_MINIMUM_REQUIRED,
-        True,  # unlocked=True - only consider non-locked cards
+        limit=None,
+        unlocked=True,  # only consider non-locked cards
     )
 
-    if len(cards) < RECYCLE_MINIMUM_REQUIRED:
+    if len(cards) < required_cards:
         await message.reply_text(
             RECYCLE_INSUFFICIENT_CARDS_MESSAGE.format(
-                required=RECYCLE_MINIMUM_REQUIRED,
+                required=required_cards,
                 rarity=rarity_name.lower(),
             ),
             reply_to_message_id=message.message_id,
@@ -982,7 +983,7 @@ async def recycle(
 
     await message.reply_text(
         RECYCLE_CONFIRM_MESSAGE.format(
-            burn_count=RECYCLE_BURN_COUNT,
+            burn_count=required_cards,
             rarity=rarity_name,
             upgraded_rarity=upgrade_rarity,
         ),
@@ -1060,6 +1061,8 @@ async def handle_recycle_callback(
         recycling_users.discard(user.user_id)
         return
 
+    required_cards = get_recycle_required_cards(rarity_name)
+
     try:
         cards = await asyncio.to_thread(
             database.get_user_cards_by_rarity,
@@ -1067,11 +1070,11 @@ async def handle_recycle_callback(
             user.username,
             rarity_name,
             str(chat_id),
-            RECYCLE_MINIMUM_REQUIRED,
-            True,  # unlocked=True - only consider non-locked cards
+            limit=None,
+            unlocked=True,  # only consider non-locked cards
         )
 
-        if len(cards) < RECYCLE_MINIMUM_REQUIRED:
+        if len(cards) < required_cards:
             await query.answer(RECYCLE_FAILURE_NOT_ENOUGH_CARDS, show_alert=True)
             try:
                 await query.edit_message_text(RECYCLE_FAILURE_NOT_ENOUGH_CARDS)
@@ -1079,7 +1082,7 @@ async def handle_recycle_callback(
                 pass
             return
 
-        cards_to_burn = cards[:RECYCLE_BURN_COUNT]
+        cards_to_burn = random.sample(cards, required_cards)
         card_titles = [html.escape(card.title()) for card in cards_to_burn]
 
         await query.answer()
