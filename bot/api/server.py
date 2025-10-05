@@ -29,6 +29,7 @@ from settings.constants import (
     SLOTS_VICTORY_PENDING_MESSAGE,
     SLOTS_VICTORY_RESULT_MESSAGE,
     SLOTS_VICTORY_FAILURE_MESSAGE,
+    SLOTS_VICTORY_REFUND_MESSAGE,
     SLOTS_VIEW_IN_APP_LABEL,
     SLOT_WIN_CHANCE,
     SLOT_CLAIM_CHANCE,
@@ -1500,6 +1501,18 @@ async def _process_slots_victory_background(
     gemini_util,
 ):
     """Process slots victory in background after responding to client."""
+    rarity_config = RARITIES.get(normalized_rarity, {})
+    spin_refund_amount = 0
+    if isinstance(rarity_config, dict):
+        try:
+            spin_refund_amount = int(rarity_config.get("spin_reward", 0) or 0)
+        except (TypeError, ValueError):
+            spin_refund_amount = 0
+
+    bot = None
+    thread_id: Optional[int] = None
+    refund_processed = False
+
     try:
         # Initialize bot
         from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
@@ -1612,8 +1625,35 @@ async def _process_slots_victory_background(
             except Exception as edit_exc:
                 logger.error("Failed to update failure message: %s", edit_exc)
 
+            if spin_refund_amount > 0:
+                refund_processed = await _refund_slots_victory_failure(
+                    bot=bot,
+                    bot_token=bot_token,
+                    debug_mode=debug_mode,
+                    username=username,
+                    rarity=normalized_rarity,
+                    display_name=display_name,
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    spin_amount=spin_refund_amount,
+                    thread_id=thread_id,
+                )
+
     except Exception as exc:
         logger.error("Critical error in slots victory background processing: %s", exc)
+        if spin_refund_amount > 0 and not refund_processed:
+            await _refund_slots_victory_failure(
+                bot=bot,
+                bot_token=bot_token,
+                debug_mode=debug_mode,
+                username=username,
+                rarity=normalized_rarity,
+                display_name=display_name,
+                chat_id=chat_id,
+                user_id=user_id,
+                spin_amount=spin_refund_amount,
+                thread_id=thread_id,
+            )
 
 
 async def _process_burn_notification(
@@ -1665,6 +1705,82 @@ async def _process_burn_notification(
             chat_id,
             exc,
         )
+
+
+async def _refund_slots_victory_failure(
+    bot,
+    bot_token: str,
+    debug_mode: bool,
+    username: str,
+    rarity: str,
+    display_name: str,
+    chat_id: str,
+    user_id: int,
+    spin_amount: int,
+    thread_id: Optional[int] = None,
+) -> bool:
+    """Refund spins to the user and notify the chat about the failure."""
+    if spin_amount <= 0:
+        return False
+
+    try:
+        new_total = await asyncio.to_thread(
+            database.increment_user_spins, user_id, chat_id, spin_amount
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to refund spins after slot victory failure for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+        return False
+
+    if new_total is None:
+        logger.error(
+            "Spin refund returned None for user %s in chat %s after slot victory failure",
+            username,
+            chat_id,
+        )
+        return False
+
+    if bot is None:
+        from telegram import Bot
+
+        bot = Bot(token=bot_token)
+        if debug_mode:
+            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+
+    message = SLOTS_VICTORY_REFUND_MESSAGE.format(
+        username=username,
+        rarity=rarity,
+        display_name=display_name,
+        spin_amount=spin_amount,
+    )
+
+    try:
+        if thread_id is None:
+            thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+    except Exception as exc:
+        logger.error(
+            "Failed to send slot victory refund notification for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+
+    return True
 
 
 # =============================================================================
