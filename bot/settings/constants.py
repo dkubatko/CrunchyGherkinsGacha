@@ -181,6 +181,11 @@ SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in sl
 
 SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
 
+SLOTS_VICTORY_REFUND_MESSAGE = (
+    "@{username} attempted to claim a <b>{rarity} {display_name}</b>, but something broke.\n"
+    "Awarded <b>{spin_amount} spins</b> as compensation."
+)
+
 BURN_RESULT_MESSAGE = (
     "@{username} burned <b>{rarity} {display_name}</b> and received <b>{spin_amount} spins!</b>"
 )
