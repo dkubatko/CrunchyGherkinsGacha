@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { CardData, UserData } from '../types';
 import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
@@ -10,6 +10,7 @@ interface UseCardsResult {
   userData: UserData | null;
   initData: string | null;
   refetch: () => Promise<void>;
+  updateCard: (cardId: number, updates: Partial<CardData>) => void;
 }
 
 export const useCards = (): UseCardsResult => {
@@ -68,6 +69,19 @@ export const useCards = (): UseCardsResult => {
     }
   };
 
+  const updateCard = useCallback((cardId: number, updates: Partial<CardData>) => {
+    setCards(previousCards =>
+      previousCards.map(card =>
+        card.id === cardId
+          ? {
+              ...card,
+              ...updates
+            }
+          : card
+      )
+    );
+  }, [setCards]);
+
   useEffect(() => {
     if (initializationStartedRef.current) {
       return;
@@ -112,6 +126,7 @@ export const useCards = (): UseCardsResult => {
     error,
     userData,
     initData,
-    refetch
+    refetch,
+    updateCard
   };
 };

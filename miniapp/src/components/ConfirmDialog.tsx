@@ -5,10 +5,11 @@ interface ConfirmDialogProps {
   onRequestClose: () => void;
   onConfirm: () => void;
   onCancel: () => void;
-  confirmLabel?: string;
-  cancelLabel?: string;
+  confirmLabel?: ReactNode;
+  cancelLabel?: ReactNode;
   confirmDisabled?: boolean;
   cancelDisabled?: boolean;
+  disableClose?: boolean;
   children: ReactNode;
 }
 
@@ -21,6 +22,7 @@ const ConfirmDialog = ({
   cancelLabel = 'No',
   confirmDisabled = false,
   cancelDisabled = false,
+  disableClose = false,
   children
 }: ConfirmDialogProps) => {
   if (!isOpen) {
@@ -29,7 +31,9 @@ const ConfirmDialog = ({
 
   const handleOverlayClick = (event: MouseEvent<HTMLDivElement>) => {
     event.stopPropagation();
-    onRequestClose();
+    if (!disableClose) {
+      onRequestClose();
+    }
   };
 
   const handleContentClick = (event: MouseEvent<HTMLDivElement>) => {

@@ -61,6 +61,7 @@ const LockConfirmDialog = ({
       confirmLabel={confirmLabel}
       confirmDisabled={locking}
       cancelDisabled={locking}
+      disableClose={locking}
     >
       {!card ? (
         <p>No card selected.</p>
