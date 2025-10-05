@@ -225,7 +225,8 @@ function App() {
     allCards,
     loading: allCardsLoading,
     error: allCardsError,
-    refetch: refetchAllCards
+    refetch: refetchAllCards,
+    updateCard: updateAllCardsCollection
   } = useAllCards(initData, cardsScopeChatId, {
     enabled: shouldFetchAllCards,
     tradeCardId: activeTradeCardId
@@ -714,6 +715,7 @@ function App() {
       updateModalCard({ locked });
     }
     updateCardInCollection(cardId, { locked });
+    updateAllCardsCollection(cardId, { locked });
     if (selectedCardForTrade?.id === cardId) {
       setSelectedCardForTrade((previous) =>
         previous
