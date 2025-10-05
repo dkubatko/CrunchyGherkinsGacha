@@ -93,10 +93,36 @@ RECYCLE_UPGRADE_MAP = {
     "Epic": "Legendary",
 }
 
-RECYCLE_BURN_COUNT = 3
-RECYCLE_MINIMUM_REQUIRED = RECYCLE_BURN_COUNT
+DEFAULT_RECYCLE_COST = 3
 
-RECYCLE_USAGE_MESSAGE = "Usage: /recycle <rarity> where rarity is one of common, rare, epic. Burns 3 unlocked cards of <rarity> to get one guaranteed <rarity + 1> card."
+
+def get_recycle_required_cards(rarity_name: str) -> int:
+    """Return how many cards must be burned to upgrade the given rarity.
+
+    The burn requirement for a rarity is determined by the recycle_cost of the
+    next rarity in the progression (rarity + 1).
+    """
+
+    upgrade_rarity = RECYCLE_UPGRADE_MAP.get(rarity_name)
+    if not upgrade_rarity:
+        return DEFAULT_RECYCLE_COST
+
+    upgrade_config = RARITIES.get(upgrade_rarity, {})
+    required = upgrade_config.get("recycle_cost", DEFAULT_RECYCLE_COST)
+
+    try:
+        required_int = int(required)
+    except (TypeError, ValueError):
+        return DEFAULT_RECYCLE_COST
+
+    return max(required_int, 3)
+
+
+RECYCLE_USAGE_MESSAGE = (
+    "Usage: /recycle <rarity> where rarity is one of common, rare, epic.\n"
+    "Burns unlocked cards of that rarity to guarantee the next tier.\n\n"
+    "3C -> 1R\n3R -> 1E\n4E -> 1L"
+)
 RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling is only available in the group chat."
 RECYCLE_CONFIRM_MESSAGE = (
     "Burn {burn_count} unlocked <b>{rarity}</b> cards to generate 1 <b>{upgraded_rarity}</b> card?"
