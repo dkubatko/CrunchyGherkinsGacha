@@ -1084,7 +1084,7 @@ async def execute_trade(
             card2_title=f"{card2.modifier} {card2.base_name}",
         )
 
-        # Create inline keyboard with accept/reject buttons
+        # Create inline keyboard with accept/reject buttons, card view links, and cancel button
         from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
         keyboard = [
@@ -1093,6 +1093,18 @@ async def execute_trade(
                 InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
             ]
         ]
+
+        # Add card view links
+        if MINIAPP_URL:
+            card1_url = _build_single_card_url(card_id1)
+            card2_url = _build_single_card_url(card_id2)
+            keyboard.append(
+                [
+                    InlineKeyboardButton("Card 1", url=card1_url),
+                    InlineKeyboardButton("Card 2", url=card2_url),
+                ]
+            )
+
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         try:

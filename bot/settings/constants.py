@@ -160,6 +160,13 @@ TRADE_REJECTED_MESSAGE = (
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
 
+TRADE_CANCELLED_MESSAGE = (
+    "Trade cancelled:\n\n"
+    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "❌\n\n"
+    "@{user2_username}'s\n<b>{card2_title}</b>"
+)
+
 SLOTS_VICTORY_PENDING_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\nGenerating card..."
 )
