@@ -60,6 +60,9 @@ MINIAPP_URL = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
 gemini_util = gemini.GeminiUtil()
 
 
+MAX_SLOT_VICTORY_IMAGE_RETRIES = 2
+
+
 class UserSummary(BaseModel):
     user_id: int
     username: Optional[str] = None
@@ -1527,13 +1530,14 @@ async def _process_slots_victory_background(
         pending_message = await bot.send_message(**send_params)
 
         try:
-            # Generate card from source
+            # Generate card from source with built-in retry support
             generated_card = await asyncio.to_thread(
                 rolling.generate_card_from_source,
                 source_type,
                 source_id,
                 gemini_util,
                 normalized_rarity,
+                max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
             )
 
             # Add card to database and assign to winner

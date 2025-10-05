@@ -1,10 +1,15 @@
+import logging
 import random
+import time
 from dataclasses import dataclass
 from typing import Optional
 
 from settings.constants import RARITIES
 from utils import database
 from utils.gemini import GeminiUtil
+
+
+logger = logging.getLogger(__name__)
 
 
 class NoEligibleUserError(Exception):
@@ -210,9 +215,31 @@ def generate_card_from_source(
     source_id: int,
     gemini_util: GeminiUtil,
     rarity: str,
+    max_retries: int = 0,
 ) -> GeneratedCard:
     profile = get_profile_for_source(source_type, source_id)
-    return _create_generated_card(profile, gemini_util, rarity)
+
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            return _create_generated_card(profile, gemini_util, rarity)
+        except ImageGenerationError as exc:
+            last_error = exc
+            logger.warning(
+                "Image generation attempt %s/%s failed for source %s:%s (rarity=%s)",
+                attempt,
+                total_attempts,
+                source_type,
+                source_id,
+                rarity,
+            )
+
+            if attempt < total_attempts:
+                time.sleep(1)
+
+    raise last_error or ImageGenerationError("Image generation failed after retries")
 
 
 def generate_card_for_chat(

@@ -26,7 +26,15 @@ from dotenv import load_dotenv
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.database import connect, Character, User, add_card, get_user_id_by_username, get_username_for_user_id, set_card_owner
+from utils.database import (
+    connect,
+    Character,
+    User,
+    add_card,
+    get_user_id_by_username,
+    get_username_for_user_id,
+    set_card_owner,
+)
 from utils.gemini import GeminiUtil
 from settings.constants import RARITIES
 
@@ -69,7 +77,9 @@ def find_user_by_name(display_name: str):
         conn.close()
 
 
-def generate_single_card(source_name: str, modifier: str, rarity: str, output_dir: str, assign_username: str = None):
+def generate_single_card(
+    source_name: str, modifier: str, rarity: str, output_dir: str, assign_username: str = None
+):
     """
     Generate a single card with specified parameters.
 
@@ -154,7 +164,7 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
             modifier=modifier,
             rarity=rarity,
             image_b64=generated_image_b64,
-            chat_id=chat_id
+            chat_id=chat_id,
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 
@@ -200,14 +210,14 @@ Examples:
   python tools/generate_single_card.py krypthos "Test" Epic --assign dkubatko
 
 Available rarities: {', '.join(RARITIES.keys())}
-        """
+        """,
     )
-    
+
     parser.add_argument("character_name", help="Name of the character or user to use as base")
     parser.add_argument("modifier", help="The modifier to apply (e.g., 'Test', 'Golden', etc.)")
     parser.add_argument("rarity", help="The rarity tier (Common, Rare, Epic, Legendary)")
     parser.add_argument("--assign", dest="assign_username", help="Username to assign the card to")
-    
+
     args = parser.parse_args()
 
     # Set output directory
@@ -216,11 +226,7 @@ Available rarities: {', '.join(RARITIES.keys())}
     )
 
     result, card_id = generate_single_card(
-        args.character_name, 
-        args.modifier, 
-        args.rarity, 
-        output_dir,
-        args.assign_username
+        args.character_name, args.modifier, args.rarity, output_dir, args.assign_username
     )
 
     if result and card_id:
