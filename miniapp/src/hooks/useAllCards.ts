@@ -8,6 +8,7 @@ interface UseAllCardsResult {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  updateCard: (cardId: number, updates: Partial<CardData>) => void;
 }
 
 interface UseAllCardsOptions {
@@ -83,10 +84,30 @@ export const useAllCards = (
     await fetchAllCards(true);
   }, [fetchAllCards]);
 
+  const updateCard = useCallback((cardId: number, updates: Partial<CardData>) => {
+    setAllCards(previousCards => {
+      const nextCards = previousCards.map(card =>
+        card.id === cardId
+          ? {
+              ...card,
+              ...updates
+            }
+          : card
+      );
+
+      if (initData) {
+        cardsCache.set(nextCards, initData, cacheKey ?? null);
+      }
+
+      return nextCards;
+    });
+  }, [initData, cacheKey]);
+
   return {
     allCards,
     loading,
     error,
-    refetch
+    refetch,
+    updateCard
   };
 };
