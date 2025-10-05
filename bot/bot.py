@@ -42,6 +42,7 @@ from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
+    TRADE_CANCELLED_MESSAGE,
     RECYCLE_ALLOWED_RARITIES,
     RECYCLE_UPGRADE_MAP,
     RECYCLE_BURN_COUNT,
@@ -2124,12 +2125,34 @@ async def trade(
 
     user2_username = card2.owner
 
+    # Build mini-app card view URLs
+    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+    card1_url = None
+    card2_url = None
+    if miniapp_url:
+        from utils.miniapp import encode_single_card_token
+
+        card1_token = encode_single_card_token(card_id1)
+        card2_token = encode_single_card_token(card_id2)
+        card1_url = f"{miniapp_url}?startapp={card1_token}"
+        card2_url = f"{miniapp_url}?startapp={card2_token}"
+
     keyboard = [
         [
             InlineKeyboardButton("Accept", callback_data=f"trade_accept_{card_id1}_{card_id2}"),
             InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
         ]
     ]
+
+    # Add card view links if miniapp_url is available
+    if card1_url and card2_url:
+        keyboard.append(
+            [
+                InlineKeyboardButton("Card 1", url=card1_url),
+                InlineKeyboardButton("Card 2", url=card2_url),
+            ]
+        )
+
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text(
@@ -2348,7 +2371,7 @@ async def reject_trade(
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Handle trade rejection."""
+    """Handle trade rejection or cancellation (if initiator)."""
     query = update.callback_query
 
     _, _, card_id1_str, card_id2_str = query.data.split("_")
@@ -2366,19 +2389,31 @@ async def reject_trade(
     user1_username = card1.owner
     user2_username = card2.owner
 
-    if not DEBUG_MODE and user.username != user2_username:
+    # Check if the user pressing Reject is the initiator (card1 owner)
+    is_initiator = user.username == user1_username
+
+    # If not the initiator, verify they own card2
+    if not is_initiator and not DEBUG_MODE and user.username != user2_username:
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
-    await query.edit_message_text(
-        TRADE_REJECTED_MESSAGE.format(
+    # Use TRADE_CANCELLED_MESSAGE if initiator pressed Reject, otherwise TRADE_REJECTED_MESSAGE
+    if is_initiator:
+        message_text = TRADE_CANCELLED_MESSAGE.format(
             user1_username=user1_username,
             card1_title=card1.title(),
             user2_username=user2_username,
             card2_title=card2.title(),
-        ),
-        parse_mode=ParseMode.HTML,
-    )
+        )
+    else:
+        message_text = TRADE_REJECTED_MESSAGE.format(
+            user1_username=user1_username,
+            card1_title=card1.title(),
+            user2_username=user2_username,
+            card2_title=card2.title(),
+        )
+
+    await query.edit_message_text(message_text, parse_mode=ParseMode.HTML)
     await query.answer()
 
 
