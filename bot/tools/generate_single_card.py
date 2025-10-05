@@ -1,16 +1,20 @@
 """
 Tool to generate a single card with specified parameters.
 
-Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity>
+Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>]
 
 Example: python tools/generate_single_card.py krypthos "Test" Epic
+Example: python tools/generate_single_card.py krypthos "Test" Epic --assign dkubatko
 
 This will:
 1. Look up the character by name in the database
 2. Generate a card using the specified modifier and rarity
-3. Save the generated card image to data/output/
+3. Add the card to the database
+4. Save the generated card image to data/output/
+5. Optionally assign the card to a user if --assign is specified
 """
 
+import argparse
 import base64
 import logging
 import os
@@ -22,7 +26,7 @@ from dotenv import load_dotenv
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.database import connect, Character, User
+from utils.database import connect, Character, User, add_card, get_user_id_by_username, get_username_for_user_id, set_card_owner
 from utils.gemini import GeminiUtil
 from settings.constants import RARITIES
 
@@ -65,7 +69,7 @@ def find_user_by_name(display_name: str):
         conn.close()
 
 
-def generate_single_card(source_name: str, modifier: str, rarity: str, output_dir: str):
+def generate_single_card(source_name: str, modifier: str, rarity: str, output_dir: str, assign_username: str = None):
     """
     Generate a single card with specified parameters.
 
@@ -74,17 +78,22 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
         modifier: The modifier to apply (e.g., "Test", "Golden", etc.)
         rarity: The rarity tier (Common, Rare, Epic, Legendary)
         output_dir: Directory to save the output image
+        assign_username: Optional username to assign the card to
+
+    Returns:
+        Tuple of (output_path, card_id) or (None, None) on failure
     """
     # Validate rarity
     if rarity not in RARITIES:
         logger.error(f"Invalid rarity: {rarity}. Must be one of {list(RARITIES.keys())}")
-        return None
+        return None, None
 
     # Try to find the source (character or user) across ALL chats
     logger.info(f"Looking for source: {source_name}")
 
     character = find_character_by_name(source_name)
     user = None
+    chat_id = None
 
     if character:
         logger.info(
@@ -92,6 +101,7 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
         )
         base_name = character.name
         image_b64 = character.imageb64
+        chat_id = character.chat_id
     else:
         # Try to find as user
         user = find_user_by_name(source_name)
@@ -102,11 +112,26 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
         else:
             logger.error(f"Could not find character or user with name: {source_name}")
             logger.info("Tip: Check the exact spelling in the database")
-            return None
+            return None, None
 
     if not image_b64:
         logger.error(f"No image found for source: {source_name}")
-        return None
+        return None, None
+
+    # Resolve assign_username to user_id if provided
+    owner_user_id = None
+    owner_username = None
+    if assign_username:
+        owner_user_id = get_user_id_by_username(assign_username)
+        if not owner_user_id:
+            logger.error(f"Could not find user with username: {assign_username}")
+            logger.info("Tip: Check the exact username in the database")
+            return None, None
+        # Get the actual username from the database (in case of case differences)
+        owner_username = get_username_for_user_id(owner_user_id)
+        if not owner_username:
+            owner_username = assign_username  # fallback to provided username
+        logger.info(f"Found user to assign card to: {owner_username} (ID: {owner_user_id})")
 
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
@@ -120,7 +145,27 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
 
         if not generated_image_b64:
             logger.error("Image generation failed - no image returned")
-            return None
+            return None, None
+
+        # Add the card to the database
+        logger.info("Adding card to database...")
+        card_id = add_card(
+            base_name=base_name,
+            modifier=modifier,
+            rarity=rarity,
+            image_b64=generated_image_b64,
+            chat_id=chat_id
+        )
+        logger.info(f"✅ Card added to database with ID: {card_id}")
+
+        # If assign_username was provided, set the card owner
+        if owner_user_id and owner_username:
+            logger.info(f"Assigning card to user {owner_username} (ID: {owner_user_id})...")
+            success = set_card_owner(card_id=card_id, owner=owner_username, user_id=owner_user_id)
+            if success:
+                logger.info(f"✅ Card ownership set successfully")
+            else:
+                logger.warning(f"⚠️ Failed to set card ownership")
 
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -137,34 +182,53 @@ def generate_single_card(source_name: str, modifier: str, rarity: str, output_di
         with open(output_path, "wb") as f:
             f.write(image_bytes)
 
-        logger.info(f"✅ Card generated successfully: {output_path}")
-        return output_path
+        logger.info(f"✅ Card image saved: {output_path}")
+        return output_path, card_id
 
     except Exception as e:
         logger.error(f"Error generating card: {e}")
-        return None
+        return None, None
 
 
 def main():
-    if len(sys.argv) != 4:
-        print("Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity>")
-        print("\nExample: python tools/generate_single_card.py krypthos Test Epic")
-        print(f"\nAvailable rarities: {', '.join(RARITIES.keys())}")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description="Generate a single card with specified parameters",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=f"""
+Examples:
+  python tools/generate_single_card.py krypthos "Test" Epic
+  python tools/generate_single_card.py krypthos "Test" Epic --assign dkubatko
 
-    source_name = sys.argv[1]
-    modifier = sys.argv[2]
-    rarity = sys.argv[3]
+Available rarities: {', '.join(RARITIES.keys())}
+        """
+    )
+    
+    parser.add_argument("character_name", help="Name of the character or user to use as base")
+    parser.add_argument("modifier", help="The modifier to apply (e.g., 'Test', 'Golden', etc.)")
+    parser.add_argument("rarity", help="The rarity tier (Common, Rare, Epic, Legendary)")
+    parser.add_argument("--assign", dest="assign_username", help="Username to assign the card to")
+    
+    args = parser.parse_args()
 
     # Set output directory
     output_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "output"
     )
 
-    result = generate_single_card(source_name, modifier, rarity, output_dir)
+    result, card_id = generate_single_card(
+        args.character_name, 
+        args.modifier, 
+        args.rarity, 
+        output_dir,
+        args.assign_username
+    )
 
-    if result:
-        print(f"\n✅ Success! Card saved to: {result}")
+    if result and card_id:
+        print(f"\n✅ Success!")
+        print(f"   Card ID: {card_id}")
+        print(f"   Image saved to: {result}")
+        if args.assign_username:
+            print(f"   Assigned to: {args.assign_username}")
         sys.exit(0)
     else:
         print("\n❌ Failed to generate card. Check logs for details.")
