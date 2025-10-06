@@ -232,13 +232,31 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         try:
             chat_id = str(update.effective_chat.id)
-            character_id = await asyncio.to_thread(
-                database.add_character, chat_id, character_name, image_b64
+            existing_character = await asyncio.to_thread(
+                database.get_character_by_name, chat_id, character_name
             )
 
-            await message.reply_text(
-                f"Character '{character_name}' added with ID {character_id}! They will now be used for card generation."
-            )
+            if existing_character:
+                updated = await asyncio.to_thread(
+                    database.update_character_image, existing_character.id, image_b64
+                )
+
+                if updated:
+                    await message.reply_text(
+                        f"Character '{character_name}' updated! Existing ID {existing_character.id} now has the new image."
+                    )
+                else:
+                    await message.reply_text(
+                        "I couldn't update that character's image. Please try again or delete and re-add it."
+                    )
+            else:
+                character_id = await asyncio.to_thread(
+                    database.add_character, chat_id, character_name, image_b64
+                )
+
+                await message.reply_text(
+                    f"Character '{character_name}' added with ID {character_id}! They will now be used for card generation."
+                )
         finally:
             # Remove thinking reaction
             if not DEBUG_MODE:
