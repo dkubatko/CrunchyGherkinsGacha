@@ -843,20 +843,18 @@ body {
 
 .modal-close {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: 7px;
+  right: 7px;
   width: 32px;
   height: 32px;
   border-radius: 16px;
   background-color: rgba(0, 0, 0, 0.55);
   border: none;
   color: rgba(255, 255, 255, 0.9);
-  font-size: 1.3rem;
-  font-weight: 300;
   cursor: pointer;
-  display: block;
-  line-height: 32px;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   z-index: 1001;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   backdrop-filter: blur(10px);
@@ -866,11 +864,44 @@ body {
   margin: 0;
 }
 
+.modal-close-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.modal-close-icon::before,
+.modal-close-icon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background-color: currentColor;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.modal-close-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.modal-close-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
 .modal-close:hover {
   background-color: rgba(0, 0, 0, 0.8);
   color: white;
   transform: scale(1.1) rotate(90deg);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 4px;
 }
 
 .modal-close:active {

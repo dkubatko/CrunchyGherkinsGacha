@@ -34,7 +34,17 @@ const CardModal: React.FC<CardModalProps> = ({
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        {!isBurning && <button className="modal-close" onClick={onClose}>×</button>}
+        {!isBurning && (
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close card"
+            title="Close"
+          >
+            <span className="modal-close-icon" aria-hidden="true" />
+          </button>
+        )}
         <div className="modal-card-shell">
           <Card 
             {...card} 
