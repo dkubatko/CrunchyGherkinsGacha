@@ -37,7 +37,7 @@ Keep the face of the character consistent with their image, character must be re
 Modify the character image to reflect the card name. 
 
 Card Layout:
-Aspect ratio MUST be 9:16. 
+Aspect ratio MUST be 3:4. 
 Only use the provided card layout sketch as a reference. Add layout modifications based on the card name and creativeness factor.
 Do NOT use the reference layout directly, make significant style modifications.
 Card should take up the entire image space, full width and full height, edge-to-edge. 
