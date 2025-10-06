@@ -445,21 +445,23 @@ function App() {
     }
   }, [userData?.singleCardView]);
 
-  const exitTradeView = useCallback(() => {
+  const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
     setIsTradeGridActive(false);
     setSelectedCardForTrade(null);
     closeModal();
     setView('current');
-    setFilterOptions({ owner: '', rarity: '' });
-    setSortOptions({ field: 'rarity', direction: 'desc' });
+    if (!options?.preserveAllFilters) {
+      setFilterOptions({ owner: '', rarity: '' });
+      setSortOptions({ field: 'rarity', direction: 'desc' });
+    }
     TelegramUtils.hideBackButton();
   }, [closeModal]);
 
-  const exitTradeViewRef = useRef(exitTradeView);
+  const switchToCurrentViewRef = useRef(switchToCurrentView);
 
   useEffect(() => {
-    exitTradeViewRef.current = exitTradeView;
-  }, [exitTradeView]);
+    switchToCurrentViewRef.current = switchToCurrentView;
+  }, [switchToCurrentView]);
   
   // Memoized callback functions to prevent infinite re-renders
   const handleTradeClick = useCallback(() => {
@@ -518,14 +520,14 @@ function App() {
       executeTrade();
       
       // Reset trading state
-      exitTradeView();
+      switchToCurrentView();
     }
-  }, [selectedCardForTrade, modalCard, initData, exitTradeView]);
+  }, [selectedCardForTrade, modalCard, initData, switchToCurrentView]);
 
   const handleCurrentTabClick = useCallback(() => {
-    exitTradeView();
+    switchToCurrentView({ preserveAllFilters: true });
     // Don't reset grid view state - preserve it
-  }, [exitTradeView]);
+  }, [switchToCurrentView]);
 
   const handleAllTabClick = useCallback(() => {
     setIsTradeGridActive(false);
@@ -580,7 +582,7 @@ function App() {
     }
 
     const cleanup = TelegramUtils.setupBackButton(() => {
-      exitTradeViewRef.current();
+      switchToCurrentViewRef.current();
     });
 
     return cleanup;
