@@ -1189,6 +1189,58 @@ def add_character(chat_id: str, name: str, imageb64: str) -> int:
     return character_id
 
 
+def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
+    """Fetch the most recently added character for a chat by case-insensitive name."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            SELECT * FROM characters
+            WHERE chat_id = ? AND LOWER(name) = LOWER(?)
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(chat_id), name),
+        )
+        row = cursor.fetchone()
+        return Character(**row) if row else None
+    finally:
+        conn.close()
+
+
+def update_character_image(character_id: int, imageb64: str) -> bool:
+    """Update a character's image and regenerate the slot icon when possible."""
+    slot_icon_b64 = _generate_slot_icon(imageb64)
+
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            """
+            UPDATE characters
+            SET imageb64 = ?, slot_iconb64 = COALESCE(?, slot_iconb64)
+            WHERE id = ?
+            """,
+            (imageb64, slot_icon_b64, character_id),
+        )
+        updated = cursor.rowcount > 0
+
+        if updated:
+            if slot_icon_b64:
+                logger.info("Updated character %s image and regenerated slot icon", character_id)
+            else:
+                logger.info(
+                    "Updated character %s image (slot icon unchanged due to generation failure)",
+                    character_id,
+                )
+
+        conn.commit()
+        return updated
+    finally:
+        conn.close()
+
+
 def delete_characters_by_name(name: str) -> int:
     """Delete all characters with the given name (case-insensitive). Returns count of deleted characters."""
     conn = connect()
