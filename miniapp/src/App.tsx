@@ -85,7 +85,8 @@ function App() {
   // Filter and sort state
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     owner: '',
-    rarity: ''
+    rarity: '',
+    locked: ''
   });
   const [sortOptions, setSortOptions] = useState<SortOptions>({
     field: 'rarity',
@@ -95,7 +96,8 @@ function App() {
   // Current view grid filter and sort state (only rarity filter, but full sort options)
   const [currentGridFilterOptions, setCurrentGridFilterOptions] = useState<FilterOptions>({
     owner: '', // Always empty for current view
-    rarity: ''
+    rarity: '',
+    locked: ''
   });
   const [currentGridSortOptions, setCurrentGridSortOptions] = useState<SortOptions>({
     field: 'rarity',
@@ -103,9 +105,10 @@ function App() {
   });
 
   const hasChatScope = Boolean(userData?.chatId);
-  const isTradeView = view === 'all' && isTradeGridActive;
-  const activeTradeCardId = isTradeView && selectedCardForTrade ? selectedCardForTrade.id : null;
-  const cardsScopeChatId = isTradeView && selectedCardForTrade?.chat_id
+  const isTradeMode = Boolean(selectedCardForTrade);
+  const isTradeView = view === 'all' && isTradeMode;
+  const activeTradeCardId = isTradeMode && selectedCardForTrade ? selectedCardForTrade.id : null;
+  const cardsScopeChatId = isTradeMode && selectedCardForTrade?.chat_id
     ? selectedCardForTrade.chat_id
     : userData?.chatId ?? null;
   const shouldFetchAllCards = !userData?.slotsView && (hasChatScope || activeTradeCardId !== null);
@@ -257,6 +260,11 @@ function App() {
       filtered = filtered.filter(card => card.rarity === filterOptions.rarity);
     }
 
+    if (filterOptions.locked) {
+      const shouldBeLocked = filterOptions.locked === 'locked';
+      filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
+    }
+
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       let aValue: string | number;
@@ -300,8 +308,11 @@ function App() {
     return sorted;
   };
 
-  const baseDisplayedCards = isTradeView && selectedCardForTrade
-    ? allCards.filter((card) => card.id !== selectedCardForTrade.id)
+  const baseDisplayedCards = isTradeMode && selectedCardForTrade
+    ? allCards.filter((card) =>
+        card.id !== selectedCardForTrade.id &&
+        (userData?.currentUserId == null || card.user_id !== userData.currentUserId)
+      )
     : allCards;
 
   const displayedCards = applyFiltersAndSorting(baseDisplayedCards);
@@ -313,6 +324,11 @@ function App() {
     // Apply rarity filter
     if (currentGridFilterOptions.rarity) {
       filtered = filtered.filter(card => card.rarity === currentGridFilterOptions.rarity);
+    }
+
+    if (currentGridFilterOptions.locked) {
+      const shouldBeLocked = currentGridFilterOptions.locked === 'locked';
+      filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
     }
 
     // Apply sorting
@@ -451,7 +467,7 @@ function App() {
     closeModal();
     setView('current');
     if (!options?.preserveAllFilters) {
-      setFilterOptions({ owner: '', rarity: '' });
+      setFilterOptions({ owner: '', rarity: '', locked: '' });
       setSortOptions({ field: 'rarity', direction: 'desc' });
     }
     TelegramUtils.hideBackButton();
@@ -525,9 +541,10 @@ function App() {
   }, [selectedCardForTrade, modalCard, initData, switchToCurrentView]);
 
   const handleCurrentTabClick = useCallback(() => {
-    switchToCurrentView({ preserveAllFilters: true });
+    const preserveAllFilters = !isTradeMode;
+    switchToCurrentView({ preserveAllFilters });
     // Don't reset grid view state - preserve it
-  }, [switchToCurrentView]);
+  }, [isTradeMode, switchToCurrentView]);
 
   const handleAllTabClick = useCallback(() => {
     setIsTradeGridActive(false);
