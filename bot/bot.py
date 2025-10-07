@@ -65,7 +65,6 @@ from settings.constants import (
     BURN_INVALID_ID_MESSAGE,
     BURN_CARD_NOT_FOUND_MESSAGE,
     BURN_NOT_YOURS_MESSAGE,
-    BURN_LOCKED_MESSAGE,
     BURN_CHAT_MISMATCH_MESSAGE,
     BURN_CONFIRM_MESSAGE,
     BURN_CANCELLED_MESSAGE,
@@ -682,13 +681,6 @@ async def burn(
         )
         return
 
-    if card.locked:
-        await message.reply_text(
-            BURN_LOCKED_MESSAGE,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
     rarity_config = RARITIES.get(card.rarity)
     spin_reward = 0
     if isinstance(rarity_config, dict):
@@ -822,14 +814,6 @@ async def handle_burn_callback(
                 pass
             return
 
-        if card.locked:
-            await query.answer(BURN_LOCKED_MESSAGE, show_alert=True)
-            try:
-                await query.edit_message_text(BURN_LOCKED_MESSAGE)
-            except Exception:
-                pass
-            return
-
         rarity_config = RARITIES.get(card.rarity)
         spin_reward = 0
         if isinstance(rarity_config, dict):
@@ -887,7 +871,6 @@ async def handle_burn_callback(
                 pass
             return
 
-        username_safe = html.escape(username or f"user_{user.user_id}")
         header = f"<b><s>🔥[{card_id}] {card.rarity} {escaped_title}🔥</s></b>"
         success_block = BURN_SUCCESS_MESSAGE.format(
             spin_reward=spin_reward,

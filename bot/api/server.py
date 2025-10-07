@@ -817,16 +817,6 @@ async def burn_card(
         )
         raise HTTPException(status_code=403, detail="You do not own this card")
 
-    # Check if card is locked
-    if card.locked:
-        logger.warning(
-            "User %s (%s) attempted to burn locked card %s",
-            username,
-            auth_user_id,
-            request.card_id,
-        )
-        raise HTTPException(status_code=400, detail="Cannot burn a locked card. Unlock it first.")
-
     # Verify card is associated with the specified chat
     if card.chat_id != str(request.chat_id):
         logger.warning(
