@@ -127,19 +127,32 @@ def get_downgraded_rarity(current_rarity: str) -> str:
     return rarity_order[current_index - 1] if current_index > 0 else "Common"
 
 
+def _choose_modifier_for_rarity(rarity: str) -> str:
+    rarity_config = RARITIES.get(rarity)
+    if not isinstance(rarity_config, dict):
+        raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
+
+    modifiers = rarity_config.get("modifiers")
+    if not modifiers:
+        raise InvalidSourceError(f"No modifiers configured for rarity '{rarity}'")
+
+    return random.choice(modifiers)
+
+
 def _create_generated_card(
     profile: SelectedProfile,
     gemini_util: GeminiUtil,
     rarity: str,
+    modifier: Optional[str] = None,
 ) -> GeneratedCard:
     if rarity not in RARITIES:
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
 
-    modifier = random.choice(RARITIES[rarity]["modifiers"])
+    chosen_modifier = modifier if modifier is not None else _choose_modifier_for_rarity(rarity)
 
     image_b64 = gemini_util.generate_image(
         profile.name,
-        modifier,
+        chosen_modifier,
         rarity,
         base_image_b64=profile.image_b64,
     )
@@ -157,9 +170,9 @@ def _create_generated_card(
 
     return GeneratedCard(
         base_name=profile.name,
-        modifier=modifier,
+        modifier=chosen_modifier,
         rarity=rarity,
-        card_title=f"{modifier} {profile.name}",
+        card_title=f"{chosen_modifier} {profile.name}",
         image_b64=image_b64,
         source_user=source_user,
         source_character=source_character,
@@ -219,21 +232,29 @@ def generate_card_from_source(
 ) -> GeneratedCard:
     profile = get_profile_for_source(source_type, source_id)
 
+    chosen_modifier = _choose_modifier_for_rarity(rarity)
+
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
 
     for attempt in range(1, total_attempts + 1):
         try:
-            return _create_generated_card(profile, gemini_util, rarity)
+            return _create_generated_card(
+                profile,
+                gemini_util,
+                rarity,
+                modifier=chosen_modifier,
+            )
         except ImageGenerationError as exc:
             last_error = exc
             logger.warning(
-                "Image generation attempt %s/%s failed for source %s:%s (rarity=%s)",
+                "Image generation attempt %s/%s failed for source %s:%s (rarity=%s, modifier=%s)",
                 attempt,
                 total_attempts,
                 source_type,
                 source_id,
                 rarity,
+                chosen_modifier,
             )
 
             if attempt < total_attempts:
@@ -246,6 +267,7 @@ def generate_card_for_chat(
     chat_id: str,
     gemini_util: GeminiUtil,
     rarity: Optional[str] = None,
+    max_retries: int = 0,
 ) -> GeneratedCard:
     """Generate a card for a chat using a random eligible user's or character's profile image."""
     profile = select_random_source_with_image(chat_id)
@@ -253,4 +275,36 @@ def generate_card_for_chat(
         raise NoEligibleUserError
 
     chosen_rarity = rarity or get_random_rarity()
-    return _create_generated_card(profile, gemini_util, chosen_rarity)
+    chosen_modifier = _choose_modifier_for_rarity(chosen_rarity)
+
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            return _create_generated_card(
+                profile,
+                gemini_util,
+                chosen_rarity,
+                modifier=chosen_modifier,
+            )
+        except ImageGenerationError as exc:
+            last_error = exc
+            logger.warning(
+                "Image generation attempt %s/%s failed for chat %s (source=%s:%s, rarity=%s, modifier=%s)",
+                attempt,
+                total_attempts,
+                chat_id,
+                profile.source_type,
+                profile.source_id,
+                chosen_rarity,
+                chosen_modifier,
+            )
+
+            if attempt < total_attempts:
+                time.sleep(1)
+                refreshed_profile = select_random_source_with_image(chat_id)
+                if refreshed_profile:
+                    profile = refreshed_profile
+
+    raise last_error or ImageGenerationError("Image generation failed after retries")
