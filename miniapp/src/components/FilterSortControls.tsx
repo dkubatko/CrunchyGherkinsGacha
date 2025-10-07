@@ -5,6 +5,7 @@ import type { CardData } from '../types';
 export interface FilterOptions {
   owner: string;
   rarity: string;
+  locked: '' | 'locked' | 'unlocked';
 }
 
 export interface SortOptions {
@@ -31,7 +32,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-  const [expandedFilter, setExpandedFilter] = useState<'owner' | 'rarity' | null>(null);
+  const [expandedFilter, setExpandedFilter] = useState<'owner' | 'rarity' | 'locked' | null>(null);
   
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -72,7 +73,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity;
+  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked;
   const isActiveSortField = (field: string) => sortOptions.field === field;
 
   const handleFilterToggle = () => {
@@ -87,7 +88,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     setExpandedFilter(null);
   };
 
-  const handleFilterOptionClick = (type: 'owner' | 'rarity') => {
+  const handleFilterOptionClick = (type: 'owner' | 'rarity' | 'locked') => {
     if (expandedFilter === type) {
       setExpandedFilter(null);
     } else {
@@ -113,10 +114,20 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     setExpandedFilter(null);
   };
 
+  const handleLockedSelect = (locked: '' | 'locked' | 'unlocked') => {
+    onFilterChange({
+      ...filterOptions,
+      locked
+    });
+    setFilterOpen(false);
+    setExpandedFilter(null);
+  };
+
   const handleClearFilters = () => {
     onFilterChange({
       owner: '',
-      rarity: ''
+      rarity: '',
+      locked: ''
     });
     setFilterOpen(false);
     setExpandedFilter(null);
@@ -212,6 +223,43 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                           {rarity}
                         </button>
                       ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className={`dropdown-item ${expandedFilter === 'locked' ? 'expanded' : ''}`}>
+                  <button 
+                    className="dropdown-main-option"
+                    onClick={() => handleFilterOptionClick('locked')}
+                  >
+                    <span>Status</span>
+                    {filterOptions.locked && (
+                      <span className="current-value">({filterOptions.locked === 'locked' ? 'Locked' : 'Unlocked'})</span>
+                    )}
+                    <svg className={`expand-icon ${expandedFilter === 'locked' ? 'rotated' : ''}`} viewBox="0 0 24 24">
+                      <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
+                    </svg>
+                  </button>
+                  {expandedFilter === 'locked' && (
+                    <div className="dropdown-submenu">
+                      <button 
+                        className={`dropdown-subitem ${!filterOptions.locked ? 'active' : ''}`}
+                        onClick={() => handleLockedSelect('')}
+                      >
+                        Any
+                      </button>
+                      <button
+                        className={`dropdown-subitem ${filterOptions.locked === 'locked' ? 'active' : ''}`}
+                        onClick={() => handleLockedSelect('locked')}
+                      >
+                        Locked
+                      </button>
+                      <button
+                        className={`dropdown-subitem ${filterOptions.locked === 'unlocked' ? 'active' : ''}`}
+                        onClick={() => handleLockedSelect('unlocked')}
+                      >
+                        Unlocked
+                      </button>
                     </div>
                   )}
                 </div>
