@@ -144,14 +144,11 @@ RECYCLE_FAILURE_IMAGE = (
 RECYCLE_FAILURE_UNEXPECTED = "An unexpected error occurred while recycling cards. Try again later."
 RECYCLE_RESULT_APPENDIX = "\n\nBurned cards:\n\n<b>{burned_block}</b>\n\n"
 
-BURN_USAGE_MESSAGE = (
-    "Usage: /burn <card_id>. Burns an unlocked card you own in this chat for spins."
-)
+BURN_USAGE_MESSAGE = "Usage: /burn <card_id>. Burns a card you own in this chat for spins."
 BURN_DM_RESTRICTED_MESSAGE = "Burning cards is only available in the group chat."
 BURN_INVALID_ID_MESSAGE = "Invalid card ID. Please provide a numeric card ID."
 BURN_CARD_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
 BURN_NOT_YOURS_MESSAGE = "You can only burn cards you currently own."
-BURN_LOCKED_MESSAGE = "Cannot burn this card while it's locked. Unlock it first."
 BURN_CHAT_MISMATCH_MESSAGE = "This card doesn't belong to this chat."
 BURN_CONFIRM_MESSAGE = (
     "Burn <b>[{card_id}] {rarity} {card_title}</b> for <b>{spin_reward} spins</b>?"
