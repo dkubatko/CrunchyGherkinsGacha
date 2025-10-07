@@ -301,11 +301,31 @@ body {
   flex-shrink: 0;
 }
 
+.card-name-container {
+  --card-share-size: 1.75rem;
+  --card-share-gap: 0.35rem;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: var(--card-share-size) auto var(--card-share-size);
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--card-share-gap);
+  margin: 0 auto 0rem;
+  min-height: var(--card-share-size);
+}
+
+.card-name-container::before {
+  content: '';
+}
+
 .card .card-name {
+  grid-column: 2;
   font-size: 1.4rem !important;
   font-weight: bold;
-  margin: 0 0 0.25rem 0;
+  margin: 0;
   line-height: 1.1;
+  text-align: center;
+  display: block;
 }
 
 .card-rarity {
@@ -333,59 +353,41 @@ body {
   margin: 0;
 }
 
-.card-share-button {
-  position: absolute;
-  top: 0.75rem;
-  right: 0.75rem;
-  width: 2.5rem;
-  height: 2.5rem;
+
+.card-share-button-inline {
+  grid-column: 3;
+  justify-self: start;
+  width: var(--card-share-size);
+  height: var(--card-share-size);
+  min-width: var(--card-share-size);
+  min-height: var(--card-share-size);
   border-radius: 50%;
   border: none;
   outline: none;
-  background: rgba(0, 0, 0, 0.8);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
   cursor: pointer;
-  transition: transform 0.2s ease, background 0.2s ease, opacity 0.2s ease;
-  backdrop-filter: blur(6px);
+  transition: transform 0.2s ease, color 0.2s ease, opacity 0.2s ease;
   z-index: 10;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   padding: 0;
+  transform: scale(1);
 }
 
-.card-share-button:hover:not(:disabled) {
-  transform: translateY(-1px) scale(1.05);
-  background: rgba(0, 0, 0, 0.9);
+.card-share-button-inline:hover:not(:disabled) {
+  transform: scale(1.1);
+  color: rgba(255, 255, 255, 1);
 }
 
-.card-share-button:active:not(:disabled) {
-  transform: translateY(1px) scale(0.98);
+.card-share-button-inline:active:not(:disabled) {
+  transform: scale(0.95);
 }
 
-.card-share-button:disabled {
-  opacity: 0.65;
+.card-share-button-inline:disabled {
+  opacity: 0.5;
   cursor: default;
-}
-
-.share-icon {
-  width: 1.5rem;
-  height: 1.5rem;
-  margin-left: -0.1rem;
-}
-
-.share-dialog-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.65);
-  backdrop-filter: blur(16px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 2000;
-  animation: fadeIn 0.15s ease-out;
 }
 
 @keyframes fadeIn {
@@ -404,6 +406,20 @@ body {
   }
 }
 
+.share-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.15s ease-out;
+}
 .share-dialog {
   background: rgba(28, 28, 30, 0.92);
   backdrop-filter: blur(30px);
@@ -622,17 +638,26 @@ body {
     max-height: calc(100vh - 5rem);
   }
 
-  .card-share-button {
-    top: 0.6rem;
-    right: 0.6rem;
-    width: 2.2rem;
-    height: 2.2rem;
+  .card-name-container {
+    --card-share-size: 1.5rem;
+    --card-share-gap: 0.25rem;
   }
 
-  .share-icon {
-    width: 1.25rem;
-    height: 1.25rem;
-    margin-left: -0.08rem;
+  .card-share-button-inline {
+    width: var(--card-share-size);
+    height: var(--card-share-size);
+    min-width: var(--card-share-size);
+    min-height: var(--card-share-size);
+  }
+
+  .share-icon-inline {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .share-spinner-inline {
+    width: 1rem;
+    height: 1rem;
   }
   
   .card h3 {
