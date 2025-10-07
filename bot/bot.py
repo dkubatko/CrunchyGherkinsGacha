@@ -711,7 +711,7 @@ async def burn(
         )
         return
 
-    card_title = f"{card.modifier} {card.base_name}".strip()
+    card_title = card.title()
     escaped_title = html.escape(card_title)
 
     keyboard = InlineKeyboardMarkup(
@@ -853,7 +853,7 @@ async def handle_burn_callback(
                 pass
             return
 
-        card_title = f"{card.modifier} {card.base_name}".strip()
+        card_title = card.title()
         escaped_title = html.escape(card_title)
 
         try:
@@ -1191,6 +1191,7 @@ async def handle_recycle_callback(
             await asyncio.to_thread(database.nullify_card_owner, card.id)
 
         burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])
+        # Note: generated_card.card_title doesn't use Card.title() - it's directly from GeneratedCard
         final_caption = CARD_CAPTION_BASE.format(
             card_id=new_card_id,
             card_title=generated_card.card_title,
@@ -1507,7 +1508,7 @@ async def claim_card(
         return
 
     card = rolled_card_manager.card
-    card_title = f"{card.modifier} {card.base_name}"
+    card_title = card.title()
 
     if claim_result.status is database.ClaimStatus.SUCCESS:
         if claim_result.balance is not None:
@@ -1734,7 +1735,7 @@ async def collection(
 
     card = cards[current_index]
     lock_icon = "🔒" if card.locked else ""
-    card_title = f"{card.modifier} {card.base_name}"
+    card_title = card.title()
     rarity = card.rarity
 
     caption = COLLECTION_CAPTION.format(
@@ -1901,7 +1902,7 @@ async def handle_collection_navigation(
 
     card = cards[current_index]
     lock_icon = "🔒 " if card.locked else ""
-    card_title = f"{card.modifier} {card.base_name}"
+    card_title = card.title()
     rarity = card.rarity
 
     caption = COLLECTION_CAPTION.format(
@@ -2191,9 +2192,9 @@ async def trade(
     await update.message.reply_text(
         TRADE_REQUEST_MESSAGE.format(
             user1_username=user.username,
-            card1_title=card1.title(),
+            card1_title=card1.title(include_rarity=True),
             user2_username=user2_username,
-            card2_title=card2.title(),
+            card2_title=card2.title(include_rarity=True),
         ),
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML,
@@ -2434,16 +2435,16 @@ async def reject_trade(
     if is_initiator:
         message_text = TRADE_CANCELLED_MESSAGE.format(
             user1_username=user1_username,
-            card1_title=card1.title(),
+            card1_title=card1.title(include_rarity=True),
             user2_username=user2_username,
-            card2_title=card2.title(),
+            card2_title=card2.title(include_rarity=True),
         )
     else:
         message_text = TRADE_REJECTED_MESSAGE.format(
             user1_username=user1_username,
-            card1_title=card1.title(),
+            card1_title=card1.title(include_rarity=True),
             user2_username=user2_username,
-            card2_title=card2.title(),
+            card2_title=card2.title(include_rarity=True),
         )
 
     await query.edit_message_text(message_text, parse_mode=ParseMode.HTML)
@@ -2484,9 +2485,9 @@ async def accept_trade(
         await query.edit_message_text(
             TRADE_COMPLETE_MESSAGE.format(
                 user1_username=user1_username,
-                card1_title=card1.title(),
+                card1_title=card1.title(include_rarity=True),
                 user2_username=user2_username,
-                card2_title=card2.title(),
+                card2_title=card2.title(include_rarity=True),
             ),
             parse_mode=ParseMode.HTML,
         )

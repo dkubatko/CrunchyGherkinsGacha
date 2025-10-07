@@ -607,7 +607,7 @@ async def share_card(
         logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
 
-    card_title = f"[{card.id}] {card.rarity} {card.modifier} {card.base_name}".strip()
+    card_title = card.title(include_id=True, include_rarity=True)
     if not MINIAPP_URL:
         logger.error("MINIAPP_URL not configured; cannot generate share link")
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
@@ -635,6 +635,10 @@ async def share_card(
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
 
         message = f"@{username} shared card:\n\n<b>{card_title}</b>"
+
+        # Add ownership info if the sharer is not the owner
+        if card.owner and card.owner != username:
+            message += f"\n\n<i>Owned by @{card.owner}</i>"
 
         # Get thread_id if available
         thread_id = await asyncio.to_thread(database.get_thread_id, card_chat_id)
@@ -886,7 +890,7 @@ async def burn_card(
     )
 
     # Store card details before returning response
-    card_display_name = f"{card.modifier} {card.base_name}".strip()
+    card_display_name = card.title()
     card_rarity = card.rarity
 
     # Spawn background task to send notification to chat
@@ -1071,21 +1075,17 @@ async def execute_trade(
 
         # Validate trade
         if card1.owner != current_username:
-            raise HTTPException(
-                status_code=403, detail=f"You do not own card {card1.modifier} {card1.base_name}"
-            )
+            raise HTTPException(status_code=403, detail=f"You do not own card {card1.title()}")
 
         if card2.owner == current_username:
-            raise HTTPException(
-                status_code=400, detail=f"You already own card {card2.modifier} {card2.base_name}"
-            )
+            raise HTTPException(status_code=400, detail=f"You already own card {card2.title()}")
 
         # Send trade request message with accept/reject buttons
         trade_message = TRADE_REQUEST_MESSAGE.format(
             user1_username=current_username,
-            card1_title=f"{card1.modifier} {card1.base_name}",
+            card1_title=card1.title(include_rarity=True),
             user2_username=card2.owner,
-            card2_title=f"{card2.modifier} {card2.base_name}",
+            card2_title=card2.title(include_rarity=True),
         )
 
         # Create inline keyboard with accept/reject buttons, card view links, and cancel button

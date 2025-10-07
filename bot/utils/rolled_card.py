@@ -134,7 +134,7 @@ class RolledCardManager:
         if card is None:
             return "Error: Card data not found"
 
-        card_title = f"{card.modifier} {card.base_name}"
+        card_title = card.title()
         base_caption = CARD_CAPTION_BASE.format(
             card_id=card.id, card_title=card_title, rarity=card.rarity
         )
