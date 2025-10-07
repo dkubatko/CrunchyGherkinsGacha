@@ -13,6 +13,7 @@ interface UserSpinsData {
   count: number;
   loading: boolean;
   error: string | null;
+  nextRefreshTime?: string | null;
 }
 
 interface UseSlotsResult {
@@ -21,6 +22,7 @@ interface UseSlotsResult {
   loading: boolean;
   error: string | null;
   refetchSpins: () => Promise<void>;
+  updateSpins: (count: number, nextRefreshTime?: string | null) => void;
 }
 
 export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
@@ -28,7 +30,8 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
   const [spins, setSpins] = useState<UserSpinsData>({
     count: 0,
     loading: true,
-    error: null
+    error: null,
+    nextRefreshTime: null
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,16 +51,29 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
       }
 
       const spinsData = await ApiService.getUserSpins(userId, chatId, initData);
-      setSpins({ count: spinsData.spins, loading: false, error: null });
+      setSpins({ 
+        count: spinsData.spins, 
+        loading: false, 
+        error: null,
+        nextRefreshTime: spinsData.next_refresh_time || null
+      });
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load spins';
-      setSpins({ count: 0, loading: false, error: errorMessage });
+      setSpins({ count: 0, loading: false, error: errorMessage, nextRefreshTime: null });
     }
   }, [chatId, userId]);
 
   const refetchSpins = async () => {
     await fetchSpins();
   };
+
+  const updateSpins = useCallback((count: number, nextRefreshTime?: string | null) => {
+    setSpins(prev => ({
+      ...prev,
+      count,
+      nextRefreshTime: nextRefreshTime !== undefined ? nextRefreshTime : prev.nextRefreshTime
+    }));
+  }, []);
 
   useEffect(() => {
     const fetchSlotsData = async () => {
@@ -115,6 +131,7 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
     spins,
     loading,
     error,
-    refetchSpins
+    refetchSpins,
+    updateSpins
   };
 };

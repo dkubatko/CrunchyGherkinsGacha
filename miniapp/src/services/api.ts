@@ -297,7 +297,7 @@ export class ApiService {
     return response.json();
   }
 
-  static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean }> {
+  static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean; next_refresh_time?: string | null }> {
     const params = new URLSearchParams({
       user_id: userId.toString(),
       chat_id: chatId
