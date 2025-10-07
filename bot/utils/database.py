@@ -1335,6 +1335,50 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     return all_items
 
 
+def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
+    """Get the next refresh time for a user's spins. Returns ISO timestamp or None if user not found."""
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT refresh_timestamp FROM spins WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        row = cursor.fetchone()
+
+        if not row or not row[0]:
+            return None
+
+        refresh_timestamp_str = row[0]
+        _, hours_per_refresh = _get_spins_config()
+
+        pdt_tz = ZoneInfo("America/Los_Angeles")
+
+        try:
+            # Parse the stored timestamp
+            if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
+                refresh_dt_utc = datetime.datetime.fromisoformat(
+                    refresh_timestamp_str.replace("Z", "+00:00")
+                )
+                refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
+            else:
+                refresh_dt_naive = datetime.datetime.fromisoformat(
+                    refresh_timestamp_str.replace("Z", "")
+                )
+                refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
+
+            # Calculate next refresh
+            next_refresh = refresh_dt_pdt + datetime.timedelta(hours=hours_per_refresh)
+            return next_refresh.isoformat()
+        except (ValueError, TypeError) as e:
+            logger.warning(
+                f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+            )
+            return None
+    finally:
+        conn.close()
+
+
 def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
     """Get the spins record for a user in a specific chat."""
     conn = connect()
