@@ -312,6 +312,8 @@ body {
   column-gap: var(--card-share-gap);
   margin: 0 auto 0rem;
   min-height: var(--card-share-size);
+  max-width: 95%;
+  width: max-content;
 }
 
 .card-name-container::before {
@@ -326,6 +328,8 @@ body {
   line-height: 1.1;
   text-align: center;
   display: block;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 .card-rarity {
