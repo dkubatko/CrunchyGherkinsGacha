@@ -225,13 +225,11 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name, modifier, rarity, image_b64, chat_id=None):
+def add_card(base_name, modifier, rarity, image_b64, chat_id):
     """Add a new card to the database."""
     conn = connect()
     cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
-    if chat_id is None:
-        chat_id = os.getenv("GROUP_CHAT_ID")
     if chat_id is not None:
         chat_id = str(chat_id)
 
@@ -1574,30 +1572,63 @@ def consume_user_spin(user_id: int, chat_id: str) -> bool:
         conn.close()
 
 
-def get_thread_id(chat_id: str) -> Optional[int]:
-    """Get the thread_id for a chat_id, or None if not set."""
+def get_thread_id(chat_id: str, type: str = "main") -> Optional[int]:
+    """Get the thread_id for a chat_id and type, or None if not set.
+
+    Args:
+        chat_id: The chat ID to query.
+        type: The thread type ('main' or 'trade'). Defaults to 'main'.
+    """
     conn = connect()
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT thread_id FROM threads WHERE chat_id = ?", (str(chat_id),))
+        cursor.execute(
+            "SELECT thread_id FROM threads WHERE chat_id = ? AND type = ?", (str(chat_id), type)
+        )
         row = cursor.fetchone()
         return row[0] if row else None
     finally:
         conn.close()
 
 
-def set_thread_id(chat_id: str, thread_id: int) -> bool:
-    """Set the thread_id for a chat_id. Returns True if successful."""
+def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
+    """Set the thread_id for a chat_id and type. Returns True if successful.
+
+    Args:
+        chat_id: The chat ID to set.
+        thread_id: The thread ID to set.
+        type: The thread type ('main' or 'trade'). Defaults to 'main'.
+    """
     conn = connect()
     cursor = conn.cursor()
     try:
         cursor.execute(
             """
-            INSERT INTO threads (chat_id, thread_id)
-            VALUES (?, ?)
-            ON CONFLICT(chat_id) DO UPDATE SET thread_id = excluded.thread_id
+            INSERT INTO threads (chat_id, thread_id, type)
+            VALUES (?, ?, ?)
+            ON CONFLICT(chat_id, type) DO UPDATE SET thread_id = excluded.thread_id
             """,
-            (str(chat_id), thread_id),
+            (str(chat_id), thread_id, type),
+        )
+        success = cursor.rowcount > 0
+        conn.commit()
+        return success
+    finally:
+        conn.close()
+
+
+def clear_thread_ids(chat_id: str) -> bool:
+    """Clear all thread_ids for a chat_id. Returns True if successful.
+
+    Args:
+        chat_id: The chat ID to clear threads for.
+    """
+    conn = connect()
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "DELETE FROM threads WHERE chat_id = ?",
+            (str(chat_id),),
         )
         success = cursor.rowcount > 0
         conn.commit()
