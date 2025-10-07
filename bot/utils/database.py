@@ -88,13 +88,29 @@ class Card(BaseModel):
     created_at: Optional[str]
     locked: bool = False
 
+    def title(self, include_id: bool = False, include_rarity: bool = False):
+        """Return the card's title, optionally including rarity and ID.
+
+        Args:
+            include_rarity: If True, includes rarity prefix. Default is False.
+            include_id: If True, includes card ID in brackets as prefix. Default is False.
+        """
+        parts = []
+
+        if include_id:
+            parts.append(f"[{self.id}]")
+
+        if include_rarity:
+            parts.append(self.rarity)
+
+        parts.append(self.modifier)
+        parts.append(self.base_name)
+
+        return " ".join(parts).strip()
+
 
 class CardWithImage(Card):
     image_b64: str
-
-    def title(self):
-        """Return the card's full title."""
-        return f"{self.rarity} {self.modifier} {self.base_name}"
 
     def get_media(self):
         """Return file_id if available, otherwise return decoded base64 image data."""

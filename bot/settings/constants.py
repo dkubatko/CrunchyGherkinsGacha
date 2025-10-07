@@ -74,7 +74,7 @@ COLLECTION_CAPTION = (
 CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
 CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
 CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
-CARD_STATUS_LOCKED = "\n<i>Locked from re-rolling</i>"
+CARD_STATUS_LOCKED = "\n\n<i>Locked from re-rolling</i>"
 CARD_STATUS_REROLLING = "\n\n<b>Rerolling...</b>"
 CARD_STATUS_REROLLED = (
     "\n\n<i>Rerolled from <b>{original_rarity}</b> to <b>{downgraded_rarity}</b></i>"
