@@ -496,12 +496,6 @@ async def roll(
                 reaction=[ReactionTypeEmoji("🤡")],
             )
         await update.message.reply_text("Caught a cheater! Only allowed to roll in the group chat.")
-        group_chat_id = os.getenv("GROUP_CHAT_ID")
-        if group_chat_id:
-            await context.bot.send_message(
-                chat_id=group_chat_id,
-                text=f"@{user.username} attempted to roll in a private chat. 🐀",
-            )
         return
 
     rolling_users = context.bot_data.setdefault("rolling_users", set())
@@ -2633,7 +2627,12 @@ async def set_thread(
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Set the thread ID for the current chat. Admin only."""
+    """Set the thread ID for the current chat. Admin only.
+
+    Usage: /set_thread [main|trade|clear]
+    If no argument is provided, defaults to 'main'.
+    Use 'clear' to remove all thread configurations.
+    """
     message = update.message
     chat = update.effective_chat
 
@@ -2643,31 +2642,69 @@ async def set_thread(
     # Ensure it's used in a group chat
     if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
         await message.reply_text(
-            "/thread can only be used in group chats.",
+            "/set_thread can only be used in group chats.",
             reply_to_message_id=message.message_id,
         )
         return
 
-    # Get the thread_id from the message
-    thread_id = message.message_thread_id
-
-    if thread_id is None:
-        await message.reply_text(
-            "❌ No thread detected. This command must be used within a forum topic/thread.",
-            reply_to_message_id=message.message_id,
-        )
-        return
+    # Parse thread type argument (default to 'main')
+    thread_type = "main"
+    is_clear = False
+    if context.args:
+        arg = context.args[0].lower()
+        if arg == "clear":
+            is_clear = True
+        elif arg in ("main", "trade"):
+            thread_type = arg
+        else:
+            await message.reply_text(
+                "❌ Invalid thread type. Use 'main', 'trade', or 'clear'.\n\nUsage: /set_thread [main|trade|clear]",
+                reply_to_message_id=message.message_id,
+            )
+            return
 
     try:
         chat_id = str(chat.id)
-        success = await asyncio.to_thread(database.set_thread_id, chat_id, thread_id)
 
-        if success:
+        # Handle clear command
+        if is_clear:
+            success = await asyncio.to_thread(database.clear_thread_ids, chat_id)
+            if success:
+                await message.reply_text(
+                    "✅ All thread configurations have been cleared for this chat.\n\n"
+                    "Bot notifications will now be posted to the main chat.",
+                    reply_to_message_id=message.message_id,
+                )
+                logger.info(f"@{user.username} cleared all thread_ids for chat_id={chat_id}")
+            else:
+                await message.reply_text(
+                    "ℹ️ No thread configurations found to clear.",
+                    reply_to_message_id=message.message_id,
+                )
+            return
+
+        # Get the thread_id from the message
+        thread_id = message.message_thread_id
+
+        if thread_id is None:
             await message.reply_text(
-                f"✅ Thread ID {thread_id} has been set for this chat.\n\nBot notifications will now be posted to this thread.",
+                "❌ No thread detected. This command must be used within a forum topic/thread.",
                 reply_to_message_id=message.message_id,
             )
-            logger.info(f"@{user.username} set thread_id={thread_id} for chat_id={chat_id}")
+            return
+
+        success = await asyncio.to_thread(database.set_thread_id, chat_id, thread_id, thread_type)
+
+        if success:
+            type_label = "main" if thread_type == "main" else "trade"
+            await message.reply_text(
+                f"✅ Thread ID {thread_id} has been set as the '{type_label}' thread for this chat.\n\n"
+                f"Bot notifications for {type_label} activities will now be posted to this thread.",
+                reply_to_message_id=message.message_id,
+            )
+            logger.info(
+                f"@{user.username} set thread_id={thread_id} (type={thread_type}) for chat_id={chat_id}"
+            )
         else:
             await message.reply_text(
                 "❌ Failed to set thread ID. Please try again.",

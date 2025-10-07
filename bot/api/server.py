@@ -1029,45 +1029,30 @@ async def execute_trade(
         if not card1 or not card2:
             raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
 
-        if debug_mode:
-            # In debug mode, target the requesting user directly
-            chat_id = user_id
-        else:
-            card1_chat_id = card1.chat_id
-            card2_chat_id = card2.chat_id
+        card1_chat_id = card1.chat_id
+        card2_chat_id = card2.chat_id
 
-            if not card1_chat_id or not card2_chat_id:
-                fallback_chat_id = os.getenv("GROUP_CHAT_ID")
-                if fallback_chat_id:
-                    logger.warning(
-                        "Missing chat_id on one or both cards for trade %s/%s; falling back to GROUP_CHAT_ID",
-                        card_id1,
-                        card_id2,
-                    )
-                    chat_id = fallback_chat_id
-                else:
-                    logger.error(
-                        "Missing chat_id on cards %s and %s with no GROUP_CHAT_ID fallback configured",
-                        card_id1,
-                        card_id2,
-                    )
-                    raise HTTPException(status_code=500, detail="Card chat not configured")
-            else:
-                if card1_chat_id != card2_chat_id:
-                    logger.warning(
-                        "Trade attempted between cards %s and %s from different chats (%s vs %s)",
-                        card_id1,
-                        card_id2,
-                        card1_chat_id,
-                        card2_chat_id,
-                    )
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Both cards must belong to the same chat to trade",
-                    )
-                chat_id = card1_chat_id
+        if not card1_chat_id or not card2_chat_id:
+            logger.error(
+                "Missing chat_id on cards %s and %s",
+                card_id1,
+                card_id2,
+            )
+            raise HTTPException(status_code=500, detail="Card chat not configured")
 
-        # Get current user's username from the validated init data
+        if card1_chat_id != card2_chat_id:
+            logger.warning(
+                "Trade attempted between cards %s and %s from different chats (%s vs %s)",
+                card_id1,
+                card_id2,
+                card1_chat_id,
+                card2_chat_id,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Both cards must belong to the same chat to trade",
+            )
+        chat_id = card1_chat_id  # Get current user's username from the validated init data
         current_username = user_data.get("username")
         if not current_username:
             logger.error(f"Username not found in init data for user_id {user_id}")
@@ -1124,8 +1109,10 @@ async def execute_trade(
             else:
                 bot = Bot(token=bot_token)
 
-            # Get thread_id if available
-            thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id))
+            # Get thread_id for trade notifications, fallback to main if trade not set
+            thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id), "trade")
+            if thread_id is None:
+                thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id), "main")
 
             send_params = {
                 "chat_id": chat_id,
