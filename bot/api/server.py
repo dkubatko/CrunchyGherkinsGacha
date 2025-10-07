@@ -147,6 +147,7 @@ class SpinsRequest(BaseModel):
 class SpinsResponse(BaseModel):
     spins: int
     success: bool = True
+    next_refresh_time: Optional[str] = None
 
 
 class ClaimBalanceResponse(BaseModel):
@@ -1185,7 +1186,12 @@ async def get_user_spins(
             database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
         )
 
-        return SpinsResponse(spins=spins_count, success=True)
+        # Get next refresh time separately
+        next_refresh_time = await asyncio.to_thread(
+            database.get_next_spin_refresh, user_id, chat_id
+        )
+
+        return SpinsResponse(spins=spins_count, success=True, next_refresh_time=next_refresh_time)
 
     except Exception as e:
         logger.error(f"Error getting spins for user {user_id} in chat {chat_id}: {e}")

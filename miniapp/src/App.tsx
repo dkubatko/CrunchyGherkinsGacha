@@ -52,7 +52,7 @@ function App() {
     refetch: refetchCards,
     updateCard: updateCardInCollection
   } = useCards();
-  const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins } = useSlots(
+  const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins, updateSpins } = useSlots(
     userData?.slotsView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
@@ -894,7 +894,8 @@ function App() {
           userId={userData.currentUserId}
           chatId={userData.chatId}
           initData={initData}
-          onSpinConsumed={refetchSpins}
+          refetchSpins={refetchSpins}
+          onSpinsUpdate={updateSpins}
         />
       </div>
     );
