@@ -94,6 +94,8 @@ logger = logging.getLogger(__name__)
 
 DEBUG_MODE = "--debug" in sys.argv
 
+MAX_BOT_IMAGE_RETRIES = 2
+
 # Use debug token when in debug mode, otherwise use production token
 if DEBUG_MODE:
     TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
@@ -534,6 +536,7 @@ async def roll(
             rolling.generate_card_for_chat,
             chat_id_str,
             gemini_util,
+            max_retries=MAX_BOT_IMAGE_RETRIES,
         )
 
         # Log the card generation details
@@ -1092,6 +1095,7 @@ async def handle_recycle_callback(
                 str(chat_id),
                 gemini_util,
                 upgrade_rarity,
+                max_retries=MAX_BOT_IMAGE_RETRIES,
             )
         )
 
@@ -1269,6 +1273,7 @@ async def handle_reroll(
             str(chat_id_for_roll),
             gemini_util,
             downgraded_rarity,
+            max_retries=MAX_BOT_IMAGE_RETRIES,
         )
 
         # Log the card generation details
