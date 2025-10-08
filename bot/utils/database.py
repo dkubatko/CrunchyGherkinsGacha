@@ -976,6 +976,20 @@ def add_user_to_chat(chat_id: str, user_id: int) -> bool:
     return inserted
 
 
+def remove_user_from_chat(chat_id: str, user_id: int) -> bool:
+    """Remove a user from a chat; returns True if a row was deleted."""
+    conn = connect()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM chats WHERE chat_id = ? AND user_id = ?",
+        (str(chat_id), user_id),
+    )
+    deleted = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return deleted
+
+
 def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     """Check whether a user is enrolled in a chat."""
     conn = connect()

@@ -445,6 +445,41 @@ async def enroll(
         await message.reply_text(prompt)
 
 
+@verify_user
+async def unenroll(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Remove the calling user from the current chat."""
+
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
+        await message.reply_text("/unenroll can only be used in group chats.")
+        return
+
+    chat_id = str(chat.id)
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.user_id)
+
+    if not is_member:
+        await message.reply_text("You're not enrolled in this chat.")
+        return
+
+    removed = await asyncio.to_thread(database.remove_user_from_chat, chat_id, user.user_id)
+
+    if removed:
+        await message.reply_text(
+            "You're unenrolled from this chat. Use /enroll to rejoin anytime.",
+        )
+    else:
+        await message.reply_text("You're no longer marked as part of this chat.")
+
+
 @verify_user_in_chat
 async def slots(
     update: Update,
@@ -2748,6 +2783,7 @@ def main() -> None:
     )
     application.add_handler(CommandHandler("delete", delete_character))
     application.add_handler(CommandHandler("enroll", enroll))
+    application.add_handler(CommandHandler("unenroll", unenroll))
     application.add_handler(CommandHandler("slots", slots))
     application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("roll", roll))
