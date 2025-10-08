@@ -12,7 +12,7 @@
       "weight": 55,
       "recycle_cost": 0,
       "color": "blue",
-      "creativeness_factor": 70,
+      "creativeness_factor": 50,
       "modifiers": [
         "Деловой",
         "Добряк",
