@@ -2755,7 +2755,11 @@ async def reject_trade(
 
     if not card1 or not card2:
         await query.answer()
-        await query.edit_message_text("Trade failed: one of the cards no longer exists.")
+        # Append error to original message
+        error_text = (
+            f"{query.message.text}\n\n❌ <b>Trade failed: one of the cards no longer exists.</b>"
+        )
+        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
         return
 
     user1_username = card1.owner
@@ -2785,8 +2789,22 @@ async def reject_trade(
             card2_title=card2.title(include_rarity=True),
         )
 
-    await query.edit_message_text(message_text, parse_mode=ParseMode.HTML)
+    # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
+    reply_markup = None
+    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
+        # Keep only the second row (Card 1 and Card 2 buttons)
+        keyboard = [query.message.reply_markup.inline_keyboard[1]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
     await query.answer()
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        message_thread_id=query.message.message_thread_id,
+        text=message_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
+    )
 
 
 @verify_user_in_chat
@@ -2807,7 +2825,9 @@ async def accept_trade(
 
     if not card1 or not card2:
         await query.answer()
-        await query.edit_message_text("Trade failed: one of the cards no longer exists.")
+        # Append error to original message
+        error_text = f"{query.message.text}\n\n❌ Trade failed: one of the cards no longer exists."
+        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
         return
 
     user1_username = card1.owner
@@ -2820,19 +2840,31 @@ async def accept_trade(
     success = await asyncio.to_thread(database.swap_card_owners, card_id1, card_id2)
 
     if success:
-        await query.edit_message_text(
-            TRADE_COMPLETE_MESSAGE.format(
-                user1_username=user1_username,
-                card1_title=card1.title(include_rarity=True),
-                user2_username=user2_username,
-                card2_title=card2.title(include_rarity=True),
-            ),
-            parse_mode=ParseMode.HTML,
+        message_text = TRADE_COMPLETE_MESSAGE.format(
+            user1_username=user1_username,
+            card1_title=card1.title(include_rarity=True),
+            user2_username=user2_username,
+            card2_title=card2.title(include_rarity=True),
         )
     else:
-        await query.edit_message_text("Trade failed. Please try again.")
+        message_text = "Trade failed. Please try again."
+
+    # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
+    reply_markup = None
+    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
+        # Keep only the second row (Card 1 and Card 2 buttons)
+        keyboard = [query.message.reply_markup.inline_keyboard[1]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.answer()
+    await query.message.delete()
+    await context.bot.send_message(
+        chat_id=query.message.chat_id,
+        message_thread_id=query.message.message_thread_id,
+        text=message_text,
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
+    )
 
 
 @verify_admin
