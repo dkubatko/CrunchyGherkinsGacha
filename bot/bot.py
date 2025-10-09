@@ -119,22 +119,9 @@ else:
 
 def log_card_generation(generated_card, context="card generation"):
     """Log details about a generated card including its source."""
-    source_type = "unknown"
-    source_info = "unknown"
-
-    if generated_card.source_user:
-        source_type = "User"
-        source_info = (
-            f"{generated_card.source_user.display_name} ({generated_card.source_user.user_id})"
-        )
-    elif generated_card.source_character:
-        source_type = "Character"
-        source_info = (
-            f"{generated_card.source_character.name} ({generated_card.source_character.id})"
-        )
-
     logger.info(
-        f"Generating card for {context}: {source_type} {source_info} -> ({generated_card.rarity}) {generated_card.modifier} {generated_card.base_name}"
+        f"Generating card for {context}: {generated_card.source_type}:{generated_card.source_id} "
+        f"-> ({generated_card.rarity}) {generated_card.modifier} {generated_card.base_name}"
     )
 
 
