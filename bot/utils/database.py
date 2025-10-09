@@ -1,5 +1,6 @@
 import base64
 import datetime
+import html
 import logging
 import os
 import sqlite3
@@ -94,6 +95,9 @@ class Card(BaseModel):
         Args:
             include_rarity: If True, includes rarity prefix. Default is False.
             include_id: If True, includes card ID in brackets as prefix. Default is False.
+
+        Returns:
+            HTML-escaped title text.
         """
         parts = []
 
@@ -106,7 +110,8 @@ class Card(BaseModel):
         parts.append(self.modifier)
         parts.append(self.base_name)
 
-        return " ".join(parts).strip()
+        title_text = " ".join(parts).strip()
+        return html.escape(title_text)
 
 
 class CardWithImage(Card):
@@ -797,6 +802,31 @@ def update_card_file_id(card_id, file_id):
     conn.commit()
     conn.close()
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
+
+
+def update_card_image(card_id: int, image_b64: str) -> None:
+    """Update the image for a card, regenerating thumbnail and clearing file_id."""
+    conn = connect()
+    cursor = conn.cursor()
+
+    # Generate new thumbnail
+    image_thumb_b64: Optional[str] = None
+    if image_b64:
+        try:
+            image_bytes = base64.b64decode(image_b64)
+            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
+            image_thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+        except Exception as exc:
+            logger.warning("Failed to generate thumbnail for refreshed card %s: %s", card_id, exc)
+
+    # Update card with new image, thumbnail, and clear file_id
+    cursor.execute(
+        "UPDATE cards SET image_b64 = ?, image_thumb_b64 = ?, file_id = NULL WHERE id = ?",
+        (image_b64, image_thumb_b64, card_id),
+    )
+    conn.commit()
+    conn.close()
+    logger.info(f"Updated image for card {card_id}, cleared file_id")
 
 
 def set_card_locked(card_id: int, is_locked: bool) -> None:
