@@ -88,6 +88,8 @@ class Card(BaseModel):
     chat_id: Optional[str]
     created_at: Optional[str]
     locked: bool = False
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
 
     def title(self, include_id: bool = False, include_rarity: bool = False):
         """Return the card's title, optionally including rarity and ID.
@@ -230,7 +232,7 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name, modifier, rarity, image_b64, chat_id):
+def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, source_id):
     """Add a new card to the database."""
     conn = connect()
     cursor = conn.cursor()
@@ -249,15 +251,50 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id):
 
     cursor.execute(
         """
-        INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """,
-        (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, now),
+        (
+            base_name,
+            modifier,
+            rarity,
+            image_b64,
+            image_thumb_b64,
+            chat_id,
+            now,
+            source_type,
+            source_id,
+        ),
     )
     card_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return card_id
+
+
+def add_card_from_generated(generated_card, chat_id):
+    """
+    Add a card to the database from a GeneratedCard object.
+
+    This is a convenience wrapper around add_card that accepts a GeneratedCard
+    (from utils.rolling) and extracts all the necessary fields.
+
+    Args:
+        generated_card: A GeneratedCard instance from utils.rolling
+        chat_id: The chat ID to associate with this card
+
+    Returns:
+        The database ID of the newly created card
+    """
+    return add_card(
+        base_name=generated_card.base_name,
+        modifier=generated_card.modifier,
+        rarity=generated_card.rarity,
+        image_b64=generated_card.image_b64,
+        chat_id=chat_id,
+        source_type=generated_card.source_type,
+        source_id=generated_card.source_id,
+    )
 
 
 def claim_card(card_id, owner, user_id=None, chat_id=None):

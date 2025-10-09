@@ -104,6 +104,8 @@ def generate_single_card(
     character = find_character_by_name(source_name)
     user = None
     chat_id = None
+    source_type = None
+    source_id = None
 
     if character:
         logger.info(
@@ -112,6 +114,8 @@ def generate_single_card(
         base_name = character.name
         image_b64 = character.imageb64
         chat_id = character.chat_id
+        source_type = "character"
+        source_id = character.id
     else:
         # Try to find as user
         user = find_user_by_name(source_name)
@@ -119,6 +123,8 @@ def generate_single_card(
             logger.info(f"Found user: {user.display_name} (ID: {user.user_id})")
             base_name = user.display_name
             image_b64 = user.profile_imageb64
+            source_type = "user"
+            source_id = user.user_id
         else:
             logger.error(f"Could not find character or user with name: {source_name}")
             logger.info("Tip: Check the exact spelling in the database")
@@ -165,6 +171,8 @@ def generate_single_card(
             rarity=rarity,
             image_b64=generated_image_b64,
             chat_id=chat_id,
+            source_type=source_type,
+            source_id=source_id,
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 

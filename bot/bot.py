@@ -606,11 +606,8 @@ async def roll(
         log_card_generation(generated_card, "roll")
 
         card_id = await asyncio.to_thread(
-            database.add_card,
-            generated_card.base_name,
-            generated_card.modifier,
-            generated_card.rarity,
-            generated_card.image_b64,
+            database.add_card_from_generated,
+            generated_card,
             update.effective_chat.id,
         )
 
@@ -1533,11 +1530,8 @@ async def handle_recycle_callback(
             return
 
         new_card_id = await asyncio.to_thread(
-            database.add_card,
-            generated_card.base_name,
-            generated_card.modifier,
-            generated_card.rarity,
-            generated_card.image_b64,
+            database.add_card_from_generated,
+            generated_card,
             chat_id,
         )
 
@@ -1662,11 +1656,8 @@ async def handle_reroll(
         # Add new card to database
         new_card_chat_id = active_card.chat_id or (query.message.chat_id if query.message else None)
         new_card_id = await asyncio.to_thread(
-            database.add_card,
-            generated_card.base_name,
-            generated_card.modifier,
-            generated_card.rarity,
-            generated_card.image_b64,
+            database.add_card_from_generated,
+            generated_card,
             new_card_chat_id,
         )
 
