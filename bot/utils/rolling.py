@@ -45,8 +45,6 @@ class GeneratedCard:
     image_b64: str
     source_type: str
     source_id: int
-    source_user: Optional[database.User] = None
-    source_character: Optional[database.Character] = None
 
 
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
@@ -162,14 +160,6 @@ def _create_generated_card(
     if not image_b64:
         raise ImageGenerationError
 
-    source_user = profile.user
-    source_character = profile.character
-
-    if source_user is None and profile.source_type == "user" and profile.source_id:
-        source_user = database.get_user(profile.source_id)
-    if source_character is None and profile.source_type == "character" and profile.source_id:
-        source_character = database.get_character_by_id(profile.source_id)
-
     return GeneratedCard(
         base_name=profile.name,
         modifier=chosen_modifier,
@@ -178,8 +168,6 @@ def _create_generated_card(
         image_b64=image_b64,
         source_type=profile.source_type,
         source_id=profile.source_id,
-        source_user=source_user,
-        source_character=source_character,
     )
 
 
