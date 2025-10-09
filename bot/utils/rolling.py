@@ -43,6 +43,8 @@ class GeneratedCard:
     rarity: str
     card_title: str
     image_b64: str
+    source_type: str
+    source_id: int
     source_user: Optional[database.User] = None
     source_character: Optional[database.Character] = None
 
@@ -174,6 +176,8 @@ def _create_generated_card(
         rarity=rarity,
         card_title=f"{chosen_modifier} {profile.name}",
         image_b64=image_b64,
+        source_type=profile.source_type,
+        source_id=profile.source_id,
         source_user=source_user,
         source_character=source_character,
     )
@@ -331,63 +335,14 @@ def regenerate_card_image(
         NoEligibleUserError: If the source user/character is missing required data
         ImageGenerationError: If image generation fails after retries
     """
-    # Get the card's source - first check user, then character
-    card_with_image = database.get_card(card.id)
-    if not card_with_image:
-        raise InvalidSourceError(f"Card {card.id} not found")
+    # Check that the card has source information
+    if not card.source_type or not card.source_id:
+        raise InvalidSourceError(
+            f"Card {card.id} has no source information (source_type={card.source_type}, source_id={card.source_id})"
+        )
 
-    # Try to determine source from user_id first
-    source_user = None
-    source_character = None
-
-    if card.user_id:
-        # Card was created from a user
-        source_user = database.get_user(card.user_id)
-        if source_user:
-            display_name = (source_user.display_name or "").strip()
-            image_b64 = (source_user.profile_imageb64 or "").strip()
-
-            if not display_name or not image_b64:
-                raise NoEligibleUserError(f"User {card.user_id} missing profile data")
-
-            profile = SelectedProfile(
-                name=display_name,
-                image_b64=image_b64,
-                source_type="user",
-                source_id=source_user.user_id,
-                user=source_user,
-            )
-        else:
-            raise InvalidSourceError(f"Source user {card.user_id} not found")
-    else:
-        # Card may have been created from a character - try to find it by matching name
-        if card.chat_id:
-            characters = database.get_characters_by_chat(card.chat_id)
-            for char in characters:
-                if char.name.strip() == card.base_name.strip():
-                    source_character = char
-                    break
-
-            if source_character:
-                name = (source_character.name or "").strip()
-                image_b64 = (source_character.imageb64 or "").strip()
-
-                if not name or not image_b64:
-                    raise NoEligibleUserError(f"Character {source_character.id} missing data")
-
-                profile = SelectedProfile(
-                    name=name,
-                    image_b64=image_b64,
-                    source_type="character",
-                    source_id=source_character.id,
-                    character=source_character,
-                )
-            else:
-                raise InvalidSourceError(
-                    f"Cannot determine source for card {card.id}: no user_id and no matching character found"
-                )
-        else:
-            raise InvalidSourceError(f"Card {card.id} has no chat_id and no user_id")
+    # Get the source profile using the stored source_type and source_id
+    profile = get_profile_for_source(card.source_type, card.source_id)
 
     # Now regenerate with the same rarity and modifier
     total_attempts = max(1, max_retries + 1)
