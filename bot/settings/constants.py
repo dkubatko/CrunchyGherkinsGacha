@@ -27,11 +27,17 @@ IMAGE_GENERATOR_INSTRUCTION = """
 **Core Requirement: Take the provided 5:7 aspect ratio card template image and completely transform it into a final, detailed collectible trading card.**
 Your goal is to use the provided template as a direct base, restyling its elements and filling its content area according to the instructions below.
 
+**--- Guiding Principles ---**
+Your main challenge is to find the perfect balance between two critical goals:
+1.  **Thematic Transformation:** The card must be a powerful and creative visual representation of its name, "{modification} {name}".
+2.  **Character Recognition:** The person depicted on the card must remain clearly and unmistakably recognizable from the input photo.
+
+If these two goals seem to conflict, prioritize making the person recognizable. The final output should feel like a themed portrait of the *specific person*, not a generic character representing the theme.
+
 **1. Art Style & Theme:**
-The visual theme and art style MUST directly reflect the card's name: "<{modification} {name}>".
-   - For example, if {modification} is "Doctor", the style should be clean and professional. If "Wizard", it should be magical and arcane.
-   - **Crucially, AVOID defaulting to a generic "futuristic" theme unless the {modification} explicitly calls for it (e.g., "Cyborg").**
-   - If unclear, assume {modification} refers to pop culture (e.g. anime, games, memes).
+   - **Literal Interpretation:** The visual theme and art style MUST be a direct and literal interpretation of the `{modification}` tag.
+   - **AVOID THEME DEFAULTS:** You are strictly forbidden from defaulting to a generic theme (for example **fantasy, magic, arcane, sci-fi, or futuristic**) unless the `{modification}` tag requests that theme explicitly.
+   - **Current-Day Grounding:** If `{modification}` is an abstract concept, a personality trait, or a term without an obvious visual theme, your interpretation MUST be grounded in a **contemporary, real-world, and non-speculative context**.
 The overall style should be a high-quality, detailed 2D digital illustration.
 
 **2. Card Transformation & Layout:**
@@ -40,29 +46,23 @@ The overall style should be a high-quality, detailed 2D digital illustration.
    - **Layering:** The restyled nameplate must remain an **opaque layer on top** of the main artwork.
    - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
 
-**3. Character Modification (CRITICAL):**
-   - **The `{modification}` tag must be interpreted literally and directly.** It is the primary driver for the character's transformation. You are instructed to visually represent these traits faithfully.
-   - **For physical or ethnic attributes:** If the `{modification}` is an ethnicity like "African", you MUST alter the character's phenotype to be recognizably of that ethnicity, including skin tone and facial features, while still maintaining the likeness of the original photo.
-   - **For identity or cultural attributes:** If the `{modification}` is an identity like "Gay", you MUST incorporate relevant and recognizable cultural symbols, styles, or themes into the character's clothing, accessories, and the card's background. For "Gay", this could include rainbows, pride colors, or specific fashion styles.
-   - **This is a creative instruction; do not avoid or generalize these modifiers.** The goal is a direct and respectful visual interpretation of the card's name.
+**3. Character Likeness & Modification:**
+   - **Preserve Facial Structure:** To maintain likeness, modifications must apply to the character's **clothing, accessories, hair style, pose, and expression**. The underlying **facial structure, bone shape, and key features (eyes, nose, mouth) MUST be preserved**. Do NOT use the raw, unprocessed photo; render the face in the specified art style while keeping it recognizable.
+   - **Direct Modification:** The `{modification}` tag must be interpreted literally. For physical or ethnic attributes, alter the phenotype respectfully while maintaining the core likeness. For identity or cultural attributes, incorporate recognizable symbols or styles into the character's attire, accessories, and the card's background.
    - **Artistic Mandate:** Your creative task is to generate the most powerful and evocative depiction of the theme that is **permissible by content policy.** You must fulfill the prompt's intent by maximizing suggestive and thematic elements (attire, pose, symbolism) without violating policy.
 
-**4. Character Portrayal:**
-   - The character's face from the input photo must be accurately represented and clearly recognizable, even after applying the modifications from Section 3.
-   - Render the character in the specified 2D digital art style. **Do NOT use the raw, unprocessed photo.**
-   - Modify the character's clothing, pose, and surrounding in-frame effects to match the card's full name "{modification} {name}".
-
-**5. Text:**
-   - The card name "{modification} {name}" MUST be placed horizontally and centered within the restyled nameplate area, as defined by the template.
-   - Text and nameplate can be stylized to reflect the card theme.
-   - **Do NOT include any other text anywhere on the card.**
+**4. Nameplate & Text Styling:**
+   - **Thematic Elements:** The nameplate and text are key thematic elements. Their appearance—including font choice, color, and effects—MUST be styled to match the card's theme (from Section 1).
+   - **Complexity Scaling:** The level of ornamentation for both the nameplate and the text is determined by the {creativeness_factor}, as defined in Section 5.
+   - **Placement:** The card name "{modification} {name}" MUST be placed horizontally and centered within the restyled nameplate area, as defined by the template.
+   - **Exclusivity:** Do NOT include any other text anywhere on the card.
 
 **6. Rarity and Creativeness:**
    - The card's restyled border and accents should be in the {color} gamut, inspired by the template's base color.
    - The "creativeness factor" of {creativeness_factor}/100 dictates the **visual complexity** of the card's design.
      - **Low creativeness (e.g., 10/100):** A simple, clean restyling of the border and minimal background effects.
-     - **High creativeness (e.g., 90/100):** A highly ornate, detailed border, dynamic lighting, and thematic particle effects contained within the frame.
-   - This factor controls design complexity, NOT the art style genre.
+     - **High creativeness (e.g., 90/100):** A highly ornate, detailed border, dynamic lighting, and complex thematic effects & elements contained within the frame.
+   - This factor controls design complexity, **NOT** the art style genre or the degree of deviation from the person's likeness.
 """
 
 SLOT_MACHINE_INSTRUCTION = """
