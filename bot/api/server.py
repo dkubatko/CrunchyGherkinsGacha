@@ -1538,11 +1538,8 @@ async def _process_slots_victory_background(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                database.add_card,
-                generated_card.base_name,
-                generated_card.modifier,
-                generated_card.rarity,
-                generated_card.image_b64,
+                database.add_card_from_generated,
+                generated_card,
                 chat_id,
             )
 
