@@ -11,6 +11,7 @@
       "spin_reward": 10,
       "weight": 55,
       "recycle_cost": 0,
+      "refresh_cost": 1,
       "color": "blue",
       "creativeness_factor": 50,
       "modifiers": [
@@ -110,6 +111,7 @@
       "spin_reward": 25,
       "weight": 30,
       "recycle_cost": 3,
+      "refresh_cost": 3,
       "color": "green",
       "creativeness_factor": 80,
       "modifiers": [
@@ -249,6 +251,7 @@
       "spin_reward": 60,
       "weight": 12,
       "recycle_cost": 3,
+      "refresh_cost": 5,
       "color": "purple",
       "creativeness_factor": 90,
       "modifiers": [
@@ -365,6 +368,7 @@
       "spin_reward": 200,
       "weight": 3,
       "recycle_cost": 4,
+      "refresh_cost": 10,
       "color": "golden",
       "creativeness_factor": 110,
       "modifiers": [

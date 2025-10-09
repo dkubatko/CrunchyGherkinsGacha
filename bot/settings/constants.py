@@ -23,6 +23,12 @@ CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
 SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
 
+
+def get_refresh_cost(rarity: str) -> int:
+    """Get the refresh cost for a given rarity."""
+    return config.get("RARITIES", {}).get(rarity, {}).get("refresh_cost", 5)
+
+
 IMAGE_GENERATOR_INSTRUCTION = """
 **Core Requirement: Take the provided 5:7 aspect ratio card template image and completely transform it into a final, detailed collectible trading card.**
 Your goal is to use the provided template as a direct base, restyling its elements and filling its content area according to the instructions below.
@@ -220,10 +226,35 @@ SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in sl
 SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
 
 SLOTS_VICTORY_REFUND_MESSAGE = (
-    "@{username} attempted to claim a <b>{rarity} {display_name}</b>, but something broke.\n"
+    "@{username} attempted to claim a <b>{rarity} {display_name}</b>, but something broke.\n\n"
     "Awarded <b>{spin_amount} spins</b> as compensation."
 )
 
 BURN_RESULT_MESSAGE = (
     "@{username} burned <b>{rarity} {display_name}</b> and received <b>{spin_amount} spins!</b>"
+)
+
+REFRESH_USAGE_MESSAGE = "Usage: /refresh <card_id>.\n\nRe-generate the image for a card you own.\n\nClaim points cost varies by rarity:\nC: 1, R: 3, E: 5, L: 10"
+REFRESH_DM_RESTRICTED_MESSAGE = "Refreshing cards is only available in the group chat."
+REFRESH_INVALID_ID_MESSAGE = "Invalid card ID. Please provide a numeric card ID."
+REFRESH_CARD_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
+REFRESH_NOT_YOURS_MESSAGE = "You can only refresh cards you currently own."
+REFRESH_CHAT_MISMATCH_MESSAGE = "This card doesn't belong to this chat."
+REFRESH_INSUFFICIENT_BALANCE_MESSAGE = (
+    "You need at least {cost} claim points to refresh this card. Your balance: {balance} points."
+)
+REFRESH_CONFIRM_MESSAGE = (
+    "<b>{card_title}</b>\n\n"
+    "Refresh image for this card?\n\n"
+    "This will cost <b>{cost} claim points</b>.\n\n"
+    "Your current balance: <b>{balance} points</b>"
+)
+REFRESH_CANCELLED_MESSAGE = "<b>{card_title}</b>\n\nRefresh cancelled."
+REFRESH_ALREADY_RUNNING_MESSAGE = "You already have a refresh in progress."
+REFRESH_PROCESSING_MESSAGE = "<b>{card_title}</b>\n\nRefreshing card image..."
+REFRESH_FAILURE_MESSAGE = "<b>{card_title}</b>\n\nRefresh failed. Image generation is unavailable right now. Your claim points were not deducted."
+REFRESH_SUCCESS_MESSAGE = (
+    "<b>{card_title}</b>\n\n"
+    "Refresh complete! Card image regenerated.\n\n"
+    "Remaining balance: <b>{remaining_balance} points</b>."
 )

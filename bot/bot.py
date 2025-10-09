@@ -73,6 +73,20 @@ from settings.constants import (
     BURN_FAILURE_MESSAGE,
     BURN_FAILURE_SPINS_MESSAGE,
     BURN_SUCCESS_MESSAGE,
+    REFRESH_USAGE_MESSAGE,
+    REFRESH_DM_RESTRICTED_MESSAGE,
+    REFRESH_INVALID_ID_MESSAGE,
+    REFRESH_CARD_NOT_FOUND_MESSAGE,
+    REFRESH_NOT_YOURS_MESSAGE,
+    REFRESH_CHAT_MISMATCH_MESSAGE,
+    REFRESH_INSUFFICIENT_BALANCE_MESSAGE,
+    REFRESH_CONFIRM_MESSAGE,
+    REFRESH_CANCELLED_MESSAGE,
+    REFRESH_ALREADY_RUNNING_MESSAGE,
+    REFRESH_PROCESSING_MESSAGE,
+    REFRESH_FAILURE_MESSAGE,
+    REFRESH_SUCCESS_MESSAGE,
+    get_refresh_cost,
 )
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat, verify_admin
@@ -143,6 +157,20 @@ def get_time_until_next_roll(user_id, chat_id):
     minutes = int((time_diff.total_seconds() % 3600) // 60)
 
     return hours, minutes
+
+
+async def save_card_file_id_from_message(message, card_id: int) -> None:
+    """
+    Extract and save the Telegram file_id from a message containing a card photo.
+
+    Args:
+        message: The Telegram message object containing the photo
+        card_id: The database ID of the card to update
+    """
+    if message and message.photo:
+        file_id = message.photo[-1].file_id  # Get the largest photo size
+        await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+        logger.debug(f"Saved file_id for card {card_id}")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -609,9 +637,7 @@ async def roll(
         )
 
         # Save the file_id returned by Telegram for future use
-        if message.photo:
-            file_id = message.photo[-1].file_id  # Get the largest photo size
-            await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+        await save_card_file_id_from_message(message, card_id)
 
     except rolling.NoEligibleUserError:
         await update.message.reply_text(
@@ -789,7 +815,7 @@ async def handle_burn_callback(
         return
 
     if target_user_id != user.user_id:
-        await query.answer(BURN_NOT_YOURS_MESSAGE, show_alert=True)
+        await query.answer(BURN_NOT_YOURS_MESSAGE)
         return
 
     if action == "cancel":
@@ -943,6 +969,326 @@ async def handle_burn_callback(
 
 
 @verify_user_in_chat
+async def refresh(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Refresh a card's image for 5 claim points."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text(
+            REFRESH_DM_RESTRICTED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if not context.args:
+        await message.reply_text(
+            REFRESH_USAGE_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card_id_arg = context.args[0]
+    try:
+        card_id = int(card_id_arg)
+    except ValueError:
+        await message.reply_text(
+            REFRESH_INVALID_ID_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if not card:
+        await message.reply_text(
+            REFRESH_CARD_NOT_FOUND_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    chat_id_str = str(chat.id)
+    if not card.chat_id or card.chat_id != chat_id_str:
+        await message.reply_text(
+            REFRESH_CHAT_MISMATCH_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    username = user.username
+    if not username:
+        return
+
+    owns_card = card.user_id == user.user_id or (username and card.owner == username)
+    if not owns_card:
+        await message.reply_text(
+            REFRESH_NOT_YOURS_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Check claim balance
+    refresh_cost = get_refresh_cost(card.rarity)
+    balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
+    if balance < refresh_cost:
+        await message.reply_text(
+            REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card_title = card.title(include_id=True, include_rarity=True)
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Refresh!", callback_data=f"refresh_yes_{card_id}_{user.user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Cancel", callback_data=f"refresh_cancel_{card_id}_{user.user_id}"
+                ),
+            ]
+        ]
+    )
+
+    # Send the card image with the confirmation message
+    card_media = card.get_media()
+    await message.reply_photo(
+        photo=card_media,
+        caption=REFRESH_CONFIRM_MESSAGE.format(
+            card_title=card_title,
+            balance=balance,
+            cost=refresh_cost,
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+    )
+
+
+@verify_user_in_chat
+async def handle_refresh_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle refresh confirmation/cancellation."""
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer("Invalid refresh data.")
+        return
+
+    _, action, card_id_str, target_user_id_str = data_parts[:4]
+
+    try:
+        card_id = int(card_id_str)
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Invalid refresh data.")
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer("This refresh prompt isn't for you!")
+        return
+
+    if action == "cancel":
+        # Fetch card info for the message
+        card = await asyncio.to_thread(database.get_card, card_id)
+        if card:
+            card_title = card.title(include_id=True, include_rarity=True)
+            cancel_msg = REFRESH_CANCELLED_MESSAGE.format(
+                card_title=card_title,
+            )
+        else:
+            cancel_msg = "Refresh cancelled."
+        try:
+            await query.edit_message_caption(
+                caption=cancel_msg, parse_mode=ParseMode.HTML, reply_markup=None
+            )
+        except Exception:
+            pass
+        await query.answer()
+        return
+
+    if action != "yes":
+        await query.answer("Unknown action.")
+        return
+
+    refreshing_users = context.bot_data.setdefault("refreshing_users", set())
+    if user.user_id in refreshing_users:
+        await query.answer(REFRESH_ALREADY_RUNNING_MESSAGE)
+        return
+
+    refreshing_users.add(user.user_id)
+
+    chat = update.effective_chat
+    chat_id_str = str(chat.id) if chat else None
+
+    try:
+        # Fetch the card again
+        card = await asyncio.to_thread(database.get_card, card_id)
+        if not card:
+            await query.answer(REFRESH_CARD_NOT_FOUND_MESSAGE, show_alert=True)
+            return
+
+        # Verify ownership again
+        username = user.username
+        if not username:
+            return
+
+        owns_card = card.user_id == user.user_id or (username and card.owner == username)
+        if not owns_card:
+            await query.answer(REFRESH_NOT_YOURS_MESSAGE, show_alert=True)
+            return
+
+        # Verify balance again
+        refresh_cost = get_refresh_cost(card.rarity)
+        balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
+        if balance < refresh_cost:
+            await query.answer(
+                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                show_alert=True,
+            )
+            return
+
+        # Show processing message
+        await query.answer()
+        card_title = card.title(include_id=True, include_rarity=True)
+        processing_msg = REFRESH_PROCESSING_MESSAGE.format(
+            card_title=card_title,
+        )
+        try:
+            await query.edit_message_caption(
+                caption=processing_msg, parse_mode=ParseMode.HTML, reply_markup=None
+            )
+        except Exception:
+            pass
+
+        # Regenerate the image
+        try:
+            new_image_b64 = await asyncio.to_thread(
+                rolling.regenerate_card_image,
+                card,
+                gemini_util,
+                max_retries=MAX_BOT_IMAGE_RETRIES,
+            )
+        except (
+            rolling.ImageGenerationError,
+            rolling.InvalidSourceError,
+            rolling.NoEligibleUserError,
+        ) as exc:
+            logger.warning("Image regeneration failed for card %s: %s", card_id, exc)
+            card_title = card.title(include_id=True, include_rarity=True)
+            failure_msg = REFRESH_FAILURE_MESSAGE.format(
+                card_title=card_title,
+            )
+            await query.answer(
+                "Refresh failed. Image generation is unavailable right now.", show_alert=True
+            )
+            try:
+                await query.edit_message_caption(
+                    caption=failure_msg, parse_mode=ParseMode.HTML, reply_markup=None
+                )
+            except Exception:
+                pass
+            return
+
+        # Deduct claim points only after successful generation
+        remaining_balance = await asyncio.to_thread(
+            database.reduce_claim_points, user.user_id, chat_id_str, refresh_cost
+        )
+
+        if remaining_balance is None:
+            # Balance check failed (shouldn't happen since we checked above)
+            await query.answer(
+                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                show_alert=True,
+            )
+            try:
+                await query.edit_message_caption(
+                    caption=REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(
+                        balance=balance, cost=refresh_cost
+                    ),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=None,
+                )
+            except Exception:
+                pass
+            return
+
+        # Update the card with the new image
+        await asyncio.to_thread(database.update_card_image, card_id, new_image_b64)
+
+        logger.info(
+            "Card %s refreshed by user %s, remaining balance: %s",
+            card_id,
+            user.user_id,
+            remaining_balance,
+        )
+
+        # Replace the old image with the new one
+        card_title = card.title(include_id=True, include_rarity=True)
+        success_message = REFRESH_SUCCESS_MESSAGE.format(
+            card_title=card_title,
+            remaining_balance=remaining_balance,
+        )
+        try:
+            new_image_bytes = base64.b64decode(new_image_b64)
+            edited_message = await query.edit_message_media(
+                media=InputMediaPhoto(
+                    media=new_image_bytes,
+                    caption=success_message,
+                    parse_mode=ParseMode.HTML,
+                ),
+                reply_markup=None,
+            )
+            # Save the new file_id from Telegram
+            await save_card_file_id_from_message(edited_message, card_id)
+        except Exception as e:
+            logger.warning("Failed to update message with new image: %s", e)
+            # Fallback to just updating caption if media edit fails
+            try:
+                await query.edit_message_caption(
+                    caption=success_message, parse_mode=ParseMode.HTML, reply_markup=None
+                )
+            except Exception:
+                pass
+
+    except Exception as exc:
+        logger.exception("Unexpected error during refresh for card %s: %s", card_id, exc)
+        await query.answer("Refresh failed due to an unexpected error.", show_alert=True)
+        try:
+            # Try to get card info for a better error message
+            error_card = await asyncio.to_thread(database.get_card, card_id)
+            if error_card:
+                error_title = error_card.title(include_id=True, include_rarity=True)
+                error_msg = REFRESH_FAILURE_MESSAGE.format(
+                    card_title=error_title,
+                )
+            else:
+                error_msg = "Refresh failed. Image generation is unavailable right now. Your claim points were not deducted."
+            await query.edit_message_caption(
+                caption=error_msg, parse_mode=ParseMode.HTML, reply_markup=None
+            )
+        except Exception:
+            pass
+    finally:
+        refreshing_users.discard(user.user_id)
+
+
+@verify_user_in_chat
 async def recycle(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -1050,7 +1396,7 @@ async def handle_recycle_callback(
         return
 
     if target_user_id != user.user_id:
-        await query.answer(RECYCLE_NOT_YOURS_MESSAGE, show_alert=True)
+        await query.answer(RECYCLE_NOT_YOURS_MESSAGE)
         return
 
     rarity_name = RECYCLE_ALLOWED_RARITIES.get(rarity_key)
@@ -1229,9 +1575,8 @@ async def handle_recycle_callback(
             media=media,
         )
 
-        if message and message.photo:
-            file_id = message.photo[-1].file_id
-            await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
+        # Save the file_id returned by Telegram for future use
+        await save_card_file_id_from_message(message, new_card_id)
 
         await query.answer("Recycled! Enjoy your new card!", show_alert=False)
 
@@ -1346,9 +1691,7 @@ async def handle_reroll(
         )
 
         # Save the file_id returned by Telegram for future use
-        if message.photo:
-            file_id = message.photo[-1].file_id
-            await asyncio.to_thread(database.update_card_file_id, new_card_id, file_id)
+        await save_card_file_id_from_message(message, new_card_id)
 
         # If original card was claimed, give the claimer a claim point back
         if original_owner_id is not None and original_claim_chat_id is not None:
@@ -2310,7 +2653,7 @@ async def handle_lock_card_confirm(
 
     # Verify the user clicking is the same as the one who initiated
     if user.user_id != target_user_id:
-        await query.answer("This action is not for you!", show_alert=True)
+        await query.answer("This action is not for you!")
         return
 
     if action == "no":
@@ -2789,6 +3132,7 @@ def main() -> None:
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("recycle", recycle))
     application.add_handler(CommandHandler("burn", burn))
+    application.add_handler(CommandHandler("refresh", refresh))
     application.add_handler(CommandHandler("collection", collection))
     application.add_handler(CommandHandler("stats", stats))
     application.add_handler(CommandHandler("trade", trade))
@@ -2801,6 +3145,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_"))
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
     application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^burn_"))
+    application.add_handler(CallbackQueryHandler(handle_refresh_callback, pattern="^refresh_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(
         CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")

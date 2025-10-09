@@ -308,3 +308,123 @@ def generate_card_for_chat(
                     profile = refreshed_profile
 
     raise last_error or ImageGenerationError("Image generation failed after retries")
+
+
+def regenerate_card_image(
+    card: database.Card,
+    gemini_util: GeminiUtil,
+    max_retries: int = 0,
+) -> str:
+    """
+    Regenerate the image for an existing card, keeping the same rarity, modifier, and name.
+
+    Args:
+        card: The card to regenerate the image for
+        gemini_util: GeminiUtil instance for image generation
+        max_retries: Number of retry attempts if generation fails
+
+    Returns:
+        The new base64-encoded image
+
+    Raises:
+        InvalidSourceError: If the card has no valid source
+        NoEligibleUserError: If the source user/character is missing required data
+        ImageGenerationError: If image generation fails after retries
+    """
+    # Get the card's source - first check user, then character
+    card_with_image = database.get_card(card.id)
+    if not card_with_image:
+        raise InvalidSourceError(f"Card {card.id} not found")
+
+    # Try to determine source from user_id first
+    source_user = None
+    source_character = None
+
+    if card.user_id:
+        # Card was created from a user
+        source_user = database.get_user(card.user_id)
+        if source_user:
+            display_name = (source_user.display_name or "").strip()
+            image_b64 = (source_user.profile_imageb64 or "").strip()
+
+            if not display_name or not image_b64:
+                raise NoEligibleUserError(f"User {card.user_id} missing profile data")
+
+            profile = SelectedProfile(
+                name=display_name,
+                image_b64=image_b64,
+                source_type="user",
+                source_id=source_user.user_id,
+                user=source_user,
+            )
+        else:
+            raise InvalidSourceError(f"Source user {card.user_id} not found")
+    else:
+        # Card may have been created from a character - try to find it by matching name
+        if card.chat_id:
+            characters = database.get_characters_by_chat(card.chat_id)
+            for char in characters:
+                if char.name.strip() == card.base_name.strip():
+                    source_character = char
+                    break
+
+            if source_character:
+                name = (source_character.name or "").strip()
+                image_b64 = (source_character.imageb64 or "").strip()
+
+                if not name or not image_b64:
+                    raise NoEligibleUserError(f"Character {source_character.id} missing data")
+
+                profile = SelectedProfile(
+                    name=name,
+                    image_b64=image_b64,
+                    source_type="character",
+                    source_id=source_character.id,
+                    character=source_character,
+                )
+            else:
+                raise InvalidSourceError(
+                    f"Cannot determine source for card {card.id}: no user_id and no matching character found"
+                )
+        else:
+            raise InvalidSourceError(f"Card {card.id} has no chat_id and no user_id")
+
+    # Now regenerate with the same rarity and modifier
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            # Use the existing modifier, rarity and name
+            image_b64 = gemini_util.generate_image(
+                card.base_name,
+                card.modifier,
+                card.rarity,
+                base_image_b64=profile.image_b64,
+            )
+
+            if not image_b64:
+                raise ImageGenerationError("Empty image returned")
+
+            logger.info(
+                "Successfully regenerated image for card %s (attempt %s/%s)",
+                card.id,
+                attempt,
+                total_attempts,
+            )
+            return image_b64
+
+        except Exception as exc:
+            last_error = exc
+            logger.warning(
+                "Image regeneration attempt %s/%s failed for card %s: %s",
+                attempt,
+                total_attempts,
+                card.id,
+                exc,
+            )
+
+            if attempt < total_attempts:
+                time.sleep(1)
+
+    raise last_error or ImageGenerationError("Image regeneration failed after retries")
