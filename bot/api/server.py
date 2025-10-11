@@ -1495,6 +1495,7 @@ async def _process_slots_victory_background(
     bot = None
     thread_id: Optional[int] = None
     refund_processed = False
+    card_generated_and_assigned = False
 
     try:
         # Initialize bot
@@ -1544,6 +1545,9 @@ async def _process_slots_victory_background(
             )
 
             await asyncio.to_thread(database.set_card_owner, card_id, username, user_id)
+
+            # Mark that card was successfully generated and assigned
+            card_generated_and_assigned = True
 
             # Create final caption and keyboard
             final_caption = SLOTS_VICTORY_RESULT_MESSAGE.format(
@@ -1605,7 +1609,8 @@ async def _process_slots_victory_background(
             except Exception as edit_exc:
                 logger.error("Failed to update failure message: %s", edit_exc)
 
-            if spin_refund_amount > 0:
+            # Only refund if card was not generated and assigned
+            if spin_refund_amount > 0 and not card_generated_and_assigned:
                 refund_processed = await _refund_slots_victory_failure(
                     bot=bot,
                     bot_token=bot_token,
@@ -1621,7 +1626,8 @@ async def _process_slots_victory_background(
 
     except Exception as exc:
         logger.error("Critical error in slots victory background processing: %s", exc)
-        if spin_refund_amount > 0 and not refund_processed:
+        # Only refund if card was not generated and assigned
+        if spin_refund_amount > 0 and not refund_processed and not card_generated_and_assigned:
             await _refund_slots_victory_failure(
                 bot=bot,
                 bot_token=bot_token,
