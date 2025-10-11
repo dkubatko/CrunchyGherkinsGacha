@@ -21,7 +21,7 @@ load_dotenv()
 # Add project root to sys.path to allow importing from bot
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import database, gemini, rolling
+from utils import database, gemini, rolling, minesweeper
 from utils.database import Card as APICard
 from settings.constants import (
     TRADE_REQUEST_MESSAGE,
@@ -34,6 +34,10 @@ from settings.constants import (
     SLOT_WIN_CHANCE,
     SLOT_CLAIM_CHANCE,
     BURN_RESULT_MESSAGE,
+    MINESWEEPER_VICTORY_PENDING_MESSAGE,
+    MINESWEEPER_VICTORY_RESULT_MESSAGE,
+    MINESWEEPER_VICTORY_FAILURE_MESSAGE,
+    MINESWEEPER_LOSS_MESSAGE,
 )
 from utils.miniapp import encode_single_card_token
 
@@ -217,6 +221,58 @@ class SlotVerifyResponse(BaseModel):
     is_win: bool
     slot_results: List[SlotSymbolInfo]
     rarity: Optional[str] = None
+
+
+class MinesweeperStartRequest(BaseModel):
+    user_id: int
+    chat_id: str
+    bet_card_id: int
+
+
+class MinesweeperGameRequest(BaseModel):
+    user_id: int
+    chat_id: str
+
+
+class MinesweeperStartResponse(BaseModel):
+    game_id: int
+    status: str  # 'active', 'won', 'lost'
+    bet_card_title: str  # Title of the bet card ("Rarity Modifier Name")
+    card_rarity: str  # Rarity of the bet card
+    revealed_cells: List[int]
+    moves_count: int
+    started_timestamp: str
+    last_updated_timestamp: str
+    reward_card_id: Optional[int] = None  # Only populated if status is 'won'
+    mine_positions: Optional[List[int]] = None  # Only populated if status is 'won' or 'lost'
+    claim_point_positions: Optional[List[int]] = (
+        None  # Visible claim points (revealed or all if game over)
+    )
+    card_icon: Optional[str] = None  # Base64 slot icon of the game's selected source
+    claim_point_icon: Optional[str] = None  # Base64 icon for claim points
+    mine_icon: Optional[str] = None  # Base64 icon for mines
+    next_refresh_time: Optional[str] = None  # When the next game can be started (if game is over)
+
+
+class MinesweeperUpdateRequest(BaseModel):
+    user_id: int
+    game_id: int
+    cell_index: int
+
+
+class MinesweeperUpdateResponse(BaseModel):
+    revealed_cells: List[int]
+    mine_positions: Optional[List[int]] = None  # Only populated if revealed cell is a mine
+    claim_point_positions: Optional[List[int]] = (
+        None  # Visible claim points (revealed or all if game over)
+    )
+    next_refresh_time: Optional[str] = (
+        None  # When next game can be started (only if game just ended)
+    )
+    status: Optional[str] = None  # Game status: 'active', 'won', 'lost'
+    bet_card_rarity: Optional[str] = None  # Rarity of the bet card (for alerts)
+    source_display_name: Optional[str] = None  # Display name of the selected source (for alerts)
+    claim_point_awarded: bool = False  # True if this reveal awarded a claim point
 
 
 _RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [
@@ -1703,6 +1759,183 @@ async def _process_burn_notification(
         )
 
 
+async def _process_minesweeper_victory_background(
+    username: str,
+    user_id: int,
+    chat_id: str,
+    rarity: str,
+    source_type: str,
+    source_id: int,
+    display_name: str,
+    gemini_util,
+):
+    """Process minesweeper victory in background after responding to client."""
+    bot = None
+    thread_id: Optional[int] = None
+
+    try:
+        # Initialize bot
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        bot = create_bot_instance()
+
+        # Send pending message
+        pending_caption = MINESWEEPER_VICTORY_PENDING_MESSAGE.format(
+            username=username,
+            rarity=rarity,
+            display_name=display_name,
+        )
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": pending_caption,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        pending_message = await bot.send_message(**send_params)
+
+        try:
+            # Generate card from source with built-in retry support
+            generated_card = await asyncio.to_thread(
+                rolling.generate_card_from_source,
+                source_type,
+                source_id,
+                gemini_util,
+                rarity,
+                max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
+            )
+
+            # Add card to database and assign to winner
+            card_id = await asyncio.to_thread(
+                database.add_card_from_generated,
+                generated_card,
+                chat_id,
+            )
+
+            await asyncio.to_thread(database.set_card_owner, card_id, username, user_id)
+
+            # Create final caption and keyboard
+            final_caption = MINESWEEPER_VICTORY_RESULT_MESSAGE.format(
+                username=username,
+                rarity=rarity,
+                display_name=display_name,
+                card_id=card_id,
+                modifier=generated_card.modifier,
+                base_name=generated_card.base_name,
+            )
+
+            card_url = _build_single_card_url(card_id)
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
+            )
+
+            # Send the card image as a new message and delete the pending message
+            card_image = base64.b64decode(generated_card.image_b64)
+
+            photo_params = {
+                "chat_id": chat_id,
+                "photo": card_image,
+                "caption": final_caption,
+                "reply_markup": keyboard,
+                "parse_mode": ParseMode.HTML,
+            }
+            if thread_id is not None:
+                photo_params["message_thread_id"] = thread_id
+
+            card_message = await bot.send_photo(**photo_params)
+
+            # Delete the pending message
+            await bot.delete_message(chat_id=chat_id, message_id=pending_message.message_id)
+
+            # Save the file_id from the card message
+            if card_message.photo:
+                file_id = card_message.photo[-1].file_id
+                await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+
+            logger.info(
+                "Successfully processed minesweeper victory for user %s: card %s", username, card_id
+            )
+
+        except Exception as exc:
+            logger.error("Error processing minesweeper victory for user %s: %s", username, exc)
+            # Update pending message with failure
+            failure_caption = MINESWEEPER_VICTORY_FAILURE_MESSAGE.format(
+                username=username,
+                rarity=rarity,
+                display_name=display_name,
+            )
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=pending_message.message_id,
+                    text=failure_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as edit_exc:
+                logger.error("Failed to update failure message: %s", edit_exc)
+
+    except Exception as exc:
+        logger.error("Critical error in minesweeper victory background processing: %s", exc)
+
+
+async def _process_minesweeper_loss_background(
+    username: str,
+    chat_id: str,
+    bet_card_id: int,
+    card_title: str,
+):
+    """Process minesweeper loss in background after responding to client."""
+    try:
+        # Delete the bet card from database
+        success = await asyncio.to_thread(database.delete_card, bet_card_id)
+
+        if not success:
+            logger.error("Failed to delete bet card %s after minesweeper loss", bet_card_id)
+            return
+
+        # Initialize bot
+        bot = create_bot_instance()
+
+        # Format the loss message
+        loss_message = MINESWEEPER_LOSS_MESSAGE.format(
+            username=username,
+            card_title=card_title,
+        )
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": loss_message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info(
+            "Sent minesweeper loss notification for user %s in chat %s (card %s destroyed)",
+            username,
+            chat_id,
+            bet_card_id,
+        )
+
+    except Exception as exc:
+        logger.error(
+            "Failed to process minesweeper loss for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+
+
 async def _refund_slots_victory_failure(
     bot,
     bot_token: str,
@@ -1772,6 +2005,564 @@ async def _refund_slots_victory_failure(
         )
 
     return True
+
+
+# =============================================================================
+# MINESWEEPER ENDPOINTS
+# =============================================================================
+
+
+@app.get("/minesweeper/game", response_model=Optional[MinesweeperStartResponse])
+async def minesweeper_game(
+    user_id: int = Query(..., description="User ID"),
+    chat_id: str = Query(..., description="Chat ID"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """
+    Get the current minesweeper game for a user in a chat.
+
+    - Returns the active game if one exists
+    - Returns the most recent game if it was started within the last 24h (cooldown)
+    - Returns None if no game exists or if the last game was completed more than 24h ago
+    """
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    # Get username
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    # Validate chat_id
+    chat_id = str(chat_id).strip()
+    if not chat_id:
+        logger.warning("Empty chat_id provided for minesweeper game")
+        raise HTTPException(status_code=400, detail="chat_id is required")
+
+    # Verify user is enrolled in the chat
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+
+    try:
+        # Get existing game (does not create)
+        game = await asyncio.to_thread(
+            minesweeper.get_existing_game,
+            user_id,
+            chat_id,
+        )
+
+        # No game found or cooldown expired
+        if not game:
+            return None
+
+        logger.info(
+            "Minesweeper game %s fetched for user %s in chat %s (status: %s)",
+            game.id,
+            user_id,
+            chat_id,
+            game.status,
+        )
+
+        # Use stored bet_card_title and bet_card_rarity from game (preserves data even if card is deleted)
+        bet_card_title = game.bet_card_title or "Unknown Card"
+        card_rarity = game.bet_card_rarity or "Common"
+
+        # Only include mine positions if game is over (won/lost)
+        mine_positions = game.mine_positions if game.status in ("won", "lost") else None
+
+        # Include claim point positions that have been revealed, or all if game is over
+        if game.status in ("won", "lost"):
+            visible_claim_points = game.claim_point_positions
+        else:
+            visible_claim_points = [
+                pos for pos in game.claim_point_positions if pos in game.revealed_cells
+            ]
+
+        # Fetch the slot icon for the game's source (not the bet card's source)
+        card_icon = None
+        if game.source_type and game.source_id:
+            card_icon = await asyncio.to_thread(
+                minesweeper.get_source_icon, game.source_type, game.source_id
+            )
+
+        # Load minesweeper icons
+        claim_point_icon, mine_icon = await asyncio.to_thread(minesweeper.get_minesweeper_icons)
+
+        # Calculate next refresh time only if game is over
+        next_refresh_time = None
+        if game.status in ("won", "lost"):
+            from datetime import timedelta
+
+            cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
+            next_refresh = game.started_timestamp + timedelta(seconds=cooldown_seconds)
+            next_refresh_time = next_refresh.isoformat()
+
+        return MinesweeperStartResponse(
+            game_id=game.id,
+            status=game.status,
+            bet_card_title=bet_card_title,
+            card_rarity=card_rarity,
+            revealed_cells=game.revealed_cells,
+            moves_count=game.moves_count,
+            started_timestamp=game.started_timestamp.isoformat(),
+            last_updated_timestamp=game.last_updated_timestamp.isoformat(),
+            reward_card_id=game.reward_card_id,
+            mine_positions=mine_positions,
+            claim_point_positions=visible_claim_points,
+            card_icon=card_icon,
+            claim_point_icon=claim_point_icon,
+            mine_icon=mine_icon,
+            next_refresh_time=next_refresh_time,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error fetching minesweeper game: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch game")
+
+
+@app.post("/minesweeper/game/create", response_model=MinesweeperStartResponse)
+async def minesweeper_create(
+    request: MinesweeperStartRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """
+    Create a new minesweeper game.
+
+    - Validates that no active game exists
+    - Validates that 24h cooldown has passed since last game
+    - Creates a new game with the specified bet card
+    - Generates random mine and claim point positions
+    """
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    # Get username
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    # Validate chat_id
+    chat_id = str(request.chat_id).strip()
+    if not chat_id:
+        logger.warning("Empty chat_id provided for minesweeper start")
+        raise HTTPException(status_code=400, detail="chat_id is required")
+
+    # Verify user is enrolled in the chat
+    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    if not is_member:
+        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
+        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+
+    # Verify the bet card exists and is owned by the user
+    card = await asyncio.to_thread(database.get_card, request.bet_card_id)
+    if not card:
+        logger.warning(
+            "Minesweeper start requested with non-existent card_id: %s", request.bet_card_id
+        )
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    if card.owner != username:
+        logger.warning(
+            "User %s (%s) attempted to bet card %s owned by %s",
+            username,
+            auth_user_id,
+            request.bet_card_id,
+            card.owner,
+        )
+        raise HTTPException(status_code=403, detail="You do not own this card")
+
+    # Verify card is from the same chat
+    if card.chat_id != chat_id:
+        logger.warning(
+            "Card %s chat_id mismatch. Card chat: %s, Request chat: %s",
+            request.bet_card_id,
+            card.chat_id,
+            chat_id,
+        )
+        raise HTTPException(status_code=400, detail="Card is not from this chat")
+
+    try:
+        # Check if a game already exists
+        existing_game = await asyncio.to_thread(
+            minesweeper.get_existing_game,
+            request.user_id,
+            chat_id,
+        )
+
+        if existing_game:
+            # Active game exists
+            if existing_game.status == "active":
+                logger.warning(
+                    "User %s attempted to create game while game %s is active",
+                    request.user_id,
+                    existing_game.id,
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail="You already have an active game. Finish it before starting a new one.",
+                )
+
+            # Cooldown not expired
+            from datetime import datetime
+
+            # Use 1 minute cooldown in debug mode, 24 hours in production
+            cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
+            time_since_start = datetime.now() - existing_game.started_timestamp
+            if time_since_start.total_seconds() < cooldown_seconds:
+                time_remaining_seconds = cooldown_seconds - time_since_start.total_seconds()
+
+                if DEBUG_MODE:
+                    # Show seconds for debug mode
+                    seconds_remaining = int(time_remaining_seconds)
+                    logger.warning(
+                        "User %s attempted to create game during cooldown. %s seconds remaining",
+                        request.user_id,
+                        seconds_remaining,
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"You must wait {seconds_remaining} more seconds before starting a new game.",
+                    )
+                else:
+                    # Show hours for production mode
+                    hours_remaining = time_remaining_seconds / 3600
+                    logger.warning(
+                        "User %s attempted to create game during cooldown. %s hours remaining",
+                        request.user_id,
+                        hours_remaining,
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"You must wait {hours_remaining:.1f} more hours before starting a new game.",
+                    )
+
+        # Create new game with bet card title and rarity
+        bet_card_title = card.title()
+        bet_card_rarity = card.rarity
+        game = await asyncio.to_thread(
+            minesweeper.create_game,
+            request.user_id,
+            chat_id,
+            request.bet_card_id,
+            bet_card_title,
+            bet_card_rarity,
+        )
+
+        if not game:
+            logger.error("Failed to get or create minesweeper game for user %s", request.user_id)
+            raise HTTPException(status_code=500, detail="Failed to start game")
+
+        logger.info(
+            "Minesweeper game %s started/resumed for user %s in chat %s with card %s (status: %s)",
+            game.id,
+            request.user_id,
+            chat_id,
+            request.bet_card_id,
+            game.status,
+        )
+
+        # Only include mine positions if game is over (won/lost)
+        # During active gameplay, client should not know where bombs are
+        mine_positions = game.mine_positions if game.status in ("won", "lost") else None
+
+        # Include claim point positions that have been revealed, or all if game is over
+        if game.status in ("won", "lost"):
+            # Game is over, show all claim points
+            visible_claim_points = game.claim_point_positions
+        else:
+            # Game is active, only show revealed claim points
+            visible_claim_points = [
+                pos for pos in game.claim_point_positions if pos in game.revealed_cells
+            ]
+
+        # Fetch the slot icon for the game's source (not the bet card's source)
+        card_icon = None
+        if game.source_type and game.source_id:
+            card_icon = await asyncio.to_thread(
+                minesweeper.get_source_icon, game.source_type, game.source_id
+            )
+
+        # Load minesweeper icons
+        claim_point_icon, mine_icon = await asyncio.to_thread(minesweeper.get_minesweeper_icons)
+
+        # Calculate next refresh time only if game is over
+        next_refresh_time = None
+        if game.status in ("won", "lost"):
+            from datetime import timedelta
+
+            cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
+            next_refresh = game.started_timestamp + timedelta(seconds=cooldown_seconds)
+            next_refresh_time = next_refresh.isoformat()
+
+        return MinesweeperStartResponse(
+            game_id=game.id,
+            status=game.status,
+            bet_card_title=bet_card_title,
+            card_rarity=bet_card_rarity,
+            revealed_cells=game.revealed_cells,
+            moves_count=game.moves_count,
+            started_timestamp=game.started_timestamp.isoformat(),
+            last_updated_timestamp=game.last_updated_timestamp.isoformat(),
+            reward_card_id=game.reward_card_id,
+            mine_positions=mine_positions,
+            claim_point_positions=visible_claim_points,
+            card_icon=card_icon,
+            claim_point_icon=claim_point_icon,
+            mine_icon=mine_icon,
+            next_refresh_time=next_refresh_time,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error starting minesweeper game: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to start game")
+
+
+@app.post("/minesweeper/game/update", response_model=MinesweeperUpdateResponse)
+async def minesweeper_update(
+    request: MinesweeperUpdateRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """
+    Reveal a cell in the minesweeper game.
+
+    - Validates that the cell hasn't been revealed yet
+    - Updates game state (revealed_cells, moves_count)
+    - Checks win/loss conditions:
+      * Loss: Revealed cell contains a mine
+      * Win: Revealed 3 safe cells
+    - Returns whether the cell is a mine and updated game state
+    """
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    # Get username
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    try:
+        # Get the game to verify ownership and status
+        game = await asyncio.to_thread(minesweeper.get_game_by_id, request.game_id)
+
+        if not game:
+            logger.warning(
+                "Minesweeper update requested for non-existent game_id: %s", request.game_id
+            )
+            raise HTTPException(status_code=404, detail="Game not found")
+
+        # Verify the game belongs to the requesting user
+        if game.user_id != request.user_id:
+            logger.warning(
+                "User %s attempted to update game %s owned by user %s",
+                request.user_id,
+                request.game_id,
+                game.user_id,
+            )
+            raise HTTPException(status_code=403, detail="You do not own this game")
+
+        # Verify game is still active
+        if game.status != "active":
+            logger.warning(
+                "User %s attempted to update completed game %s (status: %s)",
+                request.user_id,
+                request.game_id,
+                game.status,
+            )
+            raise HTTPException(
+                status_code=400, detail=f"Game is already completed with status: {game.status}"
+            )
+
+        # Get the bet card info for responses
+        card = await asyncio.to_thread(database.get_card, game.bet_card_id)
+        if not card:
+            logger.error("Bet card %s not found for game %s", game.bet_card_id, request.game_id)
+            raise HTTPException(status_code=500, detail="Game data inconsistent")
+
+        # Get source display name
+        source_display_name = None
+        if game.source_type and game.source_id:
+            try:
+                source_profile = await asyncio.to_thread(
+                    rolling.get_profile_for_source, game.source_type, game.source_id
+                )
+                source_display_name = source_profile.name
+            except Exception as e:
+                logger.warning(
+                    "Failed to get source display name for %s:%s: %s",
+                    game.source_type,
+                    game.source_id,
+                    e,
+                )
+
+        # Validate cell index
+        if request.cell_index < 0 or request.cell_index >= 9:
+            logger.warning(
+                "User %s provided invalid cell_index %s for game %s",
+                request.user_id,
+                request.cell_index,
+                request.game_id,
+            )
+            raise HTTPException(status_code=400, detail="Cell index must be between 0 and 8")
+
+        # Check if cell was already revealed
+        if request.cell_index in game.revealed_cells:
+            logger.warning(
+                "User %s attempted to reveal already revealed cell %s in game %s",
+                request.user_id,
+                request.cell_index,
+                request.game_id,
+            )
+            raise HTTPException(status_code=400, detail="Cell has already been revealed")
+
+        # Check if the cell has a mine BEFORE updating
+        is_mine = request.cell_index in game.mine_positions
+
+        # Check if the cell has a claim point BEFORE updating
+        is_claim_point = request.cell_index in game.claim_point_positions
+        claim_point_awarded = False
+
+        # Award claim point if revealing a claim point cell
+        if is_claim_point and request.cell_index not in game.revealed_cells:
+            try:
+                new_balance = await asyncio.to_thread(
+                    database.increment_claim_balance,
+                    request.user_id,
+                    game.chat_id,
+                    1,
+                )
+                claim_point_awarded = True
+                logger.info(
+                    "User %s earned 1 claim point in minesweeper game %s. New balance: %s",
+                    request.user_id,
+                    request.game_id,
+                    new_balance,
+                )
+            except Exception as e:
+                logger.error(
+                    "Failed to award claim point to user %s in game %s: %s",
+                    request.user_id,
+                    request.game_id,
+                    e,
+                )
+
+        # Reveal the cell and update game state
+        updated_game = await asyncio.to_thread(
+            minesweeper.reveal_cell,
+            request.game_id,
+            request.cell_index,
+        )
+
+        if not updated_game:
+            logger.error(
+                "Failed to reveal cell %s in game %s",
+                request.cell_index,
+                request.game_id,
+            )
+            raise HTTPException(status_code=500, detail="Failed to update game")
+
+        logger.info(
+            "Minesweeper game %s: user %s revealed cell %s (mine=%s, new_status=%s)",
+            request.game_id,
+            request.user_id,
+            request.cell_index,
+            is_mine,
+            updated_game.status,
+        )
+
+        if updated_game.status in ("won", "lost"):
+            # Game is over, expose board metadata while keeping actual revealed history
+            mine_positions = updated_game.mine_positions
+            visible_claim_points = updated_game.claim_point_positions
+        else:
+            # Only include mine positions if the revealed cell was a mine
+            mine_positions = updated_game.mine_positions if is_mine else None
+
+            # Game is active, only show revealed claim points
+            visible_claim_points = [
+                pos
+                for pos in updated_game.claim_point_positions
+                if pos in updated_game.revealed_cells
+            ]
+        revealed_cells = updated_game.revealed_cells
+
+        # Calculate next refresh time if game just ended
+        next_refresh_time = None
+        if updated_game.status in ("won", "lost"):
+            from datetime import timedelta
+
+            cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
+            next_refresh = updated_game.started_timestamp + timedelta(seconds=cooldown_seconds)
+            next_refresh_time = next_refresh.isoformat()
+
+        # Spawn background tasks if game ended
+        if updated_game.status == "won":
+            # Victory: generate new card for the player
+            asyncio.create_task(
+                _process_minesweeper_victory_background(
+                    username=username,
+                    user_id=request.user_id,
+                    chat_id=game.chat_id,
+                    rarity=card.rarity,
+                    source_type=game.source_type,
+                    source_id=game.source_id,
+                    display_name=source_display_name or "Unknown",
+                    gemini_util=gemini_util,
+                )
+            )
+        elif updated_game.status == "lost":
+            # Loss: destroy the bet card
+            asyncio.create_task(
+                _process_minesweeper_loss_background(
+                    username=username,
+                    chat_id=game.chat_id,
+                    bet_card_id=game.bet_card_id,
+                    card_title=card.title(include_rarity=True),
+                )
+            )
+
+        return MinesweeperUpdateResponse(
+            revealed_cells=revealed_cells,
+            mine_positions=mine_positions,
+            claim_point_positions=visible_claim_points,
+            next_refresh_time=next_refresh_time,
+            status=updated_game.status,
+            bet_card_rarity=card.rarity,
+            source_display_name=source_display_name,
+            claim_point_awarded=claim_point_awarded,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Error updating minesweeper game: %s", e)
+        raise HTTPException(status_code=500, detail="Failed to update game")
 
 
 # =============================================================================
