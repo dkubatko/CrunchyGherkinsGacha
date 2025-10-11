@@ -3116,8 +3116,19 @@ def main() -> None:
         logger.info("🧪 Running in DEBUG mode with test environment endpoints")
         logger.info(f"🔗 API Base URL: {application.bot._base_url}")
     else:
-        application = Application.builder().token(TELEGRAM_TOKEN).concurrent_updates(True).build()
-        logger.info("🚀 Running in PRODUCTION mode")
+        # Use local Telegram Bot API server in production
+        api_base_url = "http://localhost:8081"
+        application = (
+            Application.builder()
+            .token(TELEGRAM_TOKEN)
+            .base_url(f"{api_base_url}/bot")
+            .base_file_url(f"{api_base_url}/file/bot")
+            .local_mode(True)
+            .concurrent_updates(True)
+            .build()
+        )
+        logger.info("🚀 Running in PRODUCTION mode with local Telegram Bot API server")
+        logger.info(f"🔗 API Base URL: {api_base_url}")
 
     # Share bot token with the server
     set_bot_token(TELEGRAM_TOKEN, DEBUG_MODE)
