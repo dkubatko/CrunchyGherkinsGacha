@@ -9,6 +9,7 @@ import BurnConfirmDialog from './components/BurnConfirmDialog';
 import CardView from './components/CardView';
 import LockConfirmDialog from './components/LockConfirmDialog';
 import Slots from './components/Slots';
+import Minesweeper from './components/Minesweeper';
 import AppLoading from './components/AppLoading';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
 import type { ActionButton } from './components/ActionPanel';
@@ -111,7 +112,7 @@ function App() {
   const cardsScopeChatId = isTradeMode && selectedCardForTrade?.chat_id
     ? selectedCardForTrade.chat_id
     : userData?.chatId ?? null;
-  const shouldFetchAllCards = !userData?.slotsView && (hasChatScope || activeTradeCardId !== null);
+  const shouldFetchAllCards = !userData?.slotsView && !userData?.minesweeperView && (hasChatScope || activeTradeCardId !== null);
 
   const ensureClaimBalance = useCallback(async (
     chatId: string,
@@ -206,7 +207,7 @@ function App() {
 
   // Load burn rewards when card view is first loaded
   useEffect(() => {
-    if (!initData || !userData || userData.slotsView || userData.singleCardView) {
+    if (!initData || !userData || userData.slotsView || userData.minesweeperView || userData.singleCardView) {
       return;
     }
 
@@ -913,6 +914,18 @@ function App() {
           initData={initData}
           refetchSpins={refetchSpins}
           onSpinsUpdate={updateSpins}
+        />
+      </div>
+    );
+  }
+
+  // Minesweeper View
+  if (userData?.minesweeperView && userData.chatId && initData) {
+    return (
+      <div className="app-container">
+        <Minesweeper
+          chatId={userData.chatId}
+          initData={initData}
         />
       </div>
     );

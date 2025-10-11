@@ -414,4 +414,141 @@ export class ApiService {
 
     return response.json();
   }
+
+  static async getMinesweeperGame(
+    userId: number,
+    chatId: string,
+    initData: string
+  ): Promise<{
+    game_id: number;
+    status: string;
+    bet_card_title: string;
+    card_rarity: string;
+    revealed_cells: number[];
+    moves_count: number;
+    started_timestamp: string;
+    last_updated_timestamp: string;
+    reward_card_id?: number | null;
+    mine_positions?: number[] | null;
+    claim_point_positions?: number[] | null;
+    card_icon?: string | null;
+    claim_point_icon?: string | null;
+    mine_icon?: string | null;
+    next_refresh_time?: string | null;
+  } | null> {
+    const params = new URLSearchParams({
+      user_id: userId.toString(),
+      chat_id: chatId
+    });
+
+    const response = await fetch(`${API_BASE_URL}/minesweeper/game?${params.toString()}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to get minesweeper game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    const data = await response.json();
+    // API returns null if no game exists or cooldown expired
+    return data;
+  }
+
+  static async createMinesweeperGame(
+    userId: number,
+    chatId: string,
+    betCardId: number,
+    initData: string
+  ): Promise<{
+    game_id: number;
+    status: string;
+    bet_card_title: string;
+    card_rarity: string;
+    revealed_cells: number[];
+    moves_count: number;
+    started_timestamp: string;
+    last_updated_timestamp: string;
+    reward_card_id?: number | null;
+    mine_positions?: number[] | null;
+    claim_point_positions?: number[] | null;
+    card_icon?: string | null;
+    claim_point_icon?: string | null;
+    mine_icon?: string | null;
+    next_refresh_time?: string | null;
+  }> {
+    const response = await fetch(`${API_BASE_URL}/minesweeper/game/create`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        bet_card_id: betCardId
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to create minesweeper game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async updateMinesweeperGame(
+    userId: number,
+    gameId: number,
+    cellIndex: number,
+    initData: string
+  ): Promise<{
+    revealed_cells: number[];
+    mine_positions?: number[] | null;
+    claim_point_positions?: number[] | null;
+    next_refresh_time?: string | null;
+    status?: string | null;
+    bet_card_rarity?: string | null;
+    source_display_name?: string | null;
+    claim_point_awarded?: boolean;
+  }> {
+    const response = await fetch(`${API_BASE_URL}/minesweeper/game/update`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        game_id: gameId,
+        cell_index: cellIndex
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to update minesweeper game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
 }

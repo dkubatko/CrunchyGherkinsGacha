@@ -54,6 +54,8 @@ export interface UserData {
   singleCardView?: boolean; // Convenience boolean to avoid recomputing
   // Slots view mode: if slotsView is true, the app should render the slots mini-game
   slotsView?: boolean;
+  // Minesweeper view mode: if minesweeperView is true, the app should render the minesweeper mini-game
+  minesweeperView?: boolean;
 }
 
 export interface AppState {

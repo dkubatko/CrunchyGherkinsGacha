@@ -170,6 +170,46 @@ class Spins(BaseModel):
     refresh_timestamp: str
 
 
+class MinesweeperGame(BaseModel):
+    """Represents a minesweeper game state."""
+
+    id: int
+    user_id: int
+    chat_id: str
+    bet_card_id: int
+    bet_card_title: Optional[str] = None  # Store card title in case card is deleted
+    bet_card_rarity: Optional[str] = None  # Store card rarity in case card is deleted
+    mine_positions: List[int]
+    claim_point_positions: List[int]
+    revealed_cells: List[int]
+    status: str
+    moves_count: int
+    reward_card_id: Optional[int]
+    started_timestamp: datetime.datetime
+    last_updated_timestamp: datetime.datetime
+    source_type: Optional[str] = None  # "user" or "character"
+    source_id: Optional[int] = None  # user_id for users, character id for characters
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert game state to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "chat_id": self.chat_id,
+            "bet_card_id": self.bet_card_id,
+            "mine_positions": self.mine_positions,
+            "claim_point_positions": self.claim_point_positions,
+            "revealed_cells": self.revealed_cells,
+            "status": self.status,
+            "moves_count": self.moves_count,
+            "reward_card_id": self.reward_card_id,
+            "started_timestamp": self.started_timestamp.isoformat(),
+            "last_updated_timestamp": self.last_updated_timestamp.isoformat(),
+            "source_type": self.source_type,
+            "source_id": self.source_id,
+        }
+
+
 class ClaimStatus(Enum):
     SUCCESS = "success"
     ALREADY_CLAIMED = "already_claimed"
