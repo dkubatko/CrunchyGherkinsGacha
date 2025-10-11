@@ -13,7 +13,7 @@ import logging
 import random
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
 from utils.database import MinesweeperGame, connect
@@ -26,6 +26,26 @@ logger = logging.getLogger(__name__)
 GRID_SIZE = 9  # 3x3 grid
 SAFE_REVEALS_REQUIRED = 3  # Number of safe cells to reveal to win
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
+
+
+def _parse_timestamp(timestamp_str: Optional[str]) -> datetime:
+    """Parse ISO timestamp strings and normalize to UTC-aware datetimes."""
+    if not timestamp_str:
+        return datetime.now(timezone.utc)
+
+    try:
+        parsed = datetime.fromisoformat(timestamp_str)
+    except ValueError:
+        logger.warning(
+            "Failed to parse timestamp '%s', defaulting to current UTC time",
+            timestamp_str,
+        )
+        return datetime.now(timezone.utc)
+
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+
+    return parsed.astimezone(timezone.utc)
 
 
 def get_minesweeper_icons() -> Tuple[Optional[str], Optional[str]]:
@@ -186,8 +206,8 @@ def get_existing_game(user_id: int, chat_id: str) -> Optional[MinesweeperGame]:
             status=row[9],
             moves_count=row[10],
             reward_card_id=row[11],
-            started_timestamp=datetime.fromisoformat(row[12]),
-            last_updated_timestamp=datetime.fromisoformat(row[13]),
+            started_timestamp=_parse_timestamp(row[12]),
+            last_updated_timestamp=_parse_timestamp(row[13]),
             source_type=row[14],
             source_id=row[15],
         )
@@ -202,7 +222,7 @@ def get_existing_game(user_id: int, chat_id: str) -> Optional[MinesweeperGame]:
         # For completed games (won/lost), check if 24h cooldown has passed
         cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
 
-        time_since_start = datetime.now() - game.started_timestamp
+        time_since_start = datetime.now(timezone.utc) - game.started_timestamp
         if time_since_start.total_seconds() < cooldown_seconds:
             # Still in cooldown period
             if DEBUG_MODE:
@@ -263,7 +283,7 @@ def create_game(
         claim_point_positions = generate_claim_point_position(
             mine_positions, MINESWEEPER_CLAIM_POINT_COUNT
         )
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
 
         cursor.execute(
             """
@@ -363,8 +383,8 @@ def get_game_by_id(game_id: int) -> Optional[MinesweeperGame]:
             status=row[9],
             moves_count=row[10],
             reward_card_id=row[11],
-            started_timestamp=datetime.fromisoformat(row[12]),
-            last_updated_timestamp=datetime.fromisoformat(row[13]),
+            started_timestamp=_parse_timestamp(row[12]),
+            last_updated_timestamp=_parse_timestamp(row[13]),
             source_type=row[14],
             source_id=row[15],
         )
@@ -450,7 +470,7 @@ def reveal_cell(game_id: int, cell_index: int) -> Optional[MinesweeperGame]:
                 )
 
         # Update the database
-        now = datetime.now()
+        now = datetime.now(timezone.utc)
         cursor.execute(
             """
             UPDATE minesweeper_games
