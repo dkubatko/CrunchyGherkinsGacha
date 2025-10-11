@@ -52,6 +52,41 @@ def set_bot_token(token, is_debug=False):
     debug_mode = is_debug
 
 
+def create_bot_instance():
+    """
+    Create a Telegram Bot instance with appropriate configuration.
+
+    In debug mode: Uses Telegram's test environment endpoints.
+    In production: Uses local Telegram Bot API server with local_mode=True.
+
+    Returns:
+        Bot: Configured Telegram Bot instance
+
+    Raises:
+        HTTPException: If bot_token is not available
+    """
+    from telegram import Bot
+
+    if not bot_token:
+        logger.error("Bot token not available for bot instance creation")
+        raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+    if debug_mode:
+        bot = Bot(token=bot_token)
+        bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
+        bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+        return bot
+    else:
+        # Use local Telegram Bot API server in production
+        api_base_url = "http://localhost:8081"
+        return Bot(
+            token=bot_token,
+            base_url=f"{api_base_url}/bot",
+            base_file_url=f"{api_base_url}/file/bot",
+            local_mode=True,
+        )
+
+
 app = FastAPI()
 
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
@@ -624,15 +659,7 @@ async def share_card(
             separator = "?"
         share_url = f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
-        if not bot_token:
-            logger.error("Bot token not available for share request")
-            raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
-
+        bot = create_bot_instance()
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
 
         message = f"@{username} shared card:\n\n<b>{card_title}</b>"
@@ -1089,16 +1116,7 @@ async def execute_trade(
 
         try:
             # Create a new bot instance to avoid event loop conflicts
-            from telegram import Bot
-
-            if debug_mode:
-                # Use test environment endpoints when in debug mode
-                bot = Bot(token=bot_token)
-                # Override the bot's base URLs to use test environment (same as main bot)
-                bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-                bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
-            else:
-                bot = Bot(token=bot_token)
+            bot = create_bot_instance()
 
             # Get thread_id for trade notifications, fallback to main if trade not set
             thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id), "trade")
@@ -1499,12 +1517,9 @@ async def _process_slots_victory_background(
 
     try:
         # Initialize bot
-        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+        bot = create_bot_instance()
 
         # Send pending message
         pending_caption = SLOTS_VICTORY_PENDING_MESSAGE.format(
@@ -1654,12 +1669,7 @@ async def _process_burn_notification(
     """Send burn notification to chat in background after responding to client."""
     try:
         # Initialize bot
-        from telegram import Bot
-
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+        bot = create_bot_instance()
 
         # Format the burn result message
         burn_message = BURN_RESULT_MESSAGE.format(
@@ -1731,12 +1741,7 @@ async def _refund_slots_victory_failure(
         return False
 
     if bot is None:
-        from telegram import Bot
-
-        bot = Bot(token=bot_token)
-        if debug_mode:
-            bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-            bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+        bot = create_bot_instance()
 
     message = SLOTS_VICTORY_REFUND_MESSAGE.format(
         username=username,
