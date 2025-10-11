@@ -22,6 +22,8 @@ BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
 CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
 SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
+MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
+MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
 
 
 def get_refresh_cost(rarity: str) -> int:
@@ -233,6 +235,23 @@ SLOTS_VICTORY_REFUND_MESSAGE = (
 BURN_RESULT_MESSAGE = (
     "@{username} burned <b>{rarity} {display_name}</b> and received <b>{spin_amount} spins!</b>"
 )
+
+MINESWEEPER_VICTORY_PENDING_MESSAGE = (
+    "@{username} won a <b>{rarity} {display_name}</b> in minesweeper!\n\nGenerating card..."
+)
+
+MINESWEEPER_VICTORY_RESULT_MESSAGE = (
+    "@{username} won a <b>{rarity} {display_name}</b> in minesweeper!\n\n"
+    "<b>[{card_id}] {modifier} {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
+)
+
+MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
+    "@{username} won a {rarity} {display_name} in minesweeper!\n\n"
+    "Card generation failed. Please try again later."
+)
+
+MINESWEEPER_LOSS_MESSAGE = "@{username} lost <b>{card_title}</b> in minesweeper! 💥"
 
 REFRESH_USAGE_MESSAGE = "Usage: /refresh <card_id>.\n\nRe-generate the image for a card you own.\n\nClaim points cost varies by rarity:\nC: 1, R: 3, E: 5, L: 10"
 REFRESH_DM_RESTRICTED_MESSAGE = "Refreshing cards is only available in the group chat."

@@ -6,6 +6,8 @@
   "SPINS_PER_REFRESH": 5,
   "SLOT_WIN_CHANCE": 0.025,
   "SLOT_CLAIM_CHANCE": 0.025,
+  "MINESWEEPER_MINE_COUNT": 2,
+  "MINESWEEPER_CLAIM_POINT_COUNT": 1,
   "RARITIES": {
     "Common": {
       "spin_reward": 10,
