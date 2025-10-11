@@ -7,6 +7,7 @@ import hmac
 import hashlib
 import uvicorn
 import urllib.parse
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import List, Optional, Dict, Any, Tuple, Set
 from telegram.constants import ParseMode
@@ -476,6 +477,25 @@ def _build_single_card_url(card_id: int) -> str:
     share_token = encode_single_card_token(card_id)
     separator = "&" if "?" in MINIAPP_URL else "?"
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
+
+
+def _ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _format_timestamp(dt: Optional[datetime]) -> Optional[str]:
+    normalized = _ensure_utc(dt)
+    if normalized is None:
+        return None
+
+    iso_value = normalized.isoformat()
+    if iso_value.endswith("+00:00"):
+        return f"{iso_value[:-6]}Z"
+    return iso_value
 
 
 def _generate_slot_loss_pattern(
@@ -2097,14 +2117,15 @@ async def minesweeper_game(
         # Load minesweeper icons
         claim_point_icon, mine_icon = await asyncio.to_thread(minesweeper.get_minesweeper_icons)
 
+        started_timestamp = _ensure_utc(game.started_timestamp)
+        last_updated_timestamp = _ensure_utc(game.last_updated_timestamp)
+
         # Calculate next refresh time only if game is over
         next_refresh_time = None
-        if game.status in ("won", "lost"):
-            from datetime import timedelta
-
+        if game.status in ("won", "lost") and started_timestamp is not None:
             cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
-            next_refresh = game.started_timestamp + timedelta(seconds=cooldown_seconds)
-            next_refresh_time = next_refresh.isoformat()
+            next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
+            next_refresh_time = _format_timestamp(next_refresh)
 
         return MinesweeperStartResponse(
             game_id=game.id,
@@ -2113,8 +2134,8 @@ async def minesweeper_game(
             card_rarity=card_rarity,
             revealed_cells=game.revealed_cells,
             moves_count=game.moves_count,
-            started_timestamp=game.started_timestamp.isoformat(),
-            last_updated_timestamp=game.last_updated_timestamp.isoformat(),
+            started_timestamp=_format_timestamp(started_timestamp),
+            last_updated_timestamp=_format_timestamp(last_updated_timestamp),
             reward_card_id=game.reward_card_id,
             mine_positions=mine_positions,
             claim_point_positions=visible_claim_points,
@@ -2221,11 +2242,11 @@ async def minesweeper_create(
                 )
 
             # Cooldown not expired
-            from datetime import datetime
-
-            # Use 1 minute cooldown in debug mode, 24 hours in production
             cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
-            time_since_start = datetime.now() - existing_game.started_timestamp
+            existing_start = _ensure_utc(existing_game.started_timestamp) or datetime.now(
+                timezone.utc
+            )
+            time_since_start = datetime.now(timezone.utc) - existing_start
             if time_since_start.total_seconds() < cooldown_seconds:
                 time_remaining_seconds = cooldown_seconds - time_since_start.total_seconds()
 
@@ -2303,14 +2324,15 @@ async def minesweeper_create(
         # Load minesweeper icons
         claim_point_icon, mine_icon = await asyncio.to_thread(minesweeper.get_minesweeper_icons)
 
+        started_timestamp = _ensure_utc(game.started_timestamp)
+        last_updated_timestamp = _ensure_utc(game.last_updated_timestamp)
+
         # Calculate next refresh time only if game is over
         next_refresh_time = None
-        if game.status in ("won", "lost"):
-            from datetime import timedelta
-
+        if game.status in ("won", "lost") and started_timestamp is not None:
             cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
-            next_refresh = game.started_timestamp + timedelta(seconds=cooldown_seconds)
-            next_refresh_time = next_refresh.isoformat()
+            next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
+            next_refresh_time = _format_timestamp(next_refresh)
 
         return MinesweeperStartResponse(
             game_id=game.id,
@@ -2319,8 +2341,8 @@ async def minesweeper_create(
             card_rarity=bet_card_rarity,
             revealed_cells=game.revealed_cells,
             moves_count=game.moves_count,
-            started_timestamp=game.started_timestamp.isoformat(),
-            last_updated_timestamp=game.last_updated_timestamp.isoformat(),
+            started_timestamp=_format_timestamp(started_timestamp),
+            last_updated_timestamp=_format_timestamp(last_updated_timestamp),
             reward_card_id=game.reward_card_id,
             mine_positions=mine_positions,
             claim_point_positions=visible_claim_points,
@@ -2515,11 +2537,11 @@ async def minesweeper_update(
         # Calculate next refresh time if game just ended
         next_refresh_time = None
         if updated_game.status in ("won", "lost"):
-            from datetime import timedelta
-
-            cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
-            next_refresh = updated_game.started_timestamp + timedelta(seconds=cooldown_seconds)
-            next_refresh_time = next_refresh.isoformat()
+            started_timestamp = _ensure_utc(updated_game.started_timestamp)
+            if started_timestamp is not None:
+                cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
+                next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
+                next_refresh_time = _format_timestamp(next_refresh)
 
         # Spawn background tasks if game ended
         if updated_game.status == "won":
