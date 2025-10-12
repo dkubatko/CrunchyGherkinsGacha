@@ -237,21 +237,23 @@ BURN_RESULT_MESSAGE = (
 )
 
 MINESWEEPER_VICTORY_PENDING_MESSAGE = (
-    "@{username} won a <b>{rarity} {display_name}</b> in minesweeper!\n\nGenerating card..."
+    "@{username} won a <b>{rarity} {display_name}</b> in Minesweeper!\n\nGenerating card..."
 )
 
 MINESWEEPER_VICTORY_RESULT_MESSAGE = (
-    "@{username} won a <b>{rarity} {display_name}</b> in minesweeper!\n\n"
+    "@{username} won a <b>{rarity} {display_name}</b> in Minesweeper!\n\n"
     "<b>[{card_id}] {modifier} {base_name}</b>\n"
     "Rarity: <b>{rarity}</b>"
 )
 
 MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
-    "@{username} won a {rarity} {display_name} in minesweeper!\n\n"
+    "@{username} won a {rarity} {display_name} in Minesweeper!\n\n"
     "Card generation failed. Please try again later."
 )
 
-MINESWEEPER_LOSS_MESSAGE = "@{username} lost <b>{card_title}</b> in minesweeper! 💥"
+MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Minesweeper!"
+
+MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
 
 REFRESH_USAGE_MESSAGE = "Usage: /refresh <card_id>.\n\nRe-generate the image for a card you own.\n\nClaim points cost varies by rarity:\nC: 1, R: 3, E: 5, L: 10"
 REFRESH_DM_RESTRICTED_MESSAGE = "Refreshing cards is only available in the group chat."

@@ -39,6 +39,7 @@ from settings.constants import (
     MINESWEEPER_VICTORY_RESULT_MESSAGE,
     MINESWEEPER_VICTORY_FAILURE_MESSAGE,
     MINESWEEPER_LOSS_MESSAGE,
+    MINESWEEPER_BET_MESSAGE,
 )
 from utils.miniapp import encode_single_card_token
 
@@ -1779,6 +1780,46 @@ async def _process_burn_notification(
         )
 
 
+async def _process_minesweeper_bet_notification(
+    username: str,
+    card_title: str,
+    chat_id: str,
+):
+    """Send minesweeper bet notification to chat in background after responding to client."""
+    try:
+        # Initialize bot
+        bot = create_bot_instance()
+
+        # Format the bet message
+        bet_message = MINESWEEPER_BET_MESSAGE.format(
+            username=username,
+            card_title=card_title,
+        )
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": bet_message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info("Sent minesweeper bet notification for user %s in chat %s", username, chat_id)
+
+    except Exception as exc:
+        logger.error(
+            "Failed to send minesweeper bet notification for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+
+
 async def _process_minesweeper_victory_background(
     username: str,
     user_id: int,
@@ -2290,6 +2331,15 @@ async def minesweeper_create(
         if not game:
             logger.error("Failed to get or create minesweeper game for user %s", request.user_id)
             raise HTTPException(status_code=500, detail="Failed to start game")
+
+        # Send bet notification to chat (fire-and-forget background task)
+        asyncio.create_task(
+            _process_minesweeper_bet_notification(
+                username=username,
+                card_title=card.title(include_rarity=True),
+                chat_id=chat_id,
+            )
+        )
 
         logger.info(
             "Minesweeper game %s started/resumed for user %s in chat %s with card %s (status: %s)",
