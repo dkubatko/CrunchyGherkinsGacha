@@ -8,8 +8,7 @@ import ActionPanel from './components/ActionPanel';
 import BurnConfirmDialog from './components/BurnConfirmDialog';
 import CardView from './components/CardView';
 import LockConfirmDialog from './components/LockConfirmDialog';
-import Slots from './components/Slots';
-import Minesweeper from './components/Minesweeper';
+import Casino from './components/Casino';
 import AppLoading from './components/AppLoading';
 import type { FilterOptions, SortOptions } from './components/FilterSortControls';
 import type { ActionButton } from './components/ActionPanel';
@@ -54,7 +53,7 @@ function App() {
     updateCard: updateCardInCollection
   } = useCards();
   const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins, updateSpins } = useSlots(
-    userData?.slotsView && userData.chatId ? userData.chatId : undefined,
+    userData?.casinoView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
   
@@ -112,7 +111,7 @@ function App() {
   const cardsScopeChatId = isTradeMode && selectedCardForTrade?.chat_id
     ? selectedCardForTrade.chat_id
     : userData?.chatId ?? null;
-  const shouldFetchAllCards = !userData?.slotsView && !userData?.minesweeperView && (hasChatScope || activeTradeCardId !== null);
+  const shouldFetchAllCards = !userData?.casinoView && (hasChatScope || activeTradeCardId !== null);
 
   const ensureClaimBalance = useCallback(async (
     chatId: string,
@@ -207,7 +206,7 @@ function App() {
 
   // Load burn rewards when card view is first loaded
   useEffect(() => {
-    if (!initData || !userData || userData.slotsView || userData.minesweeperView || userData.singleCardView) {
+    if (!initData || !userData || userData.casinoView || userData.singleCardView) {
       return;
     }
 
@@ -892,40 +891,28 @@ function App() {
   });
 
   // Loading state
-  if (loading || (userData?.slotsView && (slotsLoading || slotsSymbols.length === 0))) {
+  if (loading || (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0))) {
     return <AppLoading />;
   }
 
   // Error state
-  if (error || (userData?.slotsView && slotsError)) {
+  if (error || (userData?.casinoView && slotsError)) {
     const displayError = error || slotsError;
     return <div className="app-container"><h1>Error: {displayError}</h1></div>;
   }
 
-  // Slots View
-  if (userData?.slotsView && userData.chatId && initData) {
+  // Casino View
+  if (userData?.casinoView && userData.chatId && initData) {
     return (
       <div className="app-container">
-        <Slots
-          symbols={slotsSymbols}
-          spins={slotsSpins}
+        <Casino
           userId={userData.currentUserId}
           chatId={userData.chatId}
           initData={initData}
+          slotsSymbols={slotsSymbols}
+          slotsSpins={slotsSpins}
           refetchSpins={refetchSpins}
-          onSpinsUpdate={updateSpins}
-        />
-      </div>
-    );
-  }
-
-  // Minesweeper View
-  if (userData?.minesweeperView && userData.chatId && initData) {
-    return (
-      <div className="app-container">
-        <Minesweeper
-          chatId={userData.chatId}
-          initData={initData}
+          updateSpins={updateSpins}
         />
       </div>
     );

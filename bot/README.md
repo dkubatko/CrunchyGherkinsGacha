@@ -37,7 +37,7 @@ Backend services for the Crunchy Gherkins gacha experience. The Telegram bot han
 
 ### Mini-app integration
 
-- The bot issues `tg1_` tokens (`u-`, `uc-`, `c-`, and `slots-` payloads) via `encode_miniapp_token`, `encode_single_card_token`, and `encode_slots_token` so the React app can authenticate with the FastAPI API.
+- The bot issues `tg1_` tokens (`u-`, `uc-`, `c-`, and `casino-` payloads) via `encode_miniapp_token`, `encode_single_card_token`, and `encode_casino_token` so the React app can authenticate with the FastAPI API.
 - Inline “View in the app!” buttons accompany card galleries, giving players the same data set as the Telegram view with richer interactions.
 
 ## Telegram commands
@@ -77,7 +77,7 @@ Inline callback handlers also cover `claim_`, `reroll_`, `lock_`, `lockcard_`, `
 ## Major design choices
 
 - **Decorator-driven validation**: `@verify_user`, `@verify_user_in_chat`, and `@verify_admin` centralise checks for registration, chat enrollment, and admin privileges.
-- **Tokenised mini-app access**: Only three payload shapes (`u-`, `uc-`, `c-`, plus `slots-`) are supported; the React app parses them via `miniapp/src/utils/telegram.ts`, and the FastAPI backend validates `Authorization: tma <payload>` headers for every request.
+- **Tokenised mini-app access**: Only four payload shapes (`u-`, `uc-`, `c-`, and `casino-`) are supported; the React app parses them via `miniapp/src/utils/telegram.ts`, and the FastAPI backend validates `Authorization: tma <payload>` headers for every request.
 - **Image lifecycle**: Card art is cached in SQLite (base64 + Telegram `file_id`), and `database.clear_all_file_ids` lets admins refresh media if Telegram invalidates cached uploads.
 - **Rolling pipeline**: Card generation is orchestrated through `utils/rolling.generate_card_for_chat`, which relies on Gemini for image synthesis and on profiles contributed via `/profile` or admin characters.
 - **Economy balance**: Claim balances live per chat, reset daily for spins, and integrate tightly with locking, recycling, and slots. `config.json` contains rarity weights, claim costs, and spin rewards.
