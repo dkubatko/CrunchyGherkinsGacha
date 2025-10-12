@@ -91,7 +91,10 @@ from settings.constants import (
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat, verify_admin
 from utils.rolled_card import RolledCardManager
-from utils.miniapp import encode_miniapp_token, encode_slots_token, encode_minesweeper_token
+from utils.miniapp import (
+    encode_miniapp_token,
+    encode_casino_token,
+)
 
 # Load environment variables
 load_dotenv()
@@ -496,12 +499,12 @@ async def unenroll(
 
 
 @verify_user_in_chat
-async def slots(
+async def casino(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Open the slots mini-app."""
+    """Open the casino mini-app with catalog view."""
 
     message = update.message
     chat = update.effective_chat
@@ -510,59 +513,24 @@ async def slots(
         return
 
     if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
-        await message.reply_text("/slots can only be used in group chats.")
+        await message.reply_text("/casino can only be used in group chats.")
         return
 
-    # Generate slots token
+    # Generate casino token with user_id and chat_id
     chat_id = str(chat.id)
-    slots_token = encode_slots_token(chat_id)
+    casino_token = encode_casino_token(user.user_id, chat_id)
 
     # Create WebApp button
     miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     if not miniapp_url:
-        await message.reply_text("Slots mini-app is not configured.")
+        await message.reply_text("Casino mini-app is not configured.")
         return
 
-    app_url = f"{miniapp_url}?startapp={slots_token}"
-    keyboard = [[InlineKeyboardButton("🎰 Play Slots!", url=app_url)]]
+    app_url = f"{miniapp_url}?startapp={casino_token}"
+    keyboard = [[InlineKeyboardButton("🎰 Open Casino!", url=app_url)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await message.reply_text("🎰 Ready to spin the slots?", reply_markup=reply_markup)
-
-
-@verify_user_in_chat
-async def minesweeper(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
-) -> None:
-    """Open the minesweeper mini-app."""
-
-    message = update.message
-    chat = update.effective_chat
-
-    if not message or not chat:
-        return
-
-    if chat.type not in (ChatType.GROUP, ChatType.SUPERGROUP):
-        await message.reply_text("/minesweeper can only be used in group chats.")
-        return
-
-    # Generate minesweeper token
-    chat_id = str(chat.id)
-    minesweeper_token = encode_minesweeper_token(chat_id)
-
-    # Create WebApp button
-    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
-    if not miniapp_url:
-        await message.reply_text("Minesweeper mini-app is not configured.")
-        return
-
-    app_url = f"{miniapp_url}?startapp={minesweeper_token}"
-    keyboard = [[InlineKeyboardButton("💣 Play Minesweeper!", url=app_url)]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await message.reply_text("💣 Ready to play Minesweeper?", reply_markup=reply_markup)
+    await message.reply_text("🎰 Ready to play at the casino?", reply_markup=reply_markup)
 
 
 @verify_user_in_chat
@@ -3183,8 +3151,7 @@ def main() -> None:
     application.add_handler(CommandHandler("delete", delete_character))
     application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("unenroll", unenroll))
-    application.add_handler(CommandHandler("slots", slots))
-    application.add_handler(CommandHandler("minesweeper", minesweeper))
+    application.add_handler(CommandHandler("casino", casino))
     application.add_handler(CommandHandler("balance", balance))
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("recycle", recycle))
