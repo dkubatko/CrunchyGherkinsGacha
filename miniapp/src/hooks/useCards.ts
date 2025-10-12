@@ -22,7 +22,7 @@ export const useCards = (): UseCardsResult => {
   const initializationStartedRef = useRef(false);
 
   const fetchCards = async (user: UserData, telegramInitData: string) => {
-    const shouldFetchCollection = !user.singleCardView && !user.slotsView;
+    const shouldFetchCollection = !user.singleCardView && !user.casinoView;
 
     if (shouldFetchCollection) {
       const userCardsResponse = await ApiService.fetchUserCards(

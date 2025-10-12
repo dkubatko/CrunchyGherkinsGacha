@@ -52,10 +52,8 @@ export interface UserData {
   // Single card view mode: if singleCardId is set, the app should render only that card
   singleCardId?: number | null;
   singleCardView?: boolean; // Convenience boolean to avoid recomputing
-  // Slots view mode: if slotsView is true, the app should render the slots mini-game
-  slotsView?: boolean;
-  // Minesweeper view mode: if minesweeperView is true, the app should render the minesweeper mini-game
-  minesweeperView?: boolean;
+  // Casino view mode: if casinoView is true, the app should render the casino catalog
+  casinoView?: boolean;
 }
 
 export interface AppState {

@@ -5,19 +5,17 @@ type ParsedPayload =
   | { kind: 'card'; cardId: number }
   | { kind: 'user'; userId: number }
   | { kind: 'userChat'; userId: number; chatId: string }
-  | { kind: 'slots'; chatId: string }
-  | { kind: 'minesweeper'; chatId: string };
+  | { kind: 'casino'; userId: number; chatId: string };
 
 export class TelegramUtils {
   private static readonly TOKEN_PREFIX = 'tg1_';
 
   // Token format documentation:
   // Supported external payload (start_param) values after the optional tg1_ base64 wrapper:
-  //   c-<cardId>            => Single card view (display only this card)
-  //   u-<userId>            => View user collection
-  //   uc-<userId>-<chatId>  => View user collection scoped to chat
-  //   slots-<chatId>        => Open slots mini-game (user from initData)
-  //   ms-<chatId>           => Open minesweeper mini-game (user from initData)
+  //   c-<cardId>                     => Single card view (display only this card)
+  //   u-<userId>                     => View user collection
+  //   uc-<userId>-<chatId>           => View user collection scoped to chat
+  //   casino-<userId>-<chatId>       => Open casino catalog with game selection
   // Unrecognized payloads are ignored.
 
   static decodeToken(token: string): string | null {
@@ -88,24 +86,20 @@ export class TelegramUtils {
       return null;
     }
 
-    if (lower.startsWith('slots-')) {
-      const chatStr = trimmed.slice(6).trim(); // Remove 'slots-'
-      if (chatStr.length > 0) {
-        return {
-          kind: 'slots',
-          chatId: chatStr
-        };
-      }
-      return null;
-    }
-
-    if (lower.startsWith('ms-')) {
-      const chatStr = trimmed.slice(3).trim(); // Remove 'ms-'
-      if (chatStr.length > 0) {
-        return {
-          kind: 'minesweeper',
-          chatId: chatStr
-        };
+    if (lower.startsWith('casino-')) {
+      const rest = trimmed.slice(7); // Remove 'casino-'
+      const firstDash = rest.indexOf('-');
+      if (firstDash > 0) {
+        const userIdStr = rest.slice(0, firstDash);
+        const chatStr = rest.slice(firstDash + 1).trim();
+        const maybeUserId = Number(userIdStr);
+        if (!Number.isNaN(maybeUserId) && chatStr.length > 0) {
+          return {
+            kind: 'casino',
+            userId: maybeUserId,
+            chatId: chatStr
+          };
+        }
       }
       return null;
     }
@@ -134,7 +128,7 @@ export class TelegramUtils {
       let chatId: string | null = null;
       let singleCardId: number | null = null;
 
-      let payloadType: 'card' | 'user' | 'userChat' | 'slots' | 'minesweeper' | null = null;
+      let payloadType: 'card' | 'user' | 'userChat' | 'casino' | null = null;
       let payloadSource: string | null = null;
 
       const applyExternalPayload = (rawValue: string, source: string): boolean => {
@@ -177,16 +171,11 @@ export class TelegramUtils {
             payloadType = 'userChat';
             payloadSource = source;
             return true;
-          case 'slots':
+          case 'casino':
+            targetUserId = parsed.userId;
             chatId = parsed.chatId;
             singleCardId = null;
-            payloadType = 'slots';
-            payloadSource = source;
-            return true;
-          case 'minesweeper':
-            chatId = parsed.chatId;
-            singleCardId = null;
-            payloadType = 'minesweeper';
+            payloadType = 'casino';
             payloadSource = source;
             return true;
           default:
@@ -217,13 +206,8 @@ export class TelegramUtils {
               source: payloadSource
             });
             break;
-          case 'slots':
-            console.info('Start parameter requested slots mini-game', {
-              source: payloadSource
-            });
-            break;
-          case 'minesweeper':
-            console.info('Start parameter requested minesweeper mini-game', {
+          case 'casino':
+            console.info('Start parameter requested casino catalog', {
               source: payloadSource
             });
             break;
@@ -236,8 +220,7 @@ export class TelegramUtils {
 
       const isOwnCollection = singleCardId == null && targetUserId === currentUserId; // In single card mode collection semantics disabled
       const enableTrade = isOwnCollection && singleCardId == null;
-      const slotsView = payloadType === 'slots';
-      const minesweeperView = payloadType === 'minesweeper';
+      const casinoView = payloadType === 'casino';
 
       return {
         currentUserId,
@@ -247,8 +230,7 @@ export class TelegramUtils {
         chatId,
         singleCardId,
         singleCardView: singleCardId != null,
-        slotsView,
-        minesweeperView,
+        casinoView,
         collectionDisplayName: null,
         collectionUsername: null,
       };
