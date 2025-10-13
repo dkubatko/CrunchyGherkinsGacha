@@ -41,6 +41,7 @@ from settings.constants import (
     MINESWEEPER_LOSS_MESSAGE,
     MINESWEEPER_BET_MESSAGE,
 )
+from settings.constants import get_lock_cost, get_spin_reward
 from utils.miniapp import encode_single_card_token
 
 # Initialize logger
@@ -137,6 +138,19 @@ class LockCardRequest(BaseModel):
     lock: bool  # True to lock, False to unlock
 
 
+class LockCardResponse(BaseModel):
+    success: bool
+    locked: bool
+    balance: int
+    message: str
+    lock_cost: int
+
+
+class CardConfigResponse(BaseModel):
+    burn_rewards: Dict[str, int]
+    lock_costs: Dict[str, int]
+
+
 class BurnCardRequest(BaseModel):
     card_id: int
     user_id: int
@@ -195,10 +209,6 @@ class ClaimBalanceResponse(BaseModel):
     balance: int
     user_id: int
     chat_id: str
-
-
-class BurnRewardsResponse(BaseModel):
-    rewards: Dict[str, int]
 
 
 class ConsumeSpinResponse(BaseModel):
@@ -602,17 +612,22 @@ app.add_middleware(
 # =============================================================================
 
 
-@app.get("/cards/burn-rewards", response_model=BurnRewardsResponse)
-async def get_burn_rewards(
+@app.get("/cards/config", response_model=CardConfigResponse)
+async def get_card_config(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get the rarity to spin reward mapping for burning cards."""
-    rewards = {}
-    for rarity_name, rarity_details in RARITIES.items():
-        if isinstance(rarity_details, dict) and "spin_reward" in rarity_details:
-            rewards[rarity_name] = rarity_details["spin_reward"]
+    """Expose burn rewards and lock costs for cards."""
+    burn_rewards: Dict[str, int] = {}
+    lock_costs: Dict[str, int] = {}
 
-    return BurnRewardsResponse(rewards=rewards)
+    for rarity_name, rarity_details in RARITIES.items():
+        if not isinstance(rarity_details, dict):
+            continue
+
+        burn_rewards[rarity_name] = get_spin_reward(rarity_name)
+        lock_costs[rarity_name] = get_lock_cost(rarity_name)
+
+    return CardConfigResponse(burn_rewards=burn_rewards, lock_costs=lock_costs)
 
 
 @app.get("/cards/all", response_model=List[APICard])
@@ -622,7 +637,7 @@ async def get_all_cards_endpoint(
 ):
     """Get all cards that have been claimed."""
     cards = await asyncio.to_thread(database.get_all_cards, chat_id)
-    return [APICard(**card.__dict__) for card in cards]
+    return cards
 
 
 @app.get("/cards/{user_id}", response_model=UserCollectionResponse)
@@ -647,15 +662,13 @@ async def get_user_collection(
         logger.warning(f"No user or cards found for user_id: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")
 
-    api_cards = [APICard(**card.model_dump()) for card in cards]
-
     return UserCollectionResponse(
         user=UserSummary(
             user_id=user_id,
             username=username,
             display_name=display_name,
         ),
-        cards=api_cards,
+        cards=cards,
     )
 
 
@@ -670,21 +683,7 @@ async def get_card_detail(
         logger.warning("Card detail requested for non-existent card_id: %s", card_id)
         raise HTTPException(status_code=404, detail="Card not found")
 
-    card_payload = card.model_dump(
-        include={
-            "id",
-            "base_name",
-            "modifier",
-            "rarity",
-            "owner",
-            "user_id",
-            "file_id",
-            "chat_id",
-            "created_at",
-        }
-    )
-
-    return APICard(**card_payload)
+    return card
 
 
 @app.post("/cards/share")
@@ -768,14 +767,14 @@ async def share_card(
         raise HTTPException(status_code=500, detail="Failed to share card")
 
 
-@app.post("/cards/lock")
+@app.post("/cards/lock", response_model=LockCardResponse)
 async def lock_card(
     request: LockCardRequest,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Lock or unlock a card owned by the user.
 
-    Locking a card costs 1 claim point. Unlocking does not refund the point.
+    Locking consumes the rarity-specific claim point cost. Unlocking does not refund points.
     """
     # Verify the authenticated user matches the requested user_id
     await verify_user_match(request.user_id, validated_user)
@@ -816,6 +815,8 @@ async def lock_card(
         logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
 
+    lock_cost = get_lock_cost(card.rarity)
+
     # Check current lock status
     if request.lock:
         # User wants to lock the card
@@ -825,15 +826,17 @@ async def lock_card(
         # Check if user has enough claim points
         current_balance = await asyncio.to_thread(database.get_claim_balance, auth_user_id, chat_id)
 
-        if current_balance < 1:
+        if current_balance < lock_cost:
             raise HTTPException(
                 status_code=400,
-                detail=f"Not enough claim points.\n\nBalance: {current_balance}",
+                detail=(
+                    "Not enough claim points.\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"
+                ),
             )
 
-        # Consume 1 claim point
+        # Consume claim points based on rarity
         remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, auth_user_id, chat_id, 1
+            database.reduce_claim_points, auth_user_id, chat_id, lock_cost
         )
 
         if remaining_balance is None:
@@ -843,7 +846,9 @@ async def lock_card(
             )
             raise HTTPException(
                 status_code=400,
-                detail=f"Not enough claim points.\n\nBalance: {current_balance}",
+                detail=(
+                    "Not enough claim points.\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"
+                ),
             )
 
         # Lock the card
@@ -856,12 +861,13 @@ async def lock_card(
             remaining_balance,
         )
 
-        return {
-            "success": True,
-            "locked": True,
-            "balance": remaining_balance,
-            "message": "Card locked successfully",
-        }
+        return LockCardResponse(
+            success=True,
+            locked=True,
+            balance=remaining_balance,
+            message="Card locked successfully",
+            lock_cost=lock_cost,
+        )
     else:
         # User wants to unlock the card
         if not card.locked:
@@ -875,12 +881,13 @@ async def lock_card(
 
         logger.info("User %s unlocked card %s", username, request.card_id)
 
-        return {
-            "success": True,
-            "locked": False,
-            "balance": current_balance,
-            "message": "Card unlocked successfully",
-        }
+        return LockCardResponse(
+            success=True,
+            locked=False,
+            balance=current_balance,
+            message="Card unlocked successfully.",
+            lock_cost=lock_cost,
+        )
 
 
 @app.post("/cards/burn", response_model=BurnCardResponse)
@@ -939,12 +946,7 @@ async def burn_card(
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
 
     # Get spin reward for the card's rarity
-    rarity_config = RARITIES.get(card.rarity)
-    if not rarity_config or not isinstance(rarity_config, dict):
-        logger.error("Invalid rarity configuration for card %s: %s", request.card_id, card.rarity)
-        raise HTTPException(status_code=500, detail="Invalid card rarity configuration")
-
-    spin_reward = rarity_config.get("spin_reward", 0)
+    spin_reward = get_spin_reward(card.rarity)
     if spin_reward <= 0:
         logger.error("No spin reward configured for rarity %s", card.rarity)
         raise HTTPException(status_code=500, detail="No spin reward configured for this rarity")
@@ -1090,8 +1092,7 @@ async def get_trade_options(
         and card_option.owner is not None
         and card_option.owner != initiating_owner
     ]
-
-    return [APICard(**card_option.__dict__) for card_option in filtered_cards]
+    return filtered_cards
 
 
 @app.post("/trade/{card_id1}/{card_id2}")
@@ -1579,13 +1580,7 @@ async def _process_slots_victory_background(
     gemini_util,
 ):
     """Process slots victory in background after responding to client."""
-    rarity_config = RARITIES.get(normalized_rarity, {})
-    spin_refund_amount = 0
-    if isinstance(rarity_config, dict):
-        try:
-            spin_refund_amount = int(rarity_config.get("spin_reward", 0) or 0)
-        except (TypeError, ValueError):
-            spin_refund_amount = 0
+    spin_refund_amount = get_spin_reward(normalized_rarity)
 
     bot = None
     thread_id: Optional[int] = None

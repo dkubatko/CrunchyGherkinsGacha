@@ -26,6 +26,36 @@ MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
 MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
 
 
+DEFAULT_LOCK_COST = 1
+DEFAULT_SPIN_REWARD = 0
+
+
+def get_lock_cost(rarity: str) -> int:
+    """Return the configured lock cost for the provided rarity."""
+    rarity_config = config.get("RARITIES", {}).get(rarity, {})
+    raw_cost = rarity_config.get("lock_cost", DEFAULT_LOCK_COST)
+
+    try:
+        cost = int(raw_cost)
+    except (TypeError, ValueError):
+        return DEFAULT_LOCK_COST
+
+    return max(cost, 1)
+
+
+def get_spin_reward(rarity: str) -> int:
+    """Return the configured spin reward for the provided rarity."""
+    rarity_config = config.get("RARITIES", {}).get(rarity, {})
+    raw_reward = rarity_config.get("spin_reward", DEFAULT_SPIN_REWARD)
+
+    try:
+        reward = int(raw_reward)
+    except (TypeError, ValueError):
+        return DEFAULT_SPIN_REWARD
+
+    return max(reward, 0)
+
+
 def get_refresh_cost(rarity: str) -> int:
     """Get the refresh cost for a given rarity."""
     return config.get("RARITIES", {}).get(rarity, {}).get("refresh_cost", 5)

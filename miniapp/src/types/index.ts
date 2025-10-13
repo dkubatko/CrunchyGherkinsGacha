@@ -29,6 +29,11 @@ export interface UserCollectionResponse {
   cards: CardData[];
 }
 
+export interface CardConfigResponse {
+  burn_rewards: Record<string, number>;
+  lock_costs: Record<string, number>;
+}
+
 export interface SlotSymbolSummary {
   id: number;
   display_name?: string | null;

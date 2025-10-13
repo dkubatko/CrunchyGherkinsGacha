@@ -1,4 +1,11 @@
-import type { CardData, UserCollectionResponse, SlotSymbolSummary, SlotVerifyResponse, SlotSymbolInfo } from '../types';
+import type {
+  CardData,
+  UserCollectionResponse,
+  SlotSymbolSummary,
+  SlotVerifyResponse,
+  SlotSymbolInfo,
+  CardConfigResponse,
+} from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
 
@@ -137,7 +144,13 @@ export class ApiService {
     }
   }
 
-  static async lockCard(cardId: number, userId: number, chatId: string, lock: boolean, initData: string): Promise<{ success: boolean; locked: boolean; balance: number; message: string }> {
+  static async lockCard(
+    cardId: number,
+    userId: number,
+    chatId: string,
+    lock: boolean,
+    initData: string
+  ): Promise<{ success: boolean; locked: boolean; balance: number; message: string; lock_cost: number }> {
     const response = await fetch(`${API_BASE_URL}/cards/lock`, {
       method: 'POST',
       headers: this.getHeaders(initData),
@@ -220,8 +233,8 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchBurnRewards(initData: string): Promise<Record<string, number>> {
-    const response = await fetch(`${API_BASE_URL}/cards/burn-rewards`, {
+  static async fetchCardConfig(initData: string): Promise<CardConfigResponse> {
+    const response = await fetch(`${API_BASE_URL}/cards/config`, {
       headers: this.getHeaders(initData)
     });
 
@@ -231,12 +244,11 @@ export class ApiService {
       } else if (response.status >= 500) {
         throw new Error('Server error. Please try again later.');
       } else {
-        throw new Error(`Failed to fetch burn rewards (Error ${response.status})`);
+        throw new Error(`Failed to fetch card config (Error ${response.status})`);
       }
     }
 
-    const payload: { rewards: Record<string, number> } = await response.json();
-    return payload.rewards;
+    return response.json();
   }
 
   static async fetchSlotSymbols(chatId: string, initData: string): Promise<SlotSymbolSummary[]> {
