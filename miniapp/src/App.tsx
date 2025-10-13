@@ -72,7 +72,9 @@ function App() {
   const [chatClaimBalances, setChatClaimBalances] = useState<Record<string, ClaimBalanceState>>({});
   const claimBalanceRequestsRef = useRef<Map<string, Promise<number | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
+  const cardConfigLoadedRef = useRef(false);
   const [burnRewards, setBurnRewards] = useState<Record<string, number> | null>(null);
+  const [lockCosts, setLockCosts] = useState<Record<string, number> | null>(null);
   const burnResultRef = useRef<{
     rarity: string;
     cardName: string;
@@ -204,24 +206,32 @@ function App() {
     });
   }, [ensureClaimBalance, initData, userData]);
 
-  // Load burn rewards when card view is first loaded
+  // Load card config when card view is first loaded
   useEffect(() => {
     if (!initData || !userData || userData.casinoView || userData.singleCardView) {
       return;
     }
 
-    const loadBurnRewards = async () => {
+    if (cardConfigLoadedRef.current) {
+      return;
+    }
+
+    cardConfigLoadedRef.current = true;
+
+    const loadCardConfig = async () => {
       try {
-        const rewards = await ApiService.fetchBurnRewards(initData);
-        setBurnRewards(rewards);
-        console.log('Burn rewards loaded:', rewards);
+        const config = await ApiService.fetchCardConfig(initData);
+        setBurnRewards(config.burn_rewards);
+        setLockCosts(config.lock_costs);
+        console.log('Card config loaded:', config);
       } catch (err) {
-        console.error('Failed to fetch burn rewards:', err);
-        // Non-critical error, continue without burn rewards
+        console.error('Failed to fetch card config:', err);
+        // Non-critical error, continue without card config
+        cardConfigLoadedRef.current = false;
       }
     };
 
-    void loadBurnRewards();
+    void loadCardConfig();
   }, [initData, userData]);
 
   const {
@@ -722,7 +732,10 @@ function App() {
       return;
     }
 
-    void ensureClaimBalance(targetCard.chat_id);
+    const rarityLockCost = Math.max(1, lockCosts?.[targetCard.rarity] ?? 1);
+    if (rarityLockCost > 0) {
+      void ensureClaimBalance(targetCard.chat_id);
+    }
 
     setShowLockDialog(true);
   };
@@ -740,7 +753,7 @@ function App() {
         previous
           ? {
               ...previous,
-              locked
+              locked,
             }
           : previous
       );
@@ -783,6 +796,13 @@ function App() {
       setLockingCard(false);
       setShowLockDialog(false);
       updateCardLockState(targetCard.id, result.locked);
+
+      if (result.lock_cost !== undefined) {
+        setLockCosts(prev => ({
+          ...(prev ?? {}),
+          [targetCard.rarity]: result.lock_cost,
+        }));
+      }
 
       TelegramUtils.showAlert(result.message);
 
@@ -935,6 +955,9 @@ function App() {
   const currentDialogSpinReward = currentDialogCard && burnRewards
     ? burnRewards[currentDialogCard.rarity] ?? null
     : null;
+  const currentDialogLockCost = currentDialogCard
+  ? Math.max(1, lockCosts?.[currentDialogCard.rarity] ?? 1)
+  : 1;
 
   return (
     <>
@@ -950,6 +973,7 @@ function App() {
         isOpen={showLockDialog}
         locking={lockingCard}
         card={currentDialogCard}
+        lockCost={currentDialogLockCost}
         claimState={currentDialogClaimState}
         onConfirm={handleLockConfirm}
         onCancel={handleLockCancel}

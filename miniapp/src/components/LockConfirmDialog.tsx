@@ -5,6 +5,7 @@ interface LockConfirmDialogProps {
   isOpen: boolean;
   locking: boolean;
   card: CardData | null;
+  lockCost: number;
   claimState?: ClaimBalanceState;
   onConfirm: () => void;
   onCancel: () => void;
@@ -14,11 +15,13 @@ const LockConfirmDialog = ({
   isOpen,
   locking,
   card,
+  lockCost,
   claimState,
   onConfirm,
   onCancel
 }: LockConfirmDialogProps) => {
   const confirmLabel = locking ? 'Processing...' : 'Yes';
+  const costLabel = lockCost === 1 ? '1 claim point' : `${lockCost} claim points`;
 
   const renderBalance = () => {
     if (!claimState) {
@@ -71,7 +74,7 @@ const LockConfirmDialog = ({
             Unlock <strong>{card.modifier} {card.base_name}</strong>?
           </p>
           <p className="lock-dialog-subtitle">
-            Claim point will <strong>not</strong> be refunded.
+            Claim points will not be refunded.
           </p>
           {renderBalance()}
         </>
@@ -81,7 +84,7 @@ const LockConfirmDialog = ({
             Lock <strong>{card.modifier} {card.base_name}</strong>?
           </p>
           <p className="lock-dialog-subtitle">
-            This will consume <strong>1 claim point</strong>
+            This will consume <strong>{costLabel}</strong>
           </p>
           {renderBalance()}
         </>
