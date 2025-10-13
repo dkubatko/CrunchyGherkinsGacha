@@ -27,6 +27,7 @@ MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
 
 
 DEFAULT_LOCK_COST = 1
+DEFAULT_CLAIM_COST = 1
 DEFAULT_SPIN_REWARD = 0
 
 
@@ -39,6 +40,19 @@ def get_lock_cost(rarity: str) -> int:
         cost = int(raw_cost)
     except (TypeError, ValueError):
         return DEFAULT_LOCK_COST
+
+    return max(cost, 1)
+
+
+def get_claim_cost(rarity: str) -> int:
+    """Return the configured claim cost for the provided rarity."""
+    rarity_config = config.get("RARITIES", {}).get(rarity, {})
+    raw_cost = rarity_config.get("claim_cost", DEFAULT_CLAIM_COST)
+
+    try:
+        cost = int(raw_cost)
+    except (TypeError, ValueError):
+        return DEFAULT_CLAIM_COST
 
     return max(cost, 1)
 

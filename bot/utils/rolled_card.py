@@ -1,5 +1,7 @@
 """RolledCard class for managing rolled card state and UI generation."""
 
+from dataclasses import dataclass
+from enum import Enum
 from typing import Optional, List
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -11,8 +13,30 @@ from settings.constants import (
     CARD_STATUS_ATTEMPTED,
     CARD_STATUS_REROLLING,
     CARD_STATUS_REROLLED,
+    get_claim_cost,
 )
 from utils import database
+
+
+class ClaimStatus(Enum):
+    SUCCESS = "success"
+    ALREADY_CLAIMED = "already_claimed"
+    INSUFFICIENT_BALANCE = "insufficient_balance"
+
+
+@dataclass
+class ClaimAttemptResult:
+    status: ClaimStatus
+    balance: Optional[int] = None
+    cost: Optional[int] = None
+
+
+@dataclass
+class LockAttemptResult:
+    success: bool
+    cost: int
+    remaining_balance: Optional[int] = None
+    current_balance: Optional[int] = None
 
 
 class RolledCardManager:
@@ -79,23 +103,95 @@ class RolledCardManager:
         """Check if the reroll time limit has expired."""
         return database.is_rolled_card_reroll_expired(self.roll_id)
 
-    def claim(
+    def claim_card(
         self,
         owner_username: str,
         user_id: Optional[int] = None,
         chat_id: Optional[str] = None,
-    ) -> database.ClaimAttemptResult:
+    ) -> ClaimAttemptResult:
         """Attempt to claim the active card and track unsuccessful attempts."""
         card = self.card
         if card is None:
             raise ValueError("Rolled card has no active card to claim")
 
-        result = database.claim_card(card.id, owner_username, user_id, chat_id)
+        claim_cost = get_claim_cost(card.rarity)
 
-        if result.status is database.ClaimStatus.ALREADY_CLAIMED and owner_username:
-            database.update_rolled_card_attempted_by(self.roll_id, owner_username)
+        balance: Optional[int] = None
+        if user_id is not None and chat_id is not None:
+            balance = database.get_claim_balance(user_id, chat_id)
+            if balance < claim_cost:
+                return ClaimAttemptResult(
+                    ClaimStatus.INSUFFICIENT_BALANCE,
+                    balance,
+                    claim_cost,
+                )
 
-        return result
+        claimed = database.try_claim_card(card.id, owner_username, user_id)
+        if not claimed:
+            if owner_username:
+                database.update_rolled_card_attempted_by(self.roll_id, owner_username)
+            return ClaimAttemptResult(
+                ClaimStatus.ALREADY_CLAIMED,
+                balance,
+                claim_cost,
+            )
+
+        remaining_balance = balance
+        if user_id is not None and chat_id is not None:
+            new_balance = database.reduce_claim_points(user_id, chat_id, claim_cost)
+            if new_balance is None:
+                database.nullify_card_owner(card.id)
+                return ClaimAttemptResult(
+                    ClaimStatus.INSUFFICIENT_BALANCE,
+                    balance,
+                    claim_cost,
+                )
+            remaining_balance = new_balance
+
+        return ClaimAttemptResult(
+            ClaimStatus.SUCCESS,
+            remaining_balance,
+            claim_cost,
+        )
+
+    def lock_card(
+        self,
+        user_id: int,
+        chat_id: Optional[str],
+    ) -> LockAttemptResult:
+        """Lock the card, consuming claim points when required."""
+        rolled_card = self.rolled_card
+        if rolled_card is None:
+            raise ValueError("Rolled card state not found")
+
+        card = self.card
+        if card is None:
+            raise ValueError("Rolled card has no active card to lock")
+
+        is_original_roller = rolled_card.original_roller_id == user_id
+        cost = 0 if is_original_roller else get_claim_cost(card.rarity)
+
+        remaining_balance: Optional[int] = None
+        current_balance: Optional[int] = None
+
+        if cost > 0:
+            if user_id is None or chat_id is None:
+                raise ValueError("User and chat IDs are required to lock with a cost")
+
+            current_balance = database.get_claim_balance(user_id, chat_id)
+            if current_balance < cost:
+                return LockAttemptResult(False, cost, None, current_balance)
+
+            new_balance = database.reduce_claim_points(user_id, chat_id, cost)
+            if new_balance is None:
+                return LockAttemptResult(False, cost, None, current_balance)
+
+            remaining_balance = new_balance
+            current_balance = new_balance
+
+        self.set_locked(True)
+
+        return LockAttemptResult(True, cost, remaining_balance, current_balance)
 
     def can_user_reroll(self, user_id: int) -> bool:
         """Check if a user can reroll this card."""
