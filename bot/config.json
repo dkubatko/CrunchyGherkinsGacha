@@ -12,6 +12,7 @@
     "Common": {
       "spin_reward": 10,
       "weight": 55,
+      "claim_cost": 1,
       "recycle_cost": 0,
       "lock_cost": 1,
       "refresh_cost": 1,
@@ -115,6 +116,7 @@
     "Rare": {
       "spin_reward": 25,
       "weight": 30,
+      "claim_cost": 2,
       "recycle_cost": 3,
       "lock_cost": 2,
       "refresh_cost": 2,
@@ -275,6 +277,7 @@
     "Epic": {
       "spin_reward": 60,
       "weight": 12,
+      "claim_cost": 3,
       "recycle_cost": 3,
       "lock_cost": 3,
       "refresh_cost": 3,
@@ -411,6 +414,7 @@
     "Legendary": {
       "spin_reward": 200,
       "weight": 3,
+      "claim_cost": 5,
       "recycle_cost": 4,
       "lock_cost": 5,
       "refresh_cost": 5,

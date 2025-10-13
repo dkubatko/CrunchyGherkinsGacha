@@ -5,8 +5,6 @@ import logging
 import os
 import sqlite3
 import json
-from dataclasses import dataclass
-from enum import Enum
 from typing import Optional, Any, List, Dict
 from zoneinfo import ZoneInfo
 
@@ -210,18 +208,6 @@ class MinesweeperGame(BaseModel):
         }
 
 
-class ClaimStatus(Enum):
-    SUCCESS = "success"
-    ALREADY_CLAIMED = "already_claimed"
-    INSUFFICIENT_BALANCE = "insufficient_balance"
-
-
-@dataclass
-class ClaimAttemptResult:
-    status: ClaimStatus
-    balance: Optional[int] = None
-
-
 def connect():
     """Connect to the SQLite database."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
@@ -337,36 +323,13 @@ def add_card_from_generated(generated_card, chat_id):
     )
 
 
-def claim_card(card_id, owner, user_id=None, chat_id=None):
-    """Attempt to claim a card for a user.
-
-    Returns a ClaimAttemptResult indicating whether the claim succeeded, failed because the
-    card was already owned, or failed due to insufficient balance. When tracking is possible
-    (user_id and chat_id provided), the result includes the remaining balance after the attempt.
-    """
+def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
+    """Attempt to claim a card for a user without touching claim balances."""
 
     conn = connect()
     cursor = conn.cursor()
-    chat_id_value = str(chat_id) if chat_id is not None else None
 
     try:
-        # Fetch current balance when tracking is possible
-        balance: Optional[int] = None
-        if user_id is not None and chat_id_value is not None:
-            balance = _get_claim_balance(cursor, user_id, chat_id_value)
-            if balance < 1:
-                conn.rollback()
-                return ClaimAttemptResult(ClaimStatus.INSUFFICIENT_BALANCE, balance)
-
-        # Check if card is already claimed
-        cursor.execute("SELECT owner FROM cards WHERE id = ?", (card_id,))
-        result = cursor.fetchone()
-
-        if result and result[0] is not None:
-            conn.rollback()
-            return ClaimAttemptResult(ClaimStatus.ALREADY_CLAIMED, balance)
-
-        # Claim the card
         if user_id is not None:
             cursor.execute(
                 "UPDATE cards SET owner = ?, user_id = ? WHERE id = ? AND owner IS NULL",
@@ -374,21 +337,13 @@ def claim_card(card_id, owner, user_id=None, chat_id=None):
             )
         else:
             cursor.execute(
-                "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL", (owner, card_id)
+                "UPDATE cards SET owner = ? WHERE id = ? AND owner IS NULL",
+                (owner, card_id),
             )
 
         updated = cursor.rowcount > 0
-
-        if not updated:
-            conn.rollback()
-            return ClaimAttemptResult(ClaimStatus.ALREADY_CLAIMED, balance)
-
-        remaining_balance = balance
-        if user_id is not None and chat_id_value is not None:
-            remaining_balance = _update_claim_balance(cursor, user_id, chat_id_value, -1)
-
         conn.commit()
-        return ClaimAttemptResult(ClaimStatus.SUCCESS, remaining_balance)
+        return updated
     except Exception:
         conn.rollback()
         raise
