@@ -1563,8 +1563,6 @@ async def handle_recycle_callback(
         # Save the file_id returned by Telegram for future use
         await save_card_file_id_from_message(message, new_card_id)
 
-        await query.answer("Recycled! Enjoy your new card!", show_alert=False)
-
     finally:
         recycling_users.discard(user.user_id)
 
