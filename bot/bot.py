@@ -89,10 +89,10 @@ from settings.constants import (
     REFRESH_SUCCESS_MESSAGE,
     get_refresh_cost,
 )
-from settings.constants import get_lock_cost, get_spin_reward
+from settings.constants import get_lock_cost, get_spin_reward, get_claim_cost
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat, verify_admin
-from utils.rolled_card import RolledCardManager
+from utils.rolled_card import RolledCardManager, ClaimStatus
 from utils.miniapp import (
     encode_miniapp_token,
     encode_casino_token,
@@ -606,8 +606,14 @@ async def roll(
         if not DEBUG_MODE:
             await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
 
-        # Give the user 1 claim point for successfully rolling
-        await asyncio.to_thread(database.increment_claim_balance, user.user_id, chat_id_str)
+        # Award claim points based on the rolled card's rarity
+        claim_reward = get_claim_cost(generated_card.rarity)
+        await asyncio.to_thread(
+            database.increment_claim_balance,
+            user.user_id,
+            chat_id_str,
+            claim_reward,
+        )
 
         # Create rolled card entry to track state
         roll_id = await asyncio.to_thread(database.create_rolled_card, card_id, user.user_id)
@@ -1744,6 +1750,11 @@ async def handle_lock(
         await query.answer("Card must be claimed before it can be locked!", show_alert=True)
         return
 
+    card = rolled_card_manager.card
+    if card is None:
+        await query.answer("Card not found!", show_alert=True)
+        return
+
     # Check if the person trying to lock is the owner of the card
     if not rolled_card_manager.can_user_lock(user.user_id, user.username):
         await query.answer("Only the owner of the card can lock it!", show_alert=True)
@@ -1752,37 +1763,39 @@ async def handle_lock(
     chat = update.effective_chat
     chat_id = str(chat.id) if chat else None
 
-    # Check if this is the original roller
-    is_original_roller = rolled_card_manager.rolled_card.original_roller_id == user.user_id
-
-    if not is_original_roller:
-        # Not the original roller - need to consume a claim point to prevent rerolling
-        remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, user.user_id, chat_id, 1
+    try:
+        lock_result = await asyncio.to_thread(
+            RolledCardManager.lock_card,
+            rolled_card_manager,
+            user.user_id,
+            chat_id,
         )
+    except ValueError as exc:
+        logger.error("Lock failed: %s", exc)
+        await query.answer("Unable to lock this card right now.", show_alert=True)
+        return
 
-        if remaining_balance is None:
-            # Get current balance for error message
-            current_balance = await asyncio.to_thread(
-                database.get_claim_balance, user.user_id, chat_id
-            )
-            await query.answer(
-                f"Not enough claim points!\n\nBalance: {current_balance}",
-                show_alert=True,
-            )
-            return
+    if not lock_result.success:
+        message = f"Not enough claim points!\n\nCost: {lock_result.cost}"
+        if lock_result.current_balance is not None:
+            message += f"\n\nBalance: {lock_result.current_balance}"
+        await query.answer(message, show_alert=True)
+        return
 
-        await query.answer(
-            f"Card locked from re-rolling!\n\nBalance: {remaining_balance}",
-            show_alert=True,
+    if lock_result.cost > 0:
+        message = (
+            "Card locked from re-rolling!\n\n"
+            f"Spent: {lock_result.cost} claim point"
+            f"{'s' if lock_result.cost != 1 else ''}"
         )
+        if lock_result.remaining_balance is not None:
+            message += f"\n\nBalance: {lock_result.remaining_balance}"
+        await query.answer(message, show_alert=True)
     else:
         # Original roller - no claim point needed since they can't reroll their own claimed card anyway
         await query.answer("Card locked from re-rolling!", show_alert=True)
 
     # Set the card as locked
-    rolled_card_manager.set_locked(True)
-
     # Update the message caption and remove all buttons when locked
     caption = rolled_card_manager.generate_caption()
 
@@ -1821,47 +1834,46 @@ async def claim_card(
         return
 
     claim_result = await asyncio.to_thread(
-        RolledCardManager.claim,
+        RolledCardManager.claim_card,
         rolled_card_manager,
         user.username,
         user.user_id,
         chat_id,
     )
 
-    if claim_result.status is database.ClaimStatus.INSUFFICIENT_BALANCE:
-        balance_value = claim_result.balance if claim_result.balance is not None else 0
-        await query.answer(
-            (f"Not enough claim points!\n\nBalance: {balance_value}"),
-            show_alert=True,
-        )
+    cost_to_spend = claim_result.cost if claim_result.cost is not None else 1
+
+    if claim_result.status is ClaimStatus.INSUFFICIENT_BALANCE:
+        message = f"Not enough claim points!\n\n" f"Cost: {cost_to_spend}"
+        if claim_result.balance is not None:
+            message += f"\n\nBalance: {claim_result.balance}"
+        await query.answer(message, show_alert=True)
         return
 
     card = rolled_card_manager.card
     card_title = card.title()
 
-    if claim_result.status is database.ClaimStatus.SUCCESS:
-        if claim_result.balance is not None:
-            await query.answer(
-                f"Card {card_title} claimed!\n\nRemaining balance: {claim_result.balance}.",
-                show_alert=True,
-            )
-        else:
-            await query.answer(f"Card {card_title} claimed!", show_alert=True)
+    spent_line = f"Spent: {cost_to_spend} claim point{'s' if cost_to_spend != 1 else ''}"
+
+    def _build_claim_message(balance: Optional[int]) -> str:
+        success_message = f"Card {card_title} claimed!\n\n{spent_line}"
+        if balance is not None:
+            success_message += f"\n\nRemaining balance: {balance}."
+        return success_message
+
+    if claim_result.status is ClaimStatus.SUCCESS:
+        await query.answer(_build_claim_message(claim_result.balance), show_alert=True)
     else:
         # Card already claimed - check if it's owned by the same user
         owner = card.owner
         if owner == user.username:
             # Show success message with current balance for user's own card
-            if chat_id and user.user_id:
-                current_balance = await asyncio.to_thread(
+            remaining_balance = claim_result.balance
+            if remaining_balance is None and chat_id and user.user_id:
+                remaining_balance = await asyncio.to_thread(
                     database.get_claim_balance, user.user_id, chat_id
                 )
-                await query.answer(
-                    f"Card {card_title} claimed!\n\nRemaining balance: {current_balance}.",
-                    show_alert=True,
-                )
-            else:
-                await query.answer(f"Card {card_title} claimed!", show_alert=True)
+            await query.answer(_build_claim_message(remaining_balance), show_alert=True)
         else:
             await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
