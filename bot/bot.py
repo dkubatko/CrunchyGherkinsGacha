@@ -1520,12 +1520,19 @@ async def handle_recycle_callback(
         )
 
         owner_username = user.username or f"user_{user.user_id}"
-        await asyncio.to_thread(
-            database.claim_card,
+        claimed = await asyncio.to_thread(
+            database.try_claim_card,
             new_card_id,
             owner_username,
             user.user_id,
         )
+        if not claimed:
+            logger.warning(
+                "Failed to assign recycled card %s to user %s (%s)",
+                new_card_id,
+                owner_username,
+                user.user_id,
+            )
 
         for card in cards_to_burn:
             await asyncio.to_thread(database.nullify_card_owner, card.id)
