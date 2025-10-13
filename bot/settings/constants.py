@@ -61,6 +61,18 @@ def get_refresh_cost(rarity: str) -> int:
     return config.get("RARITIES", {}).get(rarity, {}).get("refresh_cost", 5)
 
 
+def _build_refresh_cost_summary() -> str:
+    parts = []
+    for rarity_name in RARITIES.keys():
+        cost = get_refresh_cost(rarity_name)
+        initial = rarity_name[:1].upper()
+        parts.append(f"{initial}: {cost}")
+    return ", ".join(parts)
+
+
+REFRESH_COST_SUMMARY = _build_refresh_cost_summary()
+
+
 IMAGE_GENERATOR_INSTRUCTION = """
 **Core Requirement: Take the provided 5:7 aspect ratio card template image and completely transform it into a final, detailed collectible trading card.**
 Your goal is to use the provided template as a direct base, restyling its elements and filling its content area according to the instructions below.
@@ -285,7 +297,12 @@ MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Mi
 
 MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
 
-REFRESH_USAGE_MESSAGE = "Usage: /refresh <card_id>.\n\nRe-generate the image for a card you own.\n\nClaim points cost varies by rarity:\nC: 1, R: 3, E: 5, L: 10"
+REFRESH_USAGE_MESSAGE = (
+    "Usage: /refresh <card_id>.\n\n"
+    "Re-generate the image for a card you own.\n\n"
+    "Claim points cost varies by rarity:\n"
+    f"{REFRESH_COST_SUMMARY}"
+)
 REFRESH_DM_RESTRICTED_MESSAGE = "Refreshing cards is only available in the group chat."
 REFRESH_INVALID_ID_MESSAGE = "Invalid card ID. Please provide a numeric card ID."
 REFRESH_CARD_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
