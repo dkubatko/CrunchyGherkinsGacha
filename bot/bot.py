@@ -88,6 +88,7 @@ from settings.constants import (
     REFRESH_SUCCESS_MESSAGE,
     get_refresh_cost,
 )
+from settings.constants import get_lock_cost, get_spin_reward
 from utils import gemini, database, rolling
 from utils.decorators import verify_user, verify_user_in_chat, verify_admin
 from utils.rolled_card import RolledCardManager
@@ -732,14 +733,7 @@ async def burn(
         )
         return
 
-    rarity_config = RARITIES.get(card.rarity)
-    spin_reward = 0
-    if isinstance(rarity_config, dict):
-        try:
-            spin_reward = int(rarity_config.get("spin_reward", 0))
-        except (TypeError, ValueError):
-            spin_reward = 0
-
+    spin_reward = get_spin_reward(card.rarity)
     if spin_reward <= 0:
         logger.error("No spin reward configured for rarity %s", card.rarity)
         await message.reply_text(
@@ -865,14 +859,7 @@ async def handle_burn_callback(
                 pass
             return
 
-        rarity_config = RARITIES.get(card.rarity)
-        spin_reward = 0
-        if isinstance(rarity_config, dict):
-            try:
-                spin_reward = int(rarity_config.get("spin_reward", 0))
-            except (TypeError, ValueError):
-                spin_reward = 0
-
+        spin_reward = get_spin_reward(card.rarity)
         if spin_reward <= 0:
             logger.error("No spin reward configured for rarity %s", card.rarity)
             await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
@@ -2583,13 +2570,25 @@ async def lock_card_command(
         return
 
     # Check current lock status and prepare appropriate message
+    lock_cost = get_lock_cost(card.rarity)
+
     if card.locked:
         # Card is already locked - offer to unlock (no refund)
-        prompt_text = f"Unlock <b>{card.title()}</b>? Claim point will <b>not</b> be refunded."
+        if lock_cost > 0:
+            refund_label = "Claim point" if lock_cost == 1 else "Claim points"
+            prompt_text = (
+                f"Unlock <b>{card.title()}</b>? {refund_label} will <b>not</b> be refunded."
+            )
+        else:
+            prompt_text = f"Unlock <b>{card.title()}</b>?"
     else:
-        # Card is not locked - offer to lock (costs 1 claim point)
+        # Card is not locked - offer to lock (costs configured claim points)
         # Balance will be checked when user confirms
-        prompt_text = f"Consume 1 claim point to lock <b>{card.title()}</b>?"
+        if lock_cost > 0:
+            points_label = "claim point" if lock_cost == 1 else "claim points"
+            prompt_text = f"Consume {lock_cost} {points_label} to lock <b>{card.title()}</b>?"
+        else:
+            prompt_text = f"Lock <b>{card.title()}</b>?"
 
     keyboard = [
         [
@@ -2678,25 +2677,30 @@ async def handle_lock_card_confirm(
     chat_id = str(chat.id)
     card_title = card.title()
 
+    lock_cost = get_lock_cost(card.rarity)
+
     if card.locked:
         # Unlock the card (no cost)
         await asyncio.to_thread(database.set_card_locked, card_id, False)
         response_text = f"🔓 <b>{card_title}</b> unlocked!"
         await query.answer(f"{card_title} unlocked!", show_alert=False)
     else:
-        # Lock the card (costs 1 claim point)
+        # Lock the card (consumes configured claim points)
         # First check if user has enough balance
         current_balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id)
 
-        if current_balance < 1:
+        if current_balance < lock_cost:
             # Insufficient balance
             await query.answer(
-                f"Not enough claim points!\n\nBalance: {current_balance}",
+                ("Not enough claim points!\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"),
                 show_alert=True,
             )
             try:
                 await query.edit_message_text(
-                    f"Not enough claim points to lock <b>{card_title}</b>!\n\nBalance: {current_balance}",
+                    (
+                        f"Not enough claim points to lock <b>{card_title}</b>!\n\n"
+                        f"Cost: {lock_cost}\nBalance: {current_balance}"
+                    ),
                     parse_mode=ParseMode.HTML,
                 )
             except Exception:
@@ -2705,7 +2709,7 @@ async def handle_lock_card_confirm(
 
         # Now try to consume the claim point
         remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, user.user_id, chat_id, 1
+            database.reduce_claim_points, user.user_id, chat_id, lock_cost
         )
 
         if remaining_balance is None:
@@ -2714,12 +2718,15 @@ async def handle_lock_card_confirm(
                 database.get_claim_balance, user.user_id, chat_id
             )
             await query.answer(
-                f"Not enough claim points!\n\nBalance: {current_balance}",
+                ("Not enough claim points!\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"),
                 show_alert=True,
             )
             try:
                 await query.edit_message_text(
-                    f"Not enough claim points to lock <b>{card_title}</b>!\n\nBalance: {current_balance}",
+                    (
+                        f"Not enough claim points to lock <b>{card_title}</b>!\n\n"
+                        f"Cost: {lock_cost}\nBalance: {current_balance}"
+                    ),
                     parse_mode=ParseMode.HTML,
                 )
             except Exception:
@@ -2728,11 +2735,17 @@ async def handle_lock_card_confirm(
 
         # Lock the card
         await asyncio.to_thread(database.set_card_locked, card_id, True)
-        response_text = f"🔒 <b>{card_title}</b> locked!\n\nRemaining balance: {remaining_balance}"
-        await query.answer(
-            f"{card_title} locked!\n\nRemaining balance: {remaining_balance}",
-            show_alert=True,
+        response_text = (
+            f"🔒 <b>{card_title}</b> locked!\n\n"
+            + (f"Cost: {lock_cost}\n" if lock_cost > 0 else "")
+            + f"Remaining balance: {remaining_balance}"
         )
+        plain_response = (
+            f"{card_title} locked!\n\n"
+            + (f"Cost: {lock_cost}\n" if lock_cost > 0 else "")
+            + f"Remaining balance: {remaining_balance}"
+        )
+        await query.answer(plain_response, show_alert=True)
 
     try:
         await query.edit_message_text(response_text, parse_mode=ParseMode.HTML)
