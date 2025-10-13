@@ -73,6 +73,7 @@ from settings.constants import (
     BURN_FAILURE_MESSAGE,
     BURN_FAILURE_SPINS_MESSAGE,
     BURN_SUCCESS_MESSAGE,
+    LOCK_USAGE_MESSAGE,
     REFRESH_USAGE_MESSAGE,
     REFRESH_DM_RESTRICTED_MESSAGE,
     REFRESH_INVALID_ID_MESSAGE,
@@ -2547,7 +2548,7 @@ async def lock_card_command(
         return
 
     if len(context.args) != 1:
-        await message.reply_text("Usage: /lock [card_id]")
+        await message.reply_text(LOCK_USAGE_MESSAGE)
         return
 
     try:

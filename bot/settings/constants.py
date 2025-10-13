@@ -61,16 +61,17 @@ def get_refresh_cost(rarity: str) -> int:
     return config.get("RARITIES", {}).get(rarity, {}).get("refresh_cost", 5)
 
 
-def _build_refresh_cost_summary() -> str:
+def _build_cost_summary(cost_lookup) -> str:
     parts = []
     for rarity_name in RARITIES.keys():
-        cost = get_refresh_cost(rarity_name)
+        cost = cost_lookup(rarity_name)
         initial = rarity_name[:1].upper()
         parts.append(f"{initial}: {cost}")
     return ", ".join(parts)
 
 
-REFRESH_COST_SUMMARY = _build_refresh_cost_summary()
+LOCK_COST_SUMMARY = _build_cost_summary(get_lock_cost)
+REFRESH_COST_SUMMARY = _build_cost_summary(get_refresh_cost)
 
 
 IMAGE_GENERATOR_INSTRUCTION = """
@@ -296,6 +297,13 @@ MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
 MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Minesweeper!"
 
 MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
+
+LOCK_USAGE_MESSAGE = (
+    "Usage: /lock <card_id>.\n\n"
+    "Lock or unlock a card you own.\n\n"
+    "Claim points cost varies by rarity:\n"
+    f"{LOCK_COST_SUMMARY}"
+)
 
 REFRESH_USAGE_MESSAGE = (
     "Usage: /refresh <card_id>.\n\n"
