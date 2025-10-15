@@ -162,7 +162,11 @@ Temporary Items
 
 # Project specific
 bot/data/cards.db
+bot/data/cards.db-wal
+bot/data/cards.db-shm
 bot/data/cards/
+*.db-wal
+*.db-shm
 
 # Exceptions for miniapp
 !/miniapp/src/lib/

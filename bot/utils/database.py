@@ -1,3 +1,4 @@
+import atexit
 import base64
 import datetime
 import html
@@ -5,6 +6,8 @@ import logging
 import os
 import sqlite3
 import json
+import threading
+from contextlib import suppress
 from typing import Optional, Any, List, Dict
 from zoneinfo import ZoneInfo
 
@@ -30,6 +33,131 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
 ALEMBIC_INI_PATH = os.path.join(PROJECT_ROOT, "alembic.ini")
 ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
 INITIAL_ALEMBIC_REVISION = "20240924_0001"
+
+
+def _get_env_int(name: str, default: int) -> int:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return default
+
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        logger.warning("Invalid %s value '%s'; falling back to %s", name, raw_value, default)
+        return default
+
+    if parsed <= 0:
+        logger.warning("%s must be positive; falling back to %s", name, default)
+        return default
+
+    return parsed
+
+
+class _ReusableConnection(sqlite3.Connection):
+    def close(self):  # type: ignore[override]
+        _release_connection(self)
+
+
+_POOL_LOCK = threading.Lock()
+_WAL_LOCK = threading.Lock()
+_CONNECTION_POOL: list[_ReusableConnection] = []
+_POOL_SIZE = _get_env_int("DB_CONNECTION_POOL_SIZE", 6)
+_DEFAULT_TIMEOUT_SECONDS = _get_env_int("DB_CONNECTION_TIMEOUT_SECONDS", 30)
+_DEFAULT_BUSY_TIMEOUT_MS = _get_env_int("DB_BUSY_TIMEOUT_MS", 5000)
+_WAL_ENABLED = False
+
+
+def _configure_connection(conn: _ReusableConnection) -> None:
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout={_DEFAULT_BUSY_TIMEOUT_MS}")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA synchronous=NORMAL")
+
+    global _WAL_ENABLED
+    if not _WAL_ENABLED:
+        with _WAL_LOCK:
+            if not _WAL_ENABLED:
+                try:
+                    result = conn.execute("PRAGMA journal_mode=WAL").fetchone()
+                    if result and str(result[0]).lower() == "wal":
+                        _WAL_ENABLED = True
+                        logger.info("SQLite database journal mode switched to WAL")
+                    else:
+                        logger.warning("Unable to enable WAL journal mode; result=%s", result)
+                except sqlite3.DatabaseError as exc:
+                    logger.warning("Failed to enable WAL journal mode: %s", exc)
+
+
+def _create_connection() -> _ReusableConnection:
+    conn = sqlite3.connect(
+        DB_PATH,
+        detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
+        check_same_thread=False,
+        timeout=_DEFAULT_TIMEOUT_SECONDS,
+        factory=_ReusableConnection,
+    )
+    setattr(conn, "_released", False)
+    _configure_connection(conn)
+    return conn
+
+
+def _is_connection_alive(conn: _ReusableConnection) -> bool:
+    try:
+        conn.execute("SELECT 1")
+        return True
+    except sqlite3.Error:
+        return False
+
+
+def _acquire_connection() -> _ReusableConnection:
+    with _POOL_LOCK:
+        while _CONNECTION_POOL:
+            conn = _CONNECTION_POOL.pop()
+            if _is_connection_alive(conn):
+                setattr(conn, "_released", False)
+                try:
+                    conn.row_factory = sqlite3.Row
+                    conn.execute(f"PRAGMA busy_timeout={_DEFAULT_BUSY_TIMEOUT_MS}")
+                    conn.execute("PRAGMA foreign_keys=ON")
+                    conn.execute("PRAGMA synchronous=NORMAL")
+                    return conn
+                except sqlite3.Error:
+                    with suppress(sqlite3.Error):
+                        super(_ReusableConnection, conn).close()
+                    continue
+            with suppress(sqlite3.Error):
+                super(_ReusableConnection, conn).close()
+
+    conn = _create_connection()
+    return conn
+
+
+def _release_connection(conn: _ReusableConnection) -> None:
+    if getattr(conn, "_released", False):
+        return
+
+    setattr(conn, "_released", True)
+
+    with suppress(sqlite3.Error):
+        conn.rollback()
+
+    with _POOL_LOCK:
+        if len(_CONNECTION_POOL) < _POOL_SIZE:
+            _CONNECTION_POOL.append(conn)
+        else:
+            with suppress(sqlite3.Error):
+                super(_ReusableConnection, conn).close()
+
+
+def _cleanup_connection_pool() -> None:
+    with _POOL_LOCK:
+        while _CONNECTION_POOL:
+            conn = _CONNECTION_POOL.pop()
+            with suppress(sqlite3.Error):
+                super(_ReusableConnection, conn).close()
+
+
+atexit.register(_cleanup_connection_pool)
 
 
 def _load_config() -> Dict[str, Any]:
@@ -210,10 +338,11 @@ class MinesweeperGame(BaseModel):
 
 def connect():
     """Connect to the SQLite database."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    dir_path = os.path.dirname(DB_PATH)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+
+    return _acquire_connection()
 
 
 def _get_alembic_config() -> Config:
