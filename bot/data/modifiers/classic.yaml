@@ -1,4 +1,5 @@
 # Default season modifier keywords by rarity. Lists are alphabetized and de-duplicated.
+id: 0
 season: classic
 rarities:
 - name: Common
