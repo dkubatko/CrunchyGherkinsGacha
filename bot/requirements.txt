@@ -3,7 +3,10 @@ python-dotenv
 google-generativeai
 Pillow
 fastapi
-uvicorn
+uvicorn[standard]
+gunicorn  # Production server with better process management
+uvloop  # Fast event loop (2-4x faster than asyncio)
+httptools  # Fast HTTP parser
 pydantic
 python-multipart
 SQLAlchemy

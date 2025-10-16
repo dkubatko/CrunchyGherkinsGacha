@@ -43,20 +43,13 @@ from settings.constants import (
 )
 from settings.constants import get_lock_cost, get_spin_reward
 from utils.miniapp import encode_single_card_token
+from utils.logging_utils import configure_logging
 
-# Initialize logger
+DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG_MODE") == "1"
+
+configure_logging(debug=DEBUG_MODE)
+
 logger = logging.getLogger(__name__)
-
-# Global bot token and debug mode - will be set by the main bot
-bot_token = None
-debug_mode = False
-
-
-def set_bot_token(token, is_debug=False):
-    """Set the bot token for creating bot instances."""
-    global bot_token, debug_mode
-    bot_token = token
-    debug_mode = is_debug
 
 
 def create_bot_instance():
@@ -70,24 +63,24 @@ def create_bot_instance():
         Bot: Configured Telegram Bot instance
 
     Raises:
-        HTTPException: If bot_token is not available
+        HTTPException: If TELEGRAM_TOKEN is not available
     """
     from telegram import Bot
 
-    if not bot_token:
+    if not TELEGRAM_TOKEN:
         logger.error("Bot token not available for bot instance creation")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
-    if debug_mode:
-        bot = Bot(token=bot_token)
-        bot._base_url = f"https://api.telegram.org/bot{bot_token}/test"
-        bot._base_file_url = f"https://api.telegram.org/file/bot{bot_token}/test"
+    if DEBUG_MODE:
+        bot = Bot(token=TELEGRAM_TOKEN)
+        bot._base_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/test"
+        bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
         return bot
     else:
         # Use local Telegram Bot API server in production
         api_base_url = "http://localhost:8081"
         return Bot(
-            token=bot_token,
+            token=TELEGRAM_TOKEN,
             base_url=f"{api_base_url}/bot",
             base_file_url=f"{api_base_url}/file/bot",
             local_mode=True,
@@ -96,11 +89,27 @@ def create_bot_instance():
 
 app = FastAPI()
 
-DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
 
-MINIAPP_URL = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
+# Environment-based configuration
+if DEBUG_MODE:
+    TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
+    MINIAPP_URL = os.getenv("DEBUG_MINIAPP_URL")
+else:
+    TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
+    MINIAPP_URL = os.getenv("MINIAPP_URL")
 
-gemini_util = gemini.GeminiUtil()
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
+
+# Database configuration
+DB_POOL_SIZE = int(os.getenv("DB_CONNECTION_POOL_SIZE", "6"))
+DB_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECTION_TIMEOUT_SECONDS", "30"))
+DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
+
+# Initialize utilities with configuration
+database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS, DB_BUSY_TIMEOUT_MS)
+minesweeper.set_debug_mode(DEBUG_MODE)
+gemini_util = gemini.GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
 
 
 MAX_SLOT_VICTORY_IMAGE_RETRIES = 2
@@ -323,9 +332,7 @@ def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
     Returns:
         Dictionary with parsed and validated data, or None if validation fails
     """
-    global bot_token
-
-    if not bot_token:
+    if not TELEGRAM_TOKEN:
         logger.error("Bot token not available for init data validation")
         return None
 
@@ -350,7 +357,7 @@ def validate_telegram_init_data(init_data: str) -> Optional[Dict[str, Any]]:
         data_check_string = "\n".join(data_check_string_parts)
 
         # Create secret key from bot token
-        secret_key = hmac.new(b"WebAppData", bot_token.encode(), hashlib.sha256).digest()
+        secret_key = hmac.new(b"WebAppData", TELEGRAM_TOKEN.encode(), hashlib.sha256).digest()
 
         # Calculate expected hash
         expected_hash = hmac.new(secret_key, data_check_string.encode(), hashlib.sha256).hexdigest()
@@ -695,8 +702,6 @@ async def share_card(
     # Verify the authenticated user matches the requested user_id
     await verify_user_match(request.user_id, validated_user)
 
-    global bot_token
-
     # Extract user data from validated data
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
@@ -993,8 +998,8 @@ async def burn_card(
     # Spawn background task to send notification to chat
     asyncio.create_task(
         _process_burn_notification(
-            bot_token=bot_token,
-            debug_mode=debug_mode,
+            bot_token=TELEGRAM_TOKEN,
+            debug_mode=DEBUG_MODE,
             username=username,
             card_rarity=card_rarity,
             card_display_name=card_display_name,
@@ -1102,8 +1107,6 @@ async def execute_trade(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Execute a card trade between two cards."""
-    global bot_token
-
     # Get user data from validated init data
     user_data = validated_user["user"]
     user_id = user_data.get("id")
@@ -1113,7 +1116,7 @@ async def execute_trade(
         raise HTTPException(status_code=400, detail="Invalid user data in init data")
 
     # Check if bot token is available
-    if not bot_token:
+    if not TELEGRAM_TOKEN:
         logger.error("Bot token not available for trade execution")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
@@ -1279,8 +1282,12 @@ async def get_user_spins(
 
         return SpinsResponse(spins=spins_count, success=True, next_refresh_time=next_refresh_time)
 
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting spins for user {user_id} in chat {chat_id}: {e}")
+        logger.error(
+            f"Error getting spins for user {user_id} in chat {chat_id}: {e}", exc_info=True
+        )
         raise HTTPException(status_code=500, detail="Failed to get spins")
 
 
@@ -1438,8 +1445,6 @@ async def slots_victory(
     # Verify the authenticated user matches the requested user_id
     await verify_user_match(request.user_id, validated_user)
 
-    global bot_token
-
     # Extract user data from validated data
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
@@ -1468,7 +1473,7 @@ async def slots_victory(
         logger.warning("Unsupported source type '%s'", request.source.type)
         raise HTTPException(status_code=400, detail="Invalid source type")
 
-    if not bot_token:
+    if not TELEGRAM_TOKEN:
         logger.error("Bot token not available for slots victory")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
@@ -1501,8 +1506,8 @@ async def slots_victory(
     # Process card generation in background task (fire-and-forget)
     asyncio.create_task(
         _process_slots_victory_background(
-            bot_token=bot_token,
-            debug_mode=debug_mode,
+            bot_token=TELEGRAM_TOKEN,
+            debug_mode=DEBUG_MODE,
             username=username,
             normalized_rarity=normalized_rarity,
             display_name=display_name,
@@ -1700,8 +1705,8 @@ async def _process_slots_victory_background(
             if spin_refund_amount > 0 and not card_generated_and_assigned:
                 refund_processed = await _refund_slots_victory_failure(
                     bot=bot,
-                    bot_token=bot_token,
-                    debug_mode=debug_mode,
+                    bot_token=TELEGRAM_TOKEN,
+                    debug_mode=DEBUG_MODE,
                     username=username,
                     rarity=normalized_rarity,
                     display_name=display_name,
@@ -1717,8 +1722,8 @@ async def _process_slots_victory_background(
         if spin_refund_amount > 0 and not refund_processed and not card_generated_and_assigned:
             await _refund_slots_victory_failure(
                 bot=bot,
-                bot_token=bot_token,
-                debug_mode=debug_mode,
+                bot_token=TELEGRAM_TOKEN,
+                debug_mode=DEBUG_MODE,
                 username=username,
                 rarity=normalized_rarity,
                 display_name=display_name,
@@ -2682,7 +2687,12 @@ async def get_slot_symbols_endpoint(
 
 def run_server():
     """Run the FastAPI server."""
-    # Disable reload when running in a thread to avoid signal handler issues
+    if DEBUG_MODE:
+        logger.info("🧪 Running API server in DEBUG mode with test environment endpoints")
+    else:
+        logger.info("🚀 Running API server in PRODUCTION mode with local Telegram Bot API server")
+
+    logger.info("🌐 Starting FastAPI server on http://0.0.0.0:8000")
     uvicorn.run("api.server:app", host="0.0.0.0", port=8000, reload=False)
 
 
