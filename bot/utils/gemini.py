@@ -5,7 +5,6 @@ import random
 from io import BytesIO
 
 import google.generativeai as genai
-from dotenv import load_dotenv
 from PIL import Image
 
 from settings.constants import (
@@ -16,14 +15,20 @@ from settings.constants import (
 )
 from utils.image import ImageUtil
 
-load_dotenv()
-
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 logger = logging.getLogger(__name__)
 
 
 class GeminiUtil:
-    def __init__(self):
+    def __init__(self, google_api_key: str, image_gen_model: str):
+        """
+        Initialize GeminiUtil with configuration.
+
+        Args:
+            google_api_key: Google API key for Gemini
+            image_gen_model: Model name for image generation
+        """
+        genai.configure(api_key=google_api_key)
+
         # Configure safety settings to be least restrictive
         safety_settings = [
             {
@@ -43,9 +48,7 @@ class GeminiUtil:
                 "threshold": "BLOCK_NONE",
             },
         ]
-        self.model = genai.GenerativeModel(
-            os.getenv("IMAGE_GEN_MODEL"), safety_settings=safety_settings
-        )
+        self.model = genai.GenerativeModel(image_gen_model, safety_settings=safety_settings)
 
     def generate_image(
         self,
