@@ -1,15 +1,16 @@
 import asyncio
-import logging
-import os
-import sys
 import base64
 import datetime
 import html
-import json
+import logging
+import os
 import random
+import sys
 import urllib.parse
-from typing import Optional
 from io import BytesIO
+from typing import Optional
+
+from dotenv import load_dotenv
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -18,27 +19,20 @@ from telegram import (
     ReactionTypeEmoji,
     WebAppInfo,
 )
-from telegram.constants import ParseMode, ChatType
+from telegram.constants import ChatType, ParseMode
 from telegram.ext import (
     Application,
-    CommandHandler,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     MessageHandler,
     filters,
 )
-from dotenv import load_dotenv
 
 from settings.constants import (
     REACTION_IN_PROGRESS,
     COLLECTION_CAPTION,
     CARD_CAPTION_BASE,
-    CARD_STATUS_UNCLAIMED,
-    CARD_STATUS_CLAIMED,
-    CARD_STATUS_LOCKED,
-    CARD_STATUS_ATTEMPTED,
-    CARD_STATUS_REROLLING,
-    CARD_STATUS_REROLLED,
     TRADE_REQUEST_MESSAGE,
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
@@ -57,7 +51,6 @@ from settings.constants import (
     RECYCLE_FAILURE_IMAGE,
     RECYCLE_FAILURE_UNEXPECTED,
     RECYCLE_RESULT_APPENDIX,
-    RARITIES,
     get_recycle_required_cards,
     BURN_USAGE_MESSAGE,
     BURN_DM_RESTRICTED_MESSAGE,
@@ -88,15 +81,14 @@ from settings.constants import (
     REFRESH_SUCCESS_MESSAGE,
     get_refresh_cost,
 )
-from settings.constants import get_lock_cost, get_spin_reward, get_claim_cost
-from utils import gemini, database, rolling
-from utils.decorators import verify_user, verify_user_in_chat, verify_admin
-from utils.rolled_card import RolledCardManager, ClaimStatus
+from settings.constants import get_claim_cost, get_lock_cost, get_spin_reward
+from utils import database, decorators, gemini, minesweeper, rolling
+from utils.decorators import verify_admin, verify_user, verify_user_in_chat
 from utils.miniapp import (
     encode_miniapp_token,
     encode_casino_token,
 )
-from utils import decorators, minesweeper
+from utils.rolled_card import ClaimStatus, RolledCardManager
 from utils.logging_utils import configure_logging
 
 # Load environment variables

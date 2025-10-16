@@ -2,14 +2,24 @@ import logging
 import random
 import time
 from dataclasses import dataclass
-from typing import Optional
+from typing import Dict, Optional
 
 from settings.constants import RARITIES
 from utils import database
 from utils.gemini import GeminiUtil
+from utils.modifiers import load_modifiers
+
+MODIFIERS_BY_RARITY: Dict[str, list[str]] = load_modifiers()
 
 
 logger = logging.getLogger(__name__)
+
+
+def refresh_modifier_cache() -> None:
+    """Reload modifiers from disk. Intended for admin-triggered refreshes."""
+
+    global MODIFIERS_BY_RARITY
+    MODIFIERS_BY_RARITY = load_modifiers()
 
 
 class NoEligibleUserError(Exception):
@@ -132,7 +142,7 @@ def _choose_modifier_for_rarity(rarity: str) -> str:
     if not isinstance(rarity_config, dict):
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
 
-    modifiers = rarity_config.get("modifiers")
+    modifiers = MODIFIERS_BY_RARITY.get(rarity)
     if not modifiers:
         raise InvalidSourceError(f"No modifiers configured for rarity '{rarity}'")
 
