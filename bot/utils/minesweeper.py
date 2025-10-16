@@ -10,9 +10,9 @@ This module handles:
 import base64
 import json
 import logging
+import os
 import random
 import sys
-import os
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
@@ -25,7 +25,18 @@ logger = logging.getLogger(__name__)
 # Constants
 GRID_SIZE = 9  # 3x3 grid
 SAFE_REVEALS_REQUIRED = 3  # Number of safe cells to reveal to win
-DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
+DEBUG_MODE = "--debug" in sys.argv  # Keep sys.argv check for backward compatibility
+
+
+def set_debug_mode(debug: bool) -> None:
+    """
+    Set debug mode for minesweeper module.
+
+    Args:
+        debug: Whether debug mode is enabled
+    """
+    global DEBUG_MODE
+    DEBUG_MODE = debug
 
 
 def _parse_timestamp(timestamp_str: Optional[str]) -> datetime:

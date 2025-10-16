@@ -7,7 +7,6 @@ import datetime
 import html
 import json
 import random
-import threading
 import urllib.parse
 from typing import Optional
 from io import BytesIO
@@ -97,29 +96,42 @@ from utils.miniapp import (
     encode_miniapp_token,
     encode_casino_token,
 )
+from utils import decorators, minesweeper
+from utils.logging_utils import configure_logging
 
 # Load environment variables
 load_dotenv()
 
-gemini_util = gemini.GeminiUtil()
+DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG_MODE") == "1"
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO,
-    force=True,
-)
+configure_logging(debug=DEBUG_MODE)
 logger = logging.getLogger(__name__)
-
-DEBUG_MODE = "--debug" in sys.argv
 
 MAX_BOT_IMAGE_RETRIES = 2
 
-# Use debug token when in debug mode, otherwise use production token
+# Load environment variables
 if DEBUG_MODE:
     TELEGRAM_TOKEN = os.getenv("DEBUG_TELEGRAM_AUTH_TOKEN")
+    ADMIN_USERNAME = os.getenv("DEBUG_BOT_ADMIN")
+    MINIAPP_URL_ENV = os.getenv("DEBUG_MINIAPP_URL")
 else:
     TELEGRAM_TOKEN = os.getenv("TELEGRAM_AUTH_TOKEN")
+    ADMIN_USERNAME = os.getenv("BOT_ADMIN")
+    MINIAPP_URL_ENV = os.getenv("MINIAPP_URL")
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
+
+# Database configuration
+DB_POOL_SIZE = int(os.getenv("DB_CONNECTION_POOL_SIZE", "6"))
+DB_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECTION_TIMEOUT_SECONDS", "30"))
+DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
+
+# Initialize utilities with configuration
+database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS, DB_BUSY_TIMEOUT_MS)
+decorators.set_admin_username(ADMIN_USERNAME)
+minesweeper.set_debug_mode(DEBUG_MODE)
+gemini_util = gemini.GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
 
 
 def log_card_generation(generated_card, context="card generation"):
@@ -211,10 +223,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Check if it's a group chat or DM
     if update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         # Group chat - add character functionality (admin only)
-        admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
-
         # Check if user is admin
-        if not admin_username or user.username != admin_username:
+        if not ADMIN_USERNAME or user.username != ADMIN_USERNAME:
             await message.reply_text(
                 "Only the bot administrator can add characters in group chats."
             )
@@ -391,10 +401,8 @@ async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     # Restrict to admin only
-    admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
-
     # Check if user is admin
-    if not admin_username or user.username != admin_username:
+    if not ADMIN_USERNAME or user.username != ADMIN_USERNAME:
         await message.reply_text("Only the bot administrator can delete characters.")
         return
 
@@ -523,12 +531,11 @@ async def casino(
     casino_token = encode_casino_token(user.user_id, chat_id)
 
     # Create WebApp button
-    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
-    if not miniapp_url:
+    if not MINIAPP_URL_ENV:
         await message.reply_text("Casino mini-app is not configured.")
         return
 
-    app_url = f"{miniapp_url}?startapp={casino_token}"
+    app_url = f"{MINIAPP_URL_ENV}?startapp={casino_token}"
     keyboard = [[InlineKeyboardButton("🎰 Open Casino!", url=app_url)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -2108,11 +2115,10 @@ async def collection(
         )
 
     # Add miniapp button
-    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
-    if miniapp_url:
+    if MINIAPP_URL_ENV:
         # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
         token = encode_miniapp_token(viewed_user_id, chat_id_filter)
-        app_url = f"{miniapp_url}?startapp={token}"
+        app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
         keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(
@@ -2276,15 +2282,14 @@ async def handle_collection_navigation(
         )
 
     # Add miniapp button
-    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
-    if miniapp_url:
+    if MINIAPP_URL_ENV:
         # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
         token = encode_miniapp_token(viewed_user_id, chat_id_filter)
 
         if DEBUG_MODE:
-            app_url = f"{miniapp_url}?v={token}"
+            app_url = f"{MINIAPP_URL_ENV}?v={token}"
         else:
-            app_url = f"{miniapp_url}?startapp={token}"
+            app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
         keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
 
     keyboard.append(
@@ -2506,16 +2511,15 @@ async def trade(
     user2_username = card2.owner
 
     # Build mini-app card view URLs
-    miniapp_url = os.getenv("DEBUG_MINIAPP_URL" if DEBUG_MODE else "MINIAPP_URL")
     card1_url = None
     card2_url = None
-    if miniapp_url:
+    if MINIAPP_URL_ENV:
         from utils.miniapp import encode_single_card_token
 
         card1_token = encode_single_card_token(card_id1)
         card2_token = encode_single_card_token(card_id2)
-        card1_url = f"{miniapp_url}?startapp={card1_token}"
-        card2_url = f"{miniapp_url}?startapp={card2_token}"
+        card1_url = f"{MINIAPP_URL_ENV}?startapp={card1_token}"
+        card2_url = f"{MINIAPP_URL_ENV}?startapp={card2_token}"
 
     keyboard = [
         [
@@ -3004,11 +3008,8 @@ async def reload(
     user: database.User,
 ) -> None:
     """Reload command - clears all file_ids. Only accessible to admin."""
-    # Get admin username from environment variable
-    admin_username = os.getenv("BOT_ADMIN")
-
     # Silently ignore if user is not the admin
-    if not admin_username or user.username != admin_username:
+    if not ADMIN_USERNAME or user.username != ADMIN_USERNAME:
         return
 
     try:
@@ -3130,9 +3131,7 @@ async def set_thread(
 
 
 def main() -> None:
-    """Start the bot and the FastAPI server."""
-    from api.server import run_server as run_fastapi_server, set_bot_token
-
+    """Start the bot."""
     if DEBUG_MODE:
         # Use test environment endpoints when in debug mode
         # Format: https://api.telegram.org/bot<token>/test/METHOD_NAME
@@ -3163,16 +3162,6 @@ def main() -> None:
         )
         logger.info("🚀 Running in PRODUCTION mode with local Telegram Bot API server")
         logger.info(f"🔗 API Base URL: {api_base_url}")
-
-    # Share bot token with the server
-    set_bot_token(TELEGRAM_TOKEN, DEBUG_MODE)
-    logger.info("🤝 Bot token shared with FastAPI server")
-
-    # Start FastAPI server in a separate thread
-    fastapi_thread = threading.Thread(target=run_fastapi_server)
-    fastapi_thread.daemon = True
-    fastapi_thread.start()
-    logger.info("🚀 Starting FastAPI server on port 8000")
 
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("profile", profile))

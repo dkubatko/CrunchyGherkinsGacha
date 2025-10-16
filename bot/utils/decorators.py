@@ -1,9 +1,8 @@
 import asyncio
 import logging
-import os
 import sys
 from functools import wraps
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Optional
 
 from telegram import Update
 from telegram.constants import ChatType
@@ -17,6 +16,28 @@ logger = logging.getLogger(__name__)
 
 # Check for debug mode at module level
 DEBUG_MODE = "--debug" in sys.argv
+
+# Admin username - must be set via set_admin_username() before using verify_admin
+_admin_username: Optional[str] = None
+
+
+def set_admin_username(username: str) -> None:
+    """
+    Set the admin username for the verify_admin decorator.
+
+    This should be called once at application startup.
+
+    Args:
+        username: The admin username
+    """
+    global _admin_username
+    _admin_username = username
+    logger.info("Admin username configured")
+
+
+def get_admin_username() -> Optional[str]:
+    """Get the configured admin username."""
+    return _admin_username
 
 
 async def _notify_user(update: Update, context: ContextTypes.DEFAULT_TYPE, message: str) -> None:
@@ -104,13 +125,11 @@ def verify_admin(handler: HandlerFunc) -> HandlerFunc:
     @verify_user
     @wraps(handler)
     async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-        # Use DEBUG_BOT_ADMIN in debug mode, otherwise use BOT_ADMIN
-        admin_username = os.getenv("DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN")
+        admin_username = get_admin_username()
         db_user = kwargs.get("user")
 
         if not admin_username:
-            env_var = "DEBUG_BOT_ADMIN" if DEBUG_MODE else "BOT_ADMIN"
-            logger.warning(f"{env_var} environment variable not set")
+            logger.warning("Admin username not configured")
             await _notify_user(update, context, "Admin functionality is not configured.")
             return None
 

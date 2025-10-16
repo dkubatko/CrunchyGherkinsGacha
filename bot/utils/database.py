@@ -35,22 +35,67 @@ ALEMBIC_SCRIPT_LOCATION = os.path.join(PROJECT_ROOT, "alembic")
 INITIAL_ALEMBIC_REVISION = "20240924_0001"
 
 
-def _get_env_int(name: str, default: int) -> int:
-    raw_value = os.getenv(name)
-    if not raw_value:
-        return default
+class DatabaseConfig:
+    """Configuration for database connection pool."""
 
-    try:
-        parsed = int(raw_value)
-    except ValueError:
-        logger.warning("Invalid %s value '%s'; falling back to %s", name, raw_value, default)
-        return default
+    def __init__(self, pool_size: int = 6, timeout_seconds: int = 30, busy_timeout_ms: int = 5000):
+        """
+        Initialize database configuration.
 
-    if parsed <= 0:
-        logger.warning("%s must be positive; falling back to %s", name, default)
-        return default
+        Args:
+            pool_size: Size of the connection pool
+            timeout_seconds: Connection timeout in seconds
+            busy_timeout_ms: SQLite busy timeout in milliseconds
+        """
+        if pool_size <= 0:
+            logger.warning("pool_size must be positive; falling back to 6")
+            pool_size = 6
+        if timeout_seconds <= 0:
+            logger.warning("timeout_seconds must be positive; falling back to 30")
+            timeout_seconds = 30
+        if busy_timeout_ms <= 0:
+            logger.warning("busy_timeout_ms must be positive; falling back to 5000")
+            busy_timeout_ms = 5000
 
-    return parsed
+        self.pool_size = pool_size
+        self.timeout_seconds = timeout_seconds
+        self.busy_timeout_ms = busy_timeout_ms
+
+
+# Global configuration - will be set by initialize_database()
+_db_config: Optional[DatabaseConfig] = None
+
+
+def initialize_database(
+    pool_size: int = 6, timeout_seconds: int = 30, busy_timeout_ms: int = 5000
+) -> None:
+    """
+    Initialize database configuration.
+
+    This should be called once at application startup before any database operations.
+
+    Args:
+        pool_size: Size of the connection pool (default: 6)
+        timeout_seconds: Connection timeout in seconds (default: 30)
+        busy_timeout_ms: SQLite busy timeout in milliseconds (default: 5000)
+    """
+    global _db_config
+    _db_config = DatabaseConfig(pool_size, timeout_seconds, busy_timeout_ms)
+    logger.info(
+        "Database initialized with pool_size=%d, timeout_seconds=%d, busy_timeout_ms=%d",
+        _db_config.pool_size,
+        _db_config.timeout_seconds,
+        _db_config.busy_timeout_ms,
+    )
+
+
+def _get_config() -> DatabaseConfig:
+    """Get the database configuration, initializing with defaults if needed."""
+    global _db_config
+    if _db_config is None:
+        _db_config = DatabaseConfig()
+        logger.warning("Database not explicitly initialized; using default configuration")
+    return _db_config
 
 
 class _ReusableConnection(sqlite3.Connection):
@@ -61,15 +106,13 @@ class _ReusableConnection(sqlite3.Connection):
 _POOL_LOCK = threading.Lock()
 _WAL_LOCK = threading.Lock()
 _CONNECTION_POOL: list[_ReusableConnection] = []
-_POOL_SIZE = _get_env_int("DB_CONNECTION_POOL_SIZE", 6)
-_DEFAULT_TIMEOUT_SECONDS = _get_env_int("DB_CONNECTION_TIMEOUT_SECONDS", 30)
-_DEFAULT_BUSY_TIMEOUT_MS = _get_env_int("DB_BUSY_TIMEOUT_MS", 5000)
 _WAL_ENABLED = False
 
 
 def _configure_connection(conn: _ReusableConnection) -> None:
+    config = _get_config()
     conn.row_factory = sqlite3.Row
-    conn.execute(f"PRAGMA busy_timeout={_DEFAULT_BUSY_TIMEOUT_MS}")
+    conn.execute(f"PRAGMA busy_timeout={config.busy_timeout_ms}")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute("PRAGMA synchronous=NORMAL")
 
@@ -89,11 +132,12 @@ def _configure_connection(conn: _ReusableConnection) -> None:
 
 
 def _create_connection() -> _ReusableConnection:
+    config = _get_config()
     conn = sqlite3.connect(
         DB_PATH,
         detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES,
         check_same_thread=False,
-        timeout=_DEFAULT_TIMEOUT_SECONDS,
+        timeout=config.timeout_seconds,
         factory=_ReusableConnection,
     )
     setattr(conn, "_released", False)
@@ -116,8 +160,9 @@ def _acquire_connection() -> _ReusableConnection:
             if _is_connection_alive(conn):
                 setattr(conn, "_released", False)
                 try:
+                    config = _get_config()
                     conn.row_factory = sqlite3.Row
-                    conn.execute(f"PRAGMA busy_timeout={_DEFAULT_BUSY_TIMEOUT_MS}")
+                    conn.execute(f"PRAGMA busy_timeout={config.busy_timeout_ms}")
                     conn.execute("PRAGMA foreign_keys=ON")
                     conn.execute("PRAGMA synchronous=NORMAL")
                     return conn
@@ -141,8 +186,9 @@ def _release_connection(conn: _ReusableConnection) -> None:
     with suppress(sqlite3.Error):
         conn.rollback()
 
+    config = _get_config()
     with _POOL_LOCK:
-        if len(_CONNECTION_POOL) < _POOL_SIZE:
+        if len(_CONNECTION_POOL) < config.pool_size:
             _CONNECTION_POOL.append(conn)
         else:
             with suppress(sqlite3.Error):
