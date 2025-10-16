@@ -56,7 +56,7 @@ def configure_logging(debug: bool = False) -> None:
 
     # Keep noisy third-party libraries polite by default
     logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.INFO if debug else logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.INFO)
 
     for logger_name, level in _NOISY_LOGGERS.items():
         logging.getLogger(logger_name).setLevel(level)
