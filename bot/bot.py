@@ -2071,22 +2071,30 @@ async def collection(
 
     handle_username = display_username or None
     prompt_text = (
-        f"View @{handle_username}'s collection"
-        if handle_username
-        else "Select view for collection"
+        f"View @{handle_username}'s collection" if handle_username else "Select view for collection"
     )
 
     keyboard_rows = []
+    first_row = []
     if MINIAPP_URL_ENV:
         token = encode_miniapp_token(viewed_user_id, chat_id_filter)
         app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
-        keyboard_rows.append([InlineKeyboardButton("Open in the app", url=app_url)])
+        first_row.append(InlineKeyboardButton("View in app", url=app_url))
 
+    first_row.append(
+        InlineKeyboardButton(
+            "Show in chat",
+            callback_data=f"collection_show_{user.user_id}_{viewed_user_id}",
+        )
+    )
+    keyboard_rows.append(first_row)
+
+    # Second row: "Close" button
     keyboard_rows.append(
         [
             InlineKeyboardButton(
-                "Show in chat",
-                callback_data=f"collection_show_{user.user_id}_{viewed_user_id}",
+                "Close",
+                callback_data=f"collection_dismiss_{user.user_id}",
             )
         ]
     )
@@ -2405,6 +2413,44 @@ async def handle_collection_navigation(
             return
 
     await query.answer()
+
+
+@verify_user
+async def handle_collection_dismiss(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle dismissing the collection initial prompt."""
+    query = update.callback_query
+    if not query:
+        return
+
+    # Parse callback data: collection_dismiss_{requester_user_id}
+    try:
+        _, _, requester_user_id = query.data.split("_", 2)
+        requester_user_id = int(requester_user_id)
+    except (ValueError, AttributeError):
+        await query.answer("Invalid request.", show_alert=True)
+        return
+
+    # Verify that the user clicking the button is the one who requested the collection
+    if user.user_id != requester_user_id:
+        await query.answer("You can only close collections you requested!", show_alert=True)
+        return
+
+    # Delete the message
+    try:
+        await query.delete_message()
+    except Exception as e:
+        logger.warning(f"Failed to delete collection prompt message: {e}")
+        # Fallback to removing buttons
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+            await query.answer("Closed.")
+        except Exception as fallback_error:
+            logger.error(f"Failed to remove buttons from collection prompt: {fallback_error}")
+            await query.answer("Could not close the message.", show_alert=True)
 
 
 async def _get_user_targets_for_stats(
@@ -3253,6 +3299,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
     application.add_handler(
         CallbackQueryHandler(handle_collection_show, pattern="^collection_show_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_collection_dismiss, pattern="^collection_dismiss_")
     )
     application.add_handler(
         CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")
