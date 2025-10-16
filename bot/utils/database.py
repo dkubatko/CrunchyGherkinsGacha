@@ -1,14 +1,13 @@
 import atexit
 import base64
 import datetime
-import functools
 import html
 import logging
 import os
 import sqlite3
 import json
 import threading
-from contextlib import suppress
+from contextlib import suppress, contextmanager
 from typing import Optional, Any, List, Dict
 from zoneinfo import ZoneInfo
 
@@ -108,47 +107,6 @@ _POOL_LOCK = threading.Lock()
 _WAL_LOCK = threading.Lock()
 _CONNECTION_POOL: list[_ReusableConnection] = []
 _WAL_ENABLED = False
-_CONNECTION_TRACKER = threading.local()
-
-
-def _register_connection_for_cleanup(conn: _ReusableConnection) -> None:
-    stack: list[_ReusableConnection] | None = getattr(_CONNECTION_TRACKER, "connections", None)
-    if stack is not None:
-        stack.append(conn)
-
-
-def db_operation(func):
-    """Decorator that ensures connections opened within the wrapped function are cleaned up on errors."""
-
-    @functools.wraps(func)
-    def wrapper(*args, **kwargs):
-        stack: list[_ReusableConnection] | None = getattr(
-            _CONNECTION_TRACKER, "connections", None
-        )
-        owns_stack = False
-        if stack is None:
-            stack = []
-            setattr(_CONNECTION_TRACKER, "connections", stack)
-            owns_stack = True
-        start_index = len(stack)
-        try:
-            return func(*args, **kwargs)
-        except Exception:
-            for conn in reversed(stack[start_index:]):
-                with suppress(sqlite3.Error):
-                    conn.rollback()
-            raise
-        finally:
-            for conn in reversed(stack[start_index:]):
-                with suppress(sqlite3.Error):
-                    conn.close()
-            if stack is not None:
-                del stack[start_index:]
-            if owns_stack:
-                with suppress(AttributeError):
-                    delattr(_CONNECTION_TRACKER, "connections")
-
-    return wrapper
 
 
 def _configure_connection(conn: _ReusableConnection) -> None:
@@ -431,8 +389,24 @@ def connect():
         os.makedirs(dir_path, exist_ok=True)
 
     conn = _acquire_connection()
-    _register_connection_for_cleanup(conn)
     return conn
+
+
+@contextmanager
+def _managed_connection(commit: bool = False):
+    """Yield a connection/cursor pair with consistent commit/rollback semantics."""
+
+    conn = connect()
+    try:
+        cursor = conn.cursor()
+        yield conn, cursor
+        if commit:
+            conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def _get_alembic_config() -> Config:
@@ -443,21 +417,15 @@ def _get_alembic_config() -> Config:
     return config
 
 
-@db_operation
 def _has_table(table_name: str) -> bool:
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name = ?",
             (table_name,),
         )
         return cursor.fetchone() is not None
-    finally:
-        conn.close()
 
 
-@db_operation
 def run_migrations():
     """Apply Alembic migrations to bring the database schema up to date."""
     config = _get_alembic_config()
@@ -474,17 +442,13 @@ def run_migrations():
         raise
 
 
-@db_operation
 def create_tables():
     """Backwards-compatible wrapper that now applies Alembic migrations."""
     run_migrations()
 
 
-@db_operation
 def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, source_id):
     """Add a new card to the database."""
-    conn = connect()
-    cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
     if chat_id is not None:
         chat_id = str(chat_id)
@@ -498,27 +462,25 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, sourc
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for new card: %s", exc)
 
-    cursor.execute(
-        """
-        INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """,
-        (
-            base_name,
-            modifier,
-            rarity,
-            image_b64,
-            image_thumb_b64,
-            chat_id,
-            now,
-            source_type,
-            source_id,
-        ),
-    )
-    card_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return card_id
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+            (
+                base_name,
+                modifier,
+                rarity,
+                image_b64,
+                image_thumb_b64,
+                chat_id,
+                now,
+                source_type,
+                source_id,
+            ),
+        )
+        return cursor.lastrowid
 
 
 def add_card_from_generated(generated_card, chat_id):
@@ -546,14 +508,10 @@ def add_card_from_generated(generated_card, chat_id):
     )
 
 
-@db_operation
 def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
     """Attempt to claim a card for a user without touching claim balances."""
 
-    conn = connect()
-    cursor = conn.cursor()
-
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         if user_id is not None:
             cursor.execute(
                 "UPDATE cards SET owner = ?, user_id = ? WHERE id = ? AND owner IS NULL",
@@ -565,14 +523,7 @@ def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> b
                 (owner, card_id),
             )
 
-        updated = cursor.rowcount > 0
-        conn.commit()
-        return updated
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+        return cursor.rowcount > 0
 
 
 def _ensure_claim_row(cursor: sqlite3.Cursor, user_id: int, chat_id: str) -> None:
@@ -612,31 +563,18 @@ def _update_claim_balance(cursor: sqlite3.Cursor, user_id: int, chat_id: str, de
     return _get_claim_balance(cursor, user_id, chat_id)
 
 
-@db_operation
 def get_claim_balance(user_id: int, chat_id: str) -> int:
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         return _get_claim_balance(cursor, user_id, str(chat_id))
-    finally:
-        conn.close()
 
 
-@db_operation
 def increment_claim_balance(user_id: int, chat_id: str, amount: int = 1) -> int:
     if amount <= 0:
         return get_claim_balance(user_id, chat_id)
-    conn = connect()
-    cursor = conn.cursor()
-    try:
-        new_balance = _update_claim_balance(cursor, user_id, str(chat_id), amount)
-        conn.commit()
-        return new_balance
-    finally:
-        conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        return _update_claim_balance(cursor, user_id, str(chat_id), amount)
 
 
-@db_operation
 def reduce_claim_points(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """
     Attempt to reduce claim points for a user.
@@ -646,26 +584,17 @@ def reduce_claim_points(user_id: int, chat_id: str, amount: int = 1) -> Optional
     if amount <= 0:
         return get_claim_balance(user_id, chat_id)
 
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         current_balance = _get_claim_balance(cursor, user_id, str(chat_id))
         if current_balance < amount:
             return None  # Insufficient balance
 
-        new_balance = _update_claim_balance(cursor, user_id, str(chat_id), -amount)
-        conn.commit()
-        return new_balance
-    finally:
-        conn.close()
+        return _update_claim_balance(cursor, user_id, str(chat_id), -amount)
 
 
-@db_operation
 def get_username_for_user_id(user_id: int) -> Optional[str]:
     """Return the username associated with a user_id, falling back to card ownership."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             "SELECT username FROM users WHERE user_id = ?",
             (user_id,),
@@ -682,16 +611,11 @@ def get_username_for_user_id(user_id: int) -> Optional[str]:
         if fallback and fallback[0]:
             return fallback[0]
         return None
-    finally:
-        conn.close()
 
 
-@db_operation
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Resolve a username to a user_id if available."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             "SELECT user_id FROM users WHERE username = ? COLLATE NOCASE",
             (username,),
@@ -708,48 +632,38 @@ def get_user_id_by_username(username: str) -> Optional[int]:
         if fallback and fallback[0] is not None:
             return int(fallback[0])
         return None
-    finally:
-        conn.close()
 
 
-@db_operation
 def get_user_collection(user_id: int, chat_id: Optional[str] = None):
     """Get all cards owned by a user (by user_id), optionally scoped to a chat."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    username = get_username_for_user_id(user_id)
 
-        username = get_username_for_user_id(user_id)
+    conditions = ["user_id = ?"]
+    parameters: list[Any] = [user_id]
 
-        conditions = ["user_id = ?"]
-        parameters: list[Any] = [user_id]
+    if username:
+        conditions.append("owner = ? COLLATE NOCASE")
+        parameters.append(username)
 
-        if username:
-            conditions.append("owner = ? COLLATE NOCASE")
-            parameters.append(username)
+    query = (
+        "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
+        "FROM cards WHERE (" + " OR ".join(conditions) + ")"
+    )
 
-        query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
-            "FROM cards WHERE (" + " OR ".join(conditions) + ")"
-        )
+    if chat_id is not None:
+        query += " AND chat_id = ?"
+        parameters.append(str(chat_id))
 
-        if chat_id is not None:
-            query += " AND chat_id = ?"
-            parameters.append(str(chat_id))
+    query += (
+        " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+        "base_name, modifier"
+    )
 
-        query += (
-            " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
-            "base_name, modifier"
-        )
-
+    with _managed_connection() as (_, cursor):
         cursor.execute(query, tuple(parameters))
-        cards = [Card(**row) for row in cursor.fetchall()]
-        return cards
-    finally:
-        conn.close()
+        return [Card(**row) for row in cursor.fetchall()]
 
 
-@db_operation
 def get_user_cards_by_rarity(
     user_id: int,
     username: Optional[str],
@@ -760,111 +674,88 @@ def get_user_cards_by_rarity(
 ):
     """Return cards owned by the user for a specific rarity, optionally limited in count."""
 
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    owner_clauses = []
+    parameters: list[Any] = []
 
-        owner_clauses = []
-        parameters: list[Any] = []
+    if user_id is not None:
+        owner_clauses.append("user_id = ?")
+        parameters.append(user_id)
 
-        if user_id is not None:
-            owner_clauses.append("user_id = ?")
-            parameters.append(user_id)
+    if username:
+        owner_clauses.append("owner = ? COLLATE NOCASE")
+        parameters.append(username)
 
-        if username:
-            owner_clauses.append("owner = ? COLLATE NOCASE")
-            parameters.append(username)
+    if not owner_clauses:
+        return []
 
-        if not owner_clauses:
-            return []
+    query = (
+        "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64, locked "
+        "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
+    )
+    parameters.append(rarity)
 
-        query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64, locked "
-            "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
-        )
-        parameters.append(rarity)
+    if chat_id is not None:
+        query += " AND chat_id = ?"
+        parameters.append(str(chat_id))
 
-        if chat_id is not None:
-            query += " AND chat_id = ?"
-            parameters.append(str(chat_id))
+    if unlocked:
+        query += " AND locked = 0"
 
-        if unlocked:
-            query += " AND locked = 0"
+    query += " ORDER BY COALESCE(created_at, ''), id"
 
-        query += " ORDER BY COALESCE(created_at, ''), id"
+    if limit is not None:
+        query += " LIMIT ?"
+        parameters.append(limit)
 
-        if limit is not None:
-            query += " LIMIT ?"
-            parameters.append(limit)
-
+    with _managed_connection() as (_, cursor):
         cursor.execute(query, tuple(parameters))
-        rows = cursor.fetchall()
-        return [CardWithImage(**row) for row in rows]
-    finally:
-        conn.close()
+        return [CardWithImage(**row) for row in cursor.fetchall()]
 
 
-@db_operation
 def get_all_cards(chat_id: Optional[str] = None):
     """Get all cards that have an owner, optionally filtered by chat."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
-        query = (
-            "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
-            "FROM cards WHERE owner IS NOT NULL"
-        )
-        parameters: list[Any] = []
+    query = (
+        "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
+        "FROM cards WHERE owner IS NOT NULL"
+    )
+    parameters: list[Any] = []
 
-        if chat_id is not None:
-            query += " AND chat_id = ?"
-            parameters.append(str(chat_id))
+    if chat_id is not None:
+        query += " AND chat_id = ?"
+        parameters.append(str(chat_id))
 
-        query += (
-            " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
-            "base_name, modifier"
-        )
+    query += (
+        " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+        "base_name, modifier"
+    )
 
+    with _managed_connection() as (_, cursor):
         cursor.execute(query, tuple(parameters))
-        cards = [Card(**row) for row in cursor.fetchall()]
-        return cards
-    finally:
-        conn.close()
+        return [Card(**row) for row in cursor.fetchall()]
 
 
-@db_operation
 def get_card(card_id):
     """Get a card by its ID."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    with _managed_connection() as (_, cursor):
         cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
         card_data = cursor.fetchone()
         return CardWithImage(**card_data) if card_data else None
-    finally:
-        conn.close()
 
 
-@db_operation
 def get_card_image(card_id: int) -> str | None:
     """Get the base64 encoded image for a card."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT image_b64 FROM cards WHERE id = ?", (card_id,))
-    result = cursor.fetchone()
-    conn.close()
-    return result[0] if result else None
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT image_b64 FROM cards WHERE id = ?", (card_id,))
+        result = cursor.fetchone()
+        return result[0] if result else None
 
 
-@db_operation
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
     """Get thumbnail base64 images for multiple cards, generating them when missing."""
     if not card_ids:
         return {}
 
-    conn = connect()
-    try:
-        cursor = conn.cursor()
+    with _managed_connection(commit=True) as (_, cursor):
         placeholders = ",".join(["?"] * len(card_ids))
         cursor.execute(
             f"SELECT id, image_thumb_b64, image_b64 FROM cards WHERE id IN ({placeholders})",
@@ -872,7 +763,6 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
         )
         rows = cursor.fetchall()
         fetched: dict[int, str] = {}
-        updated = False
         for row in rows:
             card_id = int(row["id"])
             thumb = row["image_thumb_b64"]
@@ -894,63 +784,55 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
                     (thumb_b64, card_id),
                 )
                 fetched[card_id] = thumb_b64
-                updated = True
             except Exception as exc:
                 logger.warning(
                     "Failed to generate thumbnail during batch fetch for card %s: %s",
                     card_id,
                     exc,
                 )
+
         ordered: dict[int, str] = {}
         for card_id in card_ids:
             image = fetched.get(card_id)
             if image is not None:
                 ordered[card_id] = image
-        if updated:
-            conn.commit()
         return ordered
-    finally:
-        conn.close()
 
 
-@db_operation
 def get_total_cards_count():
     """Get the total number of cards ever generated."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM cards WHERE owner IS NOT NULL")
-    count = cursor.fetchone()[0]
-    conn.close()
-    return count
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT COUNT(*) FROM cards WHERE owner IS NOT NULL")
+        row = cursor.fetchone()
+        return int(row[0]) if row and row[0] is not None else 0
 
 
-@db_operation
 def get_user_stats(username):
     """Get card statistics for a user."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT COUNT(*) FROM cards WHERE owner = ?", (username,))
-    owned_count = cursor.fetchone()[0]
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT COUNT(*) FROM cards WHERE owner = ?", (username,))
+        owned_row = cursor.fetchone()
+        owned_count = int(owned_row[0]) if owned_row and owned_row[0] is not None else 0
 
-    rarities = ["Legendary", "Epic", "Rare", "Common"]
-    rarity_counts = {}
-    for rarity in rarities:
-        cursor.execute(
-            "SELECT COUNT(*) FROM cards WHERE owner = ? AND rarity = ?", (username, rarity)
-        )
-        rarity_counts[rarity] = cursor.fetchone()[0]
+        rarities = ["Legendary", "Epic", "Rare", "Common"]
+        rarity_counts = {}
+        for rarity in rarities:
+            cursor.execute(
+                "SELECT COUNT(*) FROM cards WHERE owner = ? AND rarity = ?",
+                (username, rarity),
+            )
+            rarity_row = cursor.fetchone()
+            rarity_counts[rarity] = (
+                int(rarity_row[0]) if rarity_row and rarity_row[0] is not None else 0
+            )
 
     total_count = get_total_cards_count()
-    conn.close()
 
     return {"owned": owned_count, "total": total_count, "rarities": rarity_counts}
 
 
-@db_operation
 def get_all_users_with_cards(chat_id: Optional[str] = None):
     """Get all unique users who have claimed cards, optionally scoped to a chat."""
-    conn = connect()
-    cursor = conn.cursor()
     query = "SELECT DISTINCT owner FROM cards WHERE owner IS NOT NULL"
     parameters: list[Any] = []
 
@@ -960,134 +842,101 @@ def get_all_users_with_cards(chat_id: Optional[str] = None):
 
     query += " ORDER BY owner"
 
-    cursor.execute(query, tuple(parameters))
-    users = [row[0] for row in cursor.fetchall()]
-    conn.close()
-    return users
+    with _managed_connection() as (_, cursor):
+        cursor.execute(query, tuple(parameters))
+        return [row[0] for row in cursor.fetchall()]
 
 
-@db_operation
 def get_last_roll_time(user_id: int, chat_id: str):
     """Get the last roll timestamp for a user within a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
-        (user_id, str(chat_id)),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    if result:
-        return datetime.datetime.fromisoformat(result[0])
-    return None
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        result = cursor.fetchone()
+        if result and result[0]:
+            return datetime.datetime.fromisoformat(result[0])
+        return None
 
 
-@db_operation
 def can_roll(user_id: int, chat_id: str):
     """Check if a user can roll (24 hours since last roll) within a chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
-        (user_id, str(chat_id)),
-    )
-    result = cursor.fetchone()
-    conn.close()
-    if result:
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT last_roll_timestamp FROM user_rolls WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        result = cursor.fetchone()
+        if not result or not result[0]:
+            return True
+
         last_roll_time = datetime.datetime.fromisoformat(result[0])
         time_since_last_roll = datetime.datetime.now() - last_roll_time
-        if time_since_last_roll.total_seconds() < 24 * 60 * 60:  # 24 hours in seconds
-            return False
-    return True
+        return time_since_last_roll.total_seconds() >= 24 * 60 * 60
 
 
-@db_operation
 def record_roll(user_id: int, chat_id: str):
     """Record a user's roll timestamp for a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
-    cursor.execute(
-        """
-        INSERT OR REPLACE INTO user_rolls (user_id, chat_id, last_roll_timestamp)
-        VALUES (?, ?, ?)
-        """,
-        (user_id, str(chat_id), now),
-    )
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO user_rolls (user_id, chat_id, last_roll_timestamp)
+            VALUES (?, ?, ?)
+            """,
+            (user_id, str(chat_id), now),
+        )
 
 
-@db_operation
 def swap_card_owners(card_id1, card_id2):
     """Swap the owners of two cards."""
-    conn = connect()
-    cursor = conn.cursor()
     try:
-        # Get current owners
-        cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id1,))
-        owner1_row = cursor.fetchone()
-        owner1 = owner1_row[0]
-        user_id1 = owner1_row[1]
+        with _managed_connection(commit=True) as (_, cursor):
+            cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id1,))
+            owner1_row = cursor.fetchone()
+            if not owner1_row:
+                return False
+            owner1, user_id1 = owner1_row[0], owner1_row[1]
 
-        cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id2,))
-        owner2_row = cursor.fetchone()
-        owner2 = owner2_row[0]
-        user_id2 = owner2_row[1]
+            cursor.execute("SELECT owner, user_id FROM cards WHERE id = ?", (card_id2,))
+            owner2_row = cursor.fetchone()
+            if not owner2_row:
+                return False
+            owner2, user_id2 = owner2_row[0], owner2_row[1]
 
-        # Swap owners
-        cursor.execute(
-            "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
-            (owner2, user_id2, card_id1),
-        )
-        cursor.execute(
-            "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
-            (owner1, user_id1, card_id2),
-        )
-
-        conn.commit()
-        return True
+            cursor.execute(
+                "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
+                (owner2, user_id2, card_id1),
+            )
+            cursor.execute(
+                "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
+                (owner1, user_id1, card_id2),
+            )
+            return True
     except sqlite3.Error:
-        conn.rollback()
         return False
-    finally:
-        conn.close()
 
 
-@db_operation
 def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
     """Set the owner and optional user_id for a card without affecting claim balances."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "UPDATE cards SET owner = ?, user_id = ? WHERE id = ?",
             (owner, user_id, card_id),
         )
-        updated = cursor.rowcount > 0
-        conn.commit()
-        return updated
-    finally:
-        conn.close()
+        return cursor.rowcount > 0
 
 
-@db_operation
 def update_card_file_id(card_id, file_id):
     """Update the Telegram file_id for a card."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET file_id = ? WHERE id = ?", (file_id, card_id))
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("UPDATE cards SET file_id = ? WHERE id = ?", (file_id, card_id))
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
 
 
-@db_operation
 def update_card_image(card_id: int, image_b64: str) -> None:
     """Update the image for a card, regenerating thumbnail and clearing file_id."""
-    conn = connect()
-    cursor = conn.cursor()
-
     # Generate new thumbnail
     image_thumb_b64: Optional[str] = None
     if image_b64:
@@ -1099,66 +948,48 @@ def update_card_image(card_id: int, image_b64: str) -> None:
             logger.warning("Failed to generate thumbnail for refreshed card %s: %s", card_id, exc)
 
     # Update card with new image, thumbnail, and clear file_id
-    cursor.execute(
-        "UPDATE cards SET image_b64 = ?, image_thumb_b64 = ?, file_id = NULL WHERE id = ?",
-        (image_b64, image_thumb_b64, card_id),
-    )
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            "UPDATE cards SET image_b64 = ?, image_thumb_b64 = ?, file_id = NULL WHERE id = ?",
+            (image_b64, image_thumb_b64, card_id),
+        )
     logger.info(f"Updated image for card {card_id}, cleared file_id")
 
 
-@db_operation
 def set_card_locked(card_id: int, is_locked: bool) -> None:
     """Set the locked status for a card."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET locked = ? WHERE id = ?", (1 if is_locked else 0, card_id))
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("UPDATE cards SET locked = ? WHERE id = ?", (1 if is_locked else 0, card_id))
     logger.info(f"Set locked={is_locked} for card {card_id}")
 
 
-@db_operation
 def clear_all_file_ids():
     """Clear all file_ids from all cards (set to NULL)."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET file_id = NULL")
-    affected_rows = cursor.rowcount
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("UPDATE cards SET file_id = NULL")
+        affected_rows = cursor.rowcount
     logger.info(f"Cleared file_ids for {affected_rows} cards")
     return affected_rows
 
 
-@db_operation
 def nullify_card_owner(card_id):
     """Set card owner to NULL (for rerolls/burns) instead of deleting."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE cards SET owner = NULL, user_id = NULL WHERE id = ?", (card_id,))
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("UPDATE cards SET owner = NULL, user_id = NULL WHERE id = ?", (card_id,))
+        updated = cursor.rowcount > 0
     logger.info(f"Nullified owner for card {card_id}: {updated}")
     return updated
 
 
-@db_operation
 def delete_card(card_id):
     """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
-    deleted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+        deleted = cursor.rowcount > 0
     logger.info(f"Deleted card {card_id}: {deleted}")
     return deleted
 
 
-@db_operation
 def upsert_user(
     user_id: int,
     username: str,
@@ -1166,80 +997,63 @@ def upsert_user(
     profile_imageb64: Optional[str] = None,
 ) -> None:
     """Insert or update a user record."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO users (user_id, username, display_name, profile_imageb64)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            username = excluded.username,
-            display_name = COALESCE(excluded.display_name, users.display_name),
-            profile_imageb64 = COALESCE(excluded.profile_imageb64, users.profile_imageb64)
-        """,
-        (user_id, username, display_name, profile_imageb64),
-    )
-    conn.commit()
-    conn.close()
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO users (user_id, username, display_name, profile_imageb64)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                username = excluded.username,
+                display_name = COALESCE(excluded.display_name, users.display_name),
+                profile_imageb64 = COALESCE(excluded.profile_imageb64, users.profile_imageb64)
+            """,
+            (user_id, username, display_name, profile_imageb64),
+        )
 
 
-@db_operation
 def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
     """Update the display name and profile image for a user, and generate slot icon."""
     # Generate slot machine icon
     slot_icon_b64 = _generate_slot_icon(profile_imageb64)
 
-    conn = connect()
-    cursor = conn.cursor()
+    with _managed_connection(commit=True) as (_, cursor):
+        if slot_icon_b64:
+            cursor.execute(
+                "UPDATE users SET display_name = ?, profile_imageb64 = ?, slot_iconb64 = ? WHERE user_id = ?",
+                (display_name, profile_imageb64, slot_icon_b64, user_id),
+            )
+            logger.info(f"Updated user profile and slot icon for user {user_id}")
+        else:
+            cursor.execute(
+                "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
+                (display_name, profile_imageb64, user_id),
+            )
+            logger.info(f"Updated user profile for user {user_id} (slot icon generation failed)")
 
-    if slot_icon_b64:
-        cursor.execute(
-            "UPDATE users SET display_name = ?, profile_imageb64 = ?, slot_iconb64 = ? WHERE user_id = ?",
-            (display_name, profile_imageb64, slot_icon_b64, user_id),
-        )
-        logger.info(f"Updated user profile and slot icon for user {user_id}")
-    else:
-        cursor.execute(
-            "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
-            (display_name, profile_imageb64, user_id),
-        )
-        logger.info(f"Updated user profile for user {user_id} (slot icon generation failed)")
-
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
+        updated = cursor.rowcount > 0
     return updated
 
 
-@db_operation
 def get_user(user_id: int) -> Optional[User]:
     """Fetch a user record by ID."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return User(**row) if row else None
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return User(**row) if row else None
 
 
-@db_operation
 def user_exists(user_id: int) -> bool:
     """Check whether a user exists in the users table."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
-    exists = cursor.fetchone() is not None
-    conn.close()
-    return exists
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT 1 FROM users WHERE user_id = ?", (user_id,))
+        return cursor.fetchone() is not None
 
 
-@db_operation
 def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
     """Return all users enrolled in the chat with stored profile images and display names."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
         SELECT u.user_id, u.username, u.display_name, u.profile_imageb64
         FROM chats c
         INNER JOIN users u ON c.user_id = u.user_id
@@ -1249,20 +1063,17 @@ def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
           AND u.display_name IS NOT NULL
           AND TRIM(u.display_name) != ''
         """,
-        (str(chat_id),),
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return [User(**row) for row in rows]
+            (str(chat_id),),
+        )
+        rows = cursor.fetchall()
+        return [User(**row) for row in rows]
 
 
-@db_operation
 def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
     """Return a random user enrolled in the chat with a stored profile image."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
         SELECT u.user_id, u.username, u.display_name, u.profile_imageb64
         FROM chats c
         INNER JOIN users u ON c.user_id = u.user_id
@@ -1274,69 +1085,51 @@ def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
         ORDER BY RANDOM()
         LIMIT 1
         """,
-        (str(chat_id),),
-    )
-    row = cursor.fetchone()
-    conn.close()
-    return User(**row) if row else None
+            (str(chat_id),),
+        )
+        row = cursor.fetchone()
+        return User(**row) if row else None
 
 
-@db_operation
 def add_user_to_chat(chat_id: str, user_id: int) -> bool:
     """Add a user to a chat; returns True if inserted."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT OR IGNORE INTO chats (chat_id, user_id) VALUES (?, ?)",
-        (str(chat_id), user_id),
-    )
-    inserted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return inserted
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            "INSERT OR IGNORE INTO chats (chat_id, user_id) VALUES (?, ?)",
+            (str(chat_id), user_id),
+        )
+        return cursor.rowcount > 0
 
 
-@db_operation
 def remove_user_from_chat(chat_id: str, user_id: int) -> bool:
     """Remove a user from a chat; returns True if a row was deleted."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "DELETE FROM chats WHERE chat_id = ? AND user_id = ?",
-        (str(chat_id), user_id),
-    )
-    deleted = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return deleted
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            "DELETE FROM chats WHERE chat_id = ? AND user_id = ?",
+            (str(chat_id), user_id),
+        )
+        return cursor.rowcount > 0
 
 
-@db_operation
 def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     """Check whether a user is enrolled in a chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT 1 FROM chats WHERE chat_id = ? AND user_id = ?",
-        (str(chat_id), user_id),
-    )
-    exists = cursor.fetchone() is not None
-    conn.close()
-    return exists
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT 1 FROM chats WHERE chat_id = ? AND user_id = ?",
+            (str(chat_id), user_id),
+        )
+        return cursor.fetchone() is not None
 
 
-@db_operation
 def get_all_chat_users(chat_id: str) -> List[int]:
     """Get all user IDs enrolled in a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT user_id FROM chats WHERE chat_id = ?",
-        (str(chat_id),),
-    )
-    rows = cursor.fetchall()
-    conn.close()
-    return [row[0] for row in rows]
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT user_id FROM chats WHERE chat_id = ?",
+            (str(chat_id),),
+        )
+        rows = cursor.fetchall()
+        return [row[0] for row in rows]
 
 
 def _row_to_rolled_card(row: sqlite3.Row | None) -> Optional[RolledCard]:
@@ -1359,52 +1152,37 @@ def _get_roll_row_by_card_id(cursor: sqlite3.Cursor, card_id: int) -> Optional[s
     return cursor.fetchone()
 
 
-@db_operation
 def create_rolled_card(card_id: int, original_roller_id: int) -> int:
     """Create a rolled card entry to track its state."""
-    conn = connect()
-    cursor = conn.cursor()
     now = datetime.datetime.now().isoformat()
-    cursor.execute(
-        """
-        INSERT INTO rolled_cards (
-            original_card_id,
-            rerolled_card_id,
-            created_at,
-            original_roller_id,
-            rerolled,
-            being_rerolled,
-            attempted_by,
-            is_locked
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO rolled_cards (
+                original_card_id,
+                rerolled_card_id,
+                created_at,
+                original_roller_id,
+                rerolled,
+                being_rerolled,
+                attempted_by,
+                is_locked
+            )
+            VALUES (?, NULL, ?, ?, 0, 0, NULL, 0)
+            """,
+            (card_id, now, original_roller_id),
         )
-        VALUES (?, NULL, ?, ?, 0, 0, NULL, 0)
-        """,
-        (card_id, now, original_roller_id),
-    )
-    roll_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return roll_id
+        return cursor.lastrowid
 
 
-@db_operation
 def get_rolled_card_by_roll_id(roll_id: int) -> Optional[RolledCard]:
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         return _row_to_rolled_card(_get_roll_row_by_roll_id(cursor, roll_id))
-    finally:
-        conn.close()
 
 
-@db_operation
 def get_rolled_card_by_card_id(card_id: int) -> Optional[RolledCard]:
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         return _row_to_rolled_card(_get_roll_row_by_card_id(cursor, card_id))
-    finally:
-        conn.close()
 
 
 def get_rolled_card(roll_id: int) -> Optional[RolledCard]:
@@ -1412,12 +1190,9 @@ def get_rolled_card(roll_id: int) -> Optional[RolledCard]:
     return get_rolled_card_by_roll_id(roll_id)
 
 
-@db_operation
 def update_rolled_card_attempted_by(roll_id: int, username: str) -> None:
     """Add a username to the attempted_by list for a rolled card."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         row = _get_roll_row_by_roll_id(cursor, roll_id)
         if not row:
             return
@@ -1432,32 +1207,20 @@ def update_rolled_card_attempted_by(roll_id: int, username: str) -> None:
                 "UPDATE rolled_cards SET attempted_by = ? WHERE roll_id = ?",
                 (new_attempted_by, roll_id),
             )
-            conn.commit()
-    finally:
-        conn.close()
 
 
-@db_operation
 def set_rolled_card_being_rerolled(roll_id: int, being_rerolled: bool) -> None:
     """Set the being_rerolled status for a rolled card."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "UPDATE rolled_cards SET being_rerolled = ? WHERE roll_id = ?",
             (being_rerolled, roll_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
-@db_operation
 def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
     """Mark a rolled card as having been rerolled."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             """
             UPDATE rolled_cards
@@ -1468,94 +1231,65 @@ def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
             """,
             (new_card_id, roll_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
-@db_operation
 def set_rolled_card_locked(roll_id: int, is_locked: bool) -> None:
     """Set the locked status for a rolled card."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "UPDATE rolled_cards SET is_locked = ? WHERE roll_id = ?",
             (is_locked, roll_id),
         )
-        conn.commit()
-    finally:
-        conn.close()
 
 
-@db_operation
 def delete_rolled_card(roll_id: int) -> None:
     """Delete a rolled card entry (use sparingly - prefer reset_rolled_card)."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute("DELETE FROM rolled_cards WHERE roll_id = ?", (roll_id,))
-        conn.commit()
-    finally:
-        conn.close()
 
 
-@db_operation
 def is_rolled_card_reroll_expired(roll_id: int) -> bool:
     """Check if the reroll time limit (5 minutes) has expired for a rolled card."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             "SELECT created_at FROM rolled_cards WHERE roll_id = ?",
             (roll_id,),
         )
         result = cursor.fetchone()
-    finally:
-        conn.close()
 
     if not result or not result[0]:
-        return True  # No creation time found, consider expired
+        return True
 
     created_at = datetime.datetime.fromisoformat(result[0])
     time_since_creation = datetime.datetime.now() - created_at
-    return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
+    return time_since_creation.total_seconds() > 5 * 60
 
 
-@db_operation
 def add_character(chat_id: str, name: str, imageb64: str) -> int:
     """Add a new character to the database and generate slot icon."""
     # Generate slot machine icon
     slot_icon_b64 = _generate_slot_icon(imageb64)
 
-    conn = connect()
-    cursor = conn.cursor()
+    with _managed_connection(commit=True) as (_, cursor):
+        if slot_icon_b64:
+            cursor.execute(
+                "INSERT INTO characters (chat_id, name, imageb64, slot_iconb64) VALUES (?, ?, ?, ?)",
+                (str(chat_id), name, imageb64, slot_icon_b64),
+            )
+            logger.info(f"Added character '{name}' with slot icon to chat {chat_id}")
+        else:
+            cursor.execute(
+                "INSERT INTO characters (chat_id, name, imageb64) VALUES (?, ?, ?)",
+                (str(chat_id), name, imageb64),
+            )
+            logger.info(f"Added character '{name}' to chat {chat_id} (slot icon generation failed)")
 
-    if slot_icon_b64:
-        cursor.execute(
-            "INSERT INTO characters (chat_id, name, imageb64, slot_iconb64) VALUES (?, ?, ?, ?)",
-            (str(chat_id), name, imageb64, slot_icon_b64),
-        )
-        logger.info(f"Added character '{name}' with slot icon to chat {chat_id}")
-    else:
-        cursor.execute(
-            "INSERT INTO characters (chat_id, name, imageb64) VALUES (?, ?, ?)",
-            (str(chat_id), name, imageb64),
-        )
-        logger.info(f"Added character '{name}' to chat {chat_id} (slot icon generation failed)")
-
-    character_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return character_id
+        return cursor.lastrowid
 
 
-@db_operation
 def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
     """Fetch the most recently added character for a chat by case-insensitive name."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             """
             SELECT * FROM characters
@@ -1567,18 +1301,13 @@ def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
         )
         row = cursor.fetchone()
         return Character(**row) if row else None
-    finally:
-        conn.close()
 
 
-@db_operation
 def update_character_image(character_id: int, imageb64: str) -> bool:
     """Update a character's image and regenerate the slot icon when possible."""
     slot_icon_b64 = _generate_slot_icon(imageb64)
 
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             """
             UPDATE characters
@@ -1598,90 +1327,63 @@ def update_character_image(character_id: int, imageb64: str) -> bool:
                     character_id,
                 )
 
-        conn.commit()
         return updated
-    finally:
-        conn.close()
 
 
-@db_operation
 def delete_characters_by_name(name: str) -> int:
     """Delete all characters with the given name (case-insensitive). Returns count of deleted characters."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("DELETE FROM characters WHERE LOWER(name) = LOWER(?)", (name,))
-    deleted_count = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return deleted_count
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("DELETE FROM characters WHERE LOWER(name) = LOWER(?)", (name,))
+        return cursor.rowcount
 
 
-@db_operation
 def get_characters_by_chat(chat_id: str) -> List[Character]:
     """Get all characters for a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM characters WHERE chat_id = ?", (str(chat_id),))
-    rows = cursor.fetchall()
-    conn.close()
-    return [Character(**row) for row in rows]
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT * FROM characters WHERE chat_id = ?", (str(chat_id),))
+        rows = cursor.fetchall()
+        return [Character(**row) for row in rows]
 
 
-@db_operation
 def get_character_by_id(character_id: int) -> Optional[Character]:
     """Get a character by its ID."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM characters WHERE id = ?", (character_id,))
-    row = cursor.fetchone()
-    conn.close()
-    return Character(**row) if row else None
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT * FROM characters WHERE id = ?", (character_id,))
+        row = cursor.fetchone()
+        return Character(**row) if row else None
 
 
-@db_operation
 def set_all_claim_balances_to(balance: int) -> int:
     """Set all users' claim balances to the specified amount. Returns the number of affected rows."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("UPDATE claims SET balance = ?", (balance,))
-    affected_rows = cursor.rowcount
-    conn.commit()
-    conn.close()
-    return affected_rows
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute("UPDATE claims SET balance = ?", (balance,))
+        return cursor.rowcount
 
 
-@db_operation
 def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     """Get all users and characters for a specific chat with id, display_name/name, slot_iconb64, and type."""
-    conn = connect()
-    cursor = conn.cursor()
-
-    # Get users enrolled in the chat with their profile info
-    cursor.execute(
-        """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
         SELECT u.user_id as id, u.display_name, u.slot_iconb64, 'user' as type
         FROM chats c
         INNER JOIN users u ON c.user_id = u.user_id
         WHERE c.chat_id = ?
         """,
-        (str(chat_id),),
-    )
-    user_rows = cursor.fetchall()
+            (str(chat_id),),
+        )
+        user_rows = cursor.fetchall()
 
-    # Get characters for the chat
-    cursor.execute(
-        """
+        cursor.execute(
+            """
         SELECT id, name as display_name, slot_iconb64, 'character' as type
         FROM characters
         WHERE chat_id = ?
         """,
-        (str(chat_id),),
-    )
-    character_rows = cursor.fetchall()
+            (str(chat_id),),
+        )
+        character_rows = cursor.fetchall()
 
-    conn.close()
-
-    # Convert to dictionaries and combine
     all_items = []
     all_items.extend([dict(row) for row in user_rows])
     all_items.extend([dict(row) for row in character_rows])
@@ -1689,132 +1391,103 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     return all_items
 
 
-@db_operation
 def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
     """Get the next refresh time for a user's spins. Returns ISO timestamp or None if user not found."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         cursor.execute(
             "SELECT refresh_timestamp FROM spins WHERE user_id = ? AND chat_id = ?",
             (user_id, str(chat_id)),
         )
         row = cursor.fetchone()
 
-        if not row or not row[0]:
-            return None
+    if not row or not row[0]:
+        return None
 
-        refresh_timestamp_str = row[0]
-        _, hours_per_refresh = _get_spins_config()
+    refresh_timestamp_str = row[0]
+    _, hours_per_refresh = _get_spins_config()
 
-        pdt_tz = ZoneInfo("America/Los_Angeles")
+    pdt_tz = ZoneInfo("America/Los_Angeles")
 
-        try:
-            # Parse the stored timestamp
-            if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
-                refresh_dt_utc = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "+00:00")
-                )
-                refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
-            else:
-                refresh_dt_naive = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "")
-                )
-                refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
-
-            # Calculate next refresh
-            next_refresh = refresh_dt_pdt + datetime.timedelta(hours=hours_per_refresh)
-            return next_refresh.isoformat()
-        except (ValueError, TypeError) as e:
-            logger.warning(
-                f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+    try:
+        if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
+            refresh_dt_utc = datetime.datetime.fromisoformat(
+                refresh_timestamp_str.replace("Z", "+00:00")
             )
-            return None
-    finally:
-        conn.close()
+            refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
+        else:
+            refresh_dt_naive = datetime.datetime.fromisoformat(
+                refresh_timestamp_str.replace("Z", "")
+            )
+            refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
+
+        next_refresh = refresh_dt_pdt + datetime.timedelta(hours=hours_per_refresh)
+        return next_refresh.isoformat()
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+        )
+        return None
 
 
-@db_operation
 def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
     """Get the spins record for a user in a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT * FROM spins WHERE user_id = ? AND chat_id = ?",
-        (user_id, str(chat_id)),
-    )
-    row = cursor.fetchone()
-    conn.close()
-    return Spins(**row) if row else None
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT * FROM spins WHERE user_id = ? AND chat_id = ?",
+            (user_id, str(chat_id)),
+        )
+        row = cursor.fetchone()
+        return Spins(**row) if row else None
 
 
-@db_operation
 def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp: str) -> bool:
     """Update or insert a spins record for a user in a specific chat."""
-    conn = connect()
-    cursor = conn.cursor()
-    cursor.execute(
-        """
-        INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT(user_id, chat_id) DO UPDATE SET
-            count = excluded.count,
-            refresh_timestamp = excluded.refresh_timestamp
-        """,
-        (user_id, str(chat_id), count, refresh_timestamp),
-    )
-    updated = cursor.rowcount > 0
-    conn.commit()
-    conn.close()
-    return updated
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id, chat_id) DO UPDATE SET
+                count = excluded.count,
+                refresh_timestamp = excluded.refresh_timestamp
+            """,
+            (user_id, str(chat_id), count, refresh_timestamp),
+        )
+        return cursor.rowcount > 0
 
 
-@db_operation
 def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """Increment the spin count for a user in a specific chat. Returns new count or None if user not found."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
-        # First, try to update existing record
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "UPDATE spins SET count = count + ? WHERE user_id = ? AND chat_id = ?",
             (amount, user_id, str(chat_id)),
         )
 
         if cursor.rowcount > 0:
-            # Get the updated count
             cursor.execute(
                 "SELECT count FROM spins WHERE user_id = ? AND chat_id = ?",
                 (user_id, str(chat_id)),
             )
             row = cursor.fetchone()
-            conn.commit()
             return row[0] if row else None
-        else:
-            # No existing record, create one with the increment amount
-            from datetime import datetime
 
-            current_timestamp = datetime.now().isoformat()
-            cursor.execute(
-                """
-                INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
-                VALUES (?, ?, ?, ?)
-                """,
-                (user_id, str(chat_id), amount, current_timestamp),
-            )
-            conn.commit()
-            return amount
-    finally:
-        conn.close()
+        from datetime import datetime
+
+        current_timestamp = datetime.now().isoformat()
+        cursor.execute(
+            """
+            INSERT INTO spins (user_id, chat_id, count, refresh_timestamp)
+            VALUES (?, ?, ?, ?)
+            """,
+            (user_id, str(chat_id), amount, current_timestamp),
+        )
+        return amount
 
 
-@db_operation
 def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """Decrement the spin count for a user in a specific chat. Returns new count or None if insufficient spins."""
-    conn = connect()
-    cursor = conn.cursor()
-    try:
-        # Get current count first
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "SELECT count FROM spins WHERE user_id = ? AND chat_id = ?",
             (user_id, str(chat_id)),
@@ -1822,37 +1495,26 @@ def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
         row = cursor.fetchone()
 
         if not row:
-            return None  # User not found
+            return None
 
         current_count = row[0]
         if current_count < amount:
-            return None  # Insufficient spins
+            return None
 
-        # Update the count
         cursor.execute(
             "UPDATE spins SET count = count - ? WHERE user_id = ? AND chat_id = ?",
             (amount, user_id, str(chat_id)),
         )
 
-        new_count = current_count - amount
-        conn.commit()
-        return new_count
-    finally:
-        conn.close()
+        return current_count - amount
 
 
-@db_operation
 def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> int:
     """Get user spins, adding SPINS_PER_REFRESH for each SPINS_REFRESH_HOURS period elapsed. Returns current spins count."""
-    conn = connect()
-    cursor = conn.cursor()
-
-    try:
-        # Get current PDT time
+    with _managed_connection(commit=True) as (_, cursor):
         pdt_tz = ZoneInfo("America/Los_Angeles")
         current_pdt = datetime.datetime.now(pdt_tz)
 
-        # Get existing spins record
         cursor.execute(
             "SELECT count, refresh_timestamp FROM spins WHERE user_id = ? AND chat_id = ?",
             (user_id, str(chat_id)),
@@ -1862,7 +1524,6 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
         spins_per_refresh, hours_per_refresh = _get_spins_config()
 
         if not row:
-            # No existing record, create one with default spins
             current_timestamp = current_pdt.isoformat()
             cursor.execute(
                 """
@@ -1871,71 +1532,58 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
                 """,
                 (user_id, str(chat_id), spins_per_refresh, current_timestamp),
             )
-            conn.commit()
             return spins_per_refresh
 
         current_count = row[0]
         refresh_timestamp_str = row[1]
 
-        try:
-            # Parse the stored timestamp
-            if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
-                # Handle UTC timestamps by converting to PDT
-                refresh_dt_utc = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "+00:00")
-                )
-                refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
-            else:
-                # Assume it's already in PDT or naive (treat as PDT)
-                refresh_dt_naive = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "")
-                )
-                refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
-
-            # Calculate elapsed time in hours
-            time_diff = current_pdt - refresh_dt_pdt
-            hours_elapsed = time_diff.total_seconds() / 3600
-
-            # Calculate how many refresh periods have passed
-            periods_elapsed = int(hours_elapsed // hours_per_refresh)
-
-            # If at least one period has elapsed, add spins and update timestamp
-            if periods_elapsed > 0:
-                spins_to_add = periods_elapsed * spins_per_refresh
-                new_count = current_count + spins_to_add
-
-                # Calculate the most recent refresh period boundary
-                # Move forward from the last refresh by the number of complete periods
-                new_refresh_dt = refresh_dt_pdt + datetime.timedelta(
-                    hours=periods_elapsed * hours_per_refresh
-                )
-                new_timestamp = new_refresh_dt.isoformat()
-
-                cursor.execute(
-                    """
-                    UPDATE spins SET count = ?, refresh_timestamp = ?
-                    WHERE user_id = ? AND chat_id = ?
-                    """,
-                    (new_count, new_timestamp, user_id, str(chat_id)),
-                )
-                conn.commit()
-                logger.info(
-                    f"Added {spins_to_add} spins to user {user_id} in chat {chat_id} "
-                    f"({periods_elapsed} periods of {hours_per_refresh}h elapsed)"
-                )
-                return new_count
-            else:
-                # No full period elapsed yet, return current count
-                return current_count
-
-        except (ValueError, TypeError) as e:
-            logger.warning(
-                f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+    try:
+        if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
+            refresh_dt_utc = datetime.datetime.fromisoformat(
+                refresh_timestamp_str.replace("Z", "+00:00")
             )
-            # If timestamp is invalid, give them one refresh worth and reset timestamp
-            current_timestamp = current_pdt.isoformat()
-            new_count = current_count + spins_per_refresh
+            refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
+        else:
+            refresh_dt_naive = datetime.datetime.fromisoformat(
+                refresh_timestamp_str.replace("Z", "")
+            )
+            refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
 
+        time_diff = current_pdt - refresh_dt_pdt
+        hours_elapsed = time_diff.total_seconds() / 3600
+        periods_elapsed = int(hours_elapsed // hours_per_refresh)
+
+        if periods_elapsed <= 0:
+            return current_count
+
+        spins_to_add = periods_elapsed * spins_per_refresh
+        new_count = current_count + spins_to_add
+        new_refresh_dt = refresh_dt_pdt + datetime.timedelta(
+            hours=periods_elapsed * hours_per_refresh
+        )
+        new_timestamp = new_refresh_dt.isoformat()
+
+        with _managed_connection(commit=True) as (_, cursor):
+            cursor.execute(
+                """
+                UPDATE spins SET count = ?, refresh_timestamp = ?
+                WHERE user_id = ? AND chat_id = ?
+                """,
+                (new_count, new_timestamp, user_id, str(chat_id)),
+            )
+
+        logger.info(
+            f"Added {spins_to_add} spins to user {user_id} in chat {chat_id} ({periods_elapsed} periods of {hours_per_refresh}h elapsed)"
+        )
+        return new_count
+    except (ValueError, TypeError) as e:
+        logger.warning(
+            f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+        )
+        current_timestamp = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).isoformat()
+        new_count = current_count + spins_per_refresh
+
+        with _managed_connection(commit=True) as (_, cursor):
             cursor.execute(
                 """
                 UPDATE spins SET count = ?, refresh_timestamp = ?
@@ -1943,41 +1591,24 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
                 """,
                 (new_count, current_timestamp, user_id, str(chat_id)),
             )
-            conn.commit()
-            return new_count
-
-    finally:
-        conn.close()
+        return new_count
 
 
-@db_operation
 def consume_user_spin(user_id: int, chat_id: str) -> bool:
     """Consume one spin if available. Returns True if successful, False if no spins available."""
-    conn = connect()
-    cursor = conn.cursor()
+    current_count = get_or_update_user_spins_with_daily_refresh(user_id, chat_id)
 
-    try:
-        # Get current count (with daily refresh if needed)
-        current_count = get_or_update_user_spins_with_daily_refresh(user_id, chat_id)
+    if current_count <= 0:
+        return False
 
-        if current_count <= 0:
-            return False
-
-        # Decrement the count
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "UPDATE spins SET count = count - 1 WHERE user_id = ? AND chat_id = ?",
             (user_id, str(chat_id)),
         )
-
-        success = cursor.rowcount > 0
-        conn.commit()
-        return success
-
-    finally:
-        conn.close()
+        return cursor.rowcount > 0
 
 
-@db_operation
 def get_thread_id(chat_id: str, type: str = "main") -> Optional[int]:
     """Get the thread_id for a chat_id and type, or None if not set.
 
@@ -1985,19 +1616,15 @@ def get_thread_id(chat_id: str, type: str = "main") -> Optional[int]:
         chat_id: The chat ID to query.
         type: The thread type ('main' or 'trade'). Defaults to 'main'.
     """
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection() as (_, cursor):
         cursor.execute(
-            "SELECT thread_id FROM threads WHERE chat_id = ? AND type = ?", (str(chat_id), type)
+            "SELECT thread_id FROM threads WHERE chat_id = ? AND type = ?",
+            (str(chat_id), type),
         )
         row = cursor.fetchone()
         return row[0] if row else None
-    finally:
-        conn.close()
 
 
-@db_operation
 def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
     """Set the thread_id for a chat_id and type. Returns True if successful.
 
@@ -2006,9 +1633,7 @@ def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
         thread_id: The thread ID to set.
         type: The thread type ('main' or 'trade'). Defaults to 'main'.
     """
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             """
             INSERT INTO threads (chat_id, thread_id, type)
@@ -2017,32 +1642,21 @@ def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
             """,
             (str(chat_id), thread_id, type),
         )
-        success = cursor.rowcount > 0
-        conn.commit()
-        return success
-    finally:
-        conn.close()
+        return cursor.rowcount > 0
 
 
-@db_operation
 def clear_thread_ids(chat_id: str) -> bool:
     """Clear all thread_ids for a chat_id. Returns True if successful.
 
     Args:
         chat_id: The chat ID to clear threads for.
     """
-    conn = connect()
-    cursor = conn.cursor()
-    try:
+    with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             "DELETE FROM threads WHERE chat_id = ?",
             (str(chat_id),),
         )
-        success = cursor.rowcount > 0
-        conn.commit()
-        return success
-    finally:
-        conn.close()
+        return cursor.rowcount > 0
 
 
 create_tables()
