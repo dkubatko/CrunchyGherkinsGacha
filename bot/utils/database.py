@@ -1,6 +1,7 @@
 import atexit
 import base64
 import datetime
+import functools
 import html
 import logging
 import os
@@ -107,6 +108,47 @@ _POOL_LOCK = threading.Lock()
 _WAL_LOCK = threading.Lock()
 _CONNECTION_POOL: list[_ReusableConnection] = []
 _WAL_ENABLED = False
+_CONNECTION_TRACKER = threading.local()
+
+
+def _register_connection_for_cleanup(conn: _ReusableConnection) -> None:
+    stack: list[_ReusableConnection] | None = getattr(_CONNECTION_TRACKER, "connections", None)
+    if stack is not None:
+        stack.append(conn)
+
+
+def db_operation(func):
+    """Decorator that ensures connections opened within the wrapped function are cleaned up on errors."""
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        stack: list[_ReusableConnection] | None = getattr(
+            _CONNECTION_TRACKER, "connections", None
+        )
+        owns_stack = False
+        if stack is None:
+            stack = []
+            setattr(_CONNECTION_TRACKER, "connections", stack)
+            owns_stack = True
+        start_index = len(stack)
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            for conn in reversed(stack[start_index:]):
+                with suppress(sqlite3.Error):
+                    conn.rollback()
+            raise
+        finally:
+            for conn in reversed(stack[start_index:]):
+                with suppress(sqlite3.Error):
+                    conn.close()
+            if stack is not None:
+                del stack[start_index:]
+            if owns_stack:
+                with suppress(AttributeError):
+                    delattr(_CONNECTION_TRACKER, "connections")
+
+    return wrapper
 
 
 def _configure_connection(conn: _ReusableConnection) -> None:
@@ -388,7 +430,9 @@ def connect():
     if dir_path:
         os.makedirs(dir_path, exist_ok=True)
 
-    return _acquire_connection()
+    conn = _acquire_connection()
+    _register_connection_for_cleanup(conn)
+    return conn
 
 
 def _get_alembic_config() -> Config:
@@ -399,6 +443,7 @@ def _get_alembic_config() -> Config:
     return config
 
 
+@db_operation
 def _has_table(table_name: str) -> bool:
     conn = connect()
     try:
@@ -412,6 +457,7 @@ def _has_table(table_name: str) -> bool:
         conn.close()
 
 
+@db_operation
 def run_migrations():
     """Apply Alembic migrations to bring the database schema up to date."""
     config = _get_alembic_config()
@@ -428,11 +474,13 @@ def run_migrations():
         raise
 
 
+@db_operation
 def create_tables():
     """Backwards-compatible wrapper that now applies Alembic migrations."""
     run_migrations()
 
 
+@db_operation
 def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, source_id):
     """Add a new card to the database."""
     conn = connect()
@@ -498,6 +546,7 @@ def add_card_from_generated(generated_card, chat_id):
     )
 
 
+@db_operation
 def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
     """Attempt to claim a card for a user without touching claim balances."""
 
@@ -563,6 +612,7 @@ def _update_claim_balance(cursor: sqlite3.Cursor, user_id: int, chat_id: str, de
     return _get_claim_balance(cursor, user_id, chat_id)
 
 
+@db_operation
 def get_claim_balance(user_id: int, chat_id: str) -> int:
     conn = connect()
     cursor = conn.cursor()
@@ -572,6 +622,7 @@ def get_claim_balance(user_id: int, chat_id: str) -> int:
         conn.close()
 
 
+@db_operation
 def increment_claim_balance(user_id: int, chat_id: str, amount: int = 1) -> int:
     if amount <= 0:
         return get_claim_balance(user_id, chat_id)
@@ -585,6 +636,7 @@ def increment_claim_balance(user_id: int, chat_id: str, amount: int = 1) -> int:
         conn.close()
 
 
+@db_operation
 def reduce_claim_points(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """
     Attempt to reduce claim points for a user.
@@ -608,6 +660,7 @@ def reduce_claim_points(user_id: int, chat_id: str, amount: int = 1) -> Optional
         conn.close()
 
 
+@db_operation
 def get_username_for_user_id(user_id: int) -> Optional[str]:
     """Return the username associated with a user_id, falling back to card ownership."""
     conn = connect()
@@ -633,6 +686,7 @@ def get_username_for_user_id(user_id: int) -> Optional[str]:
         conn.close()
 
 
+@db_operation
 def get_user_id_by_username(username: str) -> Optional[int]:
     """Resolve a username to a user_id if available."""
     conn = connect()
@@ -658,6 +712,7 @@ def get_user_id_by_username(username: str) -> Optional[int]:
         conn.close()
 
 
+@db_operation
 def get_user_collection(user_id: int, chat_id: Optional[str] = None):
     """Get all cards owned by a user (by user_id), optionally scoped to a chat."""
     conn = connect()
@@ -694,6 +749,7 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None):
         conn.close()
 
 
+@db_operation
 def get_user_cards_by_rarity(
     user_id: int,
     username: Optional[str],
@@ -748,6 +804,7 @@ def get_user_cards_by_rarity(
         conn.close()
 
 
+@db_operation
 def get_all_cards(chat_id: Optional[str] = None):
     """Get all cards that have an owner, optionally filtered by chat."""
     conn = connect()
@@ -775,16 +832,20 @@ def get_all_cards(chat_id: Optional[str] = None):
         conn.close()
 
 
+@db_operation
 def get_card(card_id):
     """Get a card by its ID."""
     conn = connect()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
-    card_data = cursor.fetchone()
-    conn.close()
-    return CardWithImage(**card_data) if card_data else None
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
+        card_data = cursor.fetchone()
+        return CardWithImage(**card_data) if card_data else None
+    finally:
+        conn.close()
 
 
+@db_operation
 def get_card_image(card_id: int) -> str | None:
     """Get the base64 encoded image for a card."""
     conn = connect()
@@ -795,6 +856,7 @@ def get_card_image(card_id: int) -> str | None:
     return result[0] if result else None
 
 
+@db_operation
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
     """Get thumbnail base64 images for multiple cards, generating them when missing."""
     if not card_ids:
@@ -851,6 +913,7 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
         conn.close()
 
 
+@db_operation
 def get_total_cards_count():
     """Get the total number of cards ever generated."""
     conn = connect()
@@ -861,6 +924,7 @@ def get_total_cards_count():
     return count
 
 
+@db_operation
 def get_user_stats(username):
     """Get card statistics for a user."""
     conn = connect()
@@ -882,6 +946,7 @@ def get_user_stats(username):
     return {"owned": owned_count, "total": total_count, "rarities": rarity_counts}
 
 
+@db_operation
 def get_all_users_with_cards(chat_id: Optional[str] = None):
     """Get all unique users who have claimed cards, optionally scoped to a chat."""
     conn = connect()
@@ -901,6 +966,7 @@ def get_all_users_with_cards(chat_id: Optional[str] = None):
     return users
 
 
+@db_operation
 def get_last_roll_time(user_id: int, chat_id: str):
     """Get the last roll timestamp for a user within a specific chat."""
     conn = connect()
@@ -916,6 +982,7 @@ def get_last_roll_time(user_id: int, chat_id: str):
     return None
 
 
+@db_operation
 def can_roll(user_id: int, chat_id: str):
     """Check if a user can roll (24 hours since last roll) within a chat."""
     conn = connect()
@@ -934,6 +1001,7 @@ def can_roll(user_id: int, chat_id: str):
     return True
 
 
+@db_operation
 def record_roll(user_id: int, chat_id: str):
     """Record a user's roll timestamp for a specific chat."""
     conn = connect()
@@ -950,6 +1018,7 @@ def record_roll(user_id: int, chat_id: str):
     conn.close()
 
 
+@db_operation
 def swap_card_owners(card_id1, card_id2):
     """Swap the owners of two cards."""
     conn = connect()
@@ -985,6 +1054,7 @@ def swap_card_owners(card_id1, card_id2):
         conn.close()
 
 
+@db_operation
 def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
     """Set the owner and optional user_id for a card without affecting claim balances."""
     conn = connect()
@@ -1001,6 +1071,7 @@ def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> b
         conn.close()
 
 
+@db_operation
 def update_card_file_id(card_id, file_id):
     """Update the Telegram file_id for a card."""
     conn = connect()
@@ -1011,6 +1082,7 @@ def update_card_file_id(card_id, file_id):
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
 
 
+@db_operation
 def update_card_image(card_id: int, image_b64: str) -> None:
     """Update the image for a card, regenerating thumbnail and clearing file_id."""
     conn = connect()
@@ -1036,6 +1108,7 @@ def update_card_image(card_id: int, image_b64: str) -> None:
     logger.info(f"Updated image for card {card_id}, cleared file_id")
 
 
+@db_operation
 def set_card_locked(card_id: int, is_locked: bool) -> None:
     """Set the locked status for a card."""
     conn = connect()
@@ -1046,6 +1119,7 @@ def set_card_locked(card_id: int, is_locked: bool) -> None:
     logger.info(f"Set locked={is_locked} for card {card_id}")
 
 
+@db_operation
 def clear_all_file_ids():
     """Clear all file_ids from all cards (set to NULL)."""
     conn = connect()
@@ -1058,6 +1132,7 @@ def clear_all_file_ids():
     return affected_rows
 
 
+@db_operation
 def nullify_card_owner(card_id):
     """Set card owner to NULL (for rerolls/burns) instead of deleting."""
     conn = connect()
@@ -1070,15 +1145,11 @@ def nullify_card_owner(card_id):
     return updated
 
 
+@db_operation
 def delete_card(card_id):
     """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
     conn = connect()
     cursor = conn.cursor()
-
-    # Delete from rolled_cards first to avoid foreign key constraint violation
-    cursor.execute("DELETE FROM rolled_cards WHERE card_id = ?", (card_id,))
-
-    # Now delete the card
     cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
     deleted = cursor.rowcount > 0
     conn.commit()
@@ -1087,6 +1158,7 @@ def delete_card(card_id):
     return deleted
 
 
+@db_operation
 def upsert_user(
     user_id: int,
     username: str,
@@ -1111,6 +1183,7 @@ def upsert_user(
     conn.close()
 
 
+@db_operation
 def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
     """Update the display name and profile image for a user, and generate slot icon."""
     # Generate slot machine icon
@@ -1138,6 +1211,7 @@ def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) 
     return updated
 
 
+@db_operation
 def get_user(user_id: int) -> Optional[User]:
     """Fetch a user record by ID."""
     conn = connect()
@@ -1148,6 +1222,7 @@ def get_user(user_id: int) -> Optional[User]:
     return User(**row) if row else None
 
 
+@db_operation
 def user_exists(user_id: int) -> bool:
     """Check whether a user exists in the users table."""
     conn = connect()
@@ -1158,6 +1233,7 @@ def user_exists(user_id: int) -> bool:
     return exists
 
 
+@db_operation
 def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
     """Return all users enrolled in the chat with stored profile images and display names."""
     conn = connect()
@@ -1180,6 +1256,7 @@ def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
     return [User(**row) for row in rows]
 
 
+@db_operation
 def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
     """Return a random user enrolled in the chat with a stored profile image."""
     conn = connect()
@@ -1204,6 +1281,7 @@ def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
     return User(**row) if row else None
 
 
+@db_operation
 def add_user_to_chat(chat_id: str, user_id: int) -> bool:
     """Add a user to a chat; returns True if inserted."""
     conn = connect()
@@ -1218,6 +1296,7 @@ def add_user_to_chat(chat_id: str, user_id: int) -> bool:
     return inserted
 
 
+@db_operation
 def remove_user_from_chat(chat_id: str, user_id: int) -> bool:
     """Remove a user from a chat; returns True if a row was deleted."""
     conn = connect()
@@ -1232,6 +1311,7 @@ def remove_user_from_chat(chat_id: str, user_id: int) -> bool:
     return deleted
 
 
+@db_operation
 def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     """Check whether a user is enrolled in a chat."""
     conn = connect()
@@ -1245,6 +1325,7 @@ def is_user_in_chat(chat_id: str, user_id: int) -> bool:
     return exists
 
 
+@db_operation
 def get_all_chat_users(chat_id: str) -> List[int]:
     """Get all user IDs enrolled in a specific chat."""
     conn = connect()
@@ -1278,6 +1359,7 @@ def _get_roll_row_by_card_id(cursor: sqlite3.Cursor, card_id: int) -> Optional[s
     return cursor.fetchone()
 
 
+@db_operation
 def create_rolled_card(card_id: int, original_roller_id: int) -> int:
     """Create a rolled card entry to track its state."""
     conn = connect()
@@ -1305,6 +1387,7 @@ def create_rolled_card(card_id: int, original_roller_id: int) -> int:
     return roll_id
 
 
+@db_operation
 def get_rolled_card_by_roll_id(roll_id: int) -> Optional[RolledCard]:
     conn = connect()
     cursor = conn.cursor()
@@ -1314,6 +1397,7 @@ def get_rolled_card_by_roll_id(roll_id: int) -> Optional[RolledCard]:
         conn.close()
 
 
+@db_operation
 def get_rolled_card_by_card_id(card_id: int) -> Optional[RolledCard]:
     conn = connect()
     cursor = conn.cursor()
@@ -1328,6 +1412,7 @@ def get_rolled_card(roll_id: int) -> Optional[RolledCard]:
     return get_rolled_card_by_roll_id(roll_id)
 
 
+@db_operation
 def update_rolled_card_attempted_by(roll_id: int, username: str) -> None:
     """Add a username to the attempted_by list for a rolled card."""
     conn = connect()
@@ -1352,6 +1437,7 @@ def update_rolled_card_attempted_by(roll_id: int, username: str) -> None:
         conn.close()
 
 
+@db_operation
 def set_rolled_card_being_rerolled(roll_id: int, being_rerolled: bool) -> None:
     """Set the being_rerolled status for a rolled card."""
     conn = connect()
@@ -1366,6 +1452,7 @@ def set_rolled_card_being_rerolled(roll_id: int, being_rerolled: bool) -> None:
         conn.close()
 
 
+@db_operation
 def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
     """Mark a rolled card as having been rerolled."""
     conn = connect()
@@ -1386,6 +1473,7 @@ def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
         conn.close()
 
 
+@db_operation
 def set_rolled_card_locked(roll_id: int, is_locked: bool) -> None:
     """Set the locked status for a rolled card."""
     conn = connect()
@@ -1400,6 +1488,7 @@ def set_rolled_card_locked(roll_id: int, is_locked: bool) -> None:
         conn.close()
 
 
+@db_operation
 def delete_rolled_card(roll_id: int) -> None:
     """Delete a rolled card entry (use sparingly - prefer reset_rolled_card)."""
     conn = connect()
@@ -1411,6 +1500,7 @@ def delete_rolled_card(roll_id: int) -> None:
         conn.close()
 
 
+@db_operation
 def is_rolled_card_reroll_expired(roll_id: int) -> bool:
     """Check if the reroll time limit (5 minutes) has expired for a rolled card."""
     conn = connect()
@@ -1432,6 +1522,7 @@ def is_rolled_card_reroll_expired(roll_id: int) -> bool:
     return time_since_creation.total_seconds() > 5 * 60  # 5 minutes in seconds
 
 
+@db_operation
 def add_character(chat_id: str, name: str, imageb64: str) -> int:
     """Add a new character to the database and generate slot icon."""
     # Generate slot machine icon
@@ -1459,6 +1550,7 @@ def add_character(chat_id: str, name: str, imageb64: str) -> int:
     return character_id
 
 
+@db_operation
 def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
     """Fetch the most recently added character for a chat by case-insensitive name."""
     conn = connect()
@@ -1479,6 +1571,7 @@ def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
         conn.close()
 
 
+@db_operation
 def update_character_image(character_id: int, imageb64: str) -> bool:
     """Update a character's image and regenerate the slot icon when possible."""
     slot_icon_b64 = _generate_slot_icon(imageb64)
@@ -1511,6 +1604,7 @@ def update_character_image(character_id: int, imageb64: str) -> bool:
         conn.close()
 
 
+@db_operation
 def delete_characters_by_name(name: str) -> int:
     """Delete all characters with the given name (case-insensitive). Returns count of deleted characters."""
     conn = connect()
@@ -1522,6 +1616,7 @@ def delete_characters_by_name(name: str) -> int:
     return deleted_count
 
 
+@db_operation
 def get_characters_by_chat(chat_id: str) -> List[Character]:
     """Get all characters for a specific chat."""
     conn = connect()
@@ -1532,6 +1627,7 @@ def get_characters_by_chat(chat_id: str) -> List[Character]:
     return [Character(**row) for row in rows]
 
 
+@db_operation
 def get_character_by_id(character_id: int) -> Optional[Character]:
     """Get a character by its ID."""
     conn = connect()
@@ -1542,6 +1638,7 @@ def get_character_by_id(character_id: int) -> Optional[Character]:
     return Character(**row) if row else None
 
 
+@db_operation
 def set_all_claim_balances_to(balance: int) -> int:
     """Set all users' claim balances to the specified amount. Returns the number of affected rows."""
     conn = connect()
@@ -1553,6 +1650,7 @@ def set_all_claim_balances_to(balance: int) -> int:
     return affected_rows
 
 
+@db_operation
 def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     """Get all users and characters for a specific chat with id, display_name/name, slot_iconb64, and type."""
     conn = connect()
@@ -1591,6 +1689,7 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
     return all_items
 
 
+@db_operation
 def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
     """Get the next refresh time for a user's spins. Returns ISO timestamp or None if user not found."""
     conn = connect()
@@ -1635,6 +1734,7 @@ def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
         conn.close()
 
 
+@db_operation
 def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
     """Get the spins record for a user in a specific chat."""
     conn = connect()
@@ -1648,6 +1748,7 @@ def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
     return Spins(**row) if row else None
 
 
+@db_operation
 def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp: str) -> bool:
     """Update or insert a spins record for a user in a specific chat."""
     conn = connect()
@@ -1668,6 +1769,7 @@ def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp:
     return updated
 
 
+@db_operation
 def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """Increment the spin count for a user in a specific chat. Returns new count or None if user not found."""
     conn = connect()
@@ -1706,6 +1808,7 @@ def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
         conn.close()
 
 
+@db_operation
 def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
     """Decrement the spin count for a user in a specific chat. Returns new count or None if insufficient spins."""
     conn = connect()
@@ -1738,6 +1841,7 @@ def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
         conn.close()
 
 
+@db_operation
 def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> int:
     """Get user spins, adding SPINS_PER_REFRESH for each SPINS_REFRESH_HOURS period elapsed. Returns current spins count."""
     conn = connect()
@@ -1846,6 +1950,7 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
         conn.close()
 
 
+@db_operation
 def consume_user_spin(user_id: int, chat_id: str) -> bool:
     """Consume one spin if available. Returns True if successful, False if no spins available."""
     conn = connect()
@@ -1872,6 +1977,7 @@ def consume_user_spin(user_id: int, chat_id: str) -> bool:
         conn.close()
 
 
+@db_operation
 def get_thread_id(chat_id: str, type: str = "main") -> Optional[int]:
     """Get the thread_id for a chat_id and type, or None if not set.
 
@@ -1891,6 +1997,7 @@ def get_thread_id(chat_id: str, type: str = "main") -> Optional[int]:
         conn.close()
 
 
+@db_operation
 def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
     """Set the thread_id for a chat_id and type. Returns True if successful.
 
@@ -1917,6 +2024,7 @@ def set_thread_id(chat_id: str, thread_id: int, type: str = "main") -> bool:
         conn.close()
 
 
+@db_operation
 def clear_thread_ids(chat_id: str) -> bool:
     """Clear all thread_ids for a chat_id. Returns True if successful.
 
