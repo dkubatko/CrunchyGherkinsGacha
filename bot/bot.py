@@ -2005,8 +2005,6 @@ async def collection(
                 await effective_message.reply_text(prompt)
             return
 
-    viewed_username_key: Optional[str] = None
-
     # Check if a username argument was provided
     if context.args and len(context.args) > 0:
         if not chat_id_filter:
@@ -2046,14 +2044,12 @@ async def collection(
         )
         display_username = resolved_username or target_username
         viewed_user_id = target_user_id
-        viewed_username_key = resolved_username or target_username
     else:
         # Default to current user's collection
         cards = await asyncio.to_thread(database.get_user_collection, user.user_id, chat_id_filter)
         resolved_username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
         display_username = resolved_username or user.username
         viewed_user_id = user.user_id
-        viewed_username_key = resolved_username or user.username
 
         if not cards and not update.callback_query:
             await update.message.reply_text(
@@ -2073,30 +2069,107 @@ async def collection(
         )
         return
 
-    viewed_username_key = viewed_username_key or f"user_{viewed_user_id}"
+    handle_username = display_username or None
+    prompt_text = (
+        f"Select view for @{handle_username}'s collection"
+        if handle_username
+        else "Select view for collection"
+    )
 
-    collection_indices = context.user_data.setdefault("collection_index", {})
-    collection_indices[viewed_username_key] = 0
+    keyboard_rows = []
+    if MINIAPP_URL_ENV:
+        token = encode_miniapp_token(viewed_user_id, chat_id_filter)
+        app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
+        keyboard_rows.append([InlineKeyboardButton("Open in the app", url=app_url)])
 
-    total_cards = len(cards)
-    current_index = 0
+    keyboard_rows.append(
+        [
+            InlineKeyboardButton(
+                "Show in chat",
+                callback_data=f"collection_show_{user.user_id}_{viewed_user_id}",
+            )
+        ]
+    )
 
-    card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
-    if not card_with_image:
-        await update.message.reply_text("Card not found.")
+    reply_markup = InlineKeyboardMarkup(keyboard_rows)
+
+    message = update.message or update.effective_message
+    if message:
+        await message.reply_text(
+            prompt_text,
+            reply_markup=reply_markup,
+            reply_to_message_id=getattr(message, "message_id", None),
+        )
+
+
+@verify_user
+async def handle_collection_show(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    query = update.callback_query
+    if not query:
         return
 
-    card = cards[current_index]
-    lock_icon = "🔒" if card.locked else ""
-    card_title = card.title()
-    rarity = card.rarity
+    chat = update.effective_chat
+    chat_id_filter = None
+    if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
+        chat_id_filter = str(chat.id)
+    if chat and chat.type != ChatType.PRIVATE:
+        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
+        if not is_member:
+            await query.answer(
+                "You're not enrolled in this chat yet. Use /enroll in this chat to join.",
+                show_alert=True,
+            )
+            return
 
+    callback_data_parts = query.data.split("_")
+    if len(callback_data_parts) < 4:
+        await query.answer("Invalid callback format. Please try again.", show_alert=True)
+        return
+
+    original_user_id = int(callback_data_parts[2])
+    viewed_user_id = int(callback_data_parts[3])
+
+    if user.user_id != original_user_id:
+        await query.answer("You can only open collections you requested!", show_alert=True)
+        return
+
+    cards = await asyncio.to_thread(database.get_user_collection, viewed_user_id, chat_id_filter)
+    if not cards:
+        await query.answer("No cards found.", show_alert=True)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
+    display_username = resolved_username or f"user_{viewed_user_id}"
+
+    collection_indices = context.user_data.setdefault("collection_index", {})
+    collection_key = (viewed_user_id, chat_id_filter)
+    collection_indices[collection_key] = 0
+
+    card_with_image = await asyncio.to_thread(database.get_card, cards[0].id)
+    if not card_with_image:
+        await query.answer("Card not found.", show_alert=True)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+        return
+
+    card = cards[0]
+    lock_icon = "🔒 " if card.locked else ""
     caption = COLLECTION_CAPTION.format(
         lock_icon=lock_icon,
         card_id=card.id,
-        card_title=card_title,
-        rarity=rarity,
-        current_index=current_index + 1,
+        card_title=card.title(),
+        rarity=card.rarity,
+        current_index=1,
         total_cards=len(cards),
         username=display_username,
     )
@@ -2114,13 +2187,6 @@ async def collection(
             ]
         )
 
-    # Add miniapp button
-    if MINIAPP_URL_ENV:
-        # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
-        token = encode_miniapp_token(viewed_user_id, chat_id_filter)
-        app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
-        keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
-
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -2132,44 +2198,55 @@ async def collection(
 
     media = card_with_image.get_media()
 
-    # For new collection requests (command invocations only)
+    query_message = query.message
+    reply_target = getattr(query_message, "reply_to_message", None)
+    reply_to_message_id = getattr(reply_target, "message_id", None)
+    chat_id = getattr(query_message, "chat_id", None) or (chat.id if chat else None)
+
+    if query_message:
+        try:
+            await query_message.delete()
+        except Exception:
+            pass
+
+    if chat_id is None:
+        await query.answer("Unable to send collection right now.", show_alert=True)
+        return
+
     try:
-        message = await update.message.reply_photo(
+        message = await context.bot.send_photo(
+            chat_id=chat_id,
             photo=media,
             caption=caption,
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML,
-            reply_to_message_id=update.message.message_id,
+            reply_to_message_id=reply_to_message_id,
         )
-        # Always update file_id with what Telegram returns
-        if message and message.photo:
-            new_file_id = message.photo[-1].file_id
-            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+        await save_card_file_id_from_message(message, card.id)
     except Exception as e:
         logger.warning(
             f"Failed to send photo using file_id for card {card.id}, falling back to base64: {e}"
         )
-        # Fallback to base64 upload
         try:
-            message = await update.message.reply_photo(
+            message = await context.bot.send_photo(
+                chat_id=chat_id,
                 photo=base64.b64decode(card_with_image.image_b64),
                 caption=caption,
                 reply_markup=reply_markup,
                 parse_mode=ParseMode.HTML,
-                reply_to_message_id=update.message.message_id,
+                reply_to_message_id=reply_to_message_id,
             )
-            # Update file_id with the new one from Telegram
-            if message and message.photo:
-                new_file_id = message.photo[-1].file_id
-                await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+            await save_card_file_id_from_message(message, card.id)
         except Exception as fallback_error:
             logger.error(
                 f"Failed to send photo even with base64 fallback for card {card.id}: {fallback_error}"
             )
-            await update.message.reply_text(
-                f"Error displaying card {card.id}. Please try again.",
-                reply_to_message_id=update.message.message_id,
+            await query.answer(
+                f"Error displaying card {card.id}. Please try again.", show_alert=True
             )
+            return
+
+    await query.answer()
 
 
 @verify_user
@@ -2227,11 +2304,11 @@ async def handle_collection_navigation(
     # Update display_username for the viewed user
     resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
     display_username = resolved_username or f"user_{viewed_user_id}"
-    viewed_username_key = resolved_username or f"user_{viewed_user_id}"
+    collection_key = (viewed_user_id, chat_id_filter)
 
     total_cards = len(cards)
     collection_indices = context.user_data.setdefault("collection_index", {})
-    current_index = collection_indices.get(viewed_username_key, 0)
+    current_index = collection_indices.get(collection_key, 0)
 
     if current_index >= total_cards or current_index < 0:
         current_index %= total_cards
@@ -2244,7 +2321,7 @@ async def handle_collection_navigation(
         await query.answer()
         return
 
-    collection_indices[viewed_username_key] = current_index
+    collection_indices[collection_key] = current_index
 
     # Get card details
     card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
@@ -2281,17 +2358,6 @@ async def handle_collection_navigation(
             ]
         )
 
-    # Add miniapp button
-    if MINIAPP_URL_ENV:
-        # New explicit token format (u-/uc-) consumed by miniapp (see telegram.ts)
-        token = encode_miniapp_token(viewed_user_id, chat_id_filter)
-
-        if DEBUG_MODE:
-            app_url = f"{MINIAPP_URL_ENV}?v={token}"
-        else:
-            app_url = f"{MINIAPP_URL_ENV}?startapp={token}"
-        keyboard.append([InlineKeyboardButton("View in the app!", url=app_url)])
-
     keyboard.append(
         [
             InlineKeyboardButton(
@@ -2312,10 +2378,7 @@ async def handle_collection_navigation(
         await query.edit_message_caption(
             caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
         )
-        # Always update file_id with what Telegram returns
-        if message and message.photo:
-            new_file_id = message.photo[-1].file_id
-            await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+        await save_card_file_id_from_message(message, card.id)
     except Exception as e:
         logger.warning(
             f"Failed to edit message media using file_id for card {card.id}, falling back to base64: {e}"
@@ -2331,10 +2394,7 @@ async def handle_collection_navigation(
             await query.edit_message_caption(
                 caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
             )
-            # Update file_id with the new one from Telegram
-            if message and message.photo:
-                new_file_id = message.photo[-1].file_id
-                await asyncio.to_thread(database.update_card_file_id, card.id, new_file_id)
+            await save_card_file_id_from_message(message, card.id)
         except Exception as fallback_error:
             logger.error(
                 f"Failed to edit message media even with base64 fallback for card {card.id}: {fallback_error}"
@@ -3191,6 +3251,9 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^burn_"))
     application.add_handler(CallbackQueryHandler(handle_refresh_callback, pattern="^refresh_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
+    application.add_handler(
+        CallbackQueryHandler(handle_collection_show, pattern="^collection_show_")
+    )
     application.add_handler(
         CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")
     )
