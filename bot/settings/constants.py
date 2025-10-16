@@ -146,7 +146,7 @@ Create a casino slot machine icon featuring the person's portrait.
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
-    "<b>{lock_icon} [{card_id}] {card_title}</b>\n"
+    "<b>{lock_icon}[{card_id}] {card_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n\n"
     "<i>Showing {current_index}/{total_cards} owned by @{username}</i>"
 )
