@@ -2071,7 +2071,7 @@ async def collection(
 
     handle_username = display_username or None
     prompt_text = (
-        f"Select view for @{handle_username}'s collection"
+        f"View @{handle_username}'s collection"
         if handle_username
         else "Select view for collection"
     )
