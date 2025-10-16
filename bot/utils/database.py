@@ -447,7 +447,9 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, source_id):
+def add_card(
+    base_name, modifier, rarity, image_b64, chat_id, source_type, source_id, season_id=None
+):
     """Add a new card to the database."""
     now = datetime.datetime.now().isoformat()
     if chat_id is not None:
@@ -465,8 +467,8 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, sourc
     with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             """
-            INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id, season_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 base_name,
@@ -478,6 +480,7 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, sourc
                 now,
                 source_type,
                 source_id,
+                season_id,
             ),
         )
         return cursor.lastrowid
@@ -505,7 +508,46 @@ def add_card_from_generated(generated_card, chat_id):
         chat_id=chat_id,
         source_type=generated_card.source_type,
         source_id=generated_card.source_id,
+        season_id=generated_card.season_id,
     )
+
+
+def upsert_season(season_id: int, name: str) -> None:
+    """
+    Insert or update a season in the database.
+
+    Args:
+        season_id: The unique ID of the season
+        name: The name of the season
+    """
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO seasons (id, name)
+            VALUES (?, ?)
+            ON CONFLICT(id) DO UPDATE SET name = excluded.name
+            """,
+            (season_id, name),
+        )
+
+
+def get_season_id_by_name(name: str) -> Optional[int]:
+    """
+    Get the season ID for a given season name.
+
+    Args:
+        name: The name of the season
+
+    Returns:
+        The season ID, or None if not found
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT id FROM seasons WHERE name = ?",
+            (name,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
 
 
 def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
