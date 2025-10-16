@@ -1074,6 +1074,11 @@ def delete_card(card_id):
     """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
     conn = connect()
     cursor = conn.cursor()
+
+    # Delete from rolled_cards first to avoid foreign key constraint violation
+    cursor.execute("DELETE FROM rolled_cards WHERE card_id = ?", (card_id,))
+
+    # Now delete the card
     cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
     deleted = cursor.rowcount > 0
     conn.commit()
