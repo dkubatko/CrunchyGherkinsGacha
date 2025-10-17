@@ -1,6 +1,6 @@
-# Default season modifier keywords by rarity. Lists are alphabetized and de-duplicated.
+# Default set modifier keywords by rarity. Lists are alphabetized and de-duplicated.
 id: 0
-season: classic
+set: classic
 rarities:
 - name: Common
   modifiers:

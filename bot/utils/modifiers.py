@@ -1,4 +1,4 @@
-"""Helpers for loading modifier keyword lists from YAML season files."""
+"""Helpers for loading modifier keyword lists from YAML set files."""
 
 from __future__ import annotations
 
@@ -15,31 +15,31 @@ _MODIFIERS_DIR = Path(__file__).resolve().parents[1] / "data" / "modifiers"
 _RARITY_ORDER = ("Common", "Rare", "Epic", "Legendary")
 
 
-class ModifierWithSeason(NamedTuple):
-    """A modifier with its associated season ID."""
+class ModifierWithSet(NamedTuple):
+    """A modifier with its associated set ID."""
 
     modifier: str
-    season_id: int
+    set_id: int
 
 
-def load_modifiers_with_seasons(
-    seasons: Optional[Iterable[str]] = None, sync_db: bool = True
-) -> dict[str, list[ModifierWithSeason]]:
-    """Load modifier keywords grouped by rarity with season information."""
+def load_modifiers_with_sets(
+    sets: Optional[Iterable[str]] = None, sync_db: bool = True
+) -> dict[str, list[ModifierWithSet]]:
+    """Load modifier keywords grouped by rarity with set information."""
 
     ensure_logging_initialized()
-    season_files = _discover_season_files(seasons)
-    combined: defaultdict[str, list[ModifierWithSeason]] = defaultdict(list)
+    set_files = _discover_set_files(sets)
+    combined: defaultdict[str, list[ModifierWithSet]] = defaultdict(list)
     cross_rarity_tracker: defaultdict[str, dict[str, str]] = defaultdict(dict)
 
-    for season_name, file_path in season_files:
-        season_modifiers = _process_season_file(
-            season_name=season_name,
+    for set_name, file_path in set_files:
+        set_modifiers = _process_set_file(
+            set_name=set_name,
             file_path=file_path,
             sync_db=sync_db,
             cross_rarity_tracker=cross_rarity_tracker,
         )
-        for rarity, modifiers in season_modifiers.items():
+        for rarity, modifiers in set_modifiers.items():
             combined[rarity].extend(modifiers)
 
     ordered = _deduplicate_and_order_modifiers(combined)
@@ -47,25 +47,25 @@ def load_modifiers_with_seasons(
     return ordered
 
 
-def _process_season_file(
-    season_name: str,
+def _process_set_file(
+    set_name: str,
     file_path: Path,
     sync_db: bool,
     cross_rarity_tracker: dict[str, dict[str, str]],
-) -> dict[str, list[ModifierWithSeason]]:
-    """Load, normalize, and optionally persist a single season file."""
+) -> dict[str, list[ModifierWithSet]]:
+    """Load, normalize, and optionally persist a single set file."""
 
     LOGGER.info("Loading modifiers from %s...", file_path.name)
     header, document = _read_yaml(file_path)
     if not isinstance(document, dict):
         raise ValueError(f"Expected mapping at top level in {file_path.name}")
 
-    season_id = document.get("id")
-    if season_id is None:
-        raise ValueError(f"Season file {file_path.name} must have an 'id' field")
+    set_id = document.get("id")
+    if set_id is None:
+        raise ValueError(f"Set file {file_path.name} must have an 'id' field")
 
     if sync_db:
-        _sync_season_metadata(season_id, document, season_name)
+        _sync_set_metadata(set_id, document, set_name)
 
     payload = document.get("rarities")
     if not isinstance(payload, list):
@@ -73,8 +73,8 @@ def _process_season_file(
 
     entries = _prepare_rarity_entries(payload)
     normalized_entries, mutated, modifiers_by_rarity = _normalize_rarity_entries(
-        season_name=season_name,
-        season_id=season_id,
+        set_name=set_name,
+        set_id=set_id,
         entries=entries,
         original_payload=payload,
         cross_rarity_tracker=cross_rarity_tracker,
@@ -87,31 +87,31 @@ def _process_season_file(
     return modifiers_by_rarity
 
 
-def _sync_season_metadata(season_id: int, document: dict[str, Any], default_name: str) -> None:
-    """Upsert the season metadata, keeping logging noise consistent."""
+def _sync_set_metadata(set_id: int, document: dict[str, Any], default_name: str) -> None:
+    """Upsert the set metadata, keeping logging noise consistent."""
 
-    season_display_name = document.get("season", default_name)
+    set_display_name = document.get("set", default_name)
     try:
         from utils import database
 
-        database.upsert_season(season_id, season_display_name)
-        LOGGER.info("Synced season %s (id=%s) to database", season_display_name, season_id)
+        database.upsert_set(set_id, set_display_name)
+        LOGGER.info("Synced set %s (id=%s) to database", set_display_name, set_id)
     except Exception as exc:  # pragma: no cover - defensive logging
-        LOGGER.warning("Failed to sync season %s to database: %s", default_name, exc)
+        LOGGER.warning("Failed to sync set %s to database: %s", default_name, exc)
 
 
 def _normalize_rarity_entries(
     *,
-    season_name: str,
-    season_id: int,
+    set_name: str,
+    set_id: int,
     entries: list[dict[str, Any]],
     original_payload: list[dict[str, Any]],
     cross_rarity_tracker: dict[str, dict[str, str]],
-) -> tuple[list[dict[str, Any]], bool, dict[str, list[ModifierWithSeason]]]:
+) -> tuple[list[dict[str, Any]], bool, dict[str, list[ModifierWithSet]]]:
     """Normalize modifier lists, track duplicates, and prepare persistence."""
 
     mutated = False
-    modifiers_by_rarity: defaultdict[str, list[ModifierWithSeason]] = defaultdict(list)
+    modifiers_by_rarity: defaultdict[str, list[ModifierWithSet]] = defaultdict(list)
 
     for entry in entries:
         rarity = entry.get("name")
@@ -123,8 +123,8 @@ def _normalize_rarity_entries(
 
         if duplicates:
             LOGGER.info(
-                "Dropped duplicate modifiers for season %s rarity %s: %s",
-                season_name,
+                "Dropped duplicate modifiers for set %s rarity %s: %s",
+                set_name,
                 rarity,
                 sorted(duplicates),
             )
@@ -136,8 +136,7 @@ def _normalize_rarity_entries(
         modifiers_for_rarity = modifiers_by_rarity[rarity]
         if normalized:
             modifiers_for_rarity.extend(
-                ModifierWithSeason(modifier=modifier, season_id=season_id)
-                for modifier in normalized
+                ModifierWithSet(modifier=modifier, set_id=set_id) for modifier in normalized
             )
 
         for modifier in normalized:
@@ -159,32 +158,32 @@ def _register_cross_rarity(tracker: dict[str, dict[str, str]], rarity: str, modi
 
 
 def _deduplicate_and_order_modifiers(
-    combined: dict[str, list[ModifierWithSeason]],
-) -> dict[str, list[ModifierWithSeason]]:
-    """Remove duplicate modifiers across seasons and order the result by rarity."""
+    combined: dict[str, list[ModifierWithSet]],
+) -> dict[str, list[ModifierWithSet]]:
+    """Remove duplicate modifiers across sets and order the result by rarity."""
 
-    aggregated: dict[str, list[ModifierWithSeason]] = {}
+    aggregated: dict[str, list[ModifierWithSet]] = {}
     for rarity, modifiers in combined.items():
-        seen: dict[str, ModifierWithSeason] = {}
+        seen: dict[str, ModifierWithSet] = {}
         duplicates: set[str] = set()
 
-        for mod_with_season in modifiers:
-            key = mod_with_season.modifier.casefold()
+        for mod_with_set in modifiers:
+            key = mod_with_set.modifier.casefold()
             if key in seen:
-                duplicates.add(mod_with_season.modifier)
+                duplicates.add(mod_with_set.modifier)
                 continue
-            seen[key] = mod_with_season
+            seen[key] = mod_with_set
 
         if duplicates:
             LOGGER.info(
-                "Dropped duplicate modifiers across seasons for rarity %s: %s",
+                "Dropped duplicate modifiers across sets for rarity %s: %s",
                 rarity,
                 sorted(duplicates),
             )
 
         aggregated[rarity] = [seen[key] for key in sorted(seen)]
 
-    ordered: dict[str, list[ModifierWithSeason]] = {}
+    ordered: dict[str, list[ModifierWithSet]] = {}
     for rarity in _RARITY_ORDER:
         ordered[rarity] = aggregated.pop(rarity, [])
 
@@ -228,23 +227,23 @@ def ensure_logging_initialized() -> None:
         LOGGER.setLevel(logging.INFO)
 
 
-def _discover_season_files(seasons: Optional[Iterable[str]]) -> list[tuple[str, Path]]:
+def _discover_set_files(sets: Optional[Iterable[str]]) -> list[tuple[str, Path]]:
     if not _MODIFIERS_DIR.is_dir():
         raise FileNotFoundError(f"Modifiers directory not found at {_MODIFIERS_DIR}")
-    if seasons is None:
+    if sets is None:
         files = sorted(_MODIFIERS_DIR.glob("*.yaml"))
         return [(path.stem, path) for path in files]
 
-    if isinstance(seasons, str):
-        season_names = [seasons]
+    if isinstance(sets, str):
+        set_names = [sets]
     else:
-        season_names = list(dict.fromkeys(seasons))
+        set_names = list(dict.fromkeys(sets))
 
     result: list[tuple[str, Path]] = []
-    for name in season_names:
+    for name in set_names:
         path = _MODIFIERS_DIR / f"{name}.yaml"
         if not path.is_file():
-            raise FileNotFoundError(f"Unknown modifiers season '{name}' at {path}")
+            raise FileNotFoundError(f"Unknown modifiers set '{name}' at {path}")
         result.append((name, path))
     return result
 
