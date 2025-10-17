@@ -173,7 +173,7 @@ def generate_single_card(
             chat_id=chat_id,
             source_type=source_type,
             source_id=source_id,
-            season_id=0,  # Default to classic season
+            set_id=0,  # Default to classic set
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 
