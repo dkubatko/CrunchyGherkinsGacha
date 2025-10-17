@@ -7,12 +7,10 @@ from typing import Dict, Optional
 from settings.constants import RARITIES
 from utils import database
 from utils.gemini import GeminiUtil
-from utils.modifiers import load_modifiers_with_seasons, ModifierWithSeason
+from utils.modifiers import load_modifiers_with_sets, ModifierWithSet
 
-# Store modifiers with their season information
-MODIFIERS_WITH_SEASONS_BY_RARITY: Dict[str, list[ModifierWithSeason]] = (
-    load_modifiers_with_seasons()
-)
+# Store modifiers with their set information
+MODIFIERS_WITH_SETS_BY_RARITY: Dict[str, list[ModifierWithSet]] = load_modifiers_with_sets()
 
 
 logger = logging.getLogger(__name__)
@@ -21,8 +19,8 @@ logger = logging.getLogger(__name__)
 def refresh_modifier_cache() -> None:
     """Reload modifiers from disk. Intended for admin-triggered refreshes."""
 
-    global MODIFIERS_WITH_SEASONS_BY_RARITY
-    MODIFIERS_WITH_SEASONS_BY_RARITY = load_modifiers_with_seasons()
+    global MODIFIERS_WITH_SETS_BY_RARITY
+    MODIFIERS_WITH_SETS_BY_RARITY = load_modifiers_with_sets()
 
 
 class NoEligibleUserError(Exception):
@@ -58,7 +56,7 @@ class GeneratedCard:
     image_b64: str
     source_type: str
     source_id: int
-    season_id: Optional[int] = None
+    set_id: Optional[int] = None
 
 
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
@@ -141,17 +139,17 @@ def get_downgraded_rarity(current_rarity: str) -> str:
     return rarity_order[current_index - 1] if current_index > 0 else "Common"
 
 
-def _choose_modifier_for_rarity(rarity: str) -> ModifierWithSeason:
-    """Choose a random modifier for the given rarity and return it with its season_id."""
+def _choose_modifier_for_rarity(rarity: str) -> ModifierWithSet:
+    """Choose a random modifier for the given rarity and return it with its set_id."""
     rarity_config = RARITIES.get(rarity)
     if not isinstance(rarity_config, dict):
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
 
-    modifiers_with_seasons = MODIFIERS_WITH_SEASONS_BY_RARITY.get(rarity)
-    if not modifiers_with_seasons:
+    modifiers_with_sets = MODIFIERS_WITH_SETS_BY_RARITY.get(rarity)
+    if not modifiers_with_sets:
         raise InvalidSourceError(f"No modifiers configured for rarity '{rarity}'")
 
-    return random.choice(modifiers_with_seasons)
+    return random.choice(modifiers_with_sets)
 
 
 def _create_generated_card(
@@ -159,29 +157,29 @@ def _create_generated_card(
     gemini_util: GeminiUtil,
     rarity: str,
     modifier: Optional[str] = None,
-    season_id: Optional[int] = None,
+    set_id: Optional[int] = None,
 ) -> GeneratedCard:
     if rarity not in RARITIES:
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
 
-    # If modifier is provided, we need to look up its season_id
+    # If modifier is provided, we need to look up its set_id
     if modifier is not None:
-        if season_id is None:
-            # Look up the season_id for this specific modifier
-            modifiers_with_seasons = MODIFIERS_WITH_SEASONS_BY_RARITY.get(rarity, [])
-            for mod_with_season in modifiers_with_seasons:
-                if mod_with_season.modifier == modifier:
-                    season_id = mod_with_season.season_id
+        if set_id is None:
+            # Look up the set_id for this specific modifier
+            modifiers_with_sets = MODIFIERS_WITH_SETS_BY_RARITY.get(rarity, [])
+            for mod_with_set in modifiers_with_sets:
+                if mod_with_set.modifier == modifier:
+                    set_id = mod_with_set.set_id
                     break
-            if season_id is None:
+            if set_id is None:
                 # Default to 0 if we can't find the modifier (shouldn't happen)
-                season_id = 0
+                set_id = 0
         chosen_modifier = modifier
     else:
-        # Choose a random modifier and get its season_id
-        modifier_with_season = _choose_modifier_for_rarity(rarity)
-        chosen_modifier = modifier_with_season.modifier
-        season_id = modifier_with_season.season_id
+        # Choose a random modifier and get its set_id
+        modifier_with_set = _choose_modifier_for_rarity(rarity)
+        chosen_modifier = modifier_with_set.modifier
+        set_id = modifier_with_set.set_id
 
     image_b64 = gemini_util.generate_image(
         profile.name,
@@ -201,7 +199,7 @@ def _create_generated_card(
         image_b64=image_b64,
         source_type=profile.source_type,
         source_id=profile.source_id,
-        season_id=season_id,
+        set_id=set_id,
     )
 
 
@@ -258,7 +256,7 @@ def generate_card_from_source(
 ) -> GeneratedCard:
     profile = get_profile_for_source(source_type, source_id)
 
-    modifier_with_season = _choose_modifier_for_rarity(rarity)
+    modifier_with_set = _choose_modifier_for_rarity(rarity)
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
@@ -269,8 +267,8 @@ def generate_card_from_source(
                 profile,
                 gemini_util,
                 rarity,
-                modifier=modifier_with_season.modifier,
-                season_id=modifier_with_season.season_id,
+                modifier=modifier_with_set.modifier,
+                set_id=modifier_with_set.set_id,
             )
         except ImageGenerationError as exc:
             last_error = exc
@@ -281,7 +279,7 @@ def generate_card_from_source(
                 source_type,
                 source_id,
                 rarity,
-                modifier_with_season.modifier,
+                modifier_with_set.modifier,
             )
 
             if attempt < total_attempts:
@@ -302,7 +300,7 @@ def generate_card_for_chat(
         raise NoEligibleUserError
 
     chosen_rarity = rarity or get_random_rarity()
-    modifier_with_season = _choose_modifier_for_rarity(chosen_rarity)
+    modifier_with_set = _choose_modifier_for_rarity(chosen_rarity)
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
@@ -313,8 +311,8 @@ def generate_card_for_chat(
                 profile,
                 gemini_util,
                 chosen_rarity,
-                modifier=modifier_with_season.modifier,
-                season_id=modifier_with_season.season_id,
+                modifier=modifier_with_set.modifier,
+                set_id=modifier_with_set.set_id,
             )
         except ImageGenerationError as exc:
             last_error = exc
@@ -326,7 +324,7 @@ def generate_card_for_chat(
                 profile.source_type,
                 profile.source_id,
                 chosen_rarity,
-                modifier_with_season.modifier,
+                modifier_with_set.modifier,
             )
 
             if attempt < total_attempts:
