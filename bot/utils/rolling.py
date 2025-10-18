@@ -399,6 +399,7 @@ def regenerate_card_image(
     card: database.Card,
     gemini_util: GeminiUtil,
     max_retries: int = 0,
+    refresh_attempt: int = 1,
 ) -> str:
     """
     Regenerate the image for an existing card, keeping the same rarity, modifier, and name.
@@ -407,6 +408,7 @@ def regenerate_card_image(
         card: The card to regenerate the image for
         gemini_util: GeminiUtil instance for image generation
         max_retries: Number of retry attempts if generation fails
+        refresh_attempt: Which refresh attempt this is (1-3), affects temperature
 
     Returns:
         The new base64-encoded image
@@ -431,12 +433,16 @@ def regenerate_card_image(
 
     for attempt in range(1, total_attempts + 1):
         try:
+            # Calculate temperature based on refresh attempt (1.0, 1.25, 1.5)
+            temperature = 1.0 + (0.25 * (refresh_attempt - 1))
+
             # Use the existing modifier, rarity and name
             image_b64 = gemini_util.generate_image(
                 card.base_name,
                 card.modifier,
                 card.rarity,
                 base_image_b64=profile.image_b64,
+                temperature=temperature,
             )
 
             if not image_b64:
