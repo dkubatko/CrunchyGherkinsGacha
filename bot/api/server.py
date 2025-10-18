@@ -1627,6 +1627,7 @@ async def _process_slots_victory_background(
                 gemini_util,
                 normalized_rarity,
                 max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
+                chat_id=chat_id,
             )
 
             # Add card to database and assign to winner
@@ -1869,6 +1870,7 @@ async def _process_minesweeper_victory_background(
                 gemini_util,
                 rarity,
                 max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
+                chat_id=chat_id,
             )
 
             # Add card to database and assign to winner

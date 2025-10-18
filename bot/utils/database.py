@@ -1689,4 +1689,21 @@ def clear_thread_ids(chat_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
+    """Get the count of each modifier used in cards for a specific chat.
+
+    Args:
+        chat_id: The chat ID to get modifier counts for.
+
+    Returns:
+        A dictionary mapping modifier strings to their occurrence count.
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT modifier, COUNT(*) as count FROM cards WHERE chat_id = ? GROUP BY modifier",
+            (str(chat_id),),
+        )
+        return {row["modifier"]: row["count"] for row in cursor.fetchall()}
+
+
 create_tables()
