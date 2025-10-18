@@ -1,0 +1,18 @@
+# Animal-themed modifier keywords by rarity. Lists are alphabetized and de-duplicated.
+id: 1
+set: animals
+rarities:
+- name: Common
+  modifiers: []
+- name: Rare
+  modifiers:
+  - Bat
+  - Bee
+  - Frog
+  - Puppy
+  - Rat
+- name: Epic
+  modifiers:
+  - Spider
+- name: Legendary
+  modifiers: []

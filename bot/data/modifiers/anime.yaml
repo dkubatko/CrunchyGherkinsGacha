@@ -1,0 +1,31 @@
+# Anime and pop culture modifier keywords by rarity. Lists are alphabetized and de-duplicated.
+id: 2
+set: anime
+rarities:
+- name: Common
+  modifiers:
+  - Anime
+  - Comic
+- name: Rare
+  modifiers:
+  - Cartoon
+  - Manga
+  - Neko
+  - Otaku
+  - Pokemon
+- name: Epic
+  modifiers:
+  - 9-tailed
+  - Avatar
+  - Berserk
+  - Evangelion
+  - JoJo
+  - One Piece
+  - Sailor Moon
+  - Vinland
+  - Yandere
+- name: Legendary
+  modifiers:
+  - Akatsuki
+  - Hokage
+  - Tokyo Ghoul
