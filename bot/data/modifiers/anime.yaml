@@ -5,7 +5,9 @@ rarities:
 - name: Common
   modifiers:
   - Anime
+  - Chibi
   - Comic
+  - Kawaii
 - name: Rare
   modifiers:
   - Cartoon
@@ -13,19 +15,26 @@ rarities:
   - Neko
   - Otaku
   - Pokemon
+  - Yokai
 - name: Epic
   modifiers:
   - 9-tailed
   - Avatar
   - Berserk
   - Evangelion
+  - Ghibli
+  - Gojo
   - JoJo
+  - Mecha
   - One Piece
   - Sailor Moon
+  - Sharingan
   - Vinland
+  - Waifu
   - Yandere
 - name: Legendary
   modifiers:
   - Akatsuki
+  - AoT
   - Hokage
   - Tokyo Ghoul

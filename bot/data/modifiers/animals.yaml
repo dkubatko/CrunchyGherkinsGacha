@@ -3,16 +3,30 @@ id: 1
 set: animals
 rarities:
 - name: Common
-  modifiers: []
+  modifiers:
+  - Bear
+  - Elephant
+  - Mouse
 - name: Rare
   modifiers:
   - Bat
   - Bee
   - Frog
+  - Hedgehog
+  - Insect
+  - Koala
+  - Owl
   - Puppy
   - Rat
+  - Rhino
+  - Tiger
 - name: Epic
   modifiers:
+  - Dragon
+  - Koala
+  - Phoenix
+  - Pig
   - Spider
 - name: Legendary
-  modifiers: []
+  modifiers:
+  - Kraken
