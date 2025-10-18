@@ -79,6 +79,7 @@ from settings.constants import (
     REFRESH_PROCESSING_MESSAGE,
     REFRESH_FAILURE_MESSAGE,
     REFRESH_SUCCESS_MESSAGE,
+    REFRESH_DONE_MESSAGE,
     get_refresh_cost,
 )
 from settings.constants import get_claim_cost, get_lock_cost, get_spin_reward
@@ -1060,7 +1061,7 @@ async def handle_refresh_callback(
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Handle refresh confirmation/cancellation."""
+    """Handle refresh confirmation/cancellation/retry/done."""
     query = update.callback_query
     if not query:
         return
@@ -1071,6 +1072,14 @@ async def handle_refresh_callback(
         return
 
     _, action, card_id_str, target_user_id_str = data_parts[:4]
+
+    # For retry action, also extract the attempt number
+    attempt = 1
+    if action == "retry" and len(data_parts) >= 5:
+        try:
+            attempt = int(data_parts[4])
+        except ValueError:
+            attempt = 1
 
     try:
         card_id = int(card_id_str)
@@ -1102,7 +1111,32 @@ async def handle_refresh_callback(
         await query.answer()
         return
 
-    if action != "yes":
+    if action == "done":
+        # Remove buttons and update message to show final state
+        card = await asyncio.to_thread(database.get_card, card_id)
+        if card:
+            card_title = card.title(include_id=True, include_rarity=True)
+            chat = update.effective_chat
+            chat_id_str = str(chat.id) if chat else None
+            refresh_cost = get_refresh_cost(card.rarity)
+            balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
+            done_msg = REFRESH_DONE_MESSAGE.format(
+                card_title=card_title,
+                attempt=attempt,
+                remaining_balance=balance,
+            )
+        else:
+            done_msg = "Refresh complete."
+        try:
+            await query.edit_message_caption(
+                caption=done_msg, parse_mode=ParseMode.HTML, reply_markup=None
+            )
+        except Exception:
+            pass
+        await query.answer()
+        return
+
+    if action not in ["yes", "retry"]:
         await query.answer("Unknown action.")
         return
 
@@ -1133,21 +1167,41 @@ async def handle_refresh_callback(
             await query.answer(REFRESH_NOT_YOURS_MESSAGE, show_alert=True)
             return
 
-        # Verify balance again
+        # Deduct claim points only on first attempt (action == "yes")
         refresh_cost = get_refresh_cost(card.rarity)
         balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
-        if balance < refresh_cost:
-            await query.answer(
-                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
-                show_alert=True,
+
+        if action == "yes":
+            # First attempt - verify balance and deduct
+            if balance < refresh_cost:
+                await query.answer(
+                    REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                    show_alert=True,
+                )
+                return
+
+            # Deduct claim points upfront
+            remaining_balance = await asyncio.to_thread(
+                database.reduce_claim_points, user.user_id, chat_id_str, refresh_cost
             )
-            return
+
+            if remaining_balance is None:
+                # Balance check failed
+                await query.answer(
+                    REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                    show_alert=True,
+                )
+                return
+        else:
+            # Retry - no deduction
+            remaining_balance = balance
 
         # Show processing message
         await query.answer()
         card_title = card.title(include_id=True, include_rarity=True)
         processing_msg = REFRESH_PROCESSING_MESSAGE.format(
             card_title=card_title,
+            attempt=attempt,
         )
         try:
             await query.edit_message_caption(
@@ -1163,6 +1217,7 @@ async def handle_refresh_callback(
                 card,
                 gemini_util,
                 max_retries=MAX_BOT_IMAGE_RETRIES,
+                refresh_attempt=attempt,
             )
         except (
             rolling.ImageGenerationError,
@@ -1185,45 +1240,43 @@ async def handle_refresh_callback(
                 pass
             return
 
-        # Deduct claim points only after successful generation
-        remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, user.user_id, chat_id_str, refresh_cost
-        )
-
-        if remaining_balance is None:
-            # Balance check failed (shouldn't happen since we checked above)
-            await query.answer(
-                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
-                show_alert=True,
-            )
-            try:
-                await query.edit_message_caption(
-                    caption=REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(
-                        balance=balance, cost=refresh_cost
-                    ),
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=None,
-                )
-            except Exception:
-                pass
-            return
-
         # Update the card with the new image
         await asyncio.to_thread(database.update_card_image, card_id, new_image_b64)
 
         logger.info(
-            "Card %s refreshed by user %s, remaining balance: %s",
+            "Card %s refreshed by user %s (attempt %s), remaining balance: %s",
             card_id,
             user.user_id,
+            attempt,
             remaining_balance,
         )
 
-        # Replace the old image with the new one
+        # Replace the old image with the new one and show retry/done buttons
         card_title = card.title(include_id=True, include_rarity=True)
         success_message = REFRESH_SUCCESS_MESSAGE.format(
             card_title=card_title,
+            attempt=attempt,
             remaining_balance=remaining_balance,
         )
+
+        # Build buttons - show Retry only if we haven't used all 3 attempts
+        # On the 3rd attempt, automatically remove all buttons (no Done button needed)
+        if attempt >= 3:
+            keyboard = None
+        else:
+            buttons = []
+            buttons.append(
+                InlineKeyboardButton(
+                    "Retry", callback_data=f"refresh_retry_{card_id}_{user.user_id}_{attempt + 1}"
+                )
+            )
+            buttons.append(
+                InlineKeyboardButton(
+                    "Done", callback_data=f"refresh_done_{card_id}_{user.user_id}_{attempt}"
+                )
+            )
+            keyboard = InlineKeyboardMarkup([buttons])
+
         try:
             new_image_bytes = base64.b64decode(new_image_b64)
             edited_message = await query.edit_message_media(
@@ -1232,7 +1285,7 @@ async def handle_refresh_callback(
                     caption=success_message,
                     parse_mode=ParseMode.HTML,
                 ),
-                reply_markup=None,
+                reply_markup=keyboard,
             )
             # Save the new file_id from Telegram
             await save_card_file_id_from_message(edited_message, card_id)
@@ -1241,7 +1294,7 @@ async def handle_refresh_callback(
             # Fallback to just updating caption if media edit fails
             try:
                 await query.edit_message_caption(
-                    caption=success_message, parse_mode=ParseMode.HTML, reply_markup=None
+                    caption=success_message, parse_mode=ParseMode.HTML, reply_markup=keyboard
                 )
             except Exception:
                 pass
