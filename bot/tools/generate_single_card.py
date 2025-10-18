@@ -45,6 +45,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Load environment variables needed for GeminiUtil
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
+
 
 def find_character_by_name(character_name: str):
     """Find a character by name across ALL chats in the database."""
@@ -151,7 +155,7 @@ def generate_single_card(
 
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
-    gemini_util = GeminiUtil()
+    gemini_util = GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
 
     # Generate the card image
     try:

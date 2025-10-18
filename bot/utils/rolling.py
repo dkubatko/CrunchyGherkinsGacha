@@ -139,8 +139,21 @@ def get_downgraded_rarity(current_rarity: str) -> str:
     return rarity_order[current_index - 1] if current_index > 0 else "Common"
 
 
-def _choose_modifier_for_rarity(rarity: str) -> ModifierWithSet:
-    """Choose a random modifier for the given rarity and return it with its set_id."""
+def _choose_modifier_for_rarity(
+    rarity: str, chat_id: Optional[str] = None
+) -> tuple[ModifierWithSet, float]:
+    """Choose a random modifier for the given rarity using weighted selection.
+
+    Modifiers that don't exist in the chat yet get weight 1.0, while existing modifiers
+    get weight 1/N where N is the number of times they've been used.
+
+    Args:
+        rarity: The rarity level to choose a modifier for
+        chat_id: The chat ID to check for existing modifier usage (optional)
+
+    Returns:
+        A tuple of (ModifierWithSet, weight) where weight is the selection weight used
+    """
     rarity_config = RARITIES.get(rarity)
     if not isinstance(rarity_config, dict):
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
@@ -149,7 +162,31 @@ def _choose_modifier_for_rarity(rarity: str) -> ModifierWithSet:
     if not modifiers_with_sets:
         raise InvalidSourceError(f"No modifiers configured for rarity '{rarity}'")
 
-    return random.choice(modifiers_with_sets)
+    # If no chat_id provided, use uniform random selection
+    if chat_id is None:
+        chosen = random.choice(modifiers_with_sets)
+        return chosen, 1.0
+
+    # Get modifier usage counts for this chat
+    modifier_counts = database.get_modifier_counts_for_chat(chat_id)
+
+    # Calculate weights: 1.0 for new modifiers, 1/N for existing ones
+    weights = []
+    for mod_with_set in modifiers_with_sets:
+        count = modifier_counts.get(mod_with_set.modifier, 0)
+        if count == 0:
+            weights.append(1.0)
+        else:
+            weights.append(1.0 / count)
+
+    # Choose a modifier using weighted random selection
+    chosen = random.choices(modifiers_with_sets, weights=weights, k=1)[0]
+
+    # Get the weight of the chosen modifier for logging
+    chosen_index = modifiers_with_sets.index(chosen)
+    chosen_weight = weights[chosen_index]
+
+    return chosen, chosen_weight
 
 
 def _create_generated_card(
@@ -176,8 +213,8 @@ def _create_generated_card(
                 set_id = 0
         chosen_modifier = modifier
     else:
-        # Choose a random modifier and get its set_id
-        modifier_with_set = _choose_modifier_for_rarity(rarity)
+        # Choose a random modifier and get its set_id (no chat_id, uniform selection)
+        modifier_with_set, _ = _choose_modifier_for_rarity(rarity, chat_id=None)
         chosen_modifier = modifier_with_set.modifier
         set_id = modifier_with_set.set_id
 
@@ -253,33 +290,44 @@ def generate_card_from_source(
     gemini_util: GeminiUtil,
     rarity: str,
     max_retries: int = 0,
+    chat_id: Optional[str] = None,
 ) -> GeneratedCard:
     profile = get_profile_for_source(source_type, source_id)
 
-    modifier_with_set = _choose_modifier_for_rarity(rarity)
+    modifier_with_set, weight = _choose_modifier_for_rarity(rarity, chat_id)
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
 
     for attempt in range(1, total_attempts + 1):
         try:
-            return _create_generated_card(
+            generated_card = _create_generated_card(
                 profile,
                 gemini_util,
                 rarity,
                 modifier=modifier_with_set.modifier,
                 set_id=modifier_with_set.set_id,
             )
+            logger.info(
+                "Successfully generated card for source %s:%s (rarity=%s, modifier=%s, weight=%.2f)",
+                source_type,
+                source_id,
+                rarity,
+                modifier_with_set.modifier,
+                weight,
+            )
+            return generated_card
         except ImageGenerationError as exc:
             last_error = exc
             logger.warning(
-                "Image generation attempt %s/%s failed for source %s:%s (rarity=%s, modifier=%s)",
+                "Image generation attempt %s/%s failed for source %s:%s (rarity=%s, modifier=%s, weight=%.2f)",
                 attempt,
                 total_attempts,
                 source_type,
                 source_id,
                 rarity,
                 modifier_with_set.modifier,
+                weight,
             )
 
             if attempt < total_attempts:
@@ -300,24 +348,34 @@ def generate_card_for_chat(
         raise NoEligibleUserError
 
     chosen_rarity = rarity or get_random_rarity()
-    modifier_with_set = _choose_modifier_for_rarity(chosen_rarity)
+    modifier_with_set, weight = _choose_modifier_for_rarity(chosen_rarity, chat_id)
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
 
     for attempt in range(1, total_attempts + 1):
         try:
-            return _create_generated_card(
+            generated_card = _create_generated_card(
                 profile,
                 gemini_util,
                 chosen_rarity,
                 modifier=modifier_with_set.modifier,
                 set_id=modifier_with_set.set_id,
             )
+            logger.info(
+                "Successfully generated card for chat %s (source=%s:%s, rarity=%s, modifier=%s, weight=%.2f)",
+                chat_id,
+                profile.source_type,
+                profile.source_id,
+                chosen_rarity,
+                modifier_with_set.modifier,
+                weight,
+            )
+            return generated_card
         except ImageGenerationError as exc:
             last_error = exc
             logger.warning(
-                "Image generation attempt %s/%s failed for chat %s (source=%s:%s, rarity=%s, modifier=%s)",
+                "Image generation attempt %s/%s failed for chat %s (source=%s:%s, rarity=%s, modifier=%s, weight=%.2f)",
                 attempt,
                 total_attempts,
                 chat_id,
@@ -325,6 +383,7 @@ def generate_card_for_chat(
                 profile.source_id,
                 chosen_rarity,
                 modifier_with_set.modifier,
+                weight,
             )
 
             if attempt < total_attempts:
