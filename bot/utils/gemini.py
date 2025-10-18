@@ -57,6 +57,7 @@ class GeminiUtil:
         rarity: str,
         base_image_path: str | None = None,
         base_image_b64: str | None = None,
+        temperature: float = 1.0,
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
@@ -70,8 +71,11 @@ class GeminiUtil:
                 creativeness_factor=RARITIES[rarity]["creativeness_factor"],
             )
             logger.info(
-                f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}'"
+                f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}' (temperature {temperature})"
             )
+
+            generation_config = genai.types.GenerationConfig(temperature=temperature)
+
             template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
             template_img = Image.open(template_image_path)
             if base_image_b64:
@@ -79,7 +83,10 @@ class GeminiUtil:
                 img = Image.open(BytesIO(source_bytes))
             else:
                 img = Image.open(base_image_path)
-            response = self.model.generate_content([prompt, template_img, img])
+            response = self.model.generate_content(
+                [prompt, template_img, img],
+                generation_config=generation_config,
+            )
 
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
