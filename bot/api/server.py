@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import List, Optional, Dict, Any, Tuple, Set
 from telegram.constants import ParseMode
-from fastapi import FastAPI, HTTPException, Header, Query, Depends
+from fastapi import FastAPI, HTTPException, Header, Query, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -22,8 +22,9 @@ load_dotenv()
 # Add project root to sys.path to allow importing from bot
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import database, gemini, rolling, minesweeper
+from utils import database, gemini, rolling, minesweeper, poker
 from utils.database import Card as APICard
+from utils.poker import PokerGameStateResponse
 from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     RARITIES,
@@ -294,6 +295,47 @@ class MinesweeperUpdateResponse(BaseModel):
     bet_card_rarity: Optional[str] = None  # Rarity of the bet card (for alerts)
     source_display_name: Optional[str] = None  # Display name of the selected source (for alerts)
     claim_point_awarded: bool = False  # True if this reveal awarded a claim point
+
+
+# ============================================================================
+# Poker WebSocket Message Models
+# ============================================================================
+
+
+class PokerWSConnectMessage(BaseModel):
+    """Initial connection message from client."""
+
+    type: str  # Should be 'connect'
+    user_id: int
+    init_data: str  # Telegram initData for validation
+
+
+class PokerWSJoinMessage(BaseModel):
+    """Message to join the poker table."""
+
+    type: str  # Should be 'join'
+    spin_balance: int
+
+
+class PokerWSGameStateMessage(BaseModel):
+    """WebSocket message containing game state."""
+
+    type: str  # 'game_state'
+    data: Optional[PokerGameStateResponse] = None
+
+
+class PokerWSPlayerJoinedMessage(BaseModel):
+    """WebSocket message when a player joins."""
+
+    type: str  # 'player_joined'
+    data: PokerGameStateResponse
+
+
+class PokerWSErrorMessage(BaseModel):
+    """WebSocket error message."""
+
+    type: str  # 'error'
+    message: str
 
 
 _RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [
@@ -2685,6 +2727,161 @@ async def get_slot_symbols_endpoint(
     except Exception as e:
         logger.error(f"Error fetching slot symbols for chat_id {chat_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch slot symbols")
+
+
+# ============================================================================
+# Poker Endpoints
+# ============================================================================
+
+
+@app.post("/poker/{chat_id}/reset")
+async def reset_poker_game(chat_id: str, authorization: str = Header(None)):
+    """
+    Reset the poker game for a chat (DEBUG endpoint).
+    Deletes the current game and all players.
+    """
+    try:
+        # Validate Telegram initData from Authorization header
+        init_data = None
+        if authorization and authorization.startswith("tma "):
+            init_data = authorization[4:]
+
+        validated_data = validate_telegram_init_data(init_data)
+        if not validated_data or not validated_data.get("user"):
+            raise HTTPException(status_code=401, detail="Invalid or expired Telegram initData")
+
+        # Delete the game
+        deleted = database.delete_poker_game(chat_id)
+
+        if deleted:
+            logger.info(f"Reset poker game for chat_id={chat_id}")
+
+            # Broadcast reset to all connected players
+            reset_msg = {"type": "game_state", "data": None}
+            await poker.manager.broadcast_to_chat(reset_msg, chat_id)
+
+            return {"success": True, "message": "Game reset successfully"}
+        else:
+            return {"success": False, "message": "No active game to reset"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting poker game for chat_id {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to reset game")
+
+
+# ============================================================================
+# Poker WebSocket Endpoint
+# ============================================================================
+
+
+@app.websocket("/ws/poker/{chat_id}")
+async def poker_websocket(websocket: WebSocket, chat_id: str):
+    """
+    WebSocket endpoint for poker game real-time updates.
+
+    Connection flow:
+    1. Client connects and sends PokerWSConnectMessage with initData
+    2. Server validates initData
+    3. Server sends current game state (PokerWSGameStateMessage)
+    4. Client can send actions (join, etc.)
+    5. Server broadcasts updates to all connected players
+    """
+    user_id = None
+    validated = False
+
+    try:
+        # Accept the connection
+        await websocket.accept()
+
+        # Wait for initial connection message with initData
+        try:
+            initial_data = await websocket.receive_json()
+            connect_msg = PokerWSConnectMessage(**initial_data)
+        except Exception as e:
+            error_msg = PokerWSErrorMessage(
+                type="error", message=f"Invalid connection message format: {str(e)}"
+            )
+            await websocket.send_json(error_msg.dict())
+            await websocket.close()
+            return
+
+        # Validate Telegram initData
+        validated_data = validate_telegram_init_data(connect_msg.init_data)
+        if not validated_data or not validated_data.get("user"):
+            error_msg = PokerWSErrorMessage(
+                type="error", message="Invalid or expired Telegram initData"
+            )
+            await websocket.send_json(error_msg.dict())
+            await websocket.close()
+            return
+
+        # Extract user_id from validated data
+        telegram_user = validated_data["user"]
+        validated_user_id = telegram_user.get("id")
+
+        # Verify user_id matches
+        if validated_user_id != connect_msg.user_id:
+            error_msg = PokerWSErrorMessage(type="error", message="User ID mismatch")
+            await websocket.send_json(error_msg.dict())
+            await websocket.close()
+            return
+
+        user_id = connect_msg.user_id
+        validated = True
+
+        # Register connection
+        await poker.manager.connect(websocket, chat_id, user_id)
+        logger.info(f"Poker WebSocket connected: user_id={user_id}, chat_id={chat_id}")
+
+        # Send current game state with slot icons (initial load)
+        game_state = poker.get_game_state(chat_id, include_slot_icons=True)
+        response = PokerWSGameStateMessage(type="game_state", data=game_state)
+        await websocket.send_json(response.dict())
+
+        # Listen for messages
+        while True:
+            message_data = await websocket.receive_json()
+            message_type = message_data.get("type")
+
+            if message_type == "join":
+                # Handle player joining
+                try:
+                    join_msg = PokerWSJoinMessage(**message_data)
+
+                    # Get updated game state (includes only new player's slot icon in players array)
+                    updated_game_state = await poker.handle_player_join(
+                        chat_id=chat_id, user_id=user_id, spin_balance=join_msg.spin_balance
+                    )
+
+                    # Broadcast updated game state to all players
+                    broadcast_msg = PokerWSPlayerJoinedMessage(
+                        type="player_joined", data=updated_game_state
+                    )
+                    await poker.manager.broadcast_to_chat(broadcast_msg.dict(), chat_id)
+
+                except ValueError as e:
+                    error_msg = PokerWSErrorMessage(type="error", message=str(e))
+                    await websocket.send_json(error_msg.dict())
+                except Exception as e:
+                    logger.error(f"Error handling player join: {e}")
+                    error_msg = PokerWSErrorMessage(type="error", message="Failed to join game")
+                    await websocket.send_json(error_msg.dict())
+
+            # Add more message types here as we implement them
+            # elif message_type == 'action':
+            #     # Handle player action (check, raise, fold, etc.)
+            #     pass
+
+    except WebSocketDisconnect:
+        if user_id and validated:
+            poker.manager.disconnect(chat_id, user_id, websocket)
+            logger.info(f"Poker WebSocket disconnected: user_id={user_id}, chat_id={chat_id}")
+    except Exception as e:
+        logger.error(f"Error in poker websocket: {e}")
+        if user_id and validated:
+            poker.manager.disconnect(chat_id, user_id, websocket)
 
 
 def run_server():

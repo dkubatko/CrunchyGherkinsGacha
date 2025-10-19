@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { usePokerStore } from '../stores/usePokerStore';
+import { PokerWebSocket } from '../services/PokerWebSocket';
 import './Poker.css';
 
 interface PokerProps {
@@ -6,16 +8,59 @@ interface PokerProps {
   initData: string;
 }
 
+interface TelegramWebApp {
+  initDataUnsafe?: {
+    user?: {
+      id?: number;
+    };
+  };
+}
+
+declare global {
+  interface Window {
+    Telegram?: {
+      WebApp?: TelegramWebApp;
+    };
+  }
+}
+
 const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   const [loading, setLoading] = useState(false);
-  const [players, setPlayers] = useState([
-    { id: 1, name: 'Player 1' },
-    { id: 2, name: 'Player 2' },
-    { id: 3, name: 'Player 3' },
-  ]);
-  
-  // Prevent unused variable warnings - will be used in future steps
-  console.log('Poker initialized with chatId:', chatId, 'initData length:', initData.length);
+  const wsRef = useRef<PokerWebSocket | null>(null);
+
+  // Get state from Zustand store
+  const { connectionStatus, error, gameState, playerSlotIcons } = usePokerStore();
+  const connected = connectionStatus === 'connected';
+
+  // Initialize WebSocket connection
+  useEffect(() => {
+    if (!chatId || !initData) {
+      usePokerStore.getState().setError('Missing chat ID or initialization data');
+      return;
+    }
+
+    const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+    if (!userId) {
+      usePokerStore.getState().setError('Failed to get user ID from Telegram');
+      return;
+    }
+
+    // Only create WebSocket if we don't have one
+    if (!wsRef.current) {
+      const ws = new PokerWebSocket(chatId, userId, initData);
+      wsRef.current = ws;
+      ws.connect();
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.disconnect();
+        wsRef.current = null;
+      }
+      usePokerStore.getState().reset();
+    };
+  }, [chatId, initData]);
 
   // Calculate circular positions for players around the table
   const getPlayerPosition = (index: number, total: number) => {
@@ -28,21 +73,53 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   };
 
   const handleJoin = () => {
+    if (!wsRef.current || !wsRef.current.isConnected()) {
+      usePokerStore.getState().setError('Not connected to server');
+      return;
+    }
+
     setLoading(true);
-    // Simulate joining with a slight delay
-    setTimeout(() => {
-      const newPlayer = {
-        id: players.length + 1,
-        name: `Player ${players.length + 1}`,
-      };
-      setPlayers([...players, newPlayer]);
-      setLoading(false);
-    }, 300);
+    usePokerStore.getState().setError(null);
+
+    // Get user's spin balance (TODO: Get actual balance from API or state)
+    const spinBalance = 100;
+
+    wsRef.current.join(spinBalance);
+
+    // Loading state will be cleared when we receive the updated game state
+    setTimeout(() => setLoading(false), 2000);
   };
 
+  const handleReset = async () => {
+    if (!wsRef.current) {
+      usePokerStore.getState().setError('Not connected to server');
+      return;
+    }
+
+    if (!window.confirm('Reset the poker game? This will remove all players.')) {
+      return;
+    }
+
+    try {
+      await wsRef.current.reset();
+      usePokerStore.getState().setError(null);
+    } catch (error) {
+      console.error('Failed to reset game:', error);
+      usePokerStore.getState().setError('Failed to reset game');
+    }
+  };
+
+  const players = gameState?.players || [];
+
   return (
-    <div className="poker-container">
+    <div className="poker-container" style={{ position: 'relative' }}>
       <h1>🃏 Poker</h1>
+
+      {connectionStatus === 'connecting' && !error && (
+        <div style={{ color: '#888', marginBottom: '10px' }}>
+          Connecting...
+        </div>
+      )}
       
       <div className="poker-game">
         <div className="poker-game-space">
@@ -60,16 +137,23 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
             {/* Dynamic player icons */}
             {players.map((player, index) => {
               const { x, y } = getPlayerPosition(index, players.length);
+              // Use cached slot icon from store
+              const slotIcon = playerSlotIcons[player.user_id];
               return (
                 <div
-                  key={player.id}
+                  key={player.user_id}
                   className="player-icon"
                   style={{
                     left: '50%',
                     top: '50%',
                     transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
+                    backgroundImage: slotIcon 
+                      ? `url(data:image/png;base64,${slotIcon})`
+                      : undefined,
+                    backgroundSize: 'cover',
+                    backgroundPosition: 'center',
                   }}
-                  title={player.name}
+                  title={`Player ${player.user_id}`}
                 />
               );
             })}
@@ -79,13 +163,51 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
         <div className="poker-action-space">
           <button 
             className="poker-join-button"
-            disabled={loading}
+            disabled={loading || !connected}
             onClick={handleJoin}
           >
             {loading ? 'Joining...' : 'Join'}
           </button>
+          
+          <button 
+            className="poker-reset-button"
+            disabled={!connected}
+            onClick={handleReset}
+            style={{
+              marginTop: '10px',
+              padding: '8px 16px',
+              backgroundColor: '#ff4444',
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              cursor: connected ? 'pointer' : 'not-allowed',
+              opacity: connected ? 1 : 0.5,
+              fontSize: '14px',
+            }}
+          >
+            Reset Game (Debug)
+          </button>
         </div>
       </div>
+
+      {error && (
+        <div className="poker-error" style={{ 
+          position: 'absolute',
+          bottom: '30px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          color: '#ff6b6b', 
+          fontSize: '13px',
+          fontWeight: 'bold',
+          textAlign: 'center',
+          width: 'calc(100% - 40px)',
+          maxWidth: '350px',
+          opacity: 0.85,
+          textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
+        }}>
+          {error}
+        </div>
+      )}
     </div>
   );
 };

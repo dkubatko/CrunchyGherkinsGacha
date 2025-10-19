@@ -58,13 +58,15 @@ A Texas Hold'em-style poker game integrated into the Casino mini-app, where play
 ### 6. Dealing Cards
 **Hole Cards (Player Hands):**
 - Each player receives **2 cards**
-- Cards format: `{Character} + {Rarity}`
-  - Example: "Legendary Daniel", "Common Ash"
-- Character and rarity are randomized independently
+- Cards format: `{Source} + {Rarity}`
+  - Source can be either a **Character** or a **User**
+  - Example: "Legendary Character:Daniel", "Common User:Alice"
+- Source (character/user) and rarity are randomized independently
 
 **Community Cards:**
 - 5 community cards dealt in stages (see Betting Rounds)
-- Also format: `{Character} + {Rarity}`
+- Also format: `{Source} + {Rarity}`
+- Source can be character or user
 - Randomized independently
 
 ### 7. Betting Rounds

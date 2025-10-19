@@ -391,6 +391,43 @@ class MinesweeperGame(BaseModel):
         }
 
 
+class PokerGame(BaseModel):
+    """Represents a poker game."""
+
+    id: int
+    chat_id: str
+    status: str
+    pot: int
+    current_bet: int
+    min_betting_balance: Optional[int]
+    community_cards: List[Dict[str, Any]]
+    countdown_start_time: Optional[datetime.datetime]
+    current_player_turn: Optional[int]
+    dealer_position: Optional[int]
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    completed_at: Optional[datetime.datetime]
+
+
+class PokerPlayer(BaseModel):
+    """Represents a player in a poker game."""
+
+    id: int
+    game_id: int
+    user_id: int
+    chat_id: str
+    seat_position: int
+    spin_balance: int
+    betting_balance: int
+    current_bet: int
+    total_bet: int
+    hole_cards: List[Dict[str, Any]]
+    status: str
+    last_action: Optional[str]
+    joined_at: datetime.datetime
+    updated_at: datetime.datetime
+
+
 def connect():
     """Connect to the SQLite database."""
     dir_path = os.path.dirname(DB_PATH)
@@ -1752,6 +1789,219 @@ def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
             (str(chat_id),),
         )
         return {row["modifier"]: row["count"] for row in cursor.fetchall()}
+
+
+# ============================================================================
+# Poker Game Functions
+# ============================================================================
+
+
+def get_active_poker_game(chat_id: str) -> Optional[PokerGame]:
+    """Get the active poker game for a chat (not completed).
+
+    Args:
+        chat_id: The chat ID to get the game for.
+
+    Returns:
+        PokerGame instance or None if no active game exists.
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
+            SELECT * FROM poker_games
+            WHERE chat_id = ? AND status != 'completed'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (str(chat_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        row_dict = dict(row)
+        # Parse JSON fields
+        row_dict["community_cards"] = (
+            json.loads(row_dict["community_cards"]) if row_dict["community_cards"] else []
+        )
+        return PokerGame(**row_dict)
+
+
+def create_poker_game(chat_id: str) -> int:
+    """Create a new poker game.
+
+    Args:
+        chat_id: The chat ID where the game is played.
+
+    Returns:
+        The ID of the created game.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO poker_games (
+                chat_id, status, pot, current_bet,
+                created_at, updated_at
+            ) VALUES (?, 'waiting', 0, 0, ?, ?)
+            """,
+            (str(chat_id), now, now),
+        )
+        return cursor.lastrowid
+
+
+def get_poker_players(game_id: int) -> List[PokerPlayer]:
+    """Get all players in a poker game.
+
+    Args:
+        game_id: The game ID.
+
+    Returns:
+        List of PokerPlayer instances.
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
+            SELECT * FROM poker_players
+            WHERE game_id = ?
+            ORDER BY seat_position
+            """,
+            (game_id,),
+        )
+        players = []
+        for row in cursor.fetchall():
+            row_dict = dict(row)
+            # Parse JSON fields
+            row_dict["hole_cards"] = (
+                json.loads(row_dict["hole_cards"]) if row_dict["hole_cards"] else []
+            )
+            players.append(PokerPlayer(**row_dict))
+        return players
+
+
+def get_poker_player_slot_icons(game_id: int) -> Dict[int, str]:
+    """Get slot icons for all players in a poker game.
+
+    Args:
+        game_id: The game ID.
+
+    Returns:
+        Dictionary mapping user_id to slot_iconb64.
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
+            SELECT pp.user_id, u.slot_iconb64
+            FROM poker_players pp
+            LEFT JOIN users u ON pp.user_id = u.user_id
+            WHERE pp.game_id = ? AND u.slot_iconb64 IS NOT NULL
+            """,
+            (game_id,),
+        )
+        return {row["user_id"]: row["slot_iconb64"] for row in cursor.fetchall()}
+
+
+def add_poker_player(
+    game_id: int, user_id: int, chat_id: str, seat_position: int, spin_balance: int
+) -> int:
+    """Add a player to a poker game.
+
+    Args:
+        game_id: The game ID.
+        user_id: The user's ID.
+        chat_id: The chat ID.
+        seat_position: The seat position around the table.
+        spin_balance: The player's spin balance.
+
+    Returns:
+        The ID of the created player record.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            INSERT INTO poker_players (
+                game_id, user_id, chat_id, seat_position,
+                spin_balance, betting_balance, current_bet, total_bet,
+                status, joined_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, 0, 0, 'active', ?, ?)
+            """,
+            (game_id, user_id, str(chat_id), seat_position, spin_balance, spin_balance, now, now),
+        )
+        return cursor.lastrowid
+
+
+def update_poker_game_status(
+    game_id: int, status: str, countdown_start: Optional[datetime.datetime] = None
+) -> None:
+    """Update a poker game's status.
+
+    Args:
+        game_id: The game ID.
+        status: The new status.
+        countdown_start: Optional countdown start time.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        if countdown_start:
+            cursor.execute(
+                """
+                UPDATE poker_games
+                SET status = ?, countdown_start_time = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, countdown_start, now, game_id),
+            )
+        else:
+            cursor.execute(
+                """
+                UPDATE poker_games
+                SET status = ?, updated_at = ?
+                WHERE id = ?
+                """,
+                (status, now, game_id),
+            )
+
+
+def delete_poker_game(chat_id: str) -> bool:
+    """Delete the active poker game and all associated players for a chat.
+
+    Args:
+        chat_id: The chat ID.
+
+    Returns:
+        True if a game was deleted, False otherwise.
+    """
+    with _managed_connection(commit=True) as (_, cursor):
+        # Get the active game
+        cursor.execute(
+            """
+            SELECT id FROM poker_games
+            WHERE chat_id = ? AND status != 'completed'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (str(chat_id),),
+        )
+        row = cursor.fetchone()
+        if not row:
+            return False
+
+        game_id = row[0]
+
+        # Delete all players first (foreign key constraint)
+        cursor.execute(
+            "DELETE FROM poker_players WHERE game_id = ?",
+            (game_id,),
+        )
+
+        # Delete the game
+        cursor.execute(
+            "DELETE FROM poker_games WHERE id = ?",
+            (game_id,),
+        )
+
+        return cursor.rowcount > 0
 
 
 create_tables()
