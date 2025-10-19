@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import './Casino.css';
 import Slots from './Slots';
 import Minesweeper from './Minesweeper';
+import Poker from './Poker';
 import { TelegramUtils } from '../utils/telegram';
 import slotsCover from '../assets/casino/slots_cover.png';
 import minesweeperCover from '../assets/casino/minesweeper_cover.png';
+import pokerCover from '../assets/casino/poker_cover.png';
 
 interface SlotSymbol {
   id: number;
@@ -30,7 +32,7 @@ interface CasinoProps {
   updateSpins: (count: number, nextRefreshTime?: string | null) => void;
 }
 
-type GameView = 'catalog' | 'slots' | 'minesweeper';
+type GameView = 'catalog' | 'slots' | 'minesweeper' | 'poker';
 
 type GameInfo = {
   title: string;
@@ -38,7 +40,7 @@ type GameInfo = {
   rules: string[];
 };
 
-const GAME_INFO: Record<'slots' | 'minesweeper', GameInfo> = {
+const GAME_INFO: Record<'slots' | 'minesweeper' | 'poker', GameInfo> = {
   slots: {
     title: 'Slots',
     description: 'Spin the reels to win cards!',
@@ -56,6 +58,15 @@ const GAME_INFO: Record<'slots' | 'minesweeper', GameInfo> = {
       'Reveal three symbols to win a card',
       'Reveal a bomb and lose your bet card!'
     ]
+  },
+  poker: {
+    title: 'Poker',
+    description: 'Play Texas Hold\'em Poker!',
+    rules: [
+      'Join a table to start playing',
+      'Make the best 5-card hand',
+      'Win chips and trade them for cards!'
+    ]
   }
 };
 
@@ -69,7 +80,7 @@ export default function Casino({
   updateSpins
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
-  const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | null>(null);
+  const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | 'poker' | null>(null);
 
   // Setup back button when viewing a game
   useEffect(() => {
@@ -85,12 +96,12 @@ export default function Casino({
     return cleanup;
   }, [currentView]);
 
-  const handleGameSelect = (game: 'slots' | 'minesweeper') => {
+  const handleGameSelect = (game: 'slots' | 'minesweeper' | 'poker') => {
     TelegramUtils.triggerHapticSelection();
     setCurrentView(game);
   };
 
-  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'minesweeper') => {
+  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'minesweeper' | 'poker') => {
     e.stopPropagation(); // Prevent card click
     TelegramUtils.triggerHapticImpact('light');
     setShowInfo(game);
@@ -118,6 +129,15 @@ export default function Casino({
   if (currentView === 'minesweeper') {
     return (
       <Minesweeper
+        chatId={chatId}
+        initData={initData}
+      />
+    );
+  }
+
+  if (currentView === 'poker') {
+    return (
+      <Poker
         chatId={chatId}
         initData={initData}
       />
@@ -165,6 +185,24 @@ export default function Casino({
             <div className="casino-game-info">
               <div className="casino-game-name">Minesweeper</div>
               <div className="casino-game-description">Clear the board</div>
+            </div>
+          </div>
+          
+          <div 
+            className="casino-game-card"
+            onClick={() => handleGameSelect('poker')}
+          >
+            <img src={pokerCover} alt="Poker" className="casino-game-image" />
+            <button 
+              className="casino-info-icon"
+              onClick={(e) => handleInfoClick(e, 'poker')}
+              aria-label="Poker info"
+            >
+              i
+            </button>
+            <div className="casino-game-info">
+              <div className="casino-game-name">Poker</div>
+              <div className="casino-game-description">Texas Hold'em</div>
             </div>
           </div>
         </div>

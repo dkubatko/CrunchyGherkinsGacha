@@ -1,0 +1,144 @@
+.poker-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  width: 100%;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.poker-container > h1 {
+  margin: 0;
+}
+
+.poker-game {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px;
+  width: 100%;
+  flex: 1;
+  background: linear-gradient(135deg, #1a472a 0%, #2d5f3d 100%);
+  border: 4px solid #4caf50;
+  border-radius: 18px;
+  box-shadow: 0 0 18px rgba(76, 175, 80, 0.3), inset 0 0 18px rgba(0, 0, 0, 0.2);
+  user-select: none;
+  overflow: hidden;
+}
+
+.poker-game-space {
+  flex: 0 0 65%;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.poker-action-space {
+  flex: 0 0 35%;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.poker-table {
+  width: 250px;
+  height: 250px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #0a5f38 0%, #0d7a4a 100%);
+  border: 7px solid #8b4513;
+  box-shadow: 
+    0 0 0 9px #654321,
+    inset 0 4px 20px rgba(0, 0, 0, 0.4),
+    0 8px 16px rgba(0, 0, 0, 0.3);
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.poker-table::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 85%;
+  height: 85%;
+  border-radius: 50%;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+}
+
+.player-icon {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 2px 8px rgba(0, 0, 0, 0.3),
+    inset 0 1px 3px rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+  pointer-events: none;
+  transition: transform 0.3s ease;
+}
+
+.community-cards {
+  display: flex;
+  gap: 5px;
+}
+
+.card-outline {
+  width: 28px;
+  height: 42px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 2px rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+}
+
+.card-outline:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.poker-join-button {
+  padding: 14px 48px;
+  font-size: 18px;
+  font-weight: 600;
+  color: white;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  border: 3px solid #2e7d32;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.poker-join-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #45a049 0%, #4caf50 100%);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+.poker-join-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.poker-join-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
