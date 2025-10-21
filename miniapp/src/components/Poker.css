@@ -15,6 +15,7 @@
 }
 
 .poker-game {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -188,31 +189,83 @@
   text-align: center;
 }
 
+.poker-debug-button {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+  z-index: 10;
+}
+
+.poker-debug-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: scale(1.05);
+}
+
+.poker-debug-button:active {
+  transform: scale(0.95);
+}
+
+.poker-debug-menu {
+  position: absolute;
+  top: 54px;
+  left: 12px;
+  background: rgba(30, 30, 30, 0.95);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 10;
+  width: max-content;
+}
+
+.poker-debug-menu-item {
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  white-space: nowrap;
+}
+
+.poker-debug-menu-item:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.poker-debug-menu-item:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.poker-debug-menu-item:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
 .poker-connecting-message {
   color: #888;
   margin-bottom: 10px;
-}
-
-.poker-reset-button {
-  margin-top: 10px;
-  padding: 8px 16px;
-  background-color: #ff4444;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-}
-
-.poker-reset-button:hover:not(:disabled) {
-  background-color: #cc0000;
-  transform: translateY(-1px);
-}
-
-.poker-reset-button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .poker-error {

@@ -27,8 +27,10 @@ declare global {
 const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [showDebugMenu, setShowDebugMenu] = useState(false);
   const wsRef = useRef<PokerWebSocket | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const debugMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Get state from Zustand store
   const { connectionStatus, error, gameState, playerSlotIcons } = usePokerStore();
@@ -139,6 +141,23 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
     };
   }, [gameState]);
 
+  // Close debug menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (debugMenuRef.current && !debugMenuRef.current.contains(event.target as Node)) {
+        setShowDebugMenu(false);
+      }
+    };
+
+    if (showDebugMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showDebugMenu]);
+
   // Calculate circular positions for players around the table
   const getPlayerPosition = (index: number, total: number) => {
     const angle = (index * 360) / total - 90; // Start from top
@@ -199,6 +218,33 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
       )}
       
       <div className="poker-game">
+        {/* Debug Settings Button */}
+        <div ref={debugMenuRef}>
+          <button 
+            className="poker-debug-button"
+            onClick={() => setShowDebugMenu(!showDebugMenu)}
+            title="Debug Settings"
+          >
+            ⚙️
+          </button>
+          
+          {/* Debug Menu Dropdown */}
+          {showDebugMenu && (
+            <div className="poker-debug-menu">
+              <button 
+                className="poker-debug-menu-item"
+                disabled={!connected}
+                onClick={() => {
+                  handleReset();
+                  setShowDebugMenu(false);
+                }}
+              >
+                Reset Game
+              </button>
+            </div>
+          )}
+        </div>
+        
         <div className="poker-game-space">
           <div className="poker-table-wrapper">
             <div className="poker-table">
@@ -287,14 +333,6 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               );
             }
           })()}
-          
-          <button 
-            className="poker-reset-button"
-            disabled={!connected}
-            onClick={handleReset}
-          >
-            Reset Game (Debug)
-          </button>
         </div>
       </div>
 
