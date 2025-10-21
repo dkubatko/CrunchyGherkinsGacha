@@ -6,12 +6,13 @@ import logging
 import hmac
 import hashlib
 import uvicorn
+import socketio
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import List, Optional, Dict, Any, Tuple, Set
 from telegram.constants import ParseMode
-from fastapi import FastAPI, HTTPException, Header, Query, Depends, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from pydantic import BaseModel
@@ -24,7 +25,6 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from utils import database, gemini, rolling, minesweeper, poker
 from utils.database import Card as APICard
-from utils.poker import PokerGameStateResponse
 from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     RARITIES,
@@ -42,7 +42,7 @@ from settings.constants import (
     MINESWEEPER_LOSS_MESSAGE,
     MINESWEEPER_BET_MESSAGE,
 )
-from settings.constants import get_lock_cost, get_spin_reward
+from settings.constants import POKER_NAMESPACE, get_lock_cost, get_spin_reward
 from utils.miniapp import encode_single_card_token
 from utils.logging_utils import configure_logging
 
@@ -89,6 +89,7 @@ def create_bot_instance():
 
 
 app = FastAPI()
+fastapi_app = app
 
 
 # Environment-based configuration
@@ -295,47 +296,6 @@ class MinesweeperUpdateResponse(BaseModel):
     bet_card_rarity: Optional[str] = None  # Rarity of the bet card (for alerts)
     source_display_name: Optional[str] = None  # Display name of the selected source (for alerts)
     claim_point_awarded: bool = False  # True if this reveal awarded a claim point
-
-
-# ============================================================================
-# Poker WebSocket Message Models
-# ============================================================================
-
-
-class PokerWSConnectMessage(BaseModel):
-    """Initial connection message from client."""
-
-    type: str  # Should be 'connect'
-    user_id: int
-    init_data: str  # Telegram initData for validation
-
-
-class PokerWSJoinMessage(BaseModel):
-    """Message to join the poker table."""
-
-    type: str  # Should be 'join'
-    spin_balance: int
-
-
-class PokerWSGameStateMessage(BaseModel):
-    """WebSocket message containing game state."""
-
-    type: str  # 'game_state'
-    data: Optional[PokerGameStateResponse] = None
-
-
-class PokerWSPlayerJoinedMessage(BaseModel):
-    """WebSocket message when a player joins."""
-
-    type: str  # 'player_joined'
-    data: PokerGameStateResponse
-
-
-class PokerWSErrorMessage(BaseModel):
-    """WebSocket error message."""
-
-    type: str  # 'error'
-    message: str
 
 
 _RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [
@@ -2756,9 +2716,11 @@ async def reset_poker_game(chat_id: str, authorization: str = Header(None)):
         if deleted:
             logger.info(f"Reset poker game for chat_id={chat_id}")
 
+            # Cancel any active countdown for this chat
+            poker.cancel_countdown(chat_id)
+
             # Broadcast reset to all connected players
-            reset_msg = {"type": "game_state", "data": None}
-            await poker.manager.broadcast_to_chat(reset_msg, chat_id)
+            await poker.broadcast_game_state(chat_id, None)
 
             return {"success": True, "message": "Game reset successfully"}
         else:
@@ -2772,116 +2734,118 @@ async def reset_poker_game(chat_id: str, authorization: str = Header(None)):
 
 
 # ============================================================================
-# Poker WebSocket Endpoint
+# Poker Socket.IO Endpoint
 # ============================================================================
 
 
-@app.websocket("/ws/poker/{chat_id}")
-async def poker_websocket(websocket: WebSocket, chat_id: str):
-    """
-    WebSocket endpoint for poker game real-time updates.
+sio = socketio.AsyncServer(
+    async_mode="asgi",
+    cors_allowed_origins=allowed_origins,
+    logger=False,
+    engineio_logger=False,
+)
+poker.configure_socket_server(sio)
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)
 
-    Connection flow:
-    1. Client connects and sends PokerWSConnectMessage with initData
-    2. Server validates initData
-    3. Server sends current game state (PokerWSGameStateMessage)
-    4. Client can send actions (join, etc.)
-    5. Server broadcasts updates to all connected players
-    """
-    user_id = None
-    validated = False
+
+@sio.event(namespace=POKER_NAMESPACE)
+async def connect(sid, environ, auth):  # type: ignore[override]
+    """Handle new Socket.IO connections for poker."""
 
     try:
-        # Accept the connection
-        await websocket.accept()
+        if not auth:
+            raise ConnectionRefusedError("Missing authentication payload")
 
-        # Wait for initial connection message with initData
-        try:
-            initial_data = await websocket.receive_json()
-            connect_msg = PokerWSConnectMessage(**initial_data)
-        except Exception as e:
-            error_msg = PokerWSErrorMessage(
-                type="error", message=f"Invalid connection message format: {str(e)}"
-            )
-            await websocket.send_json(error_msg.dict())
-            await websocket.close()
-            return
+        if not isinstance(auth, dict):
+            raise ConnectionRefusedError("Invalid authentication payload")
 
-        # Validate Telegram initData
-        validated_data = validate_telegram_init_data(connect_msg.init_data)
+        chat_id = auth.get("chatId") or auth.get("chat_id")
+        user_id = auth.get("userId") or auth.get("user_id")
+        init_data = auth.get("initData") or auth.get("init_data")
+
+        if chat_id is None or user_id is None or not init_data:
+            raise ConnectionRefusedError("Incomplete authentication payload")
+
+        chat_id = str(chat_id)
+        user_id = int(user_id)
+
+        validated_data = validate_telegram_init_data(init_data)
         if not validated_data or not validated_data.get("user"):
-            error_msg = PokerWSErrorMessage(
-                type="error", message="Invalid or expired Telegram initData"
-            )
-            await websocket.send_json(error_msg.dict())
-            await websocket.close()
-            return
+            raise ConnectionRefusedError("Invalid or expired Telegram initData")
 
-        # Extract user_id from validated data
         telegram_user = validated_data["user"]
-        validated_user_id = telegram_user.get("id")
+        if telegram_user.get("id") != user_id:
+            raise ConnectionRefusedError("User ID mismatch")
 
-        # Verify user_id matches
-        if validated_user_id != connect_msg.user_id:
-            error_msg = PokerWSErrorMessage(type="error", message="User ID mismatch")
-            await websocket.send_json(error_msg.dict())
-            await websocket.close()
-            return
+        await sio.enter_room(sid, chat_id, namespace=POKER_NAMESPACE)
+        poker.register_session(sid, chat_id, user_id)
+        await poker.send_initial_state(sid, chat_id)
 
-        user_id = connect_msg.user_id
-        validated = True
+        logger.info(f"Poker Socket.IO connected: user_id={user_id}, chat_id={chat_id}")
+    except ConnectionRefusedError as exc:
+        logger.warning("Poker Socket.IO connection refused: %s", exc)
+        raise
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error(f"Error during poker Socket.IO connect: {exc}")
+        raise ConnectionRefusedError("Connection failed")
 
-        # Register connection
-        await poker.manager.connect(websocket, chat_id, user_id)
-        logger.info(f"Poker WebSocket connected: user_id={user_id}, chat_id={chat_id}")
 
-        # Send current game state with slot icons (initial load)
-        game_state = poker.get_game_state(chat_id, include_slot_icons=True)
-        response = PokerWSGameStateMessage(type="game_state", data=game_state)
-        await websocket.send_json(response.dict())
+@sio.on("join", namespace=POKER_NAMESPACE)
+async def poker_join(sid, data):  # type: ignore[override]
+    """Handle player join requests."""
 
-        # Listen for messages
-        while True:
-            message_data = await websocket.receive_json()
-            message_type = message_data.get("type")
+    session = poker.get_session(sid)
+    if not session:
+        await poker.emit_error(sid, "Not authenticated")
+        return
 
-            if message_type == "join":
-                # Handle player joining
-                try:
-                    join_msg = PokerWSJoinMessage(**message_data)
+    if not isinstance(data, dict):
+        await poker.emit_error(sid, "Invalid join payload")
+        return
 
-                    # Get updated game state (includes only new player's slot icon in players array)
-                    updated_game_state = await poker.handle_player_join(
-                        chat_id=chat_id, user_id=user_id, spin_balance=join_msg.spin_balance
-                    )
+    chat_id = session["chat_id"]
+    user_id = session["user_id"]
 
-                    # Broadcast updated game state to all players
-                    broadcast_msg = PokerWSPlayerJoinedMessage(
-                        type="player_joined", data=updated_game_state
-                    )
-                    await poker.manager.broadcast_to_chat(broadcast_msg.dict(), chat_id)
+    try:
+        spin_balance = int(data.get("spin_balance"))
+    except (TypeError, ValueError):
+        await poker.emit_error(sid, "Invalid spin balance")
+        return
 
-                except ValueError as e:
-                    error_msg = PokerWSErrorMessage(type="error", message=str(e))
-                    await websocket.send_json(error_msg.dict())
-                except Exception as e:
-                    logger.error(f"Error handling player join: {e}")
-                    error_msg = PokerWSErrorMessage(type="error", message="Failed to join game")
-                    await websocket.send_json(error_msg.dict())
+    try:
+        updated_game_state = await poker.handle_player_join(chat_id, user_id, spin_balance)
+    except ValueError as exc:
+        await poker.emit_error(sid, str(exc))
+        return
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error(f"Error handling poker join: user_id={user_id}, chat_id={chat_id}, {exc}")
+        await poker.emit_error(sid, "Failed to join game")
+        return
 
-            # Add more message types here as we implement them
-            # elif message_type == 'action':
-            #     # Handle player action (check, raise, fold, etc.)
-            #     pass
+    await poker.broadcast_game_state(chat_id, updated_game_state, event="player_joined")
 
-    except WebSocketDisconnect:
-        if user_id and validated:
-            poker.manager.disconnect(chat_id, user_id, websocket)
-            logger.info(f"Poker WebSocket disconnected: user_id={user_id}, chat_id={chat_id}")
-    except Exception as e:
-        logger.error(f"Error in poker websocket: {e}")
-        if user_id and validated:
-            poker.manager.disconnect(chat_id, user_id, websocket)
+
+@sio.event(namespace=POKER_NAMESPACE)
+async def disconnect(sid):  # type: ignore[override]
+    """Handle Socket.IO disconnect events."""
+
+    session = poker.pop_session(sid)
+    if not session:
+        return
+
+    chat_id = session["chat_id"]
+    user_id = session["user_id"]
+
+    logger.info(f"Poker Socket.IO disconnected: user_id={user_id}, chat_id={chat_id}")
+
+    try:
+        updated_game_state = await poker.handle_player_leave(chat_id, user_id)
+        if updated_game_state:
+            await poker.broadcast_game_state(chat_id, updated_game_state)
+    except Exception as exc:  # pragma: no cover - defensive logging
+        logger.error(
+            f"Error handling poker disconnect: user_id={user_id}, chat_id={chat_id}, {exc}"
+        )
 
 
 def run_server():

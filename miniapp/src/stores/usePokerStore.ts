@@ -20,6 +20,7 @@ export interface PokerGameState {
   min_betting_balance?: number;
   community_cards: Array<{ suit: string; rank: string }>;
   countdown_start_time?: string;
+  countdown_duration_seconds?: number;
   current_player_turn?: number;
   dealer_position?: number;
   players: PokerPlayer[];
@@ -62,8 +63,14 @@ export const usePokerStore = create<PokerState>((set) => ({
   setError: (error) => set({ error }),
   
   setGameState: (gameState) => {
+    // If game is null (reset), clear everything including cached icons
+    if (!gameState) {
+      set({ gameState: null, playerSlotIcons: {} });
+      return;
+    }
+    
     // Extract and cache slot icons from players if present
-    if (gameState?.players) {
+    if (gameState.players) {
       const icons: Record<number, string> = {};
       let hasIcons = false;
       

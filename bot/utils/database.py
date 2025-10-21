@@ -1931,6 +1931,19 @@ def add_poker_player(
         return cursor.lastrowid
 
 
+def delete_poker_player(player_id: int) -> None:
+    """Delete a poker player from the database.
+
+    Args:
+        player_id: The player ID to delete.
+    """
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            "DELETE FROM poker_players WHERE id = ?",
+            (player_id,),
+        )
+
+
 def update_poker_game_status(
     game_id: int, status: str, countdown_start: Optional[datetime.datetime] = None
 ) -> None:
