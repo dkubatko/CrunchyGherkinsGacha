@@ -24,12 +24,17 @@ export class PokerWebSocket {
   private createSocket(): Socket {
     return io(`${API_BASE_URL}/poker`, {
       path: '/socket.io',
-      transports: ['websocket'],
       auth: {
-        chatId: this.chatId,
-        userId: this.userId,
-        initData: this.initData,
+        chat_id: this.chatId,
+        user_id: this.userId,
+        init_data: this.initData,
       },
+      query: {
+        chat_id: this.chatId,
+        user_id: String(this.userId),
+        init_data: this.initData,
+      },
+      transports: ['websocket', 'polling'],
       forceNew: true,
       reconnection: true,
       reconnectionAttempts: this.maxReconnectAttempts,

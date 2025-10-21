@@ -2753,15 +2753,17 @@ async def connect(sid, environ, auth):  # type: ignore[override]
     """Handle new Socket.IO connections for poker."""
 
     try:
-        if not auth:
-            raise ConnectionRefusedError("Missing authentication payload")
+        query_params = urllib.parse.parse_qs(environ.get("QUERY_STRING", ""))
 
-        if not isinstance(auth, dict):
-            raise ConnectionRefusedError("Invalid authentication payload")
+        auth_payload = auth if isinstance(auth, dict) else {}
 
-        chat_id = auth.get("chatId") or auth.get("chat_id")
-        user_id = auth.get("userId") or auth.get("user_id")
-        init_data = auth.get("initData") or auth.get("init_data")
+        chat_id = auth_payload.get("chat_id") or query_params.get("chat_id", [None])[0]
+        user_id = auth_payload.get("user_id") or query_params.get("user_id", [None])[0]
+        init_data = (
+            auth_payload.get("init_data")
+            or query_params.get("init_data", [None])[0]
+            or extract_init_data_from_header(environ.get("HTTP_AUTHORIZATION"))
+        )
 
         if chat_id is None or user_id is None or not init_data:
             raise ConnectionRefusedError("Incomplete authentication payload")
