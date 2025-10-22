@@ -28,6 +28,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState<number | null>(null);
   const [showDebugMenu, setShowDebugMenu] = useState(false);
+  const [fakePlayers, setFakePlayers] = useState<Array<{ user_id: number }>>([]);
   const wsRef = useRef<PokerWebSocket | null>(null);
   const countdownIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const debugMenuRef = useRef<HTMLDivElement | null>(null);
@@ -199,10 +200,18 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
     try {
       await wsRef.current.reset();
       usePokerStore.getState().setError(null);
+      // Clear fake players on reset
+      setFakePlayers([]);
     } catch (error) {
       console.error('Failed to reset game:', error);
       usePokerStore.getState().setError('Failed to reset game');
     }
+  };
+
+  const handleAddFakePlayer = () => {
+    // Generate a random fake user ID (negative to avoid conflicts with real users)
+    const fakeUserId = -Math.floor(Math.random() * 10000);
+    setFakePlayers(prev => [...prev, { user_id: fakeUserId }]);
   };
 
   const players = gameState?.players || [];
@@ -233,6 +242,15 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
             <div className="poker-debug-menu">
               <button 
                 className="poker-debug-menu-item"
+                onClick={() => {
+                  handleAddFakePlayer();
+                  setShowDebugMenu(false);
+                }}
+              >
+                Add Player
+              </button>
+              <button 
+                className="poker-debug-menu-item"
                 disabled={!connected}
                 onClick={() => {
                   handleReset();
@@ -257,9 +275,10 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               </div>
             </div>
             
-            {/* Dynamic player icons */}
-            {players.map((player, index) => {
-              const { x, y } = getPlayerPosition(index, players.length);
+            {/* Dynamic player icons - combine real players and fake players */}
+            {[...players, ...fakePlayers].map((player, index) => {
+              const totalPlayers = players.length + fakePlayers.length;
+              const { x, y } = getPlayerPosition(index, totalPlayers);
               // Use cached slot icon from store
               const slotIcon = playerSlotIcons[player.user_id];
               return (
