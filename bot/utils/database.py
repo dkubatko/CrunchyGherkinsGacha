@@ -257,6 +257,15 @@ class User(BaseModel):
     slot_iconb64: Optional[str] = None
 
 
+class UserWithPokerCard(BaseModel):
+    user_id: int
+    username: str
+    display_name: Optional[str]
+    profile_imageb64: Optional[str]
+    slot_iconb64: Optional[str] = None
+    poker_cardb64: Optional[str] = None
+
+
 class Card(BaseModel):
     id: int
     base_name: str
@@ -342,6 +351,15 @@ class Character(BaseModel):
     name: str
     imageb64: str
     slot_iconb64: Optional[str] = None
+
+
+class CharacterWithPokerCard(BaseModel):
+    id: int
+    chat_id: str
+    name: str
+    imageb64: str
+    slot_iconb64: Optional[str] = None
+    poker_cardb64: Optional[str] = None
 
 
 class Spins(BaseModel):
@@ -1126,24 +1144,32 @@ def upsert_user(
         )
 
 
-def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
-    """Update the display name and profile image for a user, and generate slot icon."""
-    # Generate slot machine icon
-    slot_icon_b64 = _generate_slot_icon(profile_imageb64)
-
+def update_user_profile(
+    user_id: int,
+    display_name: str,
+    profile_imageb64: str,
+    slot_iconb64: Optional[str] = None,
+    poker_cardb64: Optional[str] = None,
+) -> bool:
+    """Update the display name, profile image, slot icon, and poker card for a user."""
     with _managed_connection(commit=True) as (_, cursor):
-        if slot_icon_b64:
-            cursor.execute(
-                "UPDATE users SET display_name = ?, profile_imageb64 = ?, slot_iconb64 = ? WHERE user_id = ?",
-                (display_name, profile_imageb64, slot_icon_b64, user_id),
+        cursor.execute(
+            "UPDATE users SET display_name = ?, profile_imageb64 = ?, slot_iconb64 = ?, poker_cardb64 = ? WHERE user_id = ?",
+            (display_name, profile_imageb64, slot_iconb64, poker_cardb64, user_id),
+        )
+
+        generated_items = []
+        if slot_iconb64:
+            generated_items.append("slot icon")
+        if poker_cardb64:
+            generated_items.append("poker card")
+
+        if generated_items:
+            logger.info(
+                f"Updated user profile with {', '.join(generated_items)} for user {user_id}"
             )
-            logger.info(f"Updated user profile and slot icon for user {user_id}")
         else:
-            cursor.execute(
-                "UPDATE users SET display_name = ?, profile_imageb64 = ? WHERE user_id = ?",
-                (display_name, profile_imageb64, user_id),
-            )
-            logger.info(f"Updated user profile for user {user_id} (slot icon generation failed)")
+            logger.info(f"Updated user profile for user {user_id}")
 
         updated = cursor.rowcount > 0
     return updated
@@ -1155,6 +1181,14 @@ def get_user(user_id: int) -> Optional[User]:
         cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
         return User(**row) if row else None
+
+
+def get_user_with_poker_card(user_id: int) -> Optional[UserWithPokerCard]:
+    """Fetch a user record with poker card by ID."""
+    with _managed_connection() as (_, cursor):
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        row = cursor.fetchone()
+        return UserWithPokerCard(**row) if row else None
 
 
 def user_exists(user_id: int) -> bool:
@@ -1380,25 +1414,32 @@ def is_rolled_card_reroll_expired(roll_id: int) -> bool:
     return time_since_creation.total_seconds() > 5 * 60
 
 
-def add_character(chat_id: str, name: str, imageb64: str) -> int:
-    """Add a new character to the database and generate slot icon."""
-    # Generate slot machine icon
-    slot_icon_b64 = _generate_slot_icon(imageb64)
-
+def add_character(
+    chat_id: str,
+    name: str,
+    imageb64: str,
+    slot_iconb64: Optional[str] = None,
+    poker_cardb64: Optional[str] = None,
+) -> int:
+    """Add a new character to the database with optional slot icon and poker card."""
     with _managed_connection(commit=True) as (_, cursor):
-        if slot_icon_b64:
-            cursor.execute(
-                "INSERT INTO characters (chat_id, name, imageb64, slot_iconb64) VALUES (?, ?, ?, ?)",
-                (str(chat_id), name, imageb64, slot_icon_b64),
-            )
-            logger.info(f"Added character '{name}' with slot icon to chat {chat_id}")
-        else:
-            cursor.execute(
-                "INSERT INTO characters (chat_id, name, imageb64) VALUES (?, ?, ?)",
-                (str(chat_id), name, imageb64),
-            )
-            logger.info(f"Added character '{name}' to chat {chat_id} (slot icon generation failed)")
+        cursor.execute(
+            "INSERT INTO characters (chat_id, name, imageb64, slot_iconb64, poker_cardb64) VALUES (?, ?, ?, ?, ?)",
+            (str(chat_id), name, imageb64, slot_iconb64, poker_cardb64),
+        )
 
+        generated_items = []
+        if slot_iconb64:
+            generated_items.append("slot icon")
+        if poker_cardb64:
+            generated_items.append("poker card")
+
+        if generated_items:
+            logger.info(
+                f"Added character '{name}' with {', '.join(generated_items)} to chat {chat_id}"
+            )
+        else:
+            logger.info(f"Added character '{name}' to chat {chat_id}")
         return cursor.lastrowid
 
 
@@ -1418,29 +1459,55 @@ def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
         return Character(**row) if row else None
 
 
-def update_character_image(character_id: int, imageb64: str) -> bool:
-    """Update a character's image and regenerate the slot icon when possible."""
-    slot_icon_b64 = _generate_slot_icon(imageb64)
+def get_character_by_name_with_poker_card(
+    chat_id: str, name: str
+) -> Optional[CharacterWithPokerCard]:
+    """Fetch the most recently added character with poker card for a chat by case-insensitive name."""
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
+            SELECT * FROM characters
+            WHERE chat_id = ? AND LOWER(name) = LOWER(?)
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (str(chat_id), name),
+        )
+        row = cursor.fetchone()
+        return CharacterWithPokerCard(**row) if row else None
 
+
+def update_character_profile(
+    character_id: int,
+    imageb64: str,
+    slot_iconb64: Optional[str] = None,
+    poker_cardb64: Optional[str] = None,
+) -> bool:
+    """Update a character's image, slot icon, and poker card."""
     with _managed_connection(commit=True) as (_, cursor):
         cursor.execute(
             """
             UPDATE characters
-            SET imageb64 = ?, slot_iconb64 = COALESCE(?, slot_iconb64)
+            SET imageb64 = ?, slot_iconb64 = COALESCE(?, slot_iconb64), poker_cardb64 = COALESCE(?, poker_cardb64)
             WHERE id = ?
             """,
-            (imageb64, slot_icon_b64, character_id),
+            (imageb64, slot_iconb64, poker_cardb64, character_id),
         )
         updated = cursor.rowcount > 0
 
         if updated:
-            if slot_icon_b64:
-                logger.info("Updated character %s image and regenerated slot icon", character_id)
-            else:
+            generated_items = []
+            if slot_iconb64:
+                generated_items.append("slot icon")
+            if poker_cardb64:
+                generated_items.append("poker card")
+
+            if generated_items:
                 logger.info(
-                    "Updated character %s image (slot icon unchanged due to generation failure)",
-                    character_id,
+                    "Updated character %s image and %s", character_id, ", ".join(generated_items)
                 )
+            else:
+                logger.info("Updated character %s image", character_id)
 
         return updated
 

@@ -12,6 +12,7 @@ from settings.constants import (
     RARITIES,
     CARD_TEMPLATES_PATH,
     SLOT_MACHINE_INSTRUCTION,
+    POKER_CARD_INSTRUCTION,
 )
 from utils.image import ImageUtil
 
@@ -153,4 +154,43 @@ class GeminiUtil:
             return None
         except Exception as e:
             logger.error(f"Error generating slot machine icon: {e}")
+            return None
+
+    def generate_poker_card(
+        self,
+        base_image_path: str | None = None,
+        base_image_b64: str | None = None,
+    ):
+        """Generate a 5:7 aspect ratio poker card from a user's image."""
+        try:
+            if base_image_path is None and base_image_b64 is None:
+                raise ValueError("Either base_image_path or base_image_b64 must be provided.")
+
+            # Generate poker card with casino styling
+            prompt = POKER_CARD_INSTRUCTION
+            logger.info("Requesting poker card generation with fancy casino styling")
+
+            # Prepare the source image
+            if base_image_b64:
+                source_bytes = base64.b64decode(base_image_b64)
+            else:
+                with open(base_image_path, "rb") as f:
+                    source_bytes = f.read()
+
+            img = Image.open(BytesIO(source_bytes))
+
+            response = self.model.generate_content([prompt, img])
+
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    logger.info("Processing poker card")
+                    processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
+                    logger.info("Poker card generated and processed successfully.")
+                    return base64.b64encode(processed_image_bytes).decode("utf-8")
+
+            logger.warning("No image data found in poker card response.")
+            return None
+        except Exception as e:
+            logger.error(f"Error generating poker card: {e}")
             return None

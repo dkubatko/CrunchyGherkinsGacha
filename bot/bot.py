@@ -215,28 +215,75 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     # Check if it's a group chat or DM
     if update.effective_chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
-        # Group chat - add character functionality (admin only)
-        # Check if user is admin
-        if not ADMIN_USERNAME or user.username != ADMIN_USERNAME:
-            await message.reply_text(
-                "Only the bot administrator can add characters in group chats."
-            )
-            return
-
+        # Group chat - add/view character functionality
         command_text = message.text or message.caption or ""
         parts = command_text.split(maxsplit=1)
 
         if len(parts) < 2 or not parts[1].strip():
             await message.reply_text(
-                "Usage: /profile <character_name> (attach a photo with the command).\n\nTo view your profile, please DM me with /profile (no arguments)."
+                "Usage: /profile <character_name> (attach a photo to add/update, or no photo to view).\n\nTo view your profile, please DM me with /profile (no arguments)."
             )
             return
 
         character_name = parts[1].strip()
 
+        # If no photo attached, show character profile
         if not message.photo:
+            chat_id = str(update.effective_chat.id)
+            character_data = await asyncio.to_thread(
+                database.get_character_by_name_with_poker_card, chat_id, character_name
+            )
+
+            if not character_data:
+                await message.reply_text(
+                    f"Character '{character_name}' not found.\nUsage: /profile <character_name> (attach a photo to add)."
+                )
+                return
+
+            # Build response message
+            profile_text = f"👤 <b>Character Profile: {character_name}</b>\n\n"
+            profile_text += f"ID: {character_data.id}"
+
+            # Prepare media to send
+            media_group = []
+
+            if character_data.imageb64:
+                character_image_data = base64.b64decode(character_data.imageb64)
+                character_media = InputMediaPhoto(
+                    media=character_image_data, caption="🖼️ Character Image"
+                )
+                media_group.append(character_media)
+
+            if character_data.slot_iconb64:
+                slot_icon_data = base64.b64decode(character_data.slot_iconb64)
+                slot_media = InputMediaPhoto(media=slot_icon_data, caption="🎰 Slot Machine Icon")
+                media_group.append(slot_media)
+
+            if character_data.poker_cardb64:
+                poker_card_data = base64.b64decode(character_data.poker_cardb64)
+                poker_media = InputMediaPhoto(media=poker_card_data, caption="🃏 Poker Card")
+                media_group.append(poker_media)
+
+            # Send response
+            if media_group:
+                # Send profile text first
+                await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
+                # Then send images in the same thread
+                await context.bot.send_media_group(
+                    chat_id=update.effective_chat.id,
+                    message_thread_id=message.message_thread_id,
+                    media=media_group,
+                )
+            else:
+                profile_text += "\n\n📷 No character image available"
+                await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
+
+            return
+
+        # If photo is attached, add/update character (admin only)
+        if not ADMIN_USERNAME or user.username != ADMIN_USERNAME:
             await message.reply_text(
-                "Please attach a character image when using /profile in group chats."
+                "Only the bot administrator can add/update characters in group chats."
             )
             return
 
@@ -260,22 +307,39 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 database.get_character_by_name, chat_id, character_name
             )
 
+            # Generate slot icon and poker card for the character
+            slot_iconb64 = await asyncio.to_thread(
+                gemini_util.generate_slot_machine_icon, base_image_b64=image_b64
+            )
+            poker_cardb64 = await asyncio.to_thread(
+                gemini_util.generate_poker_card, base_image_b64=image_b64
+            )
+
             if existing_character:
                 updated = await asyncio.to_thread(
-                    database.update_character_image, existing_character.id, image_b64
+                    database.update_character_profile,
+                    existing_character.id,
+                    image_b64,
+                    slot_iconb64,
+                    poker_cardb64,
                 )
 
                 if updated:
                     await message.reply_text(
-                        f"Character '{character_name}' updated! Existing ID {existing_character.id} now has the new image."
+                        f"Character '{character_name}' updated! Existing ID {existing_character.id} now has the new image, slot icon, and poker card."
                     )
                 else:
                     await message.reply_text(
-                        "I couldn't update that character's image. Please try again or delete and re-add it."
+                        "I couldn't update that character's profile. Please try again or delete and re-add it."
                     )
             else:
                 character_id = await asyncio.to_thread(
-                    database.add_character, chat_id, character_name, image_b64
+                    database.add_character,
+                    chat_id,
+                    character_name,
+                    image_b64,
+                    slot_iconb64,
+                    poker_cardb64,
                 )
 
                 await message.reply_text(
@@ -337,12 +401,23 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             slot_media = InputMediaPhoto(media=slot_icon_data, caption="🎰 Slot Machine Icon")
             media_group.append(slot_media)
 
+        # Get user with poker card if available
+        user_with_poker = await asyncio.to_thread(database.get_user_with_poker_card, user.id)
+        if user_with_poker and user_with_poker.poker_cardb64:
+            poker_card_data = base64.b64decode(user_with_poker.poker_cardb64)
+            poker_media = InputMediaPhoto(media=poker_card_data, caption="🃏 Poker Card")
+            media_group.append(poker_media)
+
         # Send response
         if media_group:
             # Send profile text first
             await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
             # Then send images
-            await context.bot.send_media_group(chat_id=update.effective_chat.id, media=media_group)
+            await context.bot.send_media_group(
+                chat_id=update.effective_chat.id,
+                message_thread_id=message.message_thread_id,
+                media=media_group,
+            )
         else:
             profile_text += "\n\n📷 No profile image available"
             await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
@@ -371,9 +446,27 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
-        await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
 
-        await message.reply_text("Profile updated! Your new display name and image are saved.")
+        # Generate slot icon and poker card
+        slot_iconb64 = await asyncio.to_thread(
+            gemini_util.generate_slot_machine_icon, base_image_b64=image_b64
+        )
+        poker_cardb64 = await asyncio.to_thread(
+            gemini_util.generate_poker_card, base_image_b64=image_b64
+        )
+
+        # Update user profile with generated images
+        await asyncio.to_thread(
+            database.update_user_profile,
+            user.id,
+            display_name,
+            image_b64,
+            slot_iconb64,
+            poker_cardb64,
+        )
+        await message.reply_text(
+            "Profile updated! Your new display name, image, slot icon, and poker card are saved."
+        )
     finally:
         # Remove thinking reaction
         if not DEBUG_MODE:

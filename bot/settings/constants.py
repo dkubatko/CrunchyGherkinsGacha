@@ -144,6 +144,32 @@ Create a casino slot machine icon featuring the person's portrait.
 - Output MUST be exactly 1:1 square aspect ratio
 """
 
+POKER_CARD_INSTRUCTION = """
+Create a 5:7 portrait-oriented poker card featuring a digital art portrait of the person.
+
+CRITICAL REQUIREMENTS:
+- PAINT a completely new digital art portrait based on the photo - do NOT copy, paste, cut out, or directly use any part of the original photo
+- Recreate the person's likeness from scratch as a digital painting/illustration
+- The digital art portrait must be LARGE, taking up 70% of the entire card
+- Show the person from chest up (not just the face) - include shoulders, neck, and upper torso
+- Center the portrait perfectly in the middle of the card
+- The person should be clearly identifiable from their distinctive features
+
+STYLING:
+- Rich, detailed, luxurious high-end casino design
+- Premium quality with intricate decorative elements
+- Gold, red, and blue color scheme throughout - use metallic golds, deep reds, royal blues
+- Elaborate ornate patterns, flourishes, and borders around the portrait
+- High-end, collectible card quality - spare no detail
+
+FORBIDDEN:
+- No suit symbols (♠ ♥ ♦ ♣)
+- No numbers or letters (A K Q J 2-10)
+- No text or labels
+
+Output: Exactly 5:7 aspect ratio
+"""
+
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
