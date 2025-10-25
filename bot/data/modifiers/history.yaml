@@ -1,0 +1,28 @@
+id: 4
+set: history
+rarities:
+- name: Common
+  modifiers:
+  - Industrial
+  - Peasant
+  - Pioneer
+- name: Rare
+  modifiers:
+  - Ancient
+  - Cold War
+  - Medieval
+  - Mongol
+  - Napoleon
+  - Pirate
+  - Tribal
+  - Viking
+- name: Epic
+  modifiers:
+  - Renaissance
+  - Revolutionary
+  - Samurai
+  - Shogun
+  - Van Gogh
+- name: Legendary
+  modifiers:
+  - Biblical
