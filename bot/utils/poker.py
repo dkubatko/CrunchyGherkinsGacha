@@ -13,13 +13,14 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import random
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 
 from pydantic import BaseModel
 from socketio import AsyncServer
 
-from settings.constants import POKER_NAMESPACE
+from settings.constants import POKER_NAMESPACE, RARITIES
 from utils.database import PokerGame, PokerPlayer
 
 logger = logging.getLogger(__name__)
@@ -52,6 +53,7 @@ class PokerPlayerInfo(BaseModel):
     status: str
     last_action: Optional[str] = None
     slot_iconb64: Optional[str] = None
+    hole_cards: List[Dict[str, Any]] = []
 
     @classmethod
     def from_db_model(
@@ -67,6 +69,7 @@ class PokerPlayerInfo(BaseModel):
             status=player.status,
             last_action=player.last_action,
             slot_iconb64=slot_iconb64,
+            hole_cards=player.hole_cards,
         )
 
 
@@ -121,6 +124,122 @@ class PokerGameStateResponse(BaseModel):
 # ============================================================================
 # Internal Helpers (Private)
 # ============================================================================
+
+
+def _filter_hole_cards_for_user(
+    game_state: PokerGameStateResponse, user_id: int
+) -> PokerGameStateResponse:
+    """
+    Filter hole cards so that only the specified user can see their own cards.
+
+    Args:
+        game_state: The full game state
+        user_id: The user ID to show cards for
+
+    Returns:
+        A copy of the game state with filtered hole cards
+    """
+    # Create a copy with filtered players
+    filtered_players = []
+    for player_info in game_state.players:
+        player_dict = player_info.dict()
+        # Only include hole cards for the requesting user
+        if player_info.user_id != user_id:
+            player_dict["hole_cards"] = []
+        filtered_players.append(PokerPlayerInfo(**player_dict))
+
+    # Create a new game state with filtered players
+    state_dict = game_state.dict()
+    state_dict["players"] = filtered_players
+    return PokerGameStateResponse(**state_dict)
+
+
+def _generate_random_cards(chat_id: str, count: int = 2) -> List[Dict[str, Any]]:
+    """
+    Generate random cards for poker hands.
+
+    Args:
+        chat_id: The chat identifier to select sources from
+        count: Number of cards to generate (default: 2 for hole cards)
+
+    Returns:
+        List of card dictionaries with source_id, source_type, rarity, and poker_cardb64
+    """
+    from utils.database import get_chat_users_and_characters
+
+    # Get all available sources (users and characters) from the chat
+    sources = get_chat_users_and_characters(chat_id)
+
+    if not sources:
+        logger.warning(f"No users or characters found for chat_id={chat_id}")
+        return []
+
+    # Get all rarity names (not weighted selection)
+    rarities = list(RARITIES.keys())
+
+    if not rarities:
+        logger.warning("No rarities configured")
+        return []
+
+    cards = []
+    for _ in range(count):
+        # Select a random source
+        source = random.choice(sources)
+
+        # Select a random rarity (uniform distribution, not weighted)
+        rarity = random.choice(rarities)
+
+        # Create card dictionary with poker card image
+        card = {
+            "source_id": source["id"],
+            "source_type": source["type"],  # "user" or "character"
+            "rarity": rarity,
+            "poker_cardb64": _get_poker_card_image(source["id"], source["type"]),
+        }
+        cards.append(card)
+
+    return cards
+
+
+def _get_poker_card_image(source_id: int, source_type: str) -> Optional[str]:
+    """
+    Get the poker card image for a user or character.
+
+    Args:
+        source_id: The ID of the user or character
+        source_type: Either "user" or "character"
+
+    Returns:
+        Base64-encoded poker card image or None if not available
+    """
+    from utils.database import get_user, get_character_by_id
+
+    if source_type == "user":
+        user = get_user(source_id)
+        if user:
+            # Try to get poker_cardb64 if available
+            # Note: get_user returns User model, not UserWithPokerCard
+            # We need to fetch it separately
+            from utils.database import _managed_connection
+
+            with _managed_connection() as (_, cursor):
+                cursor.execute("SELECT poker_cardb64 FROM users WHERE user_id = ?", (source_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return row[0]
+    elif source_type == "character":
+        character = get_character_by_id(source_id)
+        if character:
+            # Try to get poker_cardb64 if available
+            from utils.database import _managed_connection
+
+            with _managed_connection() as (_, cursor):
+                cursor.execute("SELECT poker_cardb64 FROM characters WHERE id = ?", (source_id,))
+                row = cursor.fetchone()
+                if row and row[0]:
+                    return row[0]
+
+    return None
 
 
 async def _emit_game_state(
@@ -180,6 +299,7 @@ async def _start_game_after_countdown(chat_id: str):
             get_active_poker_game,
             get_poker_players,
             update_poker_game_status,
+            update_poker_player_hole_cards,
         )
 
         game = get_active_poker_game(chat_id)
@@ -192,8 +312,22 @@ async def _start_game_after_countdown(chat_id: str):
         active_players = [p for p in players if p.status != "out"]
 
         if len(active_players) >= 2:
+            # Deal two random cards to each active player
+            for player in active_players:
+                hole_cards = _generate_random_cards(chat_id, count=2)
+                update_poker_player_hole_cards(player.id, hole_cards)
+                # Log card metadata without the base64 image data
+                card_summary = [
+                    f"{card['source_type']}:{card['source_id']}({card['rarity']})"
+                    for card in hole_cards
+                ]
+                logger.info(
+                    f"Dealt hole cards to player: user_id={player.user_id}, "
+                    f"game_id={game.id}, cards={card_summary}"
+                )
+
             # Start the game
-            update_poker_game_status(game.id, "playing")
+            update_poker_game_status(game.id, "pre_flop")
             logger.info(f"Game started after countdown: game_id={game.id}, chat_id={chat_id}")
 
             # Broadcast game state to all players
@@ -274,16 +408,50 @@ async def broadcast_game_state(
     *,
     event: str = "game_state",
 ) -> None:
-    """Broadcast the given game state to all players in a chat."""
+    """
+    Broadcast the game state to all players in a chat.
+    Each player receives a filtered version with only their own hole cards visible.
+    If game_state is None (e.g., after reset), broadcasts None to all players.
+    """
+    if not _socket_server:
+        logger.warning("Socket server not configured; cannot broadcast game state")
+        return
 
-    await _emit_game_state(chat_id, game_state, event=event)
+    # Handle None state (game reset) - broadcast to all sessions in this chat
+    if game_state is None:
+        for sid, session_data in list(_sessions.items()):
+            if session_data.get("chat_id") == chat_id:
+                await _emit_game_state(chat_id, None, target_sid=sid, event=event)
+        return
+
+    # Get all sessions for this chat and send filtered state to each
+    for sid, session_data in list(_sessions.items()):
+        if session_data.get("chat_id") == chat_id:
+            user_id = session_data.get("user_id")
+            if user_id is not None:
+                # Filter hole cards for this specific user
+                filtered_state = _filter_hole_cards_for_user(game_state, user_id)
+                await _emit_game_state(chat_id, filtered_state, target_sid=sid, event=event)
 
 
 async def send_initial_state(sid: str, chat_id: str) -> None:
     """Send the initial game state (with slot icons) to a newly connected player."""
 
+    session = get_session(sid)
+    if not session:
+        logger.warning(f"No session found for sid={sid}")
+        return
+
+    user_id = session.get("user_id")
+    if user_id is None:
+        logger.warning(f"No user_id in session for sid={sid}")
+        return
+
     game_state = _get_game_state(chat_id, include_slot_icons=True)
-    await _emit_game_state(chat_id, game_state, target_sid=sid)
+    if game_state:
+        # Filter hole cards for this specific user
+        filtered_state = _filter_hole_cards_for_user(game_state, user_id)
+        await _emit_game_state(chat_id, filtered_state, target_sid=sid)
 
 
 async def emit_error(sid: str, message: str) -> None:

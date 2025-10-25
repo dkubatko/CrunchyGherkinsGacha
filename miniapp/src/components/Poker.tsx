@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePokerStore } from '../stores/usePokerStore';
 import { PokerWebSocket } from '../services/PokerWebSocket';
 import './Poker.css';
+import cardBackImage from '../assets/casino/card_back.png';
 
 interface PokerProps {
   chatId: string;
@@ -160,8 +161,9 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   }, [showDebugMenu]);
 
   // Calculate circular positions for players around the table
+  // Index 0 is always anchored at the bottom (90 degrees)
   const getPlayerPosition = (index: number, total: number) => {
-    const angle = (index * 360) / total - 90; // Start from top
+    const angle = (index * 360) / total + 90; // Start from bottom (90°), distribute clockwise
     const radius = 140; // Distance from center of table (250px table / 2 + spacing)
     const angleRad = (angle * Math.PI) / 180;
     const x = radius * Math.cos(angleRad);
@@ -215,17 +217,43 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   };
 
   const players = gameState?.players || [];
+  const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  const currentPlayer = userId ? players.find(p => p.user_id === userId) : undefined;
+
+  // Reorder players so current user is always at index 0 (bottom of table)
+  const getRotatedPlayers = () => {
+    const allPlayers = [...players, ...fakePlayers];
+    if (!userId || allPlayers.length === 0) return allPlayers;
+    
+    const currentUserIndex = allPlayers.findIndex(p => p.user_id === userId);
+    if (currentUserIndex === -1) return allPlayers;
+    
+    // Rotate array so current user is at index 0 (which is anchored at bottom)
+    return [
+      ...allPlayers.slice(currentUserIndex),
+      ...allPlayers.slice(0, currentUserIndex)
+    ];
+  };
+
+  // Helper to get rarity class name
+  const getRarityClass = (rarity: string): string => {
+    return `rarity-${rarity.toLowerCase()}`;
+  };
 
   return (
     <div className="poker-container">
       <h1>🃏 Poker</h1>
 
-      {connectionStatus === 'connecting' && !error && (
-        <div className="poker-connecting-message">
-          Connecting...
-        </div>
-      )}
-      
+      {/* Dynamic styles for player icons and cards - keeps base64 out of inspector */}
+      <style>
+        {playerSlotIcons && Object.entries(playerSlotIcons).map(([userId, icon]) => (
+          `.player-icon[data-user-id="${userId}"] { background-image: url(data:image/png;base64,${icon}); }`
+        )).join('\n')}
+        {currentPlayer?.hole_cards?.map((card, index) => (
+          `.current-player-card[data-card-index="${index}"] { background-image: url(data:image/png;base64,${card.poker_cardb64}); }`
+        )).join('\n')}
+      </style>
+
       <div className="poker-game">
         {/* Debug Settings Button */}
         <div ref={debugMenuRef}>
@@ -275,89 +303,146 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               </div>
             </div>
             
-            {/* Dynamic player icons - combine real players and fake players */}
-            {[...players, ...fakePlayers].map((player, index) => {
+            {/* Dynamic player icons - rotated so current user is at bottom */}
+            {getRotatedPlayers().map((player, index) => {
               const totalPlayers = players.length + fakePlayers.length;
               const { x, y } = getPlayerPosition(index, totalPlayers);
-              // Use cached slot icon from store
-              const slotIcon = playerSlotIcons[player.user_id];
+              const isCurrentUser = player.user_id === userId;
+              const isPlaying = gameState?.status === 'playing' || gameState?.status === 'pre_flop';
+              const showCards = isPlaying;
+              
+              // Calculate angle from center to player
+              const angleFromCenter = Math.atan2(y, x) * (180 / Math.PI);
+              
+              // Calculate offset towards center along the radial axis
+              const inwardDistance = 30; // Distance to shift towards center (reduced to move cards further from center)
+              const offsetX = -Math.cos(angleFromCenter * Math.PI / 180) * inwardDistance;
+              const offsetY = -Math.sin(angleFromCenter * Math.PI / 180) * inwardDistance;
+              
+              // Get player's actual cards if they're the current user
+              const playerCards = isCurrentUser && currentPlayer?.hole_cards ? currentPlayer.hole_cards : null;
+              
               return (
                 <div
                   key={player.user_id}
-                  className="player-icon"
+                  className="player-container"
                   style={{
+                    position: 'absolute',
                     left: '50%',
                     top: '50%',
                     transform: `translate(calc(-50% + ${x}px), calc(-50% + ${y}px))`,
-                    backgroundImage: slotIcon 
-                      ? `url(data:image/png;base64,${slotIcon})`
-                      : undefined,
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
                   }}
-                  title={`Player ${player.user_id}`}
-                />
+                >
+                  {/* Player icon stays upright */}
+                  <div
+                    className="player-icon"
+                    data-user-id={player.user_id}
+                    title={`Player ${player.user_id}`}
+                  />
+                  
+                  {/* Player cards - shown when game is playing */}
+                  {showCards && (
+                    <div 
+                      className={`hole-cards ${isCurrentUser ? 'current-player-cards' : ''}`}
+                      style={{
+                        // Center the container, move towards center, then rotate to face center
+                        transform: `translate(calc(-50% + ${offsetX}px), calc(-50% + ${offsetY}px)) rotate(${angleFromCenter - 90}deg)`,
+                      }}
+                    >
+                      {isCurrentUser && playerCards ? (
+                        // Current user sees their actual cards with rarity borders
+                        <>
+                          <div 
+                            className={`hole-card hole-card-left current-player-card ${getRarityClass(playerCards[0].rarity)}`}
+                            data-card-index="0"
+                          />
+                          {playerCards[1] && (
+                            <div 
+                              className={`hole-card hole-card-right current-player-card ${getRarityClass(playerCards[1].rarity)}`}
+                              data-card-index="1"
+                            />
+                          )}
+                        </>
+                      ) : (
+                        // Other players see card backs
+                        <>
+                          <div className="hole-card hole-card-left">
+                            <img src={cardBackImage} alt="Card back" />
+                          </div>
+                          <div className="hole-card hole-card-right">
+                            <img src={cardBackImage} alt="Card back" />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
         </div>
         
         <div className="poker-action-space">
-          {/* Check if current user has joined */}
-          {(() => {
-            const userId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
-            const hasJoined = userId && players.some(p => p.user_id === userId);
-            
-            if (hasJoined) {
-              // User has joined - show status
-              if (gameState?.status === 'playing') {
-                return (
-                  <div className="poker-status-container">
-                    <div className="poker-game-started">
-                      Game Started
+          {/* Left side - game status and actions */}
+          <div className="poker-action-left">
+            {(() => {
+              const hasJoined = userId && players.some(p => p.user_id === userId);
+              
+              if (hasJoined) {
+                // User has joined - show status
+                if (gameState?.status === 'playing' || gameState?.status === 'pre_flop') {
+                  return (
+                    <div className="poker-status-container">
+                      <div className="poker-game-started">
+                        Game Started
+                      </div>
                     </div>
-                  </div>
-                );
-              } else if (gameState?.status === 'countdown' && countdown !== null) {
-                return (
-                  <div className="poker-status-container">
-                    <div className="poker-countdown">
-                      {countdown}s
+                  );
+                } else if (gameState?.status === 'countdown' && countdown !== null) {
+                  return (
+                    <div className="poker-status-container">
+                      <div className="poker-countdown">
+                        {countdown}s
+                      </div>
+                      <div className="poker-countdown-label">
+                        until game start
+                      </div>
                     </div>
-                    <div className="poker-countdown-label">
-                      until game start
+                  );
+                } else {
+                  // Waiting status
+                  return (
+                    <div className="poker-status-container">
+                      <div className="poker-waiting-message">
+                        Waiting for other players...
+                      </div>
                     </div>
-                  </div>
-                );
+                  );
+                }
               } else {
-                // Waiting status
+                // User hasn't joined yet - show join button
                 return (
-                  <div className="poker-status-container">
-                    <div className="poker-waiting-message">
-                      Waiting for other players...
-                    </div>
-                  </div>
+                  <button 
+                    className="poker-join-button"
+                    disabled={loading || !connected}
+                    onClick={handleJoin}
+                  >
+                    {loading ? 'Joining...' : 'Join'}
+                  </button>
                 );
               }
-            } else {
-              // User hasn't joined yet - show join button
-              return (
-                <button 
-                  className="poker-join-button"
-                  disabled={loading || !connected}
-                  onClick={handleJoin}
-                >
-                  {loading ? 'Joining...' : 'Join'}
-                </button>
-              );
-            }
-          })()}
+            })()}
+          </div>
+
+          {/* Right side - reserved for future actions/buttons */}
+          <div className="poker-action-right">
+          </div>
         </div>
       </div>
 
-      {error && (
-        <div className="poker-error">
-          {error}
+      {(error || connectionStatus === 'connecting') && (
+        <div className="poker-status">
+          {error || 'Connecting...'}
         </div>
       )}
     </div>

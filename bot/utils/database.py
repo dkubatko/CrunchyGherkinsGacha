@@ -2084,4 +2084,23 @@ def delete_poker_game(chat_id: str) -> bool:
         return cursor.rowcount > 0
 
 
+def update_poker_player_hole_cards(player_id: int, hole_cards: List[Dict[str, Any]]) -> None:
+    """Update a poker player's hole cards.
+
+    Args:
+        player_id: The player ID.
+        hole_cards: List of card dictionaries with source_id, source_type, and rarity.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            UPDATE poker_players
+            SET hole_cards = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (json.dumps(hole_cards), now, player_id),
+        )
+
+
 create_tables()

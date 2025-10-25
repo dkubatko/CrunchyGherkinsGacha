@@ -1,5 +1,12 @@
 import { create } from 'zustand';
 
+export interface PokerCard {
+  source_id: number;
+  source_type: string;
+  rarity: string;
+  poker_cardb64?: string;
+}
+
 export interface PokerPlayer {
   user_id: number;
   seat_position: number;
@@ -9,6 +16,7 @@ export interface PokerPlayer {
   status: string;
   last_action?: string;
   slot_iconb64?: string;
+  hole_cards: PokerCard[];
 }
 
 export interface PokerGameState {
