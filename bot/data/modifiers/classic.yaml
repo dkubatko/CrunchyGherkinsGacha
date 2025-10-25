@@ -89,7 +89,6 @@ rarities:
   modifiers:
   - Alien
   - Alpha
-  - Ancient
   - Angel
   - Anonymous
   - Anxious
@@ -142,7 +141,6 @@ rarities:
   - Loser
   - Magic
   - Massive
-  - Medieval
   - Melancholic
   - Mischievous
   - Modeling
@@ -158,7 +156,6 @@ rarities:
   - Perfect
   - Perpetual
   - Photorealistic
-  - Pirate
   - Pixel
   - Poopy
   - Poor
@@ -186,10 +183,8 @@ rarities:
   - Sushi
   - Swimsuit
   - Tattoo
-  - Tesla
   - Tranformer
   - Vampire
-  - Viking
   - Vintage
   - Vomit
   - War
@@ -232,7 +227,6 @@ rarities:
   - Democrat
   - Diamond
   - Dovahkiin
-  - Dr. Pepper
   - Drip
   - Drooling
   - Eldritch
@@ -248,7 +242,6 @@ rarities:
   - Gambling
   - Gemini
   - Ghoul
-  - Google
   - Hogwarts
   - Holy
   - Idol
@@ -261,13 +254,10 @@ rarities:
   - Jesus
   - Jewish
   - Joker
-  - Jollibee
   - K-Pop
   - Keyboard
-  - KFC
   - King
   - Kremlin
-  - LEGO
   - Maiden
   - Mario
   - MILF
@@ -287,12 +277,9 @@ rarities:
   - Punk
   - Puppet
   - Queen
-  - Renaissance
   - Romantic
-  - Samurai
   - Seductive
   - Severance
-  - Shogun
   - SJW
   - Skibidi
   - Stoner
@@ -305,7 +292,6 @@ rarities:
   - Toy
   - Trollface
   - Twerking
-  - Van Gogh
   - Vaping
   - Villain
   - Warcraft
@@ -319,9 +305,7 @@ rarities:
   - Холоп
 - name: Legendary
   modifiers:
-  - Biblical
   - Burlesque
-  - Coca-Cola
   - Crunchy Gherkins
   - Dictator
   - Dominatrix
