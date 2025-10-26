@@ -448,8 +448,12 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, source_id, set_id=None):
-    """Add a new card to the database."""
+def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id: Optional[str], source_type: str, source_id: int, set_id: Optional[int] = None) -> int:
+    """Add a new card to the database.
+    
+    Returns:
+        int: The card ID of the newly created card
+    """
     now = datetime.datetime.now().isoformat()
     if chat_id is not None:
         chat_id = str(chat_id)
@@ -464,17 +468,16 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, sourc
             logger.warning("Failed to generate thumbnail for new card: %s", exc)
 
     with _managed_connection(commit=True) as (_, cursor):
+        # Insert card metadata (without images)
         cursor.execute(
             """
-            INSERT INTO cards (base_name, modifier, rarity, image_b64, image_thumb_b64, chat_id, created_at, source_type, source_id, set_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO cards (base_name, modifier, rarity, chat_id, created_at, source_type, source_id, set_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 base_name,
                 modifier,
                 rarity,
-                image_b64,
-                image_thumb_b64,
                 chat_id,
                 now,
                 source_type,
@@ -482,10 +485,22 @@ def add_card(base_name, modifier, rarity, image_b64, chat_id, source_type, sourc
                 set_id,
             ),
         )
-        return cursor.lastrowid
+        card_id = cursor.lastrowid
+        
+        # Insert image data into separate table if available
+        if image_b64 or image_thumb_b64:
+            cursor.execute(
+                """
+                INSERT INTO card_images (card_id, image_b64, image_thumb_b64)
+                VALUES (?, ?, ?)
+            """,
+                (card_id, image_b64, image_thumb_b64),
+            )
+        
+        return card_id
 
 
-def add_card_from_generated(generated_card, chat_id):
+def add_card_from_generated(generated_card, chat_id: Optional[str]) -> int:
     """
     Add a card to the database from a GeneratedCard object.
 
@@ -497,7 +512,7 @@ def add_card_from_generated(generated_card, chat_id):
         chat_id: The chat ID to associate with this card
 
     Returns:
-        The database ID of the newly created card
+        int: The database ID of the newly created card
     """
     return add_card(
         base_name=generated_card.base_name,
@@ -664,8 +679,12 @@ def get_user_id_by_username(username: str) -> Optional[int]:
         return None
 
 
-def get_user_collection(user_id: int, chat_id: Optional[str] = None):
-    """Get all cards owned by a user (by user_id), optionally scoped to a chat."""
+def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Card]:
+    """Get all cards owned by a user (by user_id), optionally scoped to a chat.
+    
+    Returns:
+        List[Card]: List of Card objects owned by the user
+    """
     username = get_username_for_user_id(user_id)
 
     conditions = ["user_id = ?"]
@@ -701,7 +720,7 @@ def get_user_cards_by_rarity(
     chat_id: Optional[str] = None,
     limit: Optional[int] = None,
     unlocked: bool = False,
-):
+) -> List[Card]:
     """Return cards owned by the user for a specific rarity, optionally limited in count."""
 
     owner_clauses = []
@@ -719,8 +738,9 @@ def get_user_cards_by_rarity(
         return []
 
     query = (
-        "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, image_b64, locked "
-        "FROM cards WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
+        "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
+        "FROM cards "
+        "WHERE (" + " OR ".join(owner_clauses) + ") AND rarity = ?"
     )
     parameters.append(rarity)
 
@@ -739,10 +759,10 @@ def get_user_cards_by_rarity(
 
     with _managed_connection() as (_, cursor):
         cursor.execute(query, tuple(parameters))
-        return [CardWithImage(**row) for row in cursor.fetchall()]
+        return [Card(**row) for row in cursor.fetchall()]
 
 
-def get_all_cards(chat_id: Optional[str] = None):
+def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
     """Get all cards that have an owner, optionally filtered by chat."""
     query = (
         "SELECT id, base_name, modifier, rarity, owner, user_id, file_id, chat_id, created_at, locked "
@@ -764,10 +784,18 @@ def get_all_cards(chat_id: Optional[str] = None):
         return [Card(**row) for row in cursor.fetchall()]
 
 
-def get_card(card_id):
+def get_card(card_id) -> Optional[CardWithImage]:
     """Get a card by its ID."""
     with _managed_connection() as (_, cursor):
-        cursor.execute("SELECT * FROM cards WHERE id = ?", (card_id,))
+        cursor.execute(
+            """
+            SELECT c.*, ci.image_b64
+            FROM cards c
+            LEFT JOIN card_images ci ON c.id = ci.card_id
+            WHERE c.id = ?
+            """,
+            (card_id,)
+        )
         card_data = cursor.fetchone()
         return CardWithImage(**card_data) if card_data else None
 
@@ -775,7 +803,7 @@ def get_card(card_id):
 def get_card_image(card_id: int) -> str | None:
     """Get the base64 encoded image for a card."""
     with _managed_connection() as (_, cursor):
-        cursor.execute("SELECT image_b64 FROM cards WHERE id = ?", (card_id,))
+        cursor.execute("SELECT image_b64 FROM card_images WHERE card_id = ?", (card_id,))
         result = cursor.fetchone()
         return result[0] if result else None
 
@@ -788,13 +816,13 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
     with _managed_connection(commit=True) as (_, cursor):
         placeholders = ",".join(["?"] * len(card_ids))
         cursor.execute(
-            f"SELECT id, image_thumb_b64, image_b64 FROM cards WHERE id IN ({placeholders})",
+            f"SELECT card_id, image_thumb_b64, image_b64 FROM card_images WHERE card_id IN ({placeholders})",
             tuple(card_ids),
         )
         rows = cursor.fetchall()
         fetched: dict[int, str] = {}
         for row in rows:
-            card_id = int(row["id"])
+            card_id = int(row["card_id"])
             thumb = row["image_thumb_b64"]
             full = row["image_b64"]
 
@@ -810,7 +838,7 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
                 thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
                 thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
                 cursor.execute(
-                    "UPDATE cards SET image_thumb_b64 = ? WHERE id = ?",
+                    "UPDATE card_images SET image_thumb_b64 = ? WHERE card_id = ?",
                     (thumb_b64, card_id),
                 )
                 fetched[card_id] = thumb_b64
@@ -829,7 +857,7 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
         return ordered
 
 
-def get_total_cards_count():
+def get_total_cards_count() -> int:
     """Get the total number of cards ever generated."""
     with _managed_connection() as (_, cursor):
         cursor.execute("SELECT COUNT(*) FROM cards WHERE owner IS NOT NULL")
@@ -919,7 +947,7 @@ def record_roll(user_id: int, chat_id: str):
         )
 
 
-def swap_card_owners(card_id1, card_id2):
+def swap_card_owners(card_id1, card_id2) -> bool:
     """Swap the owners of two cards."""
     try:
         with _managed_connection(commit=True) as (_, cursor):
@@ -958,7 +986,7 @@ def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> b
         return cursor.rowcount > 0
 
 
-def update_card_file_id(card_id, file_id):
+def update_card_file_id(card_id, file_id) -> None:
     """Update the Telegram file_id for a card."""
     with _managed_connection(commit=True) as (_, cursor):
         cursor.execute("UPDATE cards SET file_id = ? WHERE id = ?", (file_id, card_id))
@@ -977,11 +1005,23 @@ def update_card_image(card_id: int, image_b64: str) -> None:
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for refreshed card %s: %s", card_id, exc)
 
-    # Update card with new image, thumbnail, and clear file_id
+    # Update card_images with new image and thumbnail, and clear file_id on cards table
     with _managed_connection(commit=True) as (_, cursor):
+        # Upsert into card_images table
         cursor.execute(
-            "UPDATE cards SET image_b64 = ?, image_thumb_b64 = ?, file_id = NULL WHERE id = ?",
-            (image_b64, image_thumb_b64, card_id),
+            """
+            INSERT INTO card_images (card_id, image_b64, image_thumb_b64)
+            VALUES (?, ?, ?)
+            ON CONFLICT(card_id) DO UPDATE SET
+                image_b64 = excluded.image_b64,
+                image_thumb_b64 = excluded.image_thumb_b64
+            """,
+            (card_id, image_b64, image_thumb_b64),
+        )
+        # Clear file_id since we have a new image
+        cursor.execute(
+            "UPDATE cards SET file_id = NULL WHERE id = ?",
+            (card_id,),
         )
     logger.info(f"Updated image for card {card_id}, cleared file_id")
 
@@ -1002,7 +1042,7 @@ def clear_all_file_ids():
     return affected_rows
 
 
-def nullify_card_owner(card_id):
+def nullify_card_owner(card_id) -> bool:
     """Set card owner to NULL (for rerolls/burns) instead of deleting."""
     with _managed_connection(commit=True) as (_, cursor):
         cursor.execute("UPDATE cards SET owner = NULL, user_id = NULL WHERE id = ?", (card_id,))
@@ -1011,7 +1051,7 @@ def nullify_card_owner(card_id):
     return updated
 
 
-def delete_card(card_id):
+def delete_card(card_id) -> bool:
     """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
     with _managed_connection(commit=True) as (_, cursor):
         cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
