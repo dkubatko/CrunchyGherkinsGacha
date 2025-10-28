@@ -1,0 +1,45 @@
+id: 5
+set: fantasy
+rarities:
+- name: Common
+  modifiers:
+  - Cape
+  - Elf
+  - Knight
+  - Troll
+- name: Rare
+  modifiers:
+  - Bard
+  - Blacksmith
+  - Demon
+  - Druid
+  - Fairy
+  - Fantasy
+  - Goblin
+  - Golem
+  - Imp
+  - Magic
+  - Necromancer
+  - Orc
+  - Paladin
+  - Shaman
+  - Vampire
+  - Werewolf
+  - Wizard
+- name: Epic
+  modifiers:
+  - Chimera
+  - Diablo
+  - Dragon
+  - Eternal
+  - Ghoul
+  - Hogwarts
+  - Illidan
+  - Monk
+  - Titan
+  - Valkyrie
+  - Warcraft
+  - Witch
+  - Джин
+- name: Legendary
+  modifiers: []
