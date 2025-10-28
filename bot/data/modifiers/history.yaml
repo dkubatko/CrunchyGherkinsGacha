@@ -6,6 +6,7 @@ rarities:
   - Industrial
   - Peasant
   - Pioneer
+  - Пионер
 - name: Rare
   modifiers:
   - Ancient

@@ -1,0 +1,34 @@
+id: 6
+set: gaming
+rarities:
+- name: Common
+  modifiers:
+  - Bot
+  - Noob
+  - Playing
+  - Sprite
+- name: Rare
+  modifiers:
+  - Cheating
+  - CRT
+  - Cyberpunk
+  - DPS
+  - Fortnite
+  - Glitchy
+  - Hacking
+  - Lowskill
+  - NPC
+  - Overwatch
+  - T-Pose
+  - Zelda
+- name: Epic
+  modifiers:
+  - Dovahkiin
+  - Keyboard
+  - Kratos
+  - Mario
+  - Minecraft
+  - Sonic
+  - Subway Surfer
+- name: Legendary
+  modifiers: []
