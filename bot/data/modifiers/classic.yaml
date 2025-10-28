@@ -10,10 +10,10 @@ rarities:
   - Biker
   - Blushing
   - Bookworm
-  - Bot
   - Boxing
   - Bubbly
   - Bum
+  - Casual
   - Cheddar
   - Chill
   - Circus
@@ -30,6 +30,7 @@ rarities:
   - Energetic
   - Evening
   - Fancy
+  - Farmer
   - Feisty
   - Fighting
   - Fishing
@@ -51,10 +52,11 @@ rarities:
   - Old
   - Parkour
   - Party
+  - Pizza
   - Plastic
-  - Playing
   - Productive
   - Proud
+  - Rapper
   - Regular
   - Relaxed
   - Running
@@ -72,7 +74,6 @@ rarities:
   - Tired
   - Toilet
   - Traveling
-  - Troll
   - Upset
   - Vacation
   - Working
@@ -87,6 +88,7 @@ rarities:
   - Сытый
 - name: Rare
   modifiers:
+  - Acid
   - Alien
   - Alpha
   - Angel
@@ -99,29 +101,24 @@ rarities:
   - Brutal
   - Bully
   - Censored
-  - Cheating
   - Chilling
   - Climbing
   - Comrade
   - Crazy
   - Creepy
   - Cultist
-  - Demon
-  - DPS
-  - Druid
   - Drunk
   - Dyno
   - Edgy
   - Elastic
   - Exotic
-  - Fairy
-  - Fantasy
   - Filthy
   - Fitness
+  - Flexing
   - Flirty
+  - Floral
   - Foil
   - Freaky
-  - Glitchy
   - Gothic
   - Greedy
   - Gulag
@@ -130,28 +127,29 @@ rarities:
   - Hulk
   - Illegal
   - Immigrant
-  - Imp
   - Incel
   - Indiana
   - Infinity
   - Inmate
   - Itchy
+  - Kitsune
   - Kush
   - Leather
   - Loser
-  - Magic
   - Massive
   - Melancholic
+  - Merchant
   - Mischievous
   - Modeling
   - Mohammed
   - Monochrome
   - Neckbeard
   - NEET
-  - NPC
+  - Neon
   - Obsessed
   - Odyssey
   - OG
+  - Oracle
   - Origami
   - Perfect
   - Perpetual
@@ -184,13 +182,10 @@ rarities:
   - Swimsuit
   - Tattoo
   - Tranformer
-  - Vampire
   - Vintage
   - Vomit
   - War
-  - Werewolf
   - Wet
-  - Wizard
   - Woke
   - Wrestling
   - Бритый
@@ -202,6 +197,7 @@ rarities:
   - Мутный
   - Неряха
   - Послушный
+  - Хранитель
 - name: Epic
   modifiers:
   - Addict
@@ -226,7 +222,6 @@ rarities:
   - Crypto
   - Democrat
   - Diamond
-  - Dovahkiin
   - Drip
   - Drooling
   - Eldritch
@@ -241,8 +236,6 @@ rarities:
   - Furry
   - Gambling
   - Gemini
-  - Ghoul
-  - Hogwarts
   - Holy
   - Idol
   - Illuminati
@@ -250,18 +243,16 @@ rarities:
   - Indian
   - Inverse
   - IRS
+  - Japanese
   - Jedi
   - Jesus
   - Jewish
   - Joker
   - K-Pop
-  - Keyboard
   - King
   - Kremlin
   - Maiden
-  - Mario
   - MILF
-  - Minecraft
   - Muslim
   - Ninja Turtle
   - Noir
@@ -294,7 +285,6 @@ rarities:
   - Twerking
   - Vaping
   - Villain
-  - Warcraft
   - Дикий
   - Лакомящийся
   - Лысый

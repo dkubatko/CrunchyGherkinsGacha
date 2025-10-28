@@ -6,6 +6,7 @@ rarities:
   modifiers:
   - Bear
   - Elephant
+  - Horse
   - Mouse
 - name: Rare
   modifiers:
@@ -14,15 +15,18 @@ rarities:
   - Frog
   - Hedgehog
   - Insect
+  - Lion
+  - Lizard
   - Owl
   - Puppy
   - Rat
   - Rhino
   - Tiger
+  - Worm
 - name: Epic
   modifiers:
-  - Dragon
   - Koala
+  - Monkey
   - Phoenix
   - Pig
   - Spider
