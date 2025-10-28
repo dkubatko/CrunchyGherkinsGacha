@@ -187,3 +187,44 @@ class ImageUtil:
             logger.error(f"Error cropping image to square: {e}")
             # Return original image bytes if processing fails
             return image_bytes
+
+    @staticmethod
+    def resize_to_dimensions(image_bytes: bytes, target_width: int, target_height: int) -> bytes:
+        """
+        Resize image to specific dimensions.
+        
+        Args:
+            image_bytes: The image data as bytes
+            target_width: Target width in pixels
+            target_height: Target height in pixels
+            
+        Returns:
+            Resized image as bytes
+        """
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            original_format = image.format or "PNG"
+            
+            width, height = image.size
+            
+            # If already the target size, return as is
+            if width == target_width and height == target_height:
+                return image_bytes
+            
+            # Resize using high-quality LANCZOS resampling
+            resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
+            
+            # Convert back to bytes
+            output_buffer = io.BytesIO()
+            resized_image.save(output_buffer, format=original_format, optimize=True)
+            processed_bytes = output_buffer.getvalue()
+            
+            logger.info(
+                f"Image resized from {width}x{height} to {target_width}x{target_height}"
+            )
+            return processed_bytes
+            
+        except Exception as e:
+            logger.error(f"Error resizing image to {target_width}x{target_height}: {e}")
+            # Return original image bytes if processing fails
+            return image_bytes
