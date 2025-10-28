@@ -229,7 +229,15 @@ def _generate_slot_icon(image_b64: str) -> Optional[str]:
         return None
 
     try:
-        gemini_util = GeminiUtil()
+        # Get API credentials from environment
+        google_api_key = os.getenv("GOOGLE_API_KEY")
+        image_gen_model = os.getenv("IMAGE_GEN_MODEL")
+        
+        if not google_api_key or not image_gen_model:
+            logger.warning("GOOGLE_API_KEY or IMAGE_GEN_MODEL not set, skipping slot icon generation")
+            return None
+        
+        gemini_util = GeminiUtil(google_api_key, image_gen_model)
         slot_icon_b64 = gemini_util.generate_slot_machine_icon(base_image_b64=image_b64)
         if slot_icon_b64:
             logger.info("Slot machine icon generated successfully")
