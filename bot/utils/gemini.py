@@ -105,8 +105,16 @@ class GeminiUtil:
         self,
         base_image_path: str | None = None,
         base_image_b64: str | None = None,
+        target_size: int = 256,
     ):
-        """Generate a 1:1 aspect ratio slot machine icon from a user's image."""
+        """
+        Generate a 1:1 aspect ratio slot machine icon from a user's image.
+        
+        Args:
+            base_image_path: Path to base image file
+            base_image_b64: Base64-encoded base image
+            target_size: Target size for the output icon (default 256x256)
+        """
         try:
             if base_image_path is None and base_image_b64 is None:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
@@ -133,8 +141,13 @@ class GeminiUtil:
                     image_bytes = part.inline_data.data
                     logger.info("Processing slot machine icon")
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
-                    logger.info("Slot machine icon generated and processed successfully.")
-                    return base64.b64encode(processed_image_bytes).decode("utf-8")
+                    
+                    # Resize to target size (default 256x256) to reduce payload size
+                    resized_image_bytes = ImageUtil.resize_to_dimensions(
+                        processed_image_bytes, target_size, target_size
+                    )
+                    logger.info(f"Slot machine icon generated and resized to {target_size}x{target_size}.")
+                    return base64.b64encode(resized_image_bytes).decode("utf-8")
 
             logger.warning("No image data found in slot machine icon response.")
             return None
