@@ -8,7 +8,12 @@ interface UseOrientationResult {
   resetTiltReference: () => void;
 }
 
-export const useOrientation = (): UseOrientationResult => {
+interface UseOrientationOptions {
+  enabled?: boolean;
+}
+
+export const useOrientation = (options: UseOrientationOptions = {}): UseOrientationResult => {
+  const { enabled = true } = options;
   const [orientation, setOrientation] = useState<OrientationData>({
     alpha: 0,
     beta: 0,
@@ -22,9 +27,13 @@ export const useOrientation = (): UseOrientationResult => {
   };
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+    
     const cleanup = TelegramUtils.startOrientationTracking(setOrientation);
     return cleanup;
-  }, []);
+  }, [enabled]);
 
   return {
     orientation,

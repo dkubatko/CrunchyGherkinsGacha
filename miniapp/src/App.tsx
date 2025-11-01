@@ -36,8 +36,10 @@ import type { CardData, ClaimBalanceState, View } from './types';
 import { BUILD_INFO } from './build-info';
 
 function App() {
-  // Log build info to console for debugging
-  console.log('App build info:', BUILD_INFO);
+  // Log build info to console for debugging (only once on mount)
+  useEffect(() => {
+    console.log('App build info:', BUILD_INFO);
+  }, []);
   
   // Viewport height management - lock in the maximum height
   const [lockedViewportHeight, setLockedViewportHeight] = useState<number | null>(null);
@@ -56,6 +58,11 @@ function App() {
     userData?.casinoView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
+  
+  // Only enable orientation tracking when not in casino view (for card tilt effects)
+  const { orientation, orientationKey, resetTiltReference } = useOrientation({
+    enabled: !userData?.casinoView
+  });
   
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -389,7 +396,6 @@ function App() {
   const shareEnabled = Boolean(initData && userData);
   
   // Feature hooks
-  const { orientation, orientationKey, resetTiltReference } = useOrientation();
   const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
   const currentDialogCard = modalCard ?? cards[currentIndex] ?? null;
   const currentDialogClaimState = currentDialogCard?.chat_id
