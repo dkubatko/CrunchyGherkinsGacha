@@ -474,7 +474,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const handleSpin = useCallback(async () => {
     // Ignore click if it was a long press that just completed
     if (longPressTriggeredRef.current) {
-      longPressTriggeredRef.current = false;
       return;
     }
 
@@ -638,8 +637,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    longPressTriggeredRef.current = false;
-
+    // Don't reset the flag here - it should persist until after onClick fires
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
       const newMultiplier = speedMultiplier === 1 ? 2 : 1;
@@ -649,6 +647,27 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [spinning, symbols.length, userSpins.loading, userSpins.count, speedMultiplier]);
 
   const handleSpinButtonMouseUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    
+    // Reset the flag after a short delay to ensure onClick sees it
+    if (longPressTriggeredRef.current) {
+      setTimeout(() => {
+        longPressTriggeredRef.current = false;
+      }, 100);
+    }
+  }, []);
+
+  const handleSpinButtonMouseLeave = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  const handleSpinButtonTouchCancel = useCallback(() => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
       longPressTimerRef.current = null;
@@ -762,10 +781,10 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 onClick={handleSpin}
                 onMouseDown={handleSpinButtonMouseDown}
                 onMouseUp={handleSpinButtonMouseUp}
-                onMouseLeave={handleSpinButtonMouseUp}
+                onMouseLeave={handleSpinButtonMouseLeave}
                 onTouchStart={handleSpinButtonMouseDown}
                 onTouchEnd={handleSpinButtonMouseUp}
-                onTouchCancel={handleSpinButtonMouseUp}
+                onTouchCancel={handleSpinButtonTouchCancel}
                 disabled={spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
               >
                 {spinning ? 'SPINNING…' : speedMultiplier === 2 ? 'QUICK SPIN' : 'SPIN'}
