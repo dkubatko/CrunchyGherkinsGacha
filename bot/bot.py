@@ -3062,7 +3062,7 @@ async def spins(
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
 ) -> None:
-    """Add spins to all members of the current chat. Admin only."""
+    """Add spins to a specific user or all members of the current chat. Admin only."""
     message = update.message
     chat = update.effective_chat
 
@@ -3078,21 +3078,47 @@ async def spins(
         return
 
     # Validate arguments
-    if not context.args or len(context.args) != 1:
+    if not context.args or len(context.args) < 1 or len(context.args) > 2:
         await message.reply_text(
-            "Usage: /spins <number>\nExample: /spins 5",
+            "Usage: /spins <number> [username]\n\n"
+            "Examples:\n"
+            "  /spins 5          - Add 5 spins to all users\n"
+            "  /spins 10 @john   - Add 10 spins to @john",
+            "  /spins @john 10   - Same as above",
             reply_to_message_id=message.message_id,
         )
         return
 
+    # Parse arguments - can be either "/spins <amount>" or "/spins <username> <amount>"
+    # Try parsing first arg as number, if it works use that format
+    # Otherwise try second format
+    target_username = None
+    spins_to_add = None
+
     try:
+        # Try format: /spins <amount>
         spins_to_add = int(context.args[0])
+        if len(context.args) == 2:
+            # Format: /spins <amount> <username>
+            target_username = context.args[1].lstrip("@")
     except ValueError:
-        await message.reply_text(
-            "The number of spins must be a valid integer.",
-            reply_to_message_id=message.message_id,
-        )
-        return
+        # Try format: /spins <username> <amount>
+        if len(context.args) == 2:
+            target_username = context.args[0].lstrip("@")
+            try:
+                spins_to_add = int(context.args[1])
+            except ValueError:
+                await message.reply_text(
+                    "The number of spins must be a valid integer.",
+                    reply_to_message_id=message.message_id,
+                )
+                return
+        else:
+            await message.reply_text(
+                "The number of spins must be a valid integer.",
+                reply_to_message_id=message.message_id,
+            )
+            return
 
     if spins_to_add <= 0:
         await message.reply_text(
@@ -3110,39 +3136,80 @@ async def spins(
 
     try:
         chat_id = str(chat.id)
-        # Get all users enrolled in this chat
-        all_user_ids = await asyncio.to_thread(database.get_all_chat_users, chat_id)
 
-        if not all_user_ids:
+        if target_username:
+            # Add spins to a specific user
+            target_user_id = await asyncio.to_thread(
+                database.get_user_id_by_username, target_username
+            )
+
+            if target_user_id is None:
+                await message.reply_text(
+                    f"User @{target_username} not found.",
+                    reply_to_message_id=message.message_id,
+                )
+                return
+
+            # Check if user is enrolled in this chat
+            is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+
+            if not is_member:
+                await message.reply_text(
+                    f"User @{target_username} is not enrolled in this chat.",
+                    reply_to_message_id=message.message_id,
+                )
+                return
+
+            # Add spins to the target user
+            new_total = await asyncio.to_thread(
+                database.increment_user_spins, target_user_id, chat_id, spins_to_add
+            )
+
+            plural = "spin" if spins_to_add == 1 else "spins"
             await message.reply_text(
-                "No users are enrolled in this chat yet.",
+                f"✅ Successfully added {spins_to_add} {plural} to @{target_username}!\n\n"
+                f"New balance: {new_total} {plural}\n\n"
+                f"Use /slots -- happy gambling! 🎰",
                 reply_to_message_id=message.message_id,
             )
-            return
 
-        # Add spins to all users
-        successful_count = 0
-        for user_id in all_user_ids:
-            try:
-                await asyncio.to_thread(
-                    database.increment_user_spins, user_id, chat_id, spins_to_add
+            logger.info(
+                f"@{user.username} executed /spins {spins_to_add} @{target_username} command"
+            )
+        else:
+            # Add spins to all users in the chat
+            all_user_ids = await asyncio.to_thread(database.get_all_chat_users, chat_id)
+
+            if not all_user_ids:
+                await message.reply_text(
+                    "No users are enrolled in this chat yet.",
+                    reply_to_message_id=message.message_id,
                 )
-                successful_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to add spins to user {user_id}: {e}")
+                return
 
-        # Report results
-        plural = "spin" if spins_to_add == 1 else "spins"
-        user_plural = "user" if successful_count == 1 else "users"
+            # Add spins to all users
+            successful_count = 0
+            for user_id in all_user_ids:
+                try:
+                    await asyncio.to_thread(
+                        database.increment_user_spins, user_id, chat_id, spins_to_add
+                    )
+                    successful_count += 1
+                except Exception as e:
+                    logger.warning(f"Failed to add spins to user {user_id}: {e}")
 
-        await message.reply_text(
-            f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!\n\nUse /slots -- happy gambling! 🎰",
-            reply_to_message_id=message.message_id,
-        )
+            # Report results
+            plural = "spin" if spins_to_add == 1 else "spins"
+            user_plural = "user" if successful_count == 1 else "users"
 
-        logger.info(
-            f"@{user.username} executed /spins {spins_to_add} command, affected {successful_count} users"
-        )
+            await message.reply_text(
+                f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!\n\nUse /slots -- happy gambling! 🎰",
+                reply_to_message_id=message.message_id,
+            )
+
+            logger.info(
+                f"@{user.username} executed /spins {spins_to_add} command, affected {successful_count} users"
+            )
 
     except Exception as e:
         logger.error(f"Error in /spins command: {e}")
