@@ -156,6 +156,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
   const [imagesReady, setImagesReady] = useState(false);
   const [, setRefreshTick] = useState(0);
+  const [speedMultiplier, setSpeedMultiplier] = useState(1);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
     if (!rarityWheelTarget) {
@@ -196,14 +199,14 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             setRarityWheelState({
-              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS,
+              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS / speedMultiplier,
               rarityWheelTransform: final,
               rarityWheelSpinning: true,
             });
           });
         });
 
-        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS;
+        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS / speedMultiplier;
         const timeout = setTimeout(() => {
           TelegramUtils.triggerHapticImpact('heavy');
           setRarityWheelState({
@@ -218,7 +221,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         setRarityWheelTimeout(timeout);
       });
     },
-    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout]
+    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout, speedMultiplier]
   );
 
   useEffect(() => {
@@ -449,9 +452,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         );
 
         TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
-        setTimeout(() => {
-          TelegramUtils.closeApp();
-        }, 400);
       } catch (error) {
         console.error('Failed to process slots victory:', error);
         const errorMessage = error instanceof Error ? error.message : 'Failed to process victory';
@@ -472,6 +472,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [chatId, initData, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
 
   const handleSpin = useCallback(async () => {
+    // Ignore click if it was a long press that just completed
+    if (longPressTriggeredRef.current) {
+      longPressTriggeredRef.current = false;
+      return;
+    }
+
     if (spinning || symbols.length === 0 || userSpins.loading) {
       return;
     }
@@ -534,7 +540,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
       const durations = normalizedResults.map(
-        (_, index) => SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / speedMultiplier
       );
 
       setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
@@ -623,8 +629,39 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     addReelTimeout,
     finalizeSpin,
     setSpinning,
-    resetRarityWheel
+    resetRarityWheel,
+    speedMultiplier
   ]);
+
+  const handleSpinButtonMouseDown = useCallback(() => {
+    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0) {
+      return;
+    }
+
+    longPressTriggeredRef.current = false;
+
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTriggeredRef.current = true;
+      const newMultiplier = speedMultiplier === 1 ? 2 : 1;
+      setSpeedMultiplier(newMultiplier);
+      TelegramUtils.triggerHapticImpact(newMultiplier === 2 ? 'medium' : 'light');
+    }, 1000);
+  }, [spinning, symbols.length, userSpins.loading, userSpins.count, speedMultiplier]);
+
+  const handleSpinButtonMouseUp = useCallback(() => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+      }
+    };
+  }, []);
 
   const isWinning = useMemo(() => {
     if (symbols.length === 0) {
@@ -721,11 +758,17 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           ) : (
             <>
               <button
-                className="spin-button"
+                className={`spin-button ${speedMultiplier === 2 ? 'spin-button-quick' : ''}`}
                 onClick={handleSpin}
+                onMouseDown={handleSpinButtonMouseDown}
+                onMouseUp={handleSpinButtonMouseUp}
+                onMouseLeave={handleSpinButtonMouseUp}
+                onTouchStart={handleSpinButtonMouseDown}
+                onTouchEnd={handleSpinButtonMouseUp}
+                onTouchCancel={handleSpinButtonMouseUp}
                 disabled={spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
               >
-                {spinning ? 'SPINNING…' : 'SPIN'}
+                {spinning ? 'SPINNING…' : speedMultiplier === 2 ? 'QUICK SPIN' : 'SPIN'}
               </button>
 
               <div className="spins-container">

@@ -123,6 +123,12 @@
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   box-shadow: 0 8px 20px rgba(231, 76, 60, 0.35);
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .spin-button:hover:not(:disabled) {
@@ -136,9 +142,23 @@
 }
 
 .spin-button:disabled {
-  background: linear-gradient(145deg, #7f8c8d 0%, #95a5a6 100%);
+  background: linear-gradient(145deg, #7f8c8d 0%, #95a5a6 100%) !important;
   cursor: not-allowed;
-  box-shadow: none;
+  box-shadow: none !important;
+}
+
+.spin-button-quick:not(:disabled) {
+  background: linear-gradient(145deg, #3498db 0%, #2980b9 100%) !important;
+  box-shadow: 0 8px 20px rgba(52, 152, 219, 0.35);
+}
+
+.spin-button-quick:not(:disabled):hover {
+  background: linear-gradient(145deg, #5dade2 0%, #3498db 100%) !important;
+  box-shadow: 0 12px 26px rgba(52, 152, 219, 0.45);
+}
+
+.spin-button-quick:not(:disabled):active {
+  box-shadow: 0 6px 18px rgba(52, 152, 219, 0.35);
 }
 
 .spins-container {
