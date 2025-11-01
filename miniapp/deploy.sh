@@ -5,25 +5,9 @@ set -e
 
 echo "🚀 Starting deployment process..."
 
-# Auto-increment patch version
-echo "📝 Incrementing version..."
+# Get current version
 CURRENT_VERSION=$(node -p "require('./package.json').version")
-echo "   Current version: $CURRENT_VERSION"
-
-# Split version into parts (major.minor.patch)
-IFS='.' read -r -a VERSION_PARTS <<< "$CURRENT_VERSION"
-MAJOR=${VERSION_PARTS[0]:-0}
-MINOR=${VERSION_PARTS[1]:-0}
-PATCH=${VERSION_PARTS[2]:-0}
-
-# Increment patch version
-PATCH=$((PATCH + 1))
-NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
-
-echo "   New version: $NEW_VERSION"
-
-# Update package.json version
-npm version $NEW_VERSION --no-git-tag-version
+NEW_VERSION="$CURRENT_VERSION"
 
 # Generate build info with version, git hash, and timestamp
 echo "📋 Generating build info..."
