@@ -1,0 +1,41 @@
+id: 7
+set: christmas
+rarities:
+- name: Common
+  modifiers:
+  - Candy Cane
+  - Frosty
+  - Jolly
+  - Mistletoe
+  - Peppermint
+  - Reindeer
+  - Winter
+- name: Rare
+  modifiers:
+  - Aurora
+  - Decorated
+  - Elf
+  - Festive
+  - Gingerbread
+  - Nutcracker
+  - Polar
+  - Rudolph
+  - Snow Globe
+  - Snowman
+  - Winter
+  - Морозный
+  - Подарочный
+- name: Epic
+  modifiers:
+  - Christmas
+  - Grinch
+  - Home Alone
+  - Hot Cocoa
+  - Jack Frost
+  - Jingle Bells
+  - Santa
+  - Новогодний
+- name: Legendary
+  modifiers:
+  - Дед Мороз
+  - Снегурочка
