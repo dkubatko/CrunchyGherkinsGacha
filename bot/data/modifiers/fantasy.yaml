@@ -4,7 +4,6 @@ rarities:
 - name: Common
   modifiers:
   - Cape
-  - Elf
   - Knight
   - Troll
 - name: Rare
