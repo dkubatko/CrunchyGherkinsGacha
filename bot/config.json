@@ -17,7 +17,7 @@
       "lock_cost": 1,
       "refresh_cost": 1,
       "color": "blue",
-      "creativeness_factor": 50
+      "creativeness_factor": 30
     },
     "Rare": {
       "spin_reward": 25,
@@ -27,7 +27,7 @@
       "lock_cost": 2,
       "refresh_cost": 2,
       "color": "green",
-      "creativeness_factor": 80
+      "creativeness_factor": 50
     },
     "Epic": {
       "spin_reward": 60,
@@ -37,7 +37,7 @@
       "lock_cost": 3,
       "refresh_cost": 3,
       "color": "purple",
-      "creativeness_factor": 90
+      "creativeness_factor": 80
     },
     "Legendary": {
       "spin_reward": 200,
@@ -47,7 +47,7 @@
       "lock_cost": 5,
       "refresh_cost": 5,
       "color": "golden",
-      "creativeness_factor": 110
+      "creativeness_factor": 100
     }
   }
 }

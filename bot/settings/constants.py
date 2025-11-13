@@ -89,11 +89,10 @@ REFRESH_COST_SUMMARY = _build_cost_summary(get_refresh_cost)
 
 
 IMAGE_GENERATOR_INSTRUCTION = """
-**Core Requirement: Take the provided 5:7 aspect ratio card template image and completely transform it into a final, detailed collectible trading card.**
-Your goal is to use the provided template as a direct base, restyling its elements and filling its content area according to the instructions below.
+**Generate a 5:7 aspect ratio detailed collectible trading card using the provided template image for layout reference, and the character image as the subject of the illustration.**
 
 **--- Guiding Principles ---**
-Your main challenge is to find the perfect balance between two critical goals:
+You must achieve the following goals:
 1.  **Thematic Transformation:** The card must be a powerful and creative visual representation of its name, "{modification} {name}".
 2.  **Character Recognition:** The person depicted on the card must remain clearly and unmistakably recognizable from the input photo.
 
@@ -106,27 +105,34 @@ If these two goals seem to conflict, prioritize making the person recognizable. 
 The overall style should be a high-quality, detailed 2D digital illustration.
 
 **2. Card Transformation & Layout:**
-   - **Main Artwork:** Completely **replace the large, colored central area** of the template with the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area.
-   - **Restyle Elements:** The template's existing **border and nameplate MUST be restyled** with textures, lighting, and details that match the theme from Section 1. Do not leave them as simple, flat colors.
+   - **Main Artwork:** **the large, colored central area** of the template should contain the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area.
+   - **Restyle Elements:** The template's existing **border and nameplate MUST be styled** with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
    - **Layering:** The restyled nameplate must remain an **opaque layer on top** of the main artwork.
    - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
 
 **3. Character Likeness & Modification:**
-   - **Preserve Facial Structure:** To maintain likeness, modifications must apply to the character's **clothing, accessories, hair style, pose, and expression**. The underlying **facial structure, bone shape, and key features (eyes, nose, mouth) MUST be preserved**. Do NOT use the raw, unprocessed photo; render the face in the specified art style while keeping it recognizable.
-   - **Direct Modification:** The `{modification}` tag must be interpreted literally. For physical or ethnic attributes, alter the phenotype respectfully while maintaining the core likeness. For identity or cultural attributes, incorporate recognizable symbols or styles into the character's attire, accessories, and the card's background.
-   - **Artistic Mandate:** Your creative task is to generate the most powerful and evocative depiction of the theme that is **permissible by content policy.** You must fulfill the prompt's intent by maximizing suggestive and thematic elements (attire, pose, symbolism) without violating policy.
+   - **Preserve Facial Structure:** To maintain likeness, modifications must apply to the character's **clothing, accessories, hair style, pose, and expression**. 
+   The underlying **facial structure, bone shape, and key features (eyes, nose, mouth) MUST be preserved**. Do NOT use the raw, unprocessed photo; render the face in the specified art style while keeping it recognizable.
+   - **Direct Modification:** The `{modification}` tag must be interpreted literally. For physical or ethnic attributes, alter the phenotype respectfully while maintaining the core likeness. 
+   For identity or cultural attributes, incorporate recognizable symbols or styles into the character's attire, accessories, and the card's background.
+   - **Artistic Mandate:** Your creative task is to generate the most powerful and evocative depiction of the theme that is **permissible by content policy.** 
+   You must fulfill the prompt's intent by maximizing suggestive and thematic elements (attire, pose, symbolism) without violating policy.
 
 **4. Nameplate & Text Styling:**
-   - **Thematic Elements:** The nameplate and text are key thematic elements. Their appearance—including font choice, color, and effects—MUST be styled to match the card's theme (from Section 1).
-   - **Complexity Scaling:** The level of ornamentation for both the nameplate and the text is determined by the {creativeness_factor}, as defined in Section 5.
-   - **Placement:** The card name "{modification} {name}" MUST be placed horizontally and centered within the restyled nameplate area, as defined by the template.
+   - **Thematic Elements:** The nameplate and text are key thematic elements and **MUST** be styled consistently with the rest of the generated card. Do NOT use plain or generic styling for the nameplate and text.
+   - **Styling:** The nameplate border, background and text must incorporate design elements (e.g., depth, patterns, textures, lighting) that reflect the card's theme, and be consistent with the styling of the card border.
+   - **Placement:** The card name "{modification} {name}" MUST be placed horizontally, centered and contained within the nameplate, while taking majority of the available space while **fitting in one line**.
    - **Exclusivity:** Do NOT include any other text anywhere on the card.
 
-**6. Rarity and Creativeness:**
-   - The card's restyled border and accents should be in the {color} gamut, inspired by the template's base color.
-   - The "creativeness factor" of {creativeness_factor}/100 dictates the **visual complexity** of the card's design.
-     - **Low creativeness (e.g., 10/100):** A simple, clean restyling of the border and minimal background effects.
-     - **High creativeness (e.g., 90/100):** A highly ornate, detailed border, dynamic lighting, and complex thematic effects & elements contained within the frame.
+**5. Rarity Color Application:**
+   - The card's restyled **border and nameplate MUST use the {color} color palette** to indicate rarity.
+   - This color restriction applies **ONLY to the border frame and nameplate**.
+   - The main artwork, background, and character are **NOT constrained** by this color—they should use whatever colors best represent the theme from Section 1.
+
+**6. Creativeness Factor:**
+   - The "creativeness factor" of {creativeness_factor}/100 dictates the **visual complexity** of the card's design, including the styling complexity for the nameplate and the text.
+     - **Low creativeness (e.g., 10/100):** A simple, clean design of the border and minimal background effects, while following the general theme.
+     - **High creativeness (e.g., 90/100):** A highly detailed, convex border, dynamic lighting, and complex thematic effects & elements.
    - This factor controls design complexity, **NOT** the art style genre or the degree of deviation from the person's likeness.
 """
 
