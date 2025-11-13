@@ -106,7 +106,6 @@ The overall style should be a high-quality, detailed 2D digital illustration.
 
 **2. Card Transformation & Layout:**
    - **Main Artwork:** **the large, colored central area** of the template should contain the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area.
-   - **Restyle Elements:** Card border and nameplate **MUST** be heavily styled with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
    - **Layering:** The styled nameplate must remain an **opaque layer on top** of the main artwork.
    - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
 
@@ -118,21 +117,29 @@ The overall style should be a high-quality, detailed 2D digital illustration.
    - **Artistic Mandate:** Your creative task is to generate the most powerful and evocative depiction of the theme that is **permissible by content policy.** 
    You must fulfill the prompt's intent by maximizing suggestive and thematic elements (attire, pose, symbolism) without violating policy.
 
-**4. Nameplate & Text Styling:**
+**4. Card Border Styling:**
+   - **Thematic Elements:** The card border is a key thematic element and **MUST** be heavily styled with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
+   - **Edge Placement:** The border **MUST** be positioned EXACTLY around the edge of the card—flush with the outer perimeter. The border must NOT be isolated or floating within the card interior.
+   - **Size Constraint:** The border should take no more than 10% of the total card area (measured from the edge inward).
+   - **Always Apply Styling:** The border **MUST** always have thematic styling applied—never leave it plain or default.
+
+**5. Nameplate & Text Styling:**
    - **Thematic Elements:** The nameplate and text are key thematic elements and **MUST** be styled consistently with the rest of the generated card. Do NOT use plain or generic styling for the nameplate and text.
    - **Styling:** The nameplate border, background and text must incorporate design elements (e.g., depth, patterns, textures, lighting) that reflect the card's theme, and be consistent with the styling of the card border.
+   - **Size Constraint:** The nameplate should take no more than 15% of the total card area.
    - **Placement:** The card name "{modification} {name}" MUST be placed horizontally, centered and contained within the nameplate, while taking majority of the available space while **fitting in one line**.
    - **Exclusivity:** Do NOT include any other text anywhere on the card.
 
-**5. Rarity Color Application:**
+**6. Rarity Color Application:**
    - The card's border and nameplate **MUST** use the {color} color palette to indicate rarity.
    - This color restriction applies **ONLY to the border frame and nameplate**.
    - The main artwork, background, and character are **NOT constrained** by this color—they should use whatever colors best represent the theme from Section 1.
 
-**6. Creativeness Factor:**
-   - The "creativeness factor" of {creativeness_factor}/100 dictates the **visual complexity** of the card's design, including the styling complexity for the nameplate and the text.
-     - **Low creativeness (e.g., 10/100):** A simple, clean design of the border and minimal background effects, while following the general theme.
-     - **High creativeness (e.g., 90/100):** A highly detailed, convex border, dynamic lighting, and complex thematic effects & elements.
+**7. Creativeness Factor:**
+   - The "creativeness factor" of {creativeness_factor}/100 dictates the **visual complexity** of the card's design, including the styling complexity for the border, nameplate, and text.
+     - **Low creativeness (e.g., 10/100):** A simple, clean design with minor details and effects, while following the general card theme.
+     - **Medium creativeness (e.g., 50/100):** A detailed design with balanced thematic patterns, some depth effects, and noticeable but not overwhelming decorative elements throughout the card's design.
+     - **High creativeness (e.g., 90/100):** A highly detailed, sophisticated design, dynamic lighting, depth, convexity, and other complex thematic effects & elements.
    - This factor controls design complexity, **NOT** the art style genre or the degree of deviation from the person's likeness.
 """
 
