@@ -1,26 +1,34 @@
 """
 Tool to generate a single card with specified parameters.
 
-Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>]
+Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>] [--modifiers-file <filename>]
 
-Example: python tools/generate_single_card.py krypthos "Test" Epic
-Example: python tools/generate_single_card.py krypthos "Test" Epic --assign dkubatko
+Example: python tools/generate_single_card.py Daniel Test Epic
+Example: python tools/generate_single_card.py Daniel Golden random --assign dkubatko
+Example: python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
+Example: python tools/generate_single_card.py Daniel random random --modifiers-file anime
+Example: python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
 
 This will:
 1. Look up the character by name in the database
-2. Generate a card using the specified modifier and rarity
+2. Generate a card using the specified modifier and rarity (or random values)
 3. Add the card to the database
 4. Save the generated card image to data/output/
 5. Optionally assign the card to a user if --assign is specified
+
+Note: Use quotes around names/modifiers with spaces. Both modifier and rarity can be set to "random".
 """
 
 import argparse
 import base64
 import logging
 import os
+import random
 import sys
 from datetime import datetime
+from pathlib import Path
 
+import yaml
 from dotenv import load_dotenv
 
 # Add parent directory to path to import utils
@@ -48,6 +56,55 @@ logger = logging.getLogger(__name__)
 # Load environment variables needed for GeminiUtil
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
+
+
+def load_random_modifier_from_file(filename: str, rarity: str = None) -> str:
+    """
+    Load a random modifier from a modifiers YAML file.
+
+    Args:
+        filename: Name of the modifiers file (e.g., 'christmas', 'anime')
+        rarity: Optional rarity to filter modifiers by. If None, picks from all rarities.
+
+    Returns:
+        A random modifier string
+    """
+    # Construct path to modifiers file
+    modifiers_dir = Path(__file__).resolve().parents[1] / "data" / "modifiers"
+    file_path = modifiers_dir / f"{filename}.yaml"
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Modifiers file not found: {file_path}")
+
+    # Load YAML file
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+
+    if not isinstance(data, dict) or "rarities" not in data:
+        raise ValueError(f"Invalid modifiers file format: {file_path}")
+
+    # Collect modifiers
+    all_modifiers = []
+    for rarity_entry in data["rarities"]:
+        rarity_name = rarity_entry.get("name", "")
+        modifiers = rarity_entry.get("modifiers", [])
+
+        # Filter by rarity if specified
+        if rarity is None or rarity_name == rarity:
+            all_modifiers.extend(modifiers)
+
+    if not all_modifiers:
+        raise ValueError(
+            f"No modifiers found in {filename}.yaml" + (f" for rarity {rarity}" if rarity else "")
+        )
+
+    # Pick a random modifier
+    chosen = random.choice(all_modifiers)
+    logger.info(
+        f"Randomly selected modifier '{chosen}' from {filename}.yaml"
+        + (f" (rarity: {rarity})" if rarity else "")
+    )
+    return chosen
 
 
 def find_character_by_name(character_name: str):
@@ -82,21 +139,43 @@ def find_user_by_name(display_name: str):
 
 
 def generate_single_card(
-    source_name: str, modifier: str, rarity: str, output_dir: str, assign_username: str = None
+    source_name: str,
+    modifier: str,
+    rarity: str,
+    output_dir: str,
+    assign_username: str = None,
+    modifiers_file: str = None,
 ):
     """
     Generate a single card with specified parameters.
 
     Args:
         source_name: Name of the character or user to use as base
-        modifier: The modifier to apply (e.g., "Test", "Golden", etc.)
-        rarity: The rarity tier (Common, Rare, Epic, Legendary)
+        modifier: The modifier to apply (e.g., "Test", "Golden", etc.) or "random" to pick from file
+        rarity: The rarity tier (Common, Rare, Epic, Legendary) or "random" to pick randomly
         output_dir: Directory to save the output image
         assign_username: Optional username to assign the card to
+        modifiers_file: Optional modifiers file to load random modifier from (e.g., 'christmas', 'anime')
 
     Returns:
         Tuple of (output_path, card_id) or (None, None) on failure
     """
+    # Handle random rarity selection
+    if rarity.lower() == "random":
+        rarity = random.choice(list(RARITIES.keys()))
+        logger.info(f"Randomly selected rarity: {rarity}")
+
+    # Handle random modifier selection from file
+    if modifiers_file or modifier.lower() == "random":
+        if not modifiers_file:
+            logger.error("Must specify --modifiers-file when using 'random' as modifier")
+            return None, None
+        try:
+            modifier = load_random_modifier_from_file(modifiers_file, rarity)
+        except Exception as e:
+            logger.error(f"Failed to load random modifier from {modifiers_file}: {e}")
+            return None, None
+
     # Validate rarity
     if rarity not in RARITIES:
         logger.error(f"Invalid rarity: {rarity}. Must be one of {list(RARITIES.keys())}")
@@ -219,17 +298,35 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=f"""
 Examples:
-  python tools/generate_single_card.py krypthos "Test" Epic
-  python tools/generate_single_card.py krypthos "Test" Epic --assign dkubatko
+  python tools/generate_single_card.py Daniel Test Epic
+  python tools/generate_single_card.py Daniel Golden random --assign dkubatko
+  python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
+  python tools/generate_single_card.py Daniel random random --modifiers-file anime
+  python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
 
 Available rarities: {', '.join(RARITIES.keys())}
+
+Use quotes around names/modifiers only if they contain spaces.
+When using --modifiers-file, set modifier to "random" to pick a random modifier from that file.
+The random modifier will be filtered by the specified rarity (unless rarity is also "random").
+Set rarity to "random" to pick a random rarity tier.
         """,
     )
 
     parser.add_argument("character_name", help="Name of the character or user to use as base")
-    parser.add_argument("modifier", help="The modifier to apply (e.g., 'Test', 'Golden', etc.)")
-    parser.add_argument("rarity", help="The rarity tier (Common, Rare, Epic, Legendary)")
+    parser.add_argument(
+        "modifier",
+        help="The modifier to apply (e.g., 'Test', 'Golden') or 'random' with --modifiers-file",
+    )
+    parser.add_argument(
+        "rarity", help="The rarity tier (Common, Rare, Epic, Legendary) or 'random'"
+    )
     parser.add_argument("--assign", dest="assign_username", help="Username to assign the card to")
+    parser.add_argument(
+        "--modifiers-file",
+        dest="modifiers_file",
+        help="Modifiers file to pick random modifier from (e.g., 'christmas', 'anime')",
+    )
 
     args = parser.parse_args()
 
@@ -239,7 +336,12 @@ Available rarities: {', '.join(RARITIES.keys())}
     )
 
     result, card_id = generate_single_card(
-        args.character_name, args.modifier, args.rarity, output_dir, args.assign_username
+        args.character_name,
+        args.modifier,
+        args.rarity,
+        output_dir,
+        args.assign_username,
+        args.modifiers_file,
     )
 
     if result and card_id:
