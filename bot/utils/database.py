@@ -232,11 +232,13 @@ def _generate_slot_icon(image_b64: str) -> Optional[str]:
         # Get API credentials from environment
         google_api_key = os.getenv("GOOGLE_API_KEY")
         image_gen_model = os.getenv("IMAGE_GEN_MODEL")
-        
+
         if not google_api_key or not image_gen_model:
-            logger.warning("GOOGLE_API_KEY or IMAGE_GEN_MODEL not set, skipping slot icon generation")
+            logger.warning(
+                "GOOGLE_API_KEY or IMAGE_GEN_MODEL not set, skipping slot icon generation"
+            )
             return None
-        
+
         gemini_util = GeminiUtil(google_api_key, image_gen_model)
         slot_icon_b64 = gemini_util.generate_slot_machine_icon(base_image_b64=image_b64)
         if slot_icon_b64:
@@ -511,9 +513,18 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id: Optional[str], source_type: str, source_id: int, set_id: Optional[int] = None) -> int:
+def add_card(
+    base_name: str,
+    modifier: str,
+    rarity: str,
+    image_b64: str,
+    chat_id: Optional[str],
+    source_type: str,
+    source_id: int,
+    set_id: Optional[int] = None,
+) -> int:
     """Add a new card to the database.
-    
+
     Returns:
         int: The card ID of the newly created card
     """
@@ -549,7 +560,7 @@ def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id
             ),
         )
         card_id = cursor.lastrowid
-        
+
         # Insert image data into separate table if available
         if image_b64 or image_thumb_b64:
             cursor.execute(
@@ -559,7 +570,7 @@ def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id
             """,
                 (card_id, image_b64, image_thumb_b64),
             )
-        
+
         return card_id
 
 
@@ -744,7 +755,7 @@ def get_user_id_by_username(username: str) -> Optional[int]:
 
 def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Card]:
     """Get all cards owned by a user (by user_id), optionally scoped to a chat.
-    
+
     Returns:
         List[Card]: List of Card objects owned by the user
     """
@@ -857,7 +868,7 @@ def get_card(card_id) -> Optional[CardWithImage]:
             LEFT JOIN card_images ci ON c.id = ci.card_id
             WHERE c.id = ?
             """,
-            (card_id,)
+            (card_id,),
         )
         card_data = cursor.fetchone()
         return CardWithImage(**card_data) if card_data else None
@@ -2100,6 +2111,84 @@ def update_poker_player_hole_cards(player_id: int, hole_cards: List[Dict[str, An
             WHERE id = ?
             """,
             (json.dumps(hole_cards), now, player_id),
+        )
+
+
+def update_poker_game_pot_and_bet(game_id: int, pot: int, current_bet: int) -> None:
+    """Update a poker game's pot and current_bet.
+
+    Args:
+        game_id: The game ID.
+        pot: The new pot amount.
+        current_bet: The new current bet amount.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            UPDATE poker_games
+            SET pot = ?, current_bet = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (pot, current_bet, now, game_id),
+        )
+
+
+def update_poker_player_bets(player_id: int, current_bet: int, total_bet: int) -> None:
+    """Update a poker player's current_bet and total_bet.
+
+    Args:
+        player_id: The player ID.
+        current_bet: The player's current bet in this round.
+        total_bet: The player's total bet across all rounds.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            UPDATE poker_players
+            SET current_bet = ?, total_bet = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (current_bet, total_bet, now, player_id),
+        )
+
+
+def update_poker_player_betting_balance(player_id: int, betting_balance: int) -> None:
+    """Update a poker player's betting_balance.
+
+    Args:
+        player_id: The player ID.
+        betting_balance: The new betting balance for this game.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            UPDATE poker_players
+            SET betting_balance = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (betting_balance, now, player_id),
+        )
+
+
+def update_poker_game_min_betting_balance(game_id: int, min_betting_balance: int) -> None:
+    """Update a poker game's min_betting_balance.
+
+    Args:
+        game_id: The game ID.
+        min_betting_balance: The equalized betting balance for all players.
+    """
+    now = datetime.datetime.now(datetime.timezone.utc)
+    with _managed_connection(commit=True) as (_, cursor):
+        cursor.execute(
+            """
+            UPDATE poker_games
+            SET min_betting_balance = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (min_betting_balance, now, game_id),
         )
 
 

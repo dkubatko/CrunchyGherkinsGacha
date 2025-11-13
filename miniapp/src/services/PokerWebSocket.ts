@@ -100,13 +100,14 @@ export class PokerWebSocket {
     });
   }
 
-  join(spinBalance: number): void {
+  join(): void {
     if (!this.socket) {
       usePokerStore.getState().setError('Not connected to server');
       return;
     }
 
-    this.socket.emit('join', { spin_balance: spinBalance });
+    // Server will fetch the user's actual spin balance from the database
+    this.socket.emit('join', {});
   }
 
   async reset(): Promise<void> {

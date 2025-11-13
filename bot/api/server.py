@@ -2801,21 +2801,11 @@ async def poker_join(sid, data):  # type: ignore[override]
         await poker.emit_error(sid, "Not authenticated")
         return
 
-    if not isinstance(data, dict):
-        await poker.emit_error(sid, "Invalid join payload")
-        return
-
     chat_id = session["chat_id"]
     user_id = session["user_id"]
 
     try:
-        spin_balance = int(data.get("spin_balance"))
-    except (TypeError, ValueError):
-        await poker.emit_error(sid, "Invalid spin balance")
-        return
-
-    try:
-        updated_game_state = await poker.handle_player_join(chat_id, user_id, spin_balance)
+        updated_game_state = await poker.handle_player_join(chat_id, user_id)
     except ValueError as exc:
         await poker.emit_error(sid, str(exc))
         return

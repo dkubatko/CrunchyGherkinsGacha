@@ -284,6 +284,73 @@ def _get_game_state(
     return PokerGameStateResponse.from_db_models(game, players, slot_icons)
 
 
+def _update_betting_balance(
+    player_id: int, user_id: int, chat_id: str, amount: int, current_betting_balance: int
+) -> bool:
+    """
+    Deduct an amount from both the player's betting_balance (in-game) and their
+    actual spin balance (in spins table).
+
+    This helper ensures both balances stay in sync when a player bets.
+
+    Args:
+        player_id: The poker player's database ID
+        user_id: The user's Telegram ID
+        chat_id: The chat identifier
+        amount: The amount to deduct (must be positive)
+        current_betting_balance: The player's current betting_balance
+
+    Returns:
+        True if both updates succeeded, False if actual spin deduction failed
+
+    Raises:
+        ValueError: If amount is not positive or exceeds current_betting_balance
+    """
+    if amount <= 0:
+        raise ValueError(f"Amount must be positive, got {amount}")
+
+    if amount > current_betting_balance:
+        raise ValueError(
+            f"Amount {amount} exceeds current betting balance {current_betting_balance}"
+        )
+
+    from utils.database import (
+        update_poker_player_betting_balance,
+        consume_user_spin,
+    )
+
+    new_betting_balance = current_betting_balance - amount
+
+    # First, try to consume from actual spin balance
+    spins_consumed = 0
+    for _ in range(amount):
+        if consume_user_spin(user_id, chat_id):
+            spins_consumed += 1
+        else:
+            logger.error(
+                f"Failed to consume spin {spins_consumed + 1}/{amount}: "
+                f"user_id={user_id}, player_id={player_id}"
+            )
+            break
+
+    if spins_consumed != amount:
+        logger.error(
+            f"Could not deduct full amount from spins: user_id={user_id}, "
+            f"requested={amount}, consumed={spins_consumed}"
+        )
+        return False
+
+    # Update betting balance in poker game
+    update_poker_player_betting_balance(player_id, new_betting_balance)
+
+    logger.info(
+        f"Updated betting balance: player_id={player_id}, user_id={user_id}, "
+        f"amount_deducted={amount}, new_betting_balance={new_betting_balance}"
+    )
+
+    return True
+
+
 async def _start_game_after_countdown(chat_id: str):
     """
     Internal function that waits for countdown duration then starts the game.
@@ -300,6 +367,10 @@ async def _start_game_after_countdown(chat_id: str):
             get_poker_players,
             update_poker_game_status,
             update_poker_player_hole_cards,
+            update_poker_game_pot_and_bet,
+            update_poker_player_bets,
+            update_poker_player_betting_balance,
+            update_poker_game_min_betting_balance,
         )
 
         game = get_active_poker_game(chat_id)
@@ -312,6 +383,55 @@ async def _start_game_after_countdown(chat_id: str):
         active_players = [p for p in players if p.status != "out"]
 
         if len(active_players) >= 2:
+            # Calculate minimum spin balance across all players
+            min_balance = min(p.spin_balance for p in active_players)
+            logger.info(
+                f"Calculated min balance: game_id={game.id}, min_balance={min_balance}, "
+                f"player_balances={[p.spin_balance for p in active_players]}"
+            )
+
+            # Update game's min_betting_balance
+            update_poker_game_min_betting_balance(game.id, min_balance)
+
+            # Equalize all players' betting_balance to the minimum
+            for player in active_players:
+                update_poker_player_betting_balance(player.id, min_balance)
+                logger.info(
+                    f"Set player betting balance: user_id={player.user_id}, "
+                    f"game_id={game.id}, betting_balance={min_balance}"
+                )
+
+            # Deduct 1 spin from each player as the blind (entry fee)
+            blind_amount = 1
+            pot_total = 0
+
+            for player in active_players:
+                # Use helper to deduct from both betting balance and actual spins
+                # At this point, betting_balance has been set to min_balance
+                success = _update_betting_balance(
+                    player.id, player.user_id, chat_id, blind_amount, min_balance
+                )
+                if success:
+                    pot_total += blind_amount
+                    # Update player's current_bet and total_bet to reflect the blind
+                    update_poker_player_bets(player.id, blind_amount, blind_amount)
+                    logger.info(
+                        f"Deducted blind from player: user_id={player.user_id}, "
+                        f"game_id={game.id}, blind={blind_amount}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to deduct blind from player: user_id={player.user_id}, "
+                        f"game_id={game.id}"
+                    )
+
+            # Update game pot and current_bet
+            update_poker_game_pot_and_bet(game.id, pot_total, blind_amount)
+            logger.info(
+                f"Set initial pot and bet: game_id={game.id}, pot={pot_total}, "
+                f"current_bet={blind_amount}"
+            )
+
             # Deal two random cards to each active player
             for player in active_players:
                 hole_cards = _generate_random_cards(chat_id, count=2)
@@ -500,16 +620,13 @@ def cancel_countdown(chat_id: str):
         logger.info(f"Cancelled countdown: chat_id={chat_id}")
 
 
-async def handle_player_join(
-    chat_id: str, user_id: int, spin_balance: int
-) -> PokerGameStateResponse:
+async def handle_player_join(chat_id: str, user_id: int) -> PokerGameStateResponse:
     """
     Handle a player joining the poker table.
 
     Args:
         chat_id: The chat identifier
         user_id: The user's ID
-        spin_balance: The user's current spin balance
 
     Returns:
         Updated game state with newly joined player's slot icon included
@@ -523,7 +640,15 @@ async def handle_player_join(
         get_poker_players,
         update_poker_game_status,
         get_user,
+        get_user_spins,
     )
+
+    # Fetch the user's actual spin balance from the database
+    spins_record = get_user_spins(user_id, chat_id)
+    if not spins_record:
+        raise ValueError("No spin balance found. Please roll for spins first.")
+
+    spin_balance = spins_record.count
 
     # Check minimum balance requirement
     MIN_BALANCE = 10

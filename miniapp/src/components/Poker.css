@@ -14,6 +14,29 @@
   margin: 0;
 }
 
+/* Player balance display in upper right corner */
+.poker-balance-display {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 20px;
+  border: 2px solid rgba(255, 215, 0, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.poker-balance-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffd700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
 .poker-game {
   position: relative;
   display: flex;
@@ -45,32 +68,21 @@
   display: flex;
   flex-direction: row;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 12px;
   min-height: 0;
   overflow: hidden;
   padding: 0 20px;
 }
 
-.poker-action-left {
-  flex: 1;
+.poker-action {
+  width: 100%;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 12px;
   min-height: 0;
-}
-
-.poker-action-right {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0;
-  min-height: 0;
-  position: relative;
-  height: 120px;
 }
 
 .poker-table {
@@ -95,10 +107,41 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 85%;
-  height: 85%;
+  width: 92%;
+  height: 92%;
   border-radius: 50%;
   border: 2px dashed rgba(255, 255, 255, 0.2);
+}
+
+/* Pot display above center of table */
+.poker-pot {
+  position: absolute;
+  top: 20%;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 2px 10px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 16px;
+  border: 2px solid rgba(255, 215, 0, 0.6);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+}
+
+.poker-pot-icon {
+  width: 25px;
+  height: 25px;
+  object-fit: contain;
+}
+
+.poker-pot-amount {
+  font-size: 20px;
+  font-weight: 700;
+  color: #ffd700;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
 }
 
 .player-container {
@@ -237,8 +280,8 @@
 }
 
 .card-outline {
-  width: 28px;
-  height: 42px;
+  width: 36px;
+  height: 52px;
   border: 2px solid rgba(255, 255, 255, 0.4);
   border-radius: 3px;
   background: rgba(255, 255, 255, 0.1);
@@ -282,6 +325,121 @@
 .poker-join-button:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+/* Action container - vertical layout for bet display and buttons */
+.poker-action-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  width: 100%;
+}
+
+/* Current bet display */
+.poker-current-bet {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.poker-bet-label {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.poker-bet-amount {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #ffd700;
+  font-weight: 700;
+}
+
+/* Poker-specific coin styling - inherits animation from App.css */
+.poker-current-bet .spins-coin {
+  margin-right: 2px;
+}
+
+/* Action buttons container */
+.poker-action-buttons {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 500px;
+}
+
+/* Base action button styles */
+.poker-action-button {
+  flex: 1;
+  padding: 12px 16px;
+  font-size: 32px;
+  font-weight: 700;
+  color: white;
+  border: 3px solid;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  min-width: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.poker-action-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+}
+
+.poker-action-button:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.poker-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Check button - blue/teal */
+.poker-check-button {
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  border-color: #0d47a1;
+}
+
+.poker-check-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+}
+
+/* Raise button - green (similar to join) */
+.poker-raise-button {
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  border-color: #2e7d32;
+}
+
+.poker-raise-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #45a049 0%, #4caf50 100%);
+}
+
+/* Fold button - red */
+.poker-fold-button {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  border-color: #b71c1c;
+}
+
+.poker-fold-button:hover:not(:disabled) {
+  background: linear-gradient(135deg, #d32f2f 0%, #f44336 100%);
 }
 
 .poker-status-container {

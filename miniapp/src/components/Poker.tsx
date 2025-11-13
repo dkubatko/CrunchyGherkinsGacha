@@ -3,6 +3,7 @@ import { usePokerStore } from '../stores/usePokerStore';
 import { PokerWebSocket } from '../services/PokerWebSocket';
 import './Poker.css';
 import cardBackImage from '../assets/casino/card_back.png';
+import moneyPile from '../assets/casino/money_pile.png';
 
 interface PokerProps {
   chatId: string;
@@ -80,7 +81,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      
+
       if (wsRef.current) {
         wsRef.current.disconnect();
         wsRef.current = null;
@@ -106,14 +107,14 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
     if (gameState.status === 'countdown' && gameState.countdown_start_time) {
       const startTime = new Date(gameState.countdown_start_time).getTime();
       const countdownDuration = gameState.countdown_duration_seconds || 60; // fallback to 60s
-      
+
       const updateCountdown = () => {
         const now = Date.now();
         const elapsed = (now - startTime) / 1000; // seconds
         const remaining = Math.max(0, Math.ceil(countdownDuration - elapsed));
-        
+
         setCountdown(remaining);
-        
+
         // Stop the interval when countdown reaches 0
         if (remaining <= 0 && countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
@@ -123,7 +124,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
 
       // Update immediately
       updateCountdown();
-      
+
       // Then update every 100ms for smooth countdown
       countdownIntervalRef.current = setInterval(updateCountdown, 100);
     } else if (gameState.status === 'playing') {
@@ -180,10 +181,8 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
     setLoading(true);
     usePokerStore.getState().setError(null);
 
-    // Get user's spin balance (TODO: Get actual balance from API or state)
-    const spinBalance = 100;
-
-    wsRef.current.join(spinBalance);
+    // Server will fetch the user's spin balance from the database
+    wsRef.current.join();
 
     // Loading state will be cleared when we receive the updated game state
     setTimeout(() => setLoading(false), 2000);
@@ -224,10 +223,10 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   const getRotatedPlayers = () => {
     const allPlayers = [...players, ...fakePlayers];
     if (!userId || allPlayers.length === 0) return allPlayers;
-    
+
     const currentUserIndex = allPlayers.findIndex(p => p.user_id === userId);
     if (currentUserIndex === -1) return allPlayers;
-    
+
     // Rotate array so current user is at index 0 (which is anchored at bottom)
     return [
       ...allPlayers.slice(currentUserIndex),
@@ -243,7 +242,6 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
   return (
     <div className="poker-container">
       <h1>🃏 Poker</h1>
-
       {/* Dynamic styles for player icons and cards - keeps base64 out of inspector */}
       <style>
         {playerSlotIcons && Object.entries(playerSlotIcons).map(([userId, icon]) => (
@@ -255,20 +253,27 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
       </style>
 
       <div className="poker-game">
+        {/* Player balance display - only show when game is active */}
+        {currentPlayer && (gameState?.status === 'playing' || gameState?.status === 'pre_flop') && (
+          <div className="poker-balance-display">
+            <div className="spins-coin"></div>
+            <span className="poker-balance-amount">{currentPlayer.betting_balance}</span>
+          </div>
+        )}
         {/* Debug Settings Button */}
         <div ref={debugMenuRef}>
-          <button 
+          <button
             className="poker-debug-button"
             onClick={() => setShowDebugMenu(!showDebugMenu)}
             title="Debug Settings"
           >
             ⚙️
           </button>
-          
+
           {/* Debug Menu Dropdown */}
           {showDebugMenu && (
             <div className="poker-debug-menu">
-              <button 
+              <button
                 className="poker-debug-menu-item"
                 onClick={() => {
                   handleAddFakePlayer();
@@ -277,7 +282,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               >
                 Add Player
               </button>
-              <button 
+              <button
                 className="poker-debug-menu-item"
                 disabled={!connected}
                 onClick={() => {
@@ -290,10 +295,18 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
             </div>
           )}
         </div>
-        
+
         <div className="poker-game-space">
           <div className="poker-table-wrapper">
             <div className="poker-table">
+              {/* Pot display above community cards */}
+              {gameState && gameState.pot > 0 && (
+                <div className="poker-pot">
+                  <img src={moneyPile} alt="Pot" className="poker-pot-icon" />
+                  <span className="poker-pot-amount">{gameState.pot}</span>
+                </div>
+              )}
+
               <div className="community-cards">
                 <div className="card-outline"></div>
                 <div className="card-outline"></div>
@@ -302,7 +315,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
                 <div className="card-outline"></div>
               </div>
             </div>
-            
+
             {/* Dynamic player icons - rotated so current user is at bottom */}
             {getRotatedPlayers().map((player, index) => {
               const totalPlayers = players.length + fakePlayers.length;
@@ -310,18 +323,18 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               const isCurrentUser = player.user_id === userId;
               const isPlaying = gameState?.status === 'playing' || gameState?.status === 'pre_flop';
               const showCards = isPlaying;
-              
+
               // Calculate angle from center to player
               const angleFromCenter = Math.atan2(y, x) * (180 / Math.PI);
-              
+
               // Calculate offset towards center along the radial axis
               const inwardDistance = 30; // Distance to shift towards center (reduced to move cards further from center)
               const offsetX = -Math.cos(angleFromCenter * Math.PI / 180) * inwardDistance;
               const offsetY = -Math.sin(angleFromCenter * Math.PI / 180) * inwardDistance;
-              
+
               // Get player's actual cards if they're the current user
               const playerCards = isCurrentUser && currentPlayer?.hole_cards ? currentPlayer.hole_cards : null;
-              
+
               return (
                 <div
                   key={player.user_id}
@@ -339,10 +352,10 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
                     data-user-id={player.user_id}
                     title={`Player ${player.user_id}`}
                   />
-                  
+
                   {/* Player cards - shown when game is playing */}
                   {showCards && (
-                    <div 
+                    <div
                       className={`hole-cards ${isCurrentUser ? 'current-player-cards' : ''}`}
                       style={{
                         // Center the container, move towards center, then rotate to face center
@@ -352,12 +365,12 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
                       {isCurrentUser && playerCards ? (
                         // Current user sees their actual cards with rarity borders
                         <>
-                          <div 
+                          <div
                             className={`hole-card hole-card-left current-player-card ${getRarityClass(playerCards[0].rarity)}`}
                             data-card-index="0"
                           />
                           {playerCards[1] && (
-                            <div 
+                            <div
                               className={`hole-card hole-card-right current-player-card ${getRarityClass(playerCards[1].rarity)}`}
                               data-card-index="1"
                             />
@@ -381,20 +394,46 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
             })}
           </div>
         </div>
-        
+
         <div className="poker-action-space">
-          {/* Left side - game status and actions */}
-          <div className="poker-action-left">
+          <div className="poker-action">
             {(() => {
               const hasJoined = userId && players.some(p => p.user_id === userId);
-              
+
               if (hasJoined) {
-                // User has joined - show status
+                // User has joined - show status or action buttons
                 if (gameState?.status === 'playing' || gameState?.status === 'pre_flop') {
                   return (
-                    <div className="poker-status-container">
-                      <div className="poker-game-started">
-                        Game Started
+                    <div className="poker-action-container">
+                      <div className="poker-current-bet">
+                        <span className="poker-bet-label">Current bet:</span>
+                        <span className="poker-bet-amount">
+                          <div className="spins-coin" aria-hidden="true" />
+                          {gameState.current_bet}
+                        </span>
+                      </div>
+                      <div className="poker-action-buttons">
+                        <button
+                          className="poker-action-button poker-check-button"
+                          disabled={!connected}
+                          title="Check"
+                        >
+                          ✓
+                        </button>
+                        <button
+                          className="poker-action-button poker-raise-button"
+                          disabled={!connected}
+                          title="Raise"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          className="poker-action-button poker-fold-button"
+                          disabled={!connected}
+                          title="Fold"
+                        >
+                          ✕
+                        </button>
                       </div>
                     </div>
                   );
@@ -422,7 +461,7 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
               } else {
                 // User hasn't joined yet - show join button
                 return (
-                  <button 
+                  <button
                     className="poker-join-button"
                     disabled={loading || !connected}
                     onClick={handleJoin}
@@ -432,10 +471,6 @@ const Poker: React.FC<PokerProps> = ({ chatId, initData }) => {
                 );
               }
             })()}
-          </div>
-
-          {/* Right side - reserved for future actions/buttons */}
-          <div className="poker-action-right">
           </div>
         </div>
       </div>
