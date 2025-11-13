@@ -1,0 +1,34 @@
+id: 8
+set: tv
+rarities:
+- name: Common
+  modifiers:
+  - Sitcom
+  - Western
+- name: Rare
+  modifiers:
+  - Avenger
+  - Disney
+  - Frankenstein
+  - Indiana
+  - Matrix
+  - Shrek
+  - Star Trek
+  - Terminator
+  - Toy Story
+- name: Epic
+  modifiers:
+  - Breaking Bad
+  - Jedi
+  - Joker
+  - Ninja Turtle
+  - Power Ranger
+  - Scooby-Doo
+  - Severance
+  - Simpsons
+  - South Park
+  - Spongebob
+  - Thanos
+- name: Legendary
+  modifiers:
+  - Teletubbie
