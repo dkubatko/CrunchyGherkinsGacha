@@ -1,8 +1,8 @@
 """Add poker_cardb64 column to users and characters tables
 
-Revision ID: 20251021_0030
-Revises: 20251018_0029
-Create Date: 2025-10-21 00:00:00.000000
+Revision ID: 20251112_0032
+Revises: 20251112_0031
+Create Date: 2025-11-12 00:00:00.000000
 
 """
 
@@ -29,8 +29,8 @@ except ImportError as e:
     GEMINI_AVAILABLE = False
 
 # revision identifiers, used by Alembic.
-revision = "20251021_0030"
-down_revision = "20251018_0029"
+revision = "20251112_0032"
+down_revision = "20251112_0031"
 branch_labels = None
 depends_on = None
 

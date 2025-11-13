@@ -1,8 +1,8 @@
 """Create poker_games and poker_players tables
 
-Revision ID: 20251018_0029
-Revises: 20251016_0028
-Create Date: 2025-10-18
+Revision ID: 20251112_0031
+Revises: 20251026_0030
+Create Date: 2025-11-12
 
 """
 
@@ -13,8 +13,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = "20251018_0029"
-down_revision: Union[str, None] = "20251016_0028"
+revision: str = "20251112_0031"
+down_revision: Union[str, None] = "20251026_0030"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
