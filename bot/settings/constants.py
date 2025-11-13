@@ -89,7 +89,7 @@ REFRESH_COST_SUMMARY = _build_cost_summary(get_refresh_cost)
 
 
 IMAGE_GENERATOR_INSTRUCTION = """
-**Generate a 5:7 aspect ratio detailed collectible trading card using the provided template image for layout reference, and the character image as the subject of the illustration.**
+**Generate a 5:7 aspect ratio detailed collectible trading card using the provided template image as layout reference, and the character image as the subject of the illustration.**
 
 **--- Guiding Principles ---**
 You must achieve the following goals:
@@ -106,8 +106,8 @@ The overall style should be a high-quality, detailed 2D digital illustration.
 
 **2. Card Transformation & Layout:**
    - **Main Artwork:** **the large, colored central area** of the template should contain the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area.
-   - **Restyle Elements:** The template's existing **border and nameplate MUST be styled** with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
-   - **Layering:** The restyled nameplate must remain an **opaque layer on top** of the main artwork.
+   - **Restyle Elements:** Card border and nameplate **MUST** be heavily styled with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
+   - **Layering:** The styled nameplate must remain an **opaque layer on top** of the main artwork.
    - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
 
 **3. Character Likeness & Modification:**
@@ -125,7 +125,7 @@ The overall style should be a high-quality, detailed 2D digital illustration.
    - **Exclusivity:** Do NOT include any other text anywhere on the card.
 
 **5. Rarity Color Application:**
-   - The card's restyled **border and nameplate MUST use the {color} color palette** to indicate rarity.
+   - The card's border and nameplate **MUST** use the {color} color palette to indicate rarity.
    - This color restriction applies **ONLY to the border frame and nameplate**.
    - The main artwork, background, and character are **NOT constrained** by this color—they should use whatever colors best represent the theme from Section 1.
 
