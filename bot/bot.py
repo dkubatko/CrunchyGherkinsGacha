@@ -79,7 +79,8 @@ from settings.constants import (
     REFRESH_PROCESSING_MESSAGE,
     REFRESH_FAILURE_MESSAGE,
     REFRESH_SUCCESS_MESSAGE,
-    REFRESH_DONE_MESSAGE,
+    REFRESH_OPTIONS_READY_MESSAGE,
+    REFRESH_ABORTED_MESSAGE,
     get_refresh_cost,
 )
 from settings.constants import get_claim_cost, get_lock_cost, get_spin_reward
@@ -1055,154 +1056,317 @@ async def refresh(
     )
 
 
-@verify_user_in_chat
-async def handle_refresh_callback(
-    update: Update,
+def _build_refresh_navigation_keyboard(
+    card_id: int,
+    user_id: int,
+    current_option: int,
+    total_options: int,
+) -> InlineKeyboardMarkup:
+    """Build navigation keyboard for refresh options with wrap-around."""
+    buttons = []
+
+    # Navigation buttons - always show both on the same row with wrap-around
+    prev_option = current_option - 1 if current_option > 1 else total_options
+    next_option = current_option + 1 if current_option < total_options else 1
+
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "Prev", callback_data=f"refresh_nav_{prev_option}_{card_id}_{user_id}"
+            ),
+            InlineKeyboardButton(
+                "Next", callback_data=f"refresh_nav_{next_option}_{card_id}_{user_id}"
+            ),
+        ]
+    )
+
+    # Select button on its own row
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                "Select", callback_data=f"refresh_pick_{current_option}_{card_id}_{user_id}"
+            )
+        ]
+    )
+
+    return InlineKeyboardMarkup(buttons)
+
+
+async def _handle_refresh_cancel(
+    query,
+    card_id: int,
+) -> None:
+    """Handle refresh cancellation from confirmation screen."""
+    card = await asyncio.to_thread(database.get_card, card_id)
+    if card:
+        card_title = card.title(include_id=True, include_rarity=True)
+        cancel_msg = REFRESH_CANCELLED_MESSAGE.format(card_title=card_title)
+    else:
+        cancel_msg = "Refresh cancelled."
+    try:
+        await query.edit_message_caption(
+            caption=cancel_msg, parse_mode=ParseMode.HTML, reply_markup=None
+        )
+    except Exception:
+        pass
+    await query.answer()
+
+
+async def _handle_refresh_nav(
+    query,
+    user: database.User,
+    card_id: int,
+    option_index: int,
+    refresh_sessions: dict,
+    session_key: str,
+) -> None:
+    """Handle navigation between refresh options."""
+    session = refresh_sessions.get(session_key)
+    if not session:
+        await query.answer("This refresh is no longer active.", show_alert=True)
+        return
+
+    options: list[str] = session["options"]
+    if option_index < 1 or option_index > len(options):
+        await query.answer("Invalid option.", show_alert=True)
+        return
+
+    # Get the card info for caption
+    card = await asyncio.to_thread(database.get_card, card_id)
+    card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
+    remaining_balance = session["remaining_balance"]
+
+    options_caption = REFRESH_OPTIONS_READY_MESSAGE.format(
+        card_title=card_title,
+        remaining_balance=remaining_balance,
+    )
+
+    # Label option 1 as "Original", others as regular options
+    if option_index == 1:
+        option_label = f"<b>Option {option_index} of {len(options)} (Original)</b>"
+    else:
+        option_label = f"<b>Option {option_index} of {len(options)}</b>"
+
+    caption = f"{options_caption}\n\n{option_label}"
+
+    # Update to show the selected option
+    keyboard = _build_refresh_navigation_keyboard(card_id, user.user_id, option_index, len(options))
+
+    option_b64 = options[option_index - 1]
+    image_bytes = base64.b64decode(option_b64)
+    image_file = BytesIO(image_bytes)
+    image_file.name = f"refresh_option_{option_index}.jpg"
+
+    try:
+        await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=image_file,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+            ),
+            reply_markup=keyboard,
+        )
+        await query.answer()
+    except Exception as exc:
+        logger.warning("Failed to navigate to option %s: %s", option_index, exc)
+        await query.answer("Failed to load option.", show_alert=True)
+
+
+async def _handle_refresh_pick(
+    query,
     context: ContextTypes.DEFAULT_TYPE,
     user: database.User,
+    card_id: int,
+    option_index: int,
+    refresh_sessions: dict,
+    session_key: str,
 ) -> None:
-    """Handle refresh confirmation/cancellation/retry/done."""
-    query = update.callback_query
-    if not query:
+    """Handle user selecting a refresh option."""
+    session = refresh_sessions.get(session_key)
+    if not session or option_index is None:
+        await query.answer("This refresh is no longer active.", show_alert=True)
         return
 
-    data_parts = query.data.split("_")
-    if len(data_parts) < 4:
-        await query.answer("Invalid refresh data.")
+    selection_idx = option_index - 1
+    options: list[str] = session["options"]
+    if selection_idx < 0 or selection_idx >= len(options):
+        await query.answer("Invalid option.", show_alert=True)
         return
 
-    _, action, card_id_str, target_user_id_str = data_parts[:4]
+    card = await asyncio.to_thread(database.get_card, card_id)
+    card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
+    chat_id_for_balance = session["chat_id"]
 
-    # For retry action, also extract the attempt number
-    attempt = 1
-    if action == "retry" and len(data_parts) >= 5:
-        try:
-            attempt = int(data_parts[4])
-        except ValueError:
-            attempt = 1
+    # If user selected the original image (option 1), keep the original without updating
+    if option_index == 1:
+        latest_balance = await asyncio.to_thread(
+            database.get_claim_balance, user.user_id, chat_id_for_balance
+        )
+        success_message = (
+            f"<b>{card_title}</b>\n\nKept original image.\n\nBalance: {latest_balance}"
+        )
+    else:
+        # Update the card with the new image
+        chosen_image_b64 = options[selection_idx]
+        await asyncio.to_thread(database.update_card_image, card_id, chosen_image_b64)
+
+        latest_balance = await asyncio.to_thread(
+            database.get_claim_balance, user.user_id, chat_id_for_balance
+        )
+        success_message = REFRESH_SUCCESS_MESSAGE.format(
+            card_title=card_title,
+            selection=option_index,
+            remaining_balance=latest_balance,
+        )
+
+    # Get the selected image for display
+    chosen_image_b64 = options[selection_idx]
+    image_bytes = base64.b64decode(chosen_image_b64)
+    image_file = BytesIO(image_bytes)
+    image_file.name = f"refresh_option_{option_index}.jpg"
 
     try:
-        card_id = int(card_id_str)
-        target_user_id = int(target_user_id_str)
-    except ValueError:
-        await query.answer("Invalid refresh data.")
-        return
+        edited_message = await query.edit_message_media(
+            media=InputMediaPhoto(
+                media=image_file,
+                caption=success_message,
+                parse_mode=ParseMode.HTML,
+            ),
+            reply_markup=None,
+        )
+        await save_card_file_id_from_message(edited_message, card_id)
+    except Exception as exc:
+        logger.warning("Failed to update message with selected option: %s", exc)
+        await query.edit_message_caption(
+            caption=success_message,
+            parse_mode=ParseMode.HTML,
+            reply_markup=None,
+        )
 
-    if target_user_id != user.user_id:
-        await query.answer("This refresh prompt isn't for you!")
-        return
+    logger.info(
+        "User %s selected option %s for card %s refresh.",
+        user.user_id,
+        option_index,
+        card_id,
+    )
 
-    if action == "cancel":
-        # Fetch card info for the message
-        card = await asyncio.to_thread(database.get_card, card_id)
-        if card:
-            card_title = card.title(include_id=True, include_rarity=True)
-            cancel_msg = REFRESH_CANCELLED_MESSAGE.format(
-                card_title=card_title,
-            )
-        else:
-            cancel_msg = "Refresh cancelled."
-        try:
-            await query.edit_message_caption(
-                caption=cancel_msg, parse_mode=ParseMode.HTML, reply_markup=None
-            )
-        except Exception:
-            pass
-        await query.answer()
-        return
+    refresh_sessions.pop(session_key, None)
+    await query.answer(f"Saved option {option_index}!")
 
-    if action == "done":
-        # Remove buttons and update message to show final state
-        card = await asyncio.to_thread(database.get_card, card_id)
-        if card:
-            card_title = card.title(include_id=True, include_rarity=True)
-            chat = update.effective_chat
-            chat_id_str = str(chat.id) if chat else None
-            refresh_cost = get_refresh_cost(card.rarity)
-            balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
-            done_msg = REFRESH_DONE_MESSAGE.format(
-                card_title=card_title,
-                attempt=attempt,
-                remaining_balance=balance,
-            )
-        else:
-            done_msg = "Refresh complete."
-        try:
-            await query.edit_message_caption(
-                caption=done_msg, parse_mode=ParseMode.HTML, reply_markup=None
-            )
-        except Exception:
-            pass
-        await query.answer()
-        return
 
-    if action not in ["yes", "retry"]:
-        await query.answer("Unknown action.")
-        return
+async def _validate_refresh_ownership(
+    card: database.Card,
+    user: database.User,
+) -> bool:
+    """Validate that the user owns the card."""
+    username = user.username
+    if not username:
+        return False
 
-    refreshing_users = context.bot_data.setdefault("refreshing_users", set())
-    if user.user_id in refreshing_users:
-        await query.answer(REFRESH_ALREADY_RUNNING_MESSAGE)
-        return
+    return card.user_id == user.user_id or (username and card.owner == username)
 
-    refreshing_users.add(user.user_id)
 
-    chat = update.effective_chat
-    chat_id_str = str(chat.id) if chat else None
+async def _generate_refresh_options(
+    card: database.Card,
+    gemini_util,
+    max_retries: int,
+) -> tuple[str, str]:
+    """Generate two refresh image options."""
+    option1_b64 = await asyncio.to_thread(
+        rolling.regenerate_card_image,
+        card,
+        gemini_util,
+        max_retries=max_retries,
+        refresh_attempt=2,
+    )
+    option2_b64 = await asyncio.to_thread(
+        rolling.regenerate_card_image,
+        card,
+        gemini_util,
+        max_retries=max_retries,
+        refresh_attempt=3,
+    )
+    return option1_b64, option2_b64
 
+
+async def _update_to_refresh_options(
+    query,
+    card_id: int,
+    user_id: int,
+    card_title: str,
+    remaining_balance: int,
+    original_image_b64: str,
+):
+    """Update the confirmation message to show the original image as option 1."""
+    num_options = 3  # Original + 2 new options
+    keyboard = _build_refresh_navigation_keyboard(card_id, user_id, 1, num_options)
+
+    options_caption = REFRESH_OPTIONS_READY_MESSAGE.format(
+        card_title=card_title,
+        remaining_balance=remaining_balance,
+    )
+    caption = f"{options_caption}\n\n<b>Option 1 of {num_options} (Original)</b>"
+
+    original_photo = BytesIO(base64.b64decode(original_image_b64))
+    original_photo.name = "refresh_option_1_original.jpg"
+
+    # Update the existing message with the original image as option 1
+    await query.edit_message_media(
+        media=InputMediaPhoto(
+            media=original_photo,
+            caption=caption,
+            parse_mode=ParseMode.HTML,
+        ),
+        reply_markup=keyboard,
+    )
+
+
+async def _handle_refresh_confirm(
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+    card_id: int,
+    chat_id_str: Optional[str],
+    refresh_sessions: dict,
+    session_key: str,
+    refreshing_users: set,
+) -> None:
+    """Handle the confirmation 'yes' action to start refresh process."""
     try:
-        # Fetch the card again
         card = await asyncio.to_thread(database.get_card, card_id)
         if not card:
             await query.answer(REFRESH_CARD_NOT_FOUND_MESSAGE, show_alert=True)
             return
 
-        # Verify ownership again
-        username = user.username
-        if not username:
-            return
-
-        owns_card = card.user_id == user.user_id or (username and card.owner == username)
-        if not owns_card:
+        if not await _validate_refresh_ownership(card, user):
             await query.answer(REFRESH_NOT_YOURS_MESSAGE, show_alert=True)
             return
 
-        # Deduct claim points only on first attempt (action == "yes")
         refresh_cost = get_refresh_cost(card.rarity)
-        balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
+        active_chat_id = card.chat_id or chat_id_str
+        balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, active_chat_id)
 
-        if action == "yes":
-            # First attempt - verify balance and deduct
-            if balance < refresh_cost:
-                await query.answer(
-                    REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
-                    show_alert=True,
-                )
-                return
-
-            # Deduct claim points upfront
-            remaining_balance = await asyncio.to_thread(
-                database.reduce_claim_points, user.user_id, chat_id_str, refresh_cost
+        if balance < refresh_cost:
+            await query.answer(
+                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                show_alert=True,
             )
+            return
 
-            if remaining_balance is None:
-                # Balance check failed
-                await query.answer(
-                    REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
-                    show_alert=True,
-                )
-                return
-        else:
-            # Retry - no deduction
-            remaining_balance = balance
+        remaining_balance = await asyncio.to_thread(
+            database.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
+        )
 
-        # Show processing message
+        if remaining_balance is None:
+            await query.answer(
+                REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
+                show_alert=True,
+            )
+            return
+
         await query.answer()
         card_title = card.title(include_id=True, include_rarity=True)
-        processing_msg = REFRESH_PROCESSING_MESSAGE.format(
-            card_title=card_title,
-            attempt=attempt,
-        )
+        processing_msg = REFRESH_PROCESSING_MESSAGE.format(card_title=card_title)
         try:
             await query.edit_message_caption(
                 caption=processing_msg, parse_mode=ParseMode.HTML, reply_markup=None
@@ -1210,14 +1374,10 @@ async def handle_refresh_callback(
         except Exception:
             pass
 
-        # Regenerate the image
+        # Generate two image options
         try:
-            new_image_b64 = await asyncio.to_thread(
-                rolling.regenerate_card_image,
-                card,
-                gemini_util,
-                max_retries=MAX_BOT_IMAGE_RETRIES,
-                refresh_attempt=attempt,
+            option1_b64, option2_b64 = await _generate_refresh_options(
+                card, gemini_util, MAX_BOT_IMAGE_RETRIES
             )
         except (
             rolling.ImageGenerationError,
@@ -1225,10 +1385,10 @@ async def handle_refresh_callback(
             rolling.NoEligibleUserError,
         ) as exc:
             logger.warning("Image regeneration failed for card %s: %s", card_id, exc)
-            card_title = card.title(include_id=True, include_rarity=True)
-            failure_msg = REFRESH_FAILURE_MESSAGE.format(
-                card_title=card_title,
+            await asyncio.to_thread(
+                database.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
+            failure_msg = REFRESH_FAILURE_MESSAGE.format(card_title=card_title)
             await query.answer(
                 "Refresh failed. Image generation is unavailable right now.", show_alert=True
             )
@@ -1240,78 +1400,54 @@ async def handle_refresh_callback(
                 pass
             return
 
-        # Update the card with the new image
-        await asyncio.to_thread(database.update_card_image, card_id, new_image_b64)
+        # Get the original image to use as option 1
+        original_image_b64 = card.image_b64
 
-        logger.info(
-            "Card %s refreshed by user %s (attempt %s), remaining balance: %s",
-            card_id,
-            user.user_id,
-            attempt,
-            remaining_balance,
-        )
-
-        # Replace the old image with the new one and show retry/done buttons
-        card_title = card.title(include_id=True, include_rarity=True)
-        success_message = REFRESH_SUCCESS_MESSAGE.format(
-            card_title=card_title,
-            attempt=attempt,
-            remaining_balance=remaining_balance,
-        )
-
-        # Build buttons - show Retry only if we haven't used all 3 attempts
-        # On the 3rd attempt, automatically remove all buttons (no Done button needed)
-        if attempt >= 3:
-            keyboard = None
-        else:
-            buttons = []
-            buttons.append(
-                InlineKeyboardButton(
-                    "Retry", callback_data=f"refresh_retry_{card_id}_{user.user_id}_{attempt + 1}"
-                )
-            )
-            buttons.append(
-                InlineKeyboardButton(
-                    "Done", callback_data=f"refresh_done_{card_id}_{user.user_id}_{attempt}"
-                )
-            )
-            keyboard = InlineKeyboardMarkup([buttons])
-
+        # Update the confirmation message to show the original image as option 1
         try:
-            new_image_bytes = base64.b64decode(new_image_b64)
-            edited_message = await query.edit_message_media(
-                media=InputMediaPhoto(
-                    media=new_image_bytes,
-                    caption=success_message,
-                    parse_mode=ParseMode.HTML,
-                ),
-                reply_markup=keyboard,
+            await _update_to_refresh_options(
+                query,
+                card_id,
+                user.user_id,
+                card_title,
+                remaining_balance,
+                original_image_b64,
             )
-            # Save the new file_id from Telegram
-            await save_card_file_id_from_message(edited_message, card_id)
-        except Exception as e:
-            logger.warning("Failed to update message with new image: %s", e)
-            # Fallback to just updating caption if media edit fails
+        except Exception as exc:
+            logger.warning("Failed to show refresh options for card %s: %s", card_id, exc)
+            await asyncio.to_thread(
+                database.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+            )
+            await query.answer(
+                "Refresh failed. Image generation is unavailable right now.", show_alert=True
+            )
+            failure_msg = REFRESH_FAILURE_MESSAGE.format(card_title=card_title)
             try:
                 await query.edit_message_caption(
-                    caption=success_message, parse_mode=ParseMode.HTML, reply_markup=keyboard
+                    caption=failure_msg, parse_mode=ParseMode.HTML, reply_markup=None
                 )
             except Exception:
                 pass
+            return
+
+        # Store session data with original image as option 1, new images as options 2 and 3
+        refresh_sessions[session_key] = {
+            "options": [original_image_b64, option1_b64, option2_b64],
+            "cost": refresh_cost,
+            "remaining_balance": remaining_balance,
+            "chat_id": active_chat_id,
+        }
 
     except Exception as exc:
         logger.exception("Unexpected error during refresh for card %s: %s", card_id, exc)
         await query.answer("Refresh failed due to an unexpected error.", show_alert=True)
         try:
-            # Try to get card info for a better error message
             error_card = await asyncio.to_thread(database.get_card, card_id)
             if error_card:
                 error_title = error_card.title(include_id=True, include_rarity=True)
-                error_msg = REFRESH_FAILURE_MESSAGE.format(
-                    card_title=error_title,
-                )
+                error_msg = REFRESH_FAILURE_MESSAGE.format(card_title=error_title)
             else:
-                error_msg = "Refresh failed. Image generation is unavailable right now. Your claim points were not deducted."
+                error_msg = "Refresh failed. Image generation is unavailable right now."
             await query.edit_message_caption(
                 caption=error_msg, parse_mode=ParseMode.HTML, reply_markup=None
             )
@@ -1319,6 +1455,96 @@ async def handle_refresh_callback(
             pass
     finally:
         refreshing_users.discard(user.user_id)
+
+
+@verify_user_in_chat
+async def handle_refresh_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: database.User,
+) -> None:
+    """Handle refresh flow: confirmation, image generation, selection, and cancellation."""
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer("Invalid refresh data.")
+        return
+
+    action = data_parts[1]
+    option_index: Optional[int] = None
+
+    # Parse callback data based on action
+    if action in ("pick", "nav"):
+        if len(data_parts) < 5:
+            await query.answer("Invalid refresh data.")
+            return
+        try:
+            option_index = int(data_parts[2])
+        except ValueError:
+            await query.answer("Invalid option.")
+            return
+        card_id_str = data_parts[3]
+        target_user_id_str = data_parts[4]
+    else:
+        card_id_str = data_parts[2]
+        target_user_id_str = data_parts[3]
+
+    try:
+        card_id = int(card_id_str)
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Invalid refresh data.")
+        return
+
+    # Verify user authorization
+    if target_user_id != user.user_id:
+        await query.answer("This refresh prompt isn't for you!")
+        return
+
+    refresh_sessions = context.bot_data.setdefault("refresh_sessions", {})
+    session_key = f"{card_id}:{user.user_id}"
+
+    # Route to appropriate handler based on action
+    if action == "cancel":
+        await _handle_refresh_cancel(query, card_id)
+        return
+
+    if action == "nav":
+        await _handle_refresh_nav(query, user, card_id, option_index, refresh_sessions, session_key)
+        return
+
+    if action == "pick":
+        await _handle_refresh_pick(
+            query, context, user, card_id, option_index, refresh_sessions, session_key
+        )
+        return
+
+    if action == "yes":
+        refreshing_users = context.bot_data.setdefault("refreshing_users", set())
+        if user.user_id in refreshing_users:
+            await query.answer(REFRESH_ALREADY_RUNNING_MESSAGE)
+            return
+
+        refreshing_users.add(user.user_id)
+        chat = update.effective_chat
+        chat_id_str = str(chat.id) if chat else None
+
+        await _handle_refresh_confirm(
+            query,
+            context,
+            user,
+            card_id,
+            chat_id_str,
+            refresh_sessions,
+            session_key,
+            refreshing_users,
+        )
+        return
+
+    await query.answer("Unknown action.")
 
 
 @verify_user_in_chat
