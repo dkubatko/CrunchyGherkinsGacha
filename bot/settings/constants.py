@@ -335,7 +335,7 @@ LOCK_USAGE_MESSAGE = (
 REFRESH_USAGE_MESSAGE = (
     "Usage: /refresh <card_id>.\n\n"
     "Re-generate the image for a card you own.\n\n"
-    "You get 3 attempts per refresh for a single payment.\n\n"
+    "Each refresh instantly creates two new options so you can pick your favorite.\n\n"
     "Claim points cost varies by rarity:\n"
     f"{REFRESH_COST_SUMMARY}"
 )
@@ -349,25 +349,28 @@ REFRESH_INSUFFICIENT_BALANCE_MESSAGE = (
 )
 REFRESH_CONFIRM_MESSAGE = (
     "<b>{card_title}</b>\n\n"
-    "Refresh image for this card?\n\n"
-    "This will cost <b>{cost} claim points</b> for up to 3 attempts.\n\n"
+    "Generate two new image options for this card?\n\n"
+    "This will cost <b>{cost} claim points</b> for a single refresh.\n\n"
     "Your current balance: <b>{balance} points</b>"
 )
 REFRESH_CANCELLED_MESSAGE = "<b>{card_title}</b>\n\nRefresh cancelled."
 REFRESH_ALREADY_RUNNING_MESSAGE = "You already have a refresh in progress."
-REFRESH_PROCESSING_MESSAGE = (
-    "<b>{card_title}</b>\n\n<i>Refreshing card image...</i>\n\n(Attempt {attempt}/3)"
+REFRESH_PROCESSING_MESSAGE = "<b>{card_title}</b>\n\n<i>Generating new image options...</i>"
+REFRESH_OPTIONS_READY_MESSAGE = (
+    "<b>{card_title}</b>\n\n"
+    "Select an image to keep for this card.\n\n"
+    "Remaining balance: <b>{remaining_balance} points</b>."
 )
-REFRESH_FAILURE_MESSAGE = "<b>{card_title}</b>\n\nRefresh failed. Image generation is unavailable right now. Your claim points were not deducted."
+REFRESH_FAILURE_MESSAGE = (
+    "<b>{card_title}</b>\n\n"
+    "Refresh failed. Image generation is unavailable right now. Your claim points were refunded."
+)
 REFRESH_SUCCESS_MESSAGE = (
     "<b>{card_title}</b>\n\n"
-    "Refresh complete! Card image regenerated.\n\n"
-    "Attempt {attempt}/3\n\n"
+    "Saved Option {selection}!\n\n"
     "Remaining balance: <b>{remaining_balance} points</b>."
 )
-REFRESH_DONE_MESSAGE = (
+REFRESH_ABORTED_MESSAGE = (
     "<b>{card_title}</b>\n\n"
-    "Refresh complete! Card image regenerated.\n\n"
-    "Used {attempt}/3 attempts\n\n"
-    "Remaining balance: <b>{remaining_balance} points</b>."
+    "Refresh cancelled. Original image kept and claim points remain spent."
 )
