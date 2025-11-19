@@ -140,7 +140,10 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
             chatId
           );
           
-          setCards(response.cards);
+          // Filter out Unique cards
+          const playableCards = response.cards.filter(card => card.rarity.toLowerCase() !== 'unique');
+          
+          setCards(playableCards);
           setGameState('selecting');
         }
       } catch (err) {

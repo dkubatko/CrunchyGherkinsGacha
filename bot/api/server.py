@@ -2253,6 +2253,15 @@ async def minesweeper_create(
         )
         raise HTTPException(status_code=403, detail="You do not own this card")
 
+    if card.rarity.lower() == "unique":
+        logger.warning(
+            "User %s (%s) attempted to bet Unique card %s",
+            username,
+            auth_user_id,
+            request.bet_card_id,
+        )
+        raise HTTPException(status_code=400, detail="Unique cards cannot be used in Minesweeper")
+
     # Verify card is from the same chat
     if card.chat_id != chat_id:
         logger.warning(
