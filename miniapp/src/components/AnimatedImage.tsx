@@ -28,8 +28,8 @@ interface AnimatedImageProps {
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const toDegrees = (value: number) => (value * 180) / Math.PI;
 const createZeroTilt = (): TiltValues => ({ x: 0, y: 0 });
-const TILT_LIMIT_DEGREES = 15;
-const TILT_SENSITIVITY = 0.3;
+const TILT_LIMIT_DEGREES = 20;
+const TILT_SENSITIVITY = 0.22;
 const SMOOTHING_THRESHOLD = 0.005;
 
 // Performance detection
@@ -51,7 +51,7 @@ const detectDevicePerformance = (): 'high' | 'medium' | 'low' => {
 };
 
 const DEVICE_PERFORMANCE = detectDevicePerformance();
-const ANIMATION_FPS = DEVICE_PERFORMANCE === 'high' ? 60 : DEVICE_PERFORMANCE === 'medium' ? 30 : 15;
+const ANIMATION_FPS = DEVICE_PERFORMANCE === 'high' ? 60 : DEVICE_PERFORMANCE === 'medium' ? 60 : 30;
 const FRAME_INTERVAL = 1000 / ANIMATION_FPS;
 
 const wrapAngleDelta = (angle: number) => {
@@ -79,7 +79,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   const [isBurning, setIsBurning] = useState(false);
 
   const tiltTargetRef = useRef<TiltValues>(createZeroTilt());
-  const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.18 : 0.12);
+  const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.25 : 0.15);
   const lastFrameTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const burnStartTimeRef = useRef<number | null>(null);
@@ -102,7 +102,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   }, [orientation, referenceOrientation]);
 
   useEffect(() => {
-    const performanceFactor = DEVICE_PERFORMANCE === 'high' ? 0.18 : DEVICE_PERFORMANCE === 'medium' ? 0.15 : 0.12;
+    const performanceFactor = DEVICE_PERFORMANCE === 'high' ? 0.25 : DEVICE_PERFORMANCE === 'medium' ? 0.2 : 0.15;
     smoothingFactorRef.current = effectsEnabled ? performanceFactor : 0.1;
     if (!effectsEnabled) {
       tiltTargetRef.current = createZeroTilt();
@@ -234,8 +234,8 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     }
 
     return {
-      x: -tiltForEffects.x,
-      y: tiltForEffects.y
+      x: clamp(-tiltForEffects.x, -15, 15),
+      y: clamp(tiltForEffects.y, -15, 15)
     };
   }, [tiltForEffects]);
 
@@ -295,7 +295,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   // Memoized shine calculations for better performance
   const shineMetrics = useMemo(() => {
     if (!effectsEnabled) {
-      return { x: 50, y: 50, intensity: 0 };
+      return { pos: 50, angle: 115, intensity: 0, width: 0 };
     }
     
     // Get shine intensity based on rarity
@@ -312,24 +312,33 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       }
     };
     
+    const intensity = getShineIntensity(rarity);
+
     if (!tiltForEffects) {
       // Simplified animation for devices without tilt
-      const time = animationState.tick * 0.015;
-      const motionFactor = DEVICE_PERFORMANCE === 'low' ? 0.5 : 1.0;
+      const time = animationState.tick * 0.02;
       return {
-        x: 80 + Math.sin(time) * 3 * motionFactor,
-        y: 20 + Math.cos(time * 1.2) * 2 * motionFactor,
-        intensity: getShineIntensity(rarity)
+        pos: 50 + Math.sin(time) * 30,
+        angle: 115,
+        intensity,
+        width: 45
       };
     }
     
-    const normalizedX = clamp(tiltForEffects.y / TILT_LIMIT_DEGREES, -1, 1);
-    const normalizedY = clamp(tiltForEffects.x / TILT_LIMIT_DEGREES, -1, 1);
+    // Calculate shine position based on tilt (reflection logic)
+    // Tilt Left (y < 0) -> Shine moves Left (pos < 50)
+    // Tilt Up (x < 0) -> Shine moves Up (pos < 50)
+    const normalizedX = clamp(tiltForEffects.x / TILT_LIMIT_DEGREES, -1, 1); // Pitch
+    const normalizedY = clamp(tiltForEffects.y / TILT_LIMIT_DEGREES, -1, 1); // Roll
 
+    // Combine for a diagonal sweep (115 deg is top-left to bottom-right)
+    const drive = normalizedX + normalizedY; 
+    
     return {
-      x: clamp(50 + normalizedX * 25, 0, 100),
-      y: clamp(50 + normalizedY * 25, 0, 100),
-      intensity: getShineIntensity(rarity)
+      pos: 50 + drive * 50,
+      angle: 115 + (normalizedY * 10),
+      intensity,
+      width: 55 + Math.abs(drive) * 25
     };
   }, [effectsEnabled, tiltForEffects, animationState.tick, rarity]);
 
@@ -387,25 +396,33 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
           style={{
             opacity: isBurning ? 0 : 1,
             background: DEVICE_PERFORMANCE === 'low' 
-              ? `linear-gradient(${75 + (shineMetrics.x - 50) * 0.1}deg,
-                  transparent 0%,
-                  rgba(255, 255, 255, ${shineMetrics.intensity * 0.15}) ${shineMetrics.x}%,
-                  transparent 100%
+              ? `linear-gradient(${shineMetrics.angle}deg,
+                  transparent ${shineMetrics.pos - shineMetrics.width}%,
+                  rgba(255, 255, 255, ${shineMetrics.intensity * 0.3}) ${shineMetrics.pos}%,
+                  transparent ${shineMetrics.pos + shineMetrics.width}%
                 )`
-              : `linear-gradient(${75 + (shineMetrics.x - 50) * 0.2}deg,
-                  transparent 0%,
-                  transparent ${Math.max(5, shineMetrics.x - 25)}%,
-                  rgba(255, 100, 255, ${shineMetrics.intensity * 0.14}) ${Math.max(10, shineMetrics.x - 20)}%,
-                  rgba(100, 200, 255, ${shineMetrics.intensity * 0.18}) ${Math.max(15, shineMetrics.x - 15)}%,
-                  rgba(100, 255, 100, ${shineMetrics.intensity * 0.22}) ${Math.max(20, shineMetrics.x - 10)}%,
-                  rgba(255, 255, 100, ${shineMetrics.intensity * 0.26}) ${shineMetrics.x}%,
-                  rgba(255, 150, 100, ${shineMetrics.intensity * 0.22}) ${Math.min(80, shineMetrics.x + 10)}%,
-                  rgba(255, 100, 150, ${shineMetrics.intensity * 0.18}) ${Math.min(85, shineMetrics.x + 15)}%,
-                  rgba(200, 100, 255, ${shineMetrics.intensity * 0.14}) ${Math.min(90, shineMetrics.x + 20)}%,
-                  transparent ${Math.min(95, shineMetrics.x + 25)}%,
-                  transparent 100%
-                )`,
-            transition: DEVICE_PERFORMANCE === 'high' ? 'background 0.15s ease-out' : 'none'
+              : rarity.toLowerCase() === 'unique'
+                ? `linear-gradient(${shineMetrics.angle}deg,
+                    transparent ${Math.max(0, shineMetrics.pos - shineMetrics.width)}%,
+                    rgba(255, 0, 0, ${shineMetrics.intensity * 0.12}) ${shineMetrics.pos - shineMetrics.width * 0.6}%,
+                    rgba(255, 255, 0, ${shineMetrics.intensity * 0.12}) ${shineMetrics.pos - shineMetrics.width * 0.4}%,
+                    rgba(0, 255, 0, ${shineMetrics.intensity * 0.12}) ${shineMetrics.pos - shineMetrics.width * 0.2}%,
+                    rgba(0, 255, 255, ${shineMetrics.intensity * 0.25}) ${shineMetrics.pos}%,
+                    rgba(0, 0, 255, ${shineMetrics.intensity * 0.12}) ${shineMetrics.pos + shineMetrics.width * 0.2}%,
+                    rgba(255, 0, 255, ${shineMetrics.intensity * 0.12}) ${shineMetrics.pos + shineMetrics.width * 0.4}%,
+                    transparent ${Math.min(100, shineMetrics.pos + shineMetrics.width)}%
+                  )`
+                : `linear-gradient(${shineMetrics.angle}deg,
+                    transparent ${Math.max(0, shineMetrics.pos - shineMetrics.width)}%,
+                    rgba(255, 180, 180, ${shineMetrics.intensity * 0.15}) ${shineMetrics.pos - shineMetrics.width * 0.65}%,
+                    rgba(180, 255, 180, ${shineMetrics.intensity * 0.15}) ${shineMetrics.pos - shineMetrics.width * 0.35}%,
+                    rgba(255, 255, 255, ${shineMetrics.intensity * 0.5}) ${shineMetrics.pos}%,
+                    rgba(180, 180, 255, ${shineMetrics.intensity * 0.15}) ${shineMetrics.pos + shineMetrics.width * 0.35}%,
+                    rgba(255, 180, 255, ${shineMetrics.intensity * 0.15}) ${shineMetrics.pos + shineMetrics.width * 0.65}%,
+                    transparent ${Math.min(100, shineMetrics.pos + shineMetrics.width)}%
+                  )`,
+            transition: DEVICE_PERFORMANCE === 'high' ? 'background 0.1s ease-out' : 'none',
+            mixBlendMode: 'overlay'
           }}
         />
         {isBurning && (
