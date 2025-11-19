@@ -28,8 +28,8 @@ interface AnimatedImageProps {
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const toDegrees = (value: number) => (value * 180) / Math.PI;
 const createZeroTilt = (): TiltValues => ({ x: 0, y: 0 });
-const TILT_LIMIT_DEGREES = 20;
-const TILT_SENSITIVITY = 0.22;
+const TILT_LIMIT_DEGREES = 18;
+const TILT_SENSITIVITY = 0.26;
 const SMOOTHING_THRESHOLD = 0.005;
 
 // Performance detection
@@ -318,8 +318,8 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       // Simplified animation for devices without tilt
       const time = animationState.tick * 0.02;
       return {
-        pos: 50 + Math.sin(time) * 30,
-        angle: 115,
+        pos: 54 + Math.sin(time) * 30,
+        angle: 120,
         intensity,
         width: 45
       };
@@ -331,12 +331,12 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     const normalizedX = clamp(tiltForEffects.x / TILT_LIMIT_DEGREES, -1, 1); // Pitch
     const normalizedY = clamp(tiltForEffects.y / TILT_LIMIT_DEGREES, -1, 1); // Roll
 
-    // Combine for a diagonal sweep (115 deg is top-left to bottom-right)
+    // Combine for a diagonal sweep (120 deg is top-left to bottom-right)
     const drive = normalizedX + normalizedY; 
     
     return {
-      pos: 50 + drive * 50,
-      angle: 115 + (normalizedY * 10),
+      pos: 54 + drive * 50,
+      angle: 120 + (normalizedY * 10),
       intensity,
       width: 55 + Math.abs(drive) * 25
     };
