@@ -1,4 +1,4 @@
-export const RARITY_SEQUENCE = ["Common", "Rare", "Epic", "Legendary"] as const;
+export const RARITY_SEQUENCE = ["Common", "Rare", "Epic", "Legendary", "Unique"] as const;
 
 export type RarityName = typeof RARITY_SEQUENCE[number];
 
@@ -7,6 +7,7 @@ const RARITY_COLOR_PALETTE: Record<RarityName, [string, string]> = {
   Rare: ["#4CAF50", "#81C784"],
   Epic: ["#9C27B0", "#BA68C8"],
   Legendary: ["#FFD700", "#FFF176"],
+  Unique: ["#E0E0E0", "#FFFFFF"],
 };
 
 const RARITY_GRADIENTS: Record<RarityName, string> = {
@@ -14,6 +15,7 @@ const RARITY_GRADIENTS: Record<RarityName, string> = {
   Rare: `linear-gradient(45deg, ${RARITY_COLOR_PALETTE.Rare[0]}, ${RARITY_COLOR_PALETTE.Rare[1]})`,
   Epic: `linear-gradient(45deg, ${RARITY_COLOR_PALETTE.Epic[0]}, ${RARITY_COLOR_PALETTE.Epic[1]})`,
   Legendary: `linear-gradient(45deg, ${RARITY_COLOR_PALETTE.Legendary[0]}, ${RARITY_COLOR_PALETTE.Legendary[1]})`,
+  Unique: `linear-gradient(124deg, #ff5e5e, #ffbd4a, #ffff70, #69f0ae, #52d1ff, #d066ff)`,
 };
 
 export const normalizeRarityName = (rarity: string | null | undefined): RarityName | null => {

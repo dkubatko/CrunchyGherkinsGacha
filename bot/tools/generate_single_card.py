@@ -152,7 +152,7 @@ def generate_single_card(
     Args:
         source_name: Name of the character or user to use as base
         modifier: The modifier to apply (e.g., "Test", "Golden", etc.) or "random" to pick from file
-        rarity: The rarity tier (Common, Rare, Epic, Legendary) or "random" to pick randomly
+        rarity: The rarity tier (Common, Rare, Epic, Legendary, Unique) or "random" to pick randomly
         output_dir: Directory to save the output image
         assign_username: Optional username to assign the card to
         modifiers_file: Optional modifiers file to load random modifier from (e.g., 'christmas', 'anime')
@@ -319,7 +319,7 @@ Set rarity to "random" to pick a random rarity tier.
         help="The modifier to apply (e.g., 'Test', 'Golden') or 'random' with --modifiers-file",
     )
     parser.add_argument(
-        "rarity", help="The rarity tier (Common, Rare, Epic, Legendary) or 'random'"
+        "rarity", help="The rarity tier (Common, Rare, Epic, Legendary, Unique) or 'random'"
     )
     parser.add_argument("--assign", dest="assign_username", help="Username to assign the card to")
     parser.add_argument(

@@ -232,11 +232,13 @@ def _generate_slot_icon(image_b64: str) -> Optional[str]:
         # Get API credentials from environment
         google_api_key = os.getenv("GOOGLE_API_KEY")
         image_gen_model = os.getenv("IMAGE_GEN_MODEL")
-        
+
         if not google_api_key or not image_gen_model:
-            logger.warning("GOOGLE_API_KEY or IMAGE_GEN_MODEL not set, skipping slot icon generation")
+            logger.warning(
+                "GOOGLE_API_KEY or IMAGE_GEN_MODEL not set, skipping slot icon generation"
+            )
             return None
-        
+
         gemini_util = GeminiUtil(google_api_key, image_gen_model)
         slot_icon_b64 = gemini_util.generate_slot_machine_icon(base_image_b64=image_b64)
         if slot_icon_b64:
@@ -456,9 +458,18 @@ def create_tables():
     run_migrations()
 
 
-def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id: Optional[str], source_type: str, source_id: int, set_id: Optional[int] = None) -> int:
+def add_card(
+    base_name: str,
+    modifier: str,
+    rarity: str,
+    image_b64: str,
+    chat_id: Optional[str],
+    source_type: str,
+    source_id: int,
+    set_id: Optional[int] = None,
+) -> int:
     """Add a new card to the database.
-    
+
     Returns:
         int: The card ID of the newly created card
     """
@@ -494,7 +505,7 @@ def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id
             ),
         )
         card_id = cursor.lastrowid
-        
+
         # Insert image data into separate table if available
         if image_b64 or image_thumb_b64:
             cursor.execute(
@@ -504,7 +515,7 @@ def add_card(base_name: str, modifier: str, rarity: str, image_b64: str, chat_id
             """,
                 (card_id, image_b64, image_thumb_b64),
             )
-        
+
         return card_id
 
 
@@ -689,7 +700,7 @@ def get_user_id_by_username(username: str) -> Optional[int]:
 
 def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Card]:
     """Get all cards owned by a user (by user_id), optionally scoped to a chat.
-    
+
     Returns:
         List[Card]: List of Card objects owned by the user
     """
@@ -712,7 +723,7 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
         parameters.append(str(chat_id))
 
     query += (
-        " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+        " ORDER BY CASE rarity WHEN 'Unique' THEN 1 WHEN 'Legendary' THEN 2 WHEN 'Epic' THEN 3 WHEN 'Rare' THEN 4 ELSE 5 END, "
         "base_name, modifier"
     )
 
@@ -783,7 +794,7 @@ def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
         parameters.append(str(chat_id))
 
     query += (
-        " ORDER BY CASE rarity WHEN 'Legendary' THEN 1 WHEN 'Epic' THEN 2 WHEN 'Rare' THEN 3 ELSE 4 END, "
+        " ORDER BY CASE rarity WHEN 'Unique' THEN 1 WHEN 'Legendary' THEN 2 WHEN 'Epic' THEN 3 WHEN 'Rare' THEN 4 ELSE 5 END, "
         "base_name, modifier"
     )
 
@@ -802,7 +813,7 @@ def get_card(card_id) -> Optional[CardWithImage]:
             LEFT JOIN card_images ci ON c.id = ci.card_id
             WHERE c.id = ?
             """,
-            (card_id,)
+            (card_id,),
         )
         card_data = cursor.fetchone()
         return CardWithImage(**card_data) if card_data else None
@@ -880,7 +891,7 @@ def get_user_stats(username):
         owned_row = cursor.fetchone()
         owned_count = int(owned_row[0]) if owned_row and owned_row[0] is not None else 0
 
-        rarities = ["Legendary", "Epic", "Rare", "Common"]
+        rarities = ["Unique", "Legendary", "Epic", "Rare", "Common"]
         rarity_counts = {}
         for rarity in rarities:
             cursor.execute(
@@ -1752,6 +1763,29 @@ def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
             (str(chat_id),),
         )
         return {row["modifier"]: row["count"] for row in cursor.fetchall()}
+
+
+def get_unique_modifiers(chat_id: str) -> List[str]:
+    """Get a list of modifiers used in Unique cards for a specific chat."""
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            "SELECT DISTINCT modifier FROM cards WHERE chat_id = ? AND rarity = 'Unique'",
+            (str(chat_id),),
+        )
+        return [row["modifier"] for row in cursor.fetchall()]
+
+
+def delete_cards(card_ids: List[int]) -> int:
+    """Delete multiple cards by ID. Returns number of deleted cards."""
+    if not card_ids:
+        return 0
+
+    placeholders = ",".join("?" * len(card_ids))
+    with _managed_connection() as (conn, cursor):
+        cursor.execute(f"DELETE FROM cards WHERE id IN ({placeholders})", tuple(card_ids))
+        count = cursor.rowcount
+        conn.commit()
+        return count
 
 
 create_tables()

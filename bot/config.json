@@ -48,6 +48,16 @@
       "refresh_cost": 5,
       "color": "golden",
       "creativeness_factor": 100
+    },
+    "Unique": {
+      "spin_reward": 1000,
+      "weight": -1,
+      "claim_cost": -1,
+      "recycle_cost": 5,
+      "lock_cost": 10,
+      "refresh_cost": 10,
+      "color": "any",
+      "creativeness_factor": 200
     }
   }
 }

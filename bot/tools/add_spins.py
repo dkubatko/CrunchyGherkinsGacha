@@ -67,10 +67,10 @@ async def send_notification(
             message = f"{custom_message}\n\n<b>{count} spins</b> added to all accounts!"
     elif username:
         # Default message for specific user
-        message = f"<b>{count} spins</b> added to @{username}.\n\nUse /slots -- happy gambling 🎰"
+        message = f"<b>{count} spins</b> added to @{username}.\n\nUse /casino -- happy gambling 🎰"
     else:
         # Default message for all users
-        message = f"<b>{count} spins</b> added to all accounts!\n\nUse /slots -- happy gambling 🎰"
+        message = f"<b>{count} spins</b> added to all accounts!\n\nUse /casino -- happy gambling 🎰"
 
     # Get thread_id if available
     from utils.database import get_thread_id
