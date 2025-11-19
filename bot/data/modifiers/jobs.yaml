@@ -25,6 +25,7 @@ rarities:
   - Captain
   - Carpenter
   - Citizen
+  - Cowboy
   - Criminal
   - DJ
   - Engineer
@@ -35,6 +36,7 @@ rarities:
   - Manager
   - Mime
   - Nailtech
+  - Painter
   - Scientist
   - Streamer
   - Teacher

@@ -22,7 +22,9 @@ rarities:
   - Orc
   - Paladin
   - Shaman
+  - Steampunk
   - Vampire
+  - Villager
   - Werewolf
   - Wizard
 - name: Epic
@@ -30,10 +32,12 @@ rarities:
   - Chimera
   - Diablo
   - Dragon
+  - Dwarf
   - Eternal
   - Ghoul
   - Hogwarts
   - Illidan
+  - Mermaid
   - Monk
   - Titan
   - Valkyrie

@@ -10,6 +10,7 @@ rarities:
 - name: Rare
   modifiers:
   - Ancient
+  - Castle
   - Cold War
   - Medieval
   - Mongol

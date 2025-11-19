@@ -25,6 +25,7 @@ rarities:
   - Cunning
   - Curly
   - Dancing
+  - Drawing
   - Driving
   - Dust
   - Energetic
@@ -47,18 +48,23 @@ rarities:
   - Little
   - Lowkey
   - Masked
+  - Metal
   - Modern
+  - Moss
   - Nature
   - Old
   - Parkour
   - Party
+  - Pillow
   - Pizza
   - Plastic
   - Productive
   - Proud
+  - Radio
   - Rapper
   - Regular
   - Relaxed
+  - Resin
   - Running
   - Sad
   - Shawarma
@@ -70,12 +76,14 @@ rarities:
   - Sleepy
   - Soccer
   - Spooky
+  - Sunshine
   - Super
   - Tired
   - Toilet
   - Traveling
   - Upset
   - Vacation
+  - Wooden
   - Working
   - Yoga
   - Young
@@ -112,6 +120,8 @@ rarities:
   - Edgy
   - Elastic
   - Exotic
+  - Fern
+  - Festival
   - Filthy
   - Fitness
   - Flexing
@@ -125,6 +135,7 @@ rarities:
   - Gulag
   - Healthy
   - Homeless
+  - Hooligan
   - Hulk
   - Illegal
   - Immigrant
@@ -146,17 +157,21 @@ rarities:
   - Neckbeard
   - NEET
   - Neon
+  - Nobleman
+  - Nordic
   - Obsessed
   - Odyssey
   - OG
   - Oracle
   - Origami
+  - Pajamas
   - Perfect
   - Perpetual
   - Photorealistic
   - Pixel
   - Poopy
   - Poor
+  - Radioactive
   - Rainbow
   - Redditor
   - Religious
@@ -174,6 +189,7 @@ rarities:
   - Smoking
   - Soapy
   - Spicy
+  - Starfall
   - Stinky
   - Sumo
   - Superhero
@@ -181,7 +197,9 @@ rarities:
   - Swimsuit
   - Tattoo
   - Tranformer
+  - Underwater
   - Vintage
+  - Volcano
   - Vomit
   - War
   - Wet
@@ -259,6 +277,8 @@ rarities:
   - Paranoid
   - Performative
   - Pervert
+  - Poker
+  - Princess
   - Punk
   - Puppet
   - Queen
