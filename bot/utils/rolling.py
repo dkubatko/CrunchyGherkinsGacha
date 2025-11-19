@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from settings.constants import RARITIES
+from settings.constants import RARITIES, UNIQUE_ADDENDUM
 from utils import database
 from utils.gemini import GeminiUtil
 from utils.modifiers import load_modifiers_with_sets, ModifierWithSet
@@ -170,20 +170,34 @@ def _choose_modifier_for_rarity(
     # Get modifier usage counts for this chat
     modifier_counts = database.get_modifier_counts_for_chat(chat_id)
 
+    # Get unique modifiers to exclude
+    unique_modifiers = set(database.get_unique_modifiers(chat_id))
+
     # Calculate weights: 1.0 for new modifiers, 1/N for existing ones
     weights = []
+    valid_modifiers = []
+
     for mod_with_set in modifiers_with_sets:
+        if mod_with_set.modifier in unique_modifiers:
+            continue
+
+        valid_modifiers.append(mod_with_set)
         count = modifier_counts.get(mod_with_set.modifier, 0)
         if count == 0:
             weights.append(1.0)
         else:
             weights.append(1.0 / count)
 
+    if not valid_modifiers:
+        # Fallback if all modifiers are excluded
+        valid_modifiers = modifiers_with_sets
+        weights = [1.0] * len(valid_modifiers)
+
     # Choose a modifier using weighted random selection
-    chosen = random.choices(modifiers_with_sets, weights=weights, k=1)[0]
+    chosen = random.choices(valid_modifiers, weights=weights, k=1)[0]
 
     # Get the weight of the chosen modifier for logging
-    chosen_index = modifiers_with_sets.index(chosen)
+    chosen_index = valid_modifiers.index(chosen)
     chosen_weight = weights[chosen_index]
 
     return chosen, chosen_weight
@@ -436,6 +450,9 @@ def regenerate_card_image(
             # Calculate temperature based on refresh attempt (1.0, 1.25, 1.5)
             temperature = 1.0 + (0.25 * (refresh_attempt - 1))
 
+            # Add UNIQUE_ADDENDUM for Unique rarity cards
+            instruction_addendum = UNIQUE_ADDENDUM if card.rarity == "Unique" else ""
+
             # Use the existing modifier, rarity and name
             image_b64 = gemini_util.generate_image(
                 card.base_name,
@@ -443,6 +460,7 @@ def regenerate_card_image(
                 card.rarity,
                 base_image_b64=profile.image_b64,
                 temperature=temperature,
+                instruction_addendum=instruction_addendum,
             )
 
             if not image_b64:
@@ -470,3 +488,78 @@ def regenerate_card_image(
                 time.sleep(1)
 
     raise last_error or ImageGenerationError("Image regeneration failed after retries")
+
+
+def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
+    """Find a profile (user or character) by name in the chat."""
+    name_lower = name.strip().lower()
+
+    # Check characters first
+    characters = database.get_characters_by_chat(chat_id)
+    for char in characters:
+        if char.name.strip().lower() == name_lower:
+            return SelectedProfile(
+                name=char.name,
+                image_b64=char.imageb64,
+                source_type="character",
+                source_id=char.id,
+                character=char,
+            )
+
+    # Check users
+    users = database.get_all_chat_users_with_profile(chat_id)
+    for user in users:
+        display_name = (user.display_name or "").strip()
+        if display_name.lower() == name_lower:
+            return SelectedProfile(
+                name=display_name,
+                image_b64=user.profile_imageb64,
+                source_type="user",
+                source_id=user.user_id,
+                user=user,
+            )
+
+    return None
+
+
+def generate_unique_card(
+    modifier: str,
+    profile: SelectedProfile,
+    gemini_util: GeminiUtil,
+    instruction_addendum: str,
+    max_retries: int = 0,
+) -> GeneratedCard:
+    """Generate a Unique card with a specific modifier and profile."""
+    rarity = "Unique"
+
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            image_b64 = gemini_util.generate_image(
+                profile.name,
+                modifier,
+                rarity,
+                base_image_b64=profile.image_b64,
+                instruction_addendum=instruction_addendum,
+            )
+
+            if not image_b64:
+                raise ImageGenerationError("Empty image returned")
+
+            return GeneratedCard(
+                base_name=profile.name,
+                modifier=modifier,
+                rarity=rarity,
+                card_title=f"{modifier} {profile.name}",
+                image_b64=image_b64,
+                source_type=profile.source_type,
+                source_id=profile.source_id,
+                set_id=None,  # Unique cards don't belong to a set usually, or we can assign one if needed
+            )
+        except Exception as e:
+            logger.error(f"Error generating unique card (attempt {attempt}/{total_attempts}): {e}")
+            last_error = e
+
+    raise last_error or ImageGenerationError("Image generation failed after retries")

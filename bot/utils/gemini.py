@@ -58,6 +58,7 @@ class GeminiUtil:
         base_image_path: str | None = None,
         base_image_b64: str | None = None,
         temperature: float = 1.0,
+        instruction_addendum: str = "",
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
@@ -70,6 +71,9 @@ class GeminiUtil:
                 color=RARITIES[rarity]["color"],
                 creativeness_factor=RARITIES[rarity]["creativeness_factor"],
             )
+            if instruction_addendum:
+                prompt += "\n" + instruction_addendum
+
             logger.info(
                 f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}' (temperature {temperature})"
             )
@@ -109,7 +113,7 @@ class GeminiUtil:
     ):
         """
         Generate a 1:1 aspect ratio slot machine icon from a user's image.
-        
+
         Args:
             base_image_path: Path to base image file
             base_image_b64: Base64-encoded base image
@@ -141,12 +145,14 @@ class GeminiUtil:
                     image_bytes = part.inline_data.data
                     logger.info("Processing slot machine icon")
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
-                    
+
                     # Resize to target size (default 256x256) to reduce payload size
                     resized_image_bytes = ImageUtil.resize_to_dimensions(
                         processed_image_bytes, target_size, target_size
                     )
-                    logger.info(f"Slot machine icon generated and resized to {target_size}x{target_size}.")
+                    logger.info(
+                        f"Slot machine icon generated and resized to {target_size}x{target_size}."
+                    )
                     return base64.b64encode(resized_image_bytes).decode("utf-8")
 
             logger.warning("No image data found in slot machine icon response.")

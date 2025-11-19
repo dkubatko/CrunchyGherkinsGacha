@@ -25,6 +25,7 @@ import {
 
 // Utils
 import { TelegramUtils } from './utils/telegram';
+import { RARITY_SEQUENCE } from './utils/rarityStyles';
 
 // Services
 import { ApiService } from './services/api';
@@ -289,13 +290,13 @@ function App() {
 
       switch (sortOptions.field) {
         case 'rarity': {
-          // Define rarity order: Common -> Rare -> Epic -> Legendary
-          const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
-          const aIndex = rarityOrder.indexOf(a.rarity);
-          const bIndex = rarityOrder.indexOf(b.rarity);
+          // Use centralized rarity sequence: Common -> Rare -> Epic -> Legendary -> Unique
+          const rarityArray = [...RARITY_SEQUENCE] as string[];
+          const aIndex = rarityArray.indexOf(a.rarity);
+          const bIndex = rarityArray.indexOf(b.rarity);
           // If rarity not found in order, put it at the end
-          aValue = aIndex === -1 ? rarityOrder.length : aIndex;
-          bValue = bIndex === -1 ? rarityOrder.length : bIndex;
+          aValue = aIndex === -1 ? rarityArray.length : aIndex;
+          bValue = bIndex === -1 ? rarityArray.length : bIndex;
           break;
         }
         case 'id':
@@ -355,13 +356,13 @@ function App() {
 
       switch (currentGridSortOptions.field) {
         case 'rarity': {
-          // Define rarity order: Common -> Rare -> Epic -> Legendary
-          const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
-          const aIndex = rarityOrder.indexOf(a.rarity);
-          const bIndex = rarityOrder.indexOf(b.rarity);
+          // Use centralized rarity sequence: Common -> Rare -> Epic -> Legendary -> Unique
+          const rarityArray = [...RARITY_SEQUENCE] as string[];
+          const aIndex = rarityArray.indexOf(a.rarity);
+          const bIndex = rarityArray.indexOf(b.rarity);
           // If rarity not found in order, put it at the end
-          aValue = aIndex === -1 ? rarityOrder.length : aIndex;
-          bValue = bIndex === -1 ? rarityOrder.length : bIndex;
+          aValue = aIndex === -1 ? rarityArray.length : aIndex;
+          bValue = bIndex === -1 ? rarityArray.length : bIndex;
           break;
         }
         case 'id':
