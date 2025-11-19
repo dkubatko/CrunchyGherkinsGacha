@@ -307,6 +307,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
         case 'rare': return 0.60 * baseIntensity;
         case 'epic': return 0.85 * baseIntensity;
         case 'legendary': return 1.25 * baseIntensity;
+        case 'unique': return 1.60 * baseIntensity;
         default: return 0.33 * baseIntensity;
       }
     };

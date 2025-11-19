@@ -1,6 +1,7 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import './FilterSortControls.css';
 import type { CardData } from '../types';
+import { RARITY_SEQUENCE } from '../utils/rarityStyles';
 
 export interface FilterOptions {
   owner: string;
@@ -45,15 +46,15 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   )).sort();
 
   // Get unique rarities from cards for the filter dropdown, sorted by rarity order
-  const rarityOrder = ['Common', 'Rare', 'Epic', 'Legendary'];
+  const rarityArray = [...RARITY_SEQUENCE] as string[];
   const uniqueRarities = Array.from(new Set(
     cards.map(card => card.rarity)
   )).sort((a, b) => {
-    const aIndex = rarityOrder.indexOf(a);
-    const bIndex = rarityOrder.indexOf(b);
+    const aIndex = rarityArray.indexOf(a);
+    const bIndex = rarityArray.indexOf(b);
     // If rarity not found in order, put it at the end
-    const aPos = aIndex === -1 ? rarityOrder.length : aIndex;
-    const bPos = bIndex === -1 ? rarityOrder.length : bIndex;
+    const aPos = aIndex === -1 ? rarityArray.length : aIndex;
+    const bPos = bIndex === -1 ? rarityArray.length : bIndex;
     return aPos - bPos;
   });
 

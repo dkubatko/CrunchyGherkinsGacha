@@ -156,6 +156,16 @@ Create a casino slot machine icon featuring the person's portrait.
 - Output MUST be exactly 1:1 square aspect ratio
 """
 
+UNIQUE_ADDENDUM = """
+**8. Unique Card Requirements:**
+   - This is a "Unique" rarity card, which means it is a one-of-a-kind creation.
+   - The design must be absolutely mind-blowing in quality, detail, and thematic execution.
+   - Push the boundaries of the art style and theme to the maximum extent possible.
+   - The visual impact should be significantly higher than even "Legendary" cards.
+   - Ensure the character remains recognizable, but integrated into a spectacular scene or composition.
+   - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
+"""
+
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
@@ -255,6 +265,29 @@ BURN_SUCCESS_MESSAGE = (
     "Burn complete! Awarded <b>{spin_reward} spins</b>.\n"
     "New spin balance: <b>{new_spin_total}</b>."
 )
+
+CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;.\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards."
+CREATE_DM_RESTRICTED_MESSAGE = "Creating unique cards is only available in the group chat."
+CREATE_CONFIRM_MESSAGE = (
+    "Burn {cost} unlocked <b>Legendary</b> cards to create Unique card <b>{modifier} {name}</b>?"
+)
+CREATE_WARNING_EXISTING_MODIFIER = (
+    "\n\n⚠️ <b>Warning:</b> The modifier '<b>{modifier}</b>' has already been used in this chat."
+)
+CREATE_INSUFFICIENT_CARDS_MESSAGE = (
+    "You need at least {required} unlocked Legendary cards in this chat to create a Unique card."
+)
+CREATE_ALREADY_RUNNING_MESSAGE = "You already have a creation in progress."
+CREATE_NOT_YOURS_MESSAGE = "This creation prompt isn't for you!"
+CREATE_FAILURE_NO_PROFILE = "Creation failed: could not find a profile for '{name}'."
+CREATE_FAILURE_IMAGE = (
+    "Creation failed: image generation is unavailable right now. Your cards were not burned."
+)
+CREATE_FAILURE_UNEXPECTED = "An unexpected error occurred while creating the card. Try again later."
+CREATE_SUCCESS_MESSAGE = "Successfully created <b>Unique</b> card <b>{card_title}</b>!"
+CREATE_CANCELLED_MESSAGE = "Creation cancelled."
+CREATE_PROCESSING_MESSAGE = "Creating <b>Unique</b> card..."
+
 TRADE_REQUEST_MESSAGE = (
     "Trade requested:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
