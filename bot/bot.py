@@ -619,9 +619,6 @@ async def roll(
             update.effective_chat.id,
         )
 
-        if not DEBUG_MODE:
-            await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
-
         # Award claim points based on the rolled card's rarity
         claim_reward = get_claim_cost(generated_card.rarity)
         await asyncio.to_thread(
@@ -649,6 +646,9 @@ async def roll(
 
         # Save the file_id returned by Telegram for future use
         await save_card_file_id_from_message(message, card_id)
+
+        if not DEBUG_MODE:
+            await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
 
     except rolling.NoEligibleUserError:
         await update.message.reply_text(
