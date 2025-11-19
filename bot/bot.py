@@ -1171,11 +1171,6 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
             # Wait for generation
             generated_card = await generation_task
 
-            # NOW delete the cards (skip in debug mode)
-            if not DEBUG_MODE:
-                card_ids = [c.id for c in cards_to_burn]
-                await asyncio.to_thread(database.delete_cards, card_ids)
-
             # Add to DB
             card_id = await asyncio.to_thread(
                 database.add_card_from_generated,
@@ -1185,6 +1180,11 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
 
             # Set owner
             await asyncio.to_thread(database.set_card_owner, card_id, user.username, user_id)
+
+            # NOW delete the cards (skip in debug mode)
+            if not DEBUG_MODE:
+                card_ids = [c.id for c in cards_to_burn]
+                await asyncio.to_thread(database.delete_cards, card_ids)
 
             # Send result
             card = await asyncio.to_thread(database.get_card, card_id)
