@@ -10,6 +10,7 @@ rarities:
 - name: Rare
   modifiers:
   - Cheating
+  - Chess
   - CRT
   - Cyberpunk
   - DPS
@@ -20,6 +21,7 @@ rarities:
   - NPC
   - Overwatch
   - T-Pose
+  - Warrior
   - Zelda
 - name: Epic
   modifiers:
@@ -28,6 +30,7 @@ rarities:
   - Kratos
   - Mario
   - Minecraft
+  - Monopoly
   - Sonic
   - Subway Surfer
   - Witcher

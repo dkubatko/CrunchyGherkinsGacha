@@ -8,6 +8,7 @@ rarities:
   - Elephant
   - Horse
   - Mouse
+  - Rabbit
 - name: Rare
   modifiers:
   - Bat
@@ -21,6 +22,7 @@ rarities:
   - Puppy
   - Rat
   - Rhino
+  - Shark
   - Tiger
   - Worm
 - name: Epic
@@ -29,6 +31,7 @@ rarities:
   - Monkey
   - Phoenix
   - Pig
+  - Red panda
   - Spider
 - name: Legendary
   modifiers:
