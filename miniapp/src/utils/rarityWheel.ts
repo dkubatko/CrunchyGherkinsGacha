@@ -5,9 +5,9 @@ export const RARITY_WHEEL_SYMBOL_HEIGHT = 48;
 // Extra repeats keep enough headroom for longer high-speed runs without visible repeats.
 export const RARITY_WHEEL_STRIP_REPEAT_MULTIPLIER = 48;
 // Lower target speed eases the opening phase to reduce tearing on older devices.
-export const RARITY_WHEEL_MIN_SYMBOLS_PER_SECOND = 18;
+export const RARITY_WHEEL_MIN_SYMBOLS_PER_SECOND = 20;
 // Longer base duration buys breathing room for the eased-in start while keeping the finale dramatic.
-export const RARITY_WHEEL_BASE_DURATION_MS = 4200;
+export const RARITY_WHEEL_BASE_DURATION_MS = 3800;
 // Prevent the early phase from tearing through too many rarities.
 export const RARITY_WHEEL_MAX_FORWARD_LOOPS = 12;
 // Short linger after motion completes before triggering win handling.
