@@ -123,8 +123,16 @@ def select_random_user_with_image(chat_id: str) -> Optional[database.User]:
 
 def get_random_rarity() -> str:
     """Return a rarity based on configured weights."""
-    rarity_list = list(RARITIES.keys())
-    weights = [RARITIES[rarity]["weight"] for rarity in rarity_list]
+    rarity_list = [
+        r
+        for r in RARITIES.keys()
+        if isinstance(RARITIES[r], dict) and RARITIES[r].get("weight", 0) > 0
+    ]
+
+    if not rarity_list:
+        return "Common"
+
+    weights = [RARITIES[r]["weight"] for r in rarity_list]
     return random.choices(rarity_list, weights=weights, k=1)[0]
 
 
