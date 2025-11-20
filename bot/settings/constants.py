@@ -105,8 +105,8 @@ If these two goals seem to conflict, prioritize making the person recognizable. 
 The overall style should be a high-quality, detailed 2D digital illustration.
 
 **2. Card Transformation & Layout:**
-   - **Main Artwork:** **the large, colored central area** of the template should contain the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area.
-   - **Layering:** The styled nameplate must remain an **opaque layer on top** of the main artwork.
+   - **Main Artwork:** **the large, colored central area** of the template should contain the character and a richly detailed, themed background. This artwork must extend fully behind the nameplate area, and fill the entire area within the border of the card.
+   - **Layering:** The styled nameplate must be a standalone, opaque "floating" piece layered on top of the main artwork, *disconnected* from the border of the card.
    - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
 
 **3. Character Likeness & Modification:**
@@ -121,17 +121,17 @@ The overall style should be a high-quality, detailed 2D digital illustration.
    - **Thematic Elements:** The card border is a key thematic element and **MUST** be heavily styled with details that match the theme from Section 1. That may include patterns, textures, depth, and other effects that reflect the theme.
    - **Edge Placement:** The border **MUST** be positioned EXACTLY around the edge of the card—flush with the outer perimeter. The border must NOT be isolated or floating within the card interior.
    - **Size Constraint:** The border should take no more than 10% of the total card area (measured from the edge inward).
-   - **Always Apply Styling:** The border **MUST** always have thematic styling applied—never leave it plain or default.
+   - **Always Apply Styling:** The border **MUST** always have thematic styling applied. *NEVER* leave a plain, solid color border/outline around the generated card.
 
 **5. Nameplate & Text Styling:**
    - **Thematic Elements:** The nameplate and text are key thematic elements and **MUST** be styled consistently with the rest of the generated card. Do NOT use plain or generic styling for the nameplate and text.
    - **Styling:** The nameplate border, background and text must incorporate design elements (e.g., depth, patterns, textures, lighting) that reflect the card's theme, and be consistent with the styling of the card border.
-   - **Size Constraint:** The nameplate should take no more than 15% of the total card area.
+   - **Size Constraint:** The nameplate should take no more than 12% of the total card area.
    - **Placement:** The card name "{modification} {name}" MUST be placed horizontally, centered and contained within the nameplate, while taking majority of the available space while **fitting in one line**.
    - **Exclusivity:** Do NOT include any other text anywhere on the card.
 
 **6. Rarity Color Application:**
-   - The card's border and nameplate **MUST** use the {color} color palette to indicate rarity.
+   - The card's border and nameplate **MUST** use {color} color palette to indicate rarity.
    - This color restriction applies **ONLY to the border frame and nameplate**.
    - The main artwork, background, and character are **NOT constrained** by this color—they should use whatever colors best represent the theme from Section 1.
 
@@ -141,6 +141,15 @@ The overall style should be a high-quality, detailed 2D digital illustration.
      - **Medium creativeness (e.g., 50/100):** A detailed design with balanced thematic patterns, some depth effects, and noticeable but not overwhelming decorative elements throughout the card's design.
      - **High creativeness (e.g., 90/100):** A highly detailed, sophisticated design, dynamic lighting, depth, convexity, and other complex thematic effects & elements.
    - This factor controls design complexity, **NOT** the art style genre or the degree of deviation from the person's likeness.
+"""
+
+UNIQUE_ADDENDUM = """
+**8. Unique Card Requirements:**
+   - This is a "Unique" rarity card, which means it is a one-of-a-kind creation and is of higher rarity than any other.
+   - The design must be absolutely mind-blowing in quality, detail, and thematic execution.
+   - Push the boundaries of the art style and theme to the maximum extent possible.
+   - Ensure the character remains recognizable, but integrated into a spectacular scene or composition.
+   - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
 """
 
 SLOT_MACHINE_INSTRUCTION = """
@@ -154,16 +163,6 @@ Create a casino slot machine icon featuring the person's portrait.
 - High-impact visual style suitable for gambling/casino theme - no text or decorative elements
 - Do NOT add any border to the icon
 - Output MUST be exactly 1:1 square aspect ratio
-"""
-
-UNIQUE_ADDENDUM = """
-**8. Unique Card Requirements:**
-   - This is a "Unique" rarity card, which means it is a one-of-a-kind creation.
-   - The design must be absolutely mind-blowing in quality, detail, and thematic execution.
-   - Push the boundaries of the art style and theme to the maximum extent possible.
-   - The visual impact should be significantly higher than even "Legendary" cards.
-   - Ensure the character remains recognizable, but integrated into a spectacular scene or composition.
-   - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
 """
 
 REACTION_IN_PROGRESS = "🤔"
@@ -268,9 +267,7 @@ BURN_SUCCESS_MESSAGE = (
 
 CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;.\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards."
 CREATE_DM_RESTRICTED_MESSAGE = "Creating unique cards is only available in the group chat."
-CREATE_CONFIRM_MESSAGE = (
-    "Burn {cost} unlocked <b>Legendary</b> cards to create Unique card <b>{modifier} {name}</b>?"
-)
+CREATE_CONFIRM_MESSAGE = "Burn {cost} unlocked <b>Legendary</b> cards to create <b>Unique</b> card <b>{modifier} {name}</b>?"
 CREATE_WARNING_EXISTING_MODIFIER = (
     "\n\n⚠️ <b>Warning:</b> The modifier '<b>{modifier}</b>' has already been used in this chat."
 )
