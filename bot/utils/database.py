@@ -698,6 +698,34 @@ def get_user_id_by_username(username: str) -> Optional[int]:
         return None
 
 
+def get_most_frequent_chat_id_for_user(user_id: int) -> Optional[str]:
+    """
+    Get the most frequently used chat_id among a user's cards.
+
+    Args:
+        user_id: The user's ID
+
+    Returns:
+        The most frequently used chat_id, or None if user has no cards
+    """
+    with _managed_connection() as (_, cursor):
+        cursor.execute(
+            """
+            SELECT chat_id, COUNT(*) as count 
+            FROM cards 
+            WHERE user_id = ? AND chat_id IS NOT NULL
+            GROUP BY chat_id 
+            ORDER BY count DESC 
+            LIMIT 1
+            """,
+            (user_id,),
+        )
+        row = cursor.fetchone()
+        if row and row[0]:
+            return str(row[0])
+        return None
+
+
 def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Card]:
     """Get all cards owned by a user (by user_id), optionally scoped to a chat.
 

@@ -41,6 +41,7 @@ from utils.database import (
     add_card,
     get_user_id_by_username,
     get_username_for_user_id,
+    get_most_frequent_chat_id_for_user,
     set_card_owner,
 )
 from utils.gemini import GeminiUtil
@@ -231,6 +232,14 @@ def generate_single_card(
         if not owner_username:
             owner_username = assign_username  # fallback to provided username
         logger.info(f"Found user to assign card to: {owner_username} (ID: {owner_user_id})")
+
+        # Set chat_id to the user's most frequently used chat_id
+        user_chat_id = get_most_frequent_chat_id_for_user(owner_user_id)
+        if user_chat_id:
+            chat_id = user_chat_id
+            logger.info(f"Using user's most frequent chat_id: {chat_id}")
+        else:
+            logger.info("User has no existing cards, using source chat_id")
 
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
