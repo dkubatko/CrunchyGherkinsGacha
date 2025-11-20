@@ -301,15 +301,19 @@ class RolledCardManager:
                 keyboard.append(
                     [InlineKeyboardButton("Lock", callback_data=f"lock_{self.roll_id}")]
                 )
+
+            # Add reroll button only for claimed cards (if conditions are met)
+            if (
+                not rolled_card.is_locked
+                and not rolled_card.rerolled
+                and not self.is_reroll_expired()
+            ):
+                keyboard.append(
+                    [InlineKeyboardButton("Reroll", callback_data=f"reroll_{self.roll_id}")]
+                )
         else:
             # Card is unclaimed - show Claim button
             keyboard.append([InlineKeyboardButton("Claim", callback_data=f"claim_{self.roll_id}")])
-
-        # Add reroll button for both claimed and unclaimed cards (if conditions are met)
-        if not rolled_card.is_locked and not rolled_card.rerolled and not self.is_reroll_expired():
-            keyboard.append(
-                [InlineKeyboardButton("Reroll", callback_data=f"reroll_{self.roll_id}")]
-            )
 
         return InlineKeyboardMarkup(keyboard) if keyboard else None
 
