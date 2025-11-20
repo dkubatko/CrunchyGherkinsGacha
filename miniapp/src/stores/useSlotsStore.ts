@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { RARITY_SEQUENCE, type RarityName } from '../utils/rarityStyles';
+import { SLOT_RARITY_SEQUENCE, type RarityName } from '../utils/rarityStyles';
 import { computeRarityWheelStaticTransform } from '../utils/rarityWheel';
 
 interface SlotSymbol {
@@ -57,7 +57,7 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
   rarityWheelActive: false,
   rarityWheelTarget: null,
   rarityWheelSpinning: false,
-  rarityWheelTransform: computeRarityWheelStaticTransform(0, RARITY_SEQUENCE.length),
+  rarityWheelTransform: computeRarityWheelStaticTransform(0, SLOT_RARITY_SEQUENCE.length),
   rarityWheelDuration: 0,
   rarityWheelTimeout: null,
 
@@ -97,7 +97,7 @@ export const useSlotsStore = create<SlotsState>((set, get) => ({
       rarityWheelActive: false,
       rarityWheelTarget: null,
       rarityWheelSpinning: false,
-      rarityWheelTransform: computeRarityWheelStaticTransform(0, RARITY_SEQUENCE.length),
+      rarityWheelTransform: computeRarityWheelStaticTransform(0, SLOT_RARITY_SEQUENCE.length),
       rarityWheelDuration: 0,
     });
   },

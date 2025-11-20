@@ -1,4 +1,4 @@
-import { RARITY_SEQUENCE, type RarityName } from './rarityStyles';
+import { SLOT_RARITY_SEQUENCE, type RarityName } from './rarityStyles';
 
 export const RARITY_WHEEL_VISIBLE_ROWS = 3;
 export const RARITY_WHEEL_SYMBOL_HEIGHT = 48;
@@ -17,10 +17,10 @@ export const RARITY_WHEEL_TIMING_FUNCTION = 'cubic-bezier(0.32, 0.94, 0.2, 1)';
 
 export const generateRarityWheelStrip = (): RarityName[] => {
   const repeated: RarityName[] = [];
-  const total = RARITY_SEQUENCE.length * RARITY_WHEEL_STRIP_REPEAT_MULTIPLIER;
+  const total = SLOT_RARITY_SEQUENCE.length * RARITY_WHEEL_STRIP_REPEAT_MULTIPLIER;
 
   for (let i = 0; i < total; i += 1) {
-    repeated.push(RARITY_SEQUENCE[i % RARITY_SEQUENCE.length]);
+    repeated.push(SLOT_RARITY_SEQUENCE[i % SLOT_RARITY_SEQUENCE.length]);
   }
 
   return repeated;

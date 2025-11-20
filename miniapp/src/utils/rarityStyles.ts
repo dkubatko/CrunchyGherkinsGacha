@@ -1,4 +1,5 @@
 export const RARITY_SEQUENCE = ["Common", "Rare", "Epic", "Legendary", "Unique"] as const;
+export const SLOT_RARITY_SEQUENCE = ["Common", "Rare", "Epic", "Legendary"] as const;
 
 export type RarityName = typeof RARITY_SEQUENCE[number];
 

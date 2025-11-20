@@ -3,7 +3,7 @@ import { TelegramUtils } from '../utils/telegram';
 import { ApiService } from '../services/api';
 import { useSlotsStore } from '../stores/useSlotsStore';
 import { getIconObjectUrl } from '../lib/iconUrlCache';
-import { RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
+import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
 import type { RarityName } from '../utils/rarityStyles';
 import type { SlotSymbolInfo } from '../types';
 import AppLoading from './AppLoading';
@@ -176,14 +176,14 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         return null;
       }
 
-      const targetIndex = RARITY_SEQUENCE.findIndex((name) => name === targetRarity);
+      const targetIndex = SLOT_RARITY_SEQUENCE.findIndex((name) => name === targetRarity);
       if (targetIndex < 0) {
         return null;
       }
 
       clearRarityWheelTimeout();
 
-      const { initial, final } = computeRarityWheelTransforms(targetIndex, RARITY_SEQUENCE.length);
+      const { initial, final } = computeRarityWheelTransforms(targetIndex, SLOT_RARITY_SEQUENCE.length);
 
       setRarityWheelState({
         rarityWheelActive: true,
