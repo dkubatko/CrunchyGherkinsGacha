@@ -3,9 +3,9 @@ export const SLOT_VISIBLE_ROWS = 3;
 export const SLOT_STRIP_REPEAT_MULTIPLIER = 5;
 export const SLOT_MIN_STRIP_SYMBOLS = 50;
 export const SLOT_SYMBOL_HEIGHT = 90;
-export const SLOT_BASE_SPIN_DURATION_MS = 2500;
-export const SLOT_SPIN_DURATION_STAGGER_MS = 600;
-export const SLOT_MIN_SYMBOLS_PER_SECOND = 30;
+export const SLOT_BASE_SPIN_DURATION_MS = 1600;
+export const SLOT_SPIN_DURATION_STAGGER_MS = 380;
+export const SLOT_MIN_SYMBOLS_PER_SECOND = 48;
 export const SLOT_SPIN_TIMING_FUNCTION = 'cubic-bezier(0.2, 0.86, 0.5, 1.02)';
 
 const resolveStripRepeatMultiplier = (symbolCount: number): number => {
