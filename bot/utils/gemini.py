@@ -49,6 +49,7 @@ class GeminiUtil:
             },
         ]
         self.model = genai.GenerativeModel(image_gen_model, safety_settings=safety_settings)
+        logger.info(f"GeminiUtil initialized with model {image_gen_model}")
 
     def generate_image(
         self,
