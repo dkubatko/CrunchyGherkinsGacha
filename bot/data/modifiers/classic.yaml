@@ -58,6 +58,7 @@ rarities:
   - Pillow
   - Pizza
   - Plastic
+  - Ponytail
   - Productive
   - Proud
   - Radio
@@ -96,6 +97,7 @@ rarities:
   - Сытый
 - name: Rare
   modifiers:
+  - Abuser
   - Acid
   - Alien
   - Alpha
@@ -104,7 +106,9 @@ rarities:
   - Anxious
   - Apocalypse
   - Arabic
+  - Bloody
   - Bored
+  - Brainrot
   - Braniac
   - Brutal
   - Bully
@@ -120,6 +124,7 @@ rarities:
   - Edgy
   - Elastic
   - Exotic
+  - Father
   - Fern
   - Festival
   - Filthy
@@ -134,6 +139,7 @@ rarities:
   - Greedy
   - Gulag
   - Healthy
+  - Hispanic
   - Homeless
   - Hooligan
   - Hulk
@@ -147,6 +153,8 @@ rarities:
   - Kush
   - Leather
   - Loser
+  - Masochist
+  - Mason
   - Massive
   - Melancholic
   - Merchant
@@ -154,6 +162,7 @@ rarities:
   - Modeling
   - Mohammed
   - Monochrome
+  - Mother
   - Neckbeard
   - NEET
   - Neon
@@ -169,6 +178,7 @@ rarities:
   - Perpetual
   - Photorealistic
   - Pixel
+  - Polyamorous
   - Poopy
   - Poor
   - Radioactive
@@ -177,6 +187,7 @@ rarities:
   - Religious
   - Retro
   - Rich
+  - Sadist
   - Scammer
   - Secret
   - Sensei
@@ -195,6 +206,7 @@ rarities:
   - Superhero
   - Sushi
   - Swimsuit
+  - Swinger
   - Tattoo
   - Tranformer
   - Underwater
@@ -208,6 +220,7 @@ rarities:
   - Бритый
   - Буржуй
   - Вкусный
+  - Грязнуля
   - Злодей
   - Краш
   - Лентяй
@@ -227,8 +240,8 @@ rarities:
   - Bachelor
   - Bald
   - Barbie
-  - Brainrot
   - Cabaret
+  - Caliphate
   - Casino
   - Chad
   - Christian
@@ -271,16 +284,20 @@ rarities:
   - Noir
   - Nuclear
   - Nun
+  - Oiled
   - Ooga Booga
   - Overstimulated
   - Painted
   - Paranoid
+  - Patapim
   - Performative
   - Pervert
   - Poker
+  - Pregnant
   - Princess
   - Punk
   - Puppet
+  - Putin
   - Queen
   - Romantic
   - Seductive
@@ -318,7 +335,6 @@ rarities:
   - Hookah
   - LGBTQ+
   - MAGA
-  - Oiled
-  - Putin
   - Russian
+  - Seraphim
   - Transvestite

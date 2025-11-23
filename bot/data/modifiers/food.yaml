@@ -11,11 +11,15 @@ rarities:
   - Olive
   - Salad
   - Soup
+  - Sour
+  - Sweet
   - Tea
   - Tomato
 - name: Rare
   modifiers:
   - Eggplant
+  - Kosher
+  - Salty
   - Tangerine
   - Wine
 - name: Epic
