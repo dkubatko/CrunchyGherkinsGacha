@@ -27,6 +27,7 @@ rarities:
   - Worm
 - name: Epic
   modifiers:
+  - Dinosaur
   - Koala
   - Monkey
   - Phoenix

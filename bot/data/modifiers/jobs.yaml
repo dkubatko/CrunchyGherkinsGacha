@@ -21,14 +21,19 @@ rarities:
   - Повар
 - name: Rare
   modifiers:
+  - Accountant
+  - Astronomer
   - Boss
   - Captain
   - Carpenter
+  - Cartel
   - Citizen
   - Cowboy
   - Criminal
   - DJ
+  - Electrician
   - Engineer
+  - Entrepreneur
   - Hitman
   - Housewife
   - Influencer
@@ -37,8 +42,10 @@ rarities:
   - Mime
   - Nailtech
   - Painter
+  - Politician
   - Scientist
   - Streamer
+  - Taxist
   - Teacher
   - Trainer
   - Кондитер
@@ -56,3 +63,4 @@ rarities:
 - name: Legendary
   modifiers:
   - Pimp
+  - Stripper
