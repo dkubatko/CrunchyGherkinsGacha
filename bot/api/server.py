@@ -600,8 +600,8 @@ allowed_origins = [
 if DEBUG_MODE:
     allowed_origins.extend(
         [
-            "http://192.168.1.200:5173",  # Local IP for mobile testing
-            "https://192.168.1.200:5173",  # HTTPS version if needed
+            "http://192.168.1.142:5173",  # Local IP for mobile testing
+            "https://192.168.1.142:5173",  # HTTPS version if needed
         ]
     )
 
