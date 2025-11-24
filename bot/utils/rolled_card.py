@@ -22,6 +22,7 @@ class ClaimStatus(Enum):
     SUCCESS = "success"
     ALREADY_CLAIMED = "already_claimed"
     INSUFFICIENT_BALANCE = "insufficient_balance"
+    ALREADY_OWNED_BY_USER = "already_owned_by_user"
 
 
 @dataclass
@@ -128,8 +129,28 @@ class RolledCardManager:
 
         claimed = database.try_claim_card(card.id, owner_username, user_id)
         if not claimed:
+            # Check if the user actually owns it (e.g. double click)
+            current_card = database.get_card(card.id)
+            if current_card and current_card.owner == owner_username:
+                return ClaimAttemptResult(
+                    ClaimStatus.ALREADY_OWNED_BY_USER,
+                    balance,
+                    claim_cost,
+                )
+
             if owner_username:
                 database.update_rolled_card_attempted_by(self.roll_id, owner_username)
+            return ClaimAttemptResult(
+                ClaimStatus.ALREADY_CLAIMED,
+                balance,
+                claim_cost,
+            )
+
+        # Double-check ownership before deducting points to prevent race conditions
+        # where try_claim_card might have reported success incorrectly or in edge cases.
+        confirmed_card = database.get_card(card.id)
+        if not confirmed_card or confirmed_card.owner != owner_username:
+            # We thought we claimed it, but we didn't. Do not deduct points.
             return ClaimAttemptResult(
                 ClaimStatus.ALREADY_CLAIMED,
                 balance,
