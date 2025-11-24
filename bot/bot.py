@@ -2420,19 +2420,22 @@ async def claim_card(
 
     if claim_result.status is ClaimStatus.SUCCESS:
         await query.answer(_build_claim_message(claim_result.balance), show_alert=True)
+    elif claim_result.status is ClaimStatus.ALREADY_OWNED_BY_USER:
+        # Show success message with current balance for user's own card
+        remaining_balance = claim_result.balance
+        if remaining_balance is None and chat_id and user.user_id:
+            remaining_balance = await asyncio.to_thread(
+                database.get_claim_balance, user.user_id, chat_id
+            )
+        await query.answer(_build_claim_message(remaining_balance), show_alert=True)
+    elif claim_result.status is ClaimStatus.INSUFFICIENT_BALANCE:
+        await query.answer("Insufficient claim points!", show_alert=True)
     else:
-        # Card already claimed - check if it's owned by the same user
-        owner = card.owner
-        if owner == user.username:
-            # Show success message with current balance for user's own card
-            remaining_balance = claim_result.balance
-            if remaining_balance is None and chat_id and user.user_id:
-                remaining_balance = await asyncio.to_thread(
-                    database.get_claim_balance, user.user_id, chat_id
-                )
-            await query.answer(_build_claim_message(remaining_balance), show_alert=True)
-        else:
-            await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
+        # Card already claimed by someone else
+        # Fetch fresh card to get the actual owner
+        fresh_card = rolled_card_manager.card
+        owner = fresh_card.owner if fresh_card else "someone"
+        await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
 
     # Update the message with new caption and keyboard
     caption = rolled_card_manager.generate_caption()
