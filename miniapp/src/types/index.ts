@@ -16,7 +16,7 @@ export interface OrientationData {
   isStarted: boolean;
 }
 
-export type View = 'current' | 'all' | 'slots';
+export type View = 'current' | 'all' | 'slots' | 'profile';
 
 export interface UserSummary {
   user_id: number;
@@ -82,6 +82,22 @@ export interface SlotVerifyResponse {
 
 export interface ClaimBalanceState {
   balance: number | null;
+  loading: boolean;
+  error?: string;
+}
+
+export interface UserProfile {
+  user_id: number;
+  username: string;
+  display_name?: string | null;
+  profile_imageb64?: string | null;
+  claim_balance: number;
+  spin_balance: number;
+  card_count: number;
+}
+
+export interface ProfileState {
+  profile: UserProfile | null;
   loading: boolean;
   error?: string;
 }

@@ -1,0 +1,240 @@
+.profile-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--tg-theme-text-color, #000000);
+  background-color: var(--tg-theme-bg-color, #ffffff);
+  min-height: 300px;
+}
+
+.profile-view.loading,
+.profile-view.error,
+.profile-view.empty {
+  justify-content: center;
+  color: var(--tg-theme-hint-color, #999999);
+  font-size: 1.1rem;
+}
+
+.profile-view.error {
+  color: #ff4d4f;
+}
+
+.profile-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  width: 100%;
+}
+
+.profile-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  object-fit: cover;
+  margin-bottom: 1rem;
+  border: 4px solid var(--tg-theme-button-color, #2481cc);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.profile-avatar-placeholder {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  margin-bottom: 1rem;
+  border: 4px solid var(--tg-theme-button-color, #2481cc);
+  background: linear-gradient(135deg, #6b73ff 0%, #000dff 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  font-weight: bold;
+  color: white;
+  text-transform: uppercase;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.profile-name {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 0.25rem 0;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.profile-username {
+  font-size: 1rem;
+  color: var(--tg-theme-hint-color, #999999);
+  margin: 0;
+}
+
+.profile-stats {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  width: 100%;
+  max-width: 500px;
+  flex-wrap: wrap;
+  position: relative;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 90px;
+  padding: 1rem;
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-radius: 12px;
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--tg-theme-text-color, #000000);
+  line-height: 1;
+  margin-bottom: 0.25rem;
+}
+
+.stat-label {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--tg-theme-hint-color, #999999);
+  font-weight: 600;
+  margin-bottom: 0.5rem;
+}
+
+.stat-item.clickable {
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+
+.stat-item.clickable:active {
+  transform: scale(0.95);
+}
+
+.stat-item.clickable.active {
+  background-color: var(--tg-theme-button-color, #2481cc);
+}
+
+.stat-item.clickable.active .stat-value,
+.stat-item.clickable.active .stat-label {
+  color: var(--tg-theme-button-text-color, #ffffff);
+}
+
+.rarity-breakdown {
+  position: absolute;
+  top: calc(100% + 1rem);
+  left: 0;
+  right: 0;
+  z-index: 100;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 500px;
+  padding: 1rem;
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-radius: 12px;
+  box-sizing: border-box;
+  animation: slideDown 0.3s ease-out;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.rarity-breakdown::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  left: calc(16.666% - 0.5rem); /* Centers under the first item: (100% - 2*gap)/6 */
+  transform: translateX(-50%);
+  border-width: 0 10px 10px 10px;
+  border-style: solid;
+  border-color: transparent transparent var(--tg-theme-secondary-bg-color, #f0f0f0) transparent;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.rarity-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.75rem 0.25rem;
+  background-color: var(--tg-theme-bg-color, #ffffff);
+  border-radius: 8px;
+  flex: 1;
+  min-width: 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.rarity-item:last-child {
+  border-bottom: none;
+}
+
+.rarity-label {
+  font-weight: 800;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  margin-bottom: 0.25rem;
+}
+
+.rarity-count {
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: var(--tg-theme-text-color, #000000);
+}
+
+/* Rarity Colors */
+.rarity-item.unique .rarity-label {
+  background: linear-gradient(124deg, #ff5e5e, #ffbd4a, #ffff70, #69f0ae, #52d1ff, #d066ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.rarity-item.legendary .rarity-label { color: #FFD700; }
+.rarity-item.epic .rarity-label { color: #9C27B0; }
+.rarity-item.rare .rarity-label { color: #4CAF50; }
+.rarity-item.common .rarity-label { color: #4A90E2; }
+
+.achievements-section {
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.achievements-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--tg-theme-text-color, #000000);
+  text-align: center;
+  width: 100%;
+  margin-top: 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.achievements-grid {
+  display: flex;
+  gap: 1rem;
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+}
+
+

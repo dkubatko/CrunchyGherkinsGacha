@@ -5,6 +5,7 @@ import type {
   SlotVerifyResponse,
   SlotSymbolInfo,
   CardConfigResponse,
+  UserProfile,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
@@ -196,17 +197,17 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchClaimBalance(userId: number, chatId: string, initData: string): Promise<{ balance: number; user_id: number; chat_id: string }> {
+  static async fetchUserProfile(userId: number, chatId: string, initData: string): Promise<UserProfile> {
     const params = new URLSearchParams({
       chat_id: chatId
     });
 
-    const response = await fetch(`${API_BASE_URL}/user/${encodeURIComponent(String(userId))}/claims?${params.toString()}`, {
+    const response = await fetch(`${API_BASE_URL}/user/${encodeURIComponent(String(userId))}/profile?${params.toString()}`, {
       headers: this.getHeaders(initData)
     });
 
     if (!response.ok) {
-      let detail = `Failed to fetch claim balance (Error ${response.status})`;
+      let detail = `Failed to fetch user profile (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

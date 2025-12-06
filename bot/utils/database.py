@@ -760,6 +760,29 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
         return [Card(**row) for row in cursor.fetchall()]
 
 
+def get_user_card_count(user_id: int, chat_id: Optional[str] = None) -> int:
+    """Get count of cards owned by a user (by user_id), optionally scoped to a chat."""
+    username = get_username_for_user_id(user_id)
+
+    conditions = ["user_id = ?"]
+    parameters: list[Any] = [user_id]
+
+    if username:
+        conditions.append("owner = ? COLLATE NOCASE")
+        parameters.append(username)
+
+    query = "SELECT COUNT(*) FROM cards WHERE (" + " OR ".join(conditions) + ")"
+
+    if chat_id is not None:
+        query += " AND chat_id = ?"
+        parameters.append(str(chat_id))
+
+    with _managed_connection() as (_, cursor):
+        cursor.execute(query, tuple(parameters))
+        result = cursor.fetchone()
+        return result[0] if result else 0
+
+
 def get_user_cards_by_rarity(
     user_id: int,
     username: Optional[str],

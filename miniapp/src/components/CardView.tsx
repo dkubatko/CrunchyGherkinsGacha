@@ -2,12 +2,14 @@ import Card from './Card';
 import AllCards from './AllCards';
 import FilterSortControls from './FilterSortControls';
 import AppLoading from './AppLoading';
-import type { CardData, View, OrientationData } from '../types';
+import ProfileView from './ProfileView';
+import type { CardData, View, OrientationData, ProfileState } from '../types';
 import type { FilterOptions, SortOptions } from './FilterSortControls';
 
 interface TabsProps {
   onCurrentTabClick: () => void;
   onAllTabClick: () => void;
+  onProfileTabClick: () => void;
 }
 
 interface CurrentViewProps {
@@ -59,6 +61,7 @@ interface CardViewProps {
   tabs: TabsProps;
   currentView: CurrentViewProps;
   allView: AllViewProps;
+  profileView: ProfileState;
 }
 
 const CardView = ({
@@ -71,13 +74,23 @@ const CardView = ({
   currentIndex,
   tabs,
   currentView,
-  allView
+  allView,
+  profileView
 }: CardViewProps) => {
   const currentCard = currentView.cards[currentIndex];
 
   return (
     <>
       <div className="tabs">
+        {profileView.profile && (
+          <button
+            className={`tab ${view === 'profile' ? 'active' : ''}`}
+            onClick={tabs.onProfileTabClick}
+            disabled={currentView.isBurning}
+          >
+            Profile
+          </button>
+        )}
         <button
           className={`tab ${view === 'current' ? 'active' : ''}`}
           onClick={tabs.onCurrentTabClick}
@@ -97,6 +110,15 @@ const CardView = ({
       </div>
 
       <div className="app-content">
+        {view === 'profile' ? (
+          <ProfileView 
+            profile={profileView.profile} 
+            cards={currentView.cards}
+            loading={profileView.loading} 
+            error={profileView.error} 
+          />
+        ) : (
+          <>
         <div className="title-container">
           {view === 'current' && currentView.cards.length > 0 && !currentView.isGridView && (
             <div className="card-position-indicator">
@@ -221,6 +243,8 @@ const CardView = ({
               )}
             </>
           )
+        )}
+          </>
         )}
       </div>
     </>
