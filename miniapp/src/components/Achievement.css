@@ -1,0 +1,96 @@
+.achievement-item {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, background-color 0.2s ease;
+  overflow: hidden;
+  border: 2px solid var(--tg-theme-button-color, #2481cc);
+}
+
+.achievement-icon-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.achievement-item:active {
+  transform: scale(0.95);
+}
+
+.achievement-popup-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.achievement-popup {
+  background-color: var(--tg-theme-bg-color, #ffffff);
+  border-radius: 16px;
+  padding: 2rem;
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.achievement-popup-icon-img {
+  width: 80px;
+  height: 80px;
+  object-fit: cover;
+  border-radius: 50%;
+  margin-bottom: 1rem;
+  border: 2px solid var(--tg-theme-button-color, #2481cc);
+}
+
+.achievement-popup-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  color: var(--tg-theme-text-color, #000000);
+}
+
+.achievement-popup-description {
+  font-size: 1rem;
+  color: var(--tg-theme-hint-color, #999999);
+  margin: 0 0 1.5rem 0;
+  line-height: 1.5;
+}
+
+.achievement-popup-close {
+  background-color: var(--tg-theme-button-color, #2481cc);
+  color: var(--tg-theme-button-text-color, #ffffff);
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 1rem;
+  cursor: pointer;
+}

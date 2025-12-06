@@ -121,6 +121,16 @@ class UserSummary(BaseModel):
     display_name: Optional[str] = None
 
 
+class UserProfileResponse(BaseModel):
+    user_id: int
+    username: str
+    display_name: Optional[str] = None
+    profile_imageb64: Optional[str] = None
+    claim_balance: int
+    spin_balance: int
+    card_count: int
+
+
 class UserCollectionResponse(BaseModel):
     user: UserSummary
     cards: List[APICard]
@@ -1233,25 +1243,47 @@ async def execute_trade(
 # =============================================================================
 
 
-@app.get("/user/{user_id}/claims", response_model=ClaimBalanceResponse)
-async def get_user_claim_balance(
+@app.get("/user/{user_id}/profile", response_model=UserProfileResponse)
+async def get_user_profile(
     user_id: int,
     chat_id: str = Query(..., description="Chat ID"),
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get the current claim balance for a user in a specific chat."""
+    """Get the general profile information for a user."""
     try:
-        # Verify the authenticated user matches the requested user_id
-        await verify_user_match(user_id, validated_user)
+        # We don't enforce user_id match here because we might be viewing another user's profile
+
+        # Get user info
+        user = await asyncio.to_thread(database.get_user, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
 
         # Get claim balance
-        balance = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
+        claim_balance = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
 
-        return ClaimBalanceResponse(balance=balance, user_id=user_id, chat_id=chat_id)
+        # Get spin balance (with refresh logic)
+        spin_balance = await asyncio.to_thread(
+            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
+        )
 
+        # Get card count
+        card_count = await asyncio.to_thread(database.get_user_card_count, user_id, chat_id)
+
+        return UserProfileResponse(
+            user_id=user.user_id,
+            username=user.username,
+            display_name=user.display_name,
+            profile_imageb64=user.profile_imageb64,
+            claim_balance=claim_balance,
+            spin_balance=spin_balance,
+            card_count=card_count,
+        )
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error getting claim balance for user {user_id} in chat {chat_id}: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get claim balance")
+        logger.error(f"Error getting profile for user {user_id} in chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get user profile")
 
 
 # =============================================================================
