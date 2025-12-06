@@ -31,7 +31,7 @@ import { RARITY_SEQUENCE } from './utils/rarityStyles';
 import { ApiService } from './services/api';
 
 // Types
-import type { CardData, ClaimBalanceState, View } from './types';
+import type { CardData, ClaimBalanceState, View, ProfileState, UserProfile } from './types';
 
 // Build info
 import { BUILD_INFO } from './build-info';
@@ -77,8 +77,9 @@ function App() {
   const [burningCard, setBurningCard] = useState(false);
   const [triggerBurn, setTriggerBurn] = useState(false);
   const [isBurningInProgress, setIsBurningInProgress] = useState(false);
-  const [chatClaimBalances, setChatClaimBalances] = useState<Record<string, ClaimBalanceState>>({});
-  const claimBalanceRequestsRef = useRef<Map<string, Promise<number | null>>>(new Map());
+  const [chatProfiles, setChatProfiles] = useState<Record<string, ProfileState>>({});
+  const [viewedProfile, setViewedProfile] = useState<ProfileState>({ profile: null, loading: false });
+  const profileRequestsRef = useRef<Map<string, Promise<UserProfile | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
   const cardConfigLoadedRef = useRef(false);
   const [burnRewards, setBurnRewards] = useState<Record<string, number> | null>(null);
@@ -123,10 +124,10 @@ function App() {
     : userData?.chatId ?? null;
   const shouldFetchAllCards = !userData?.casinoView && (hasChatScope || activeTradeCardId !== null);
 
-  const ensureClaimBalance = useCallback(async (
+  const ensureUserProfile = useCallback(async (
     chatId: string,
     options: { force?: boolean } = {}
-  ): Promise<number | null> => {
+  ): Promise<UserProfile | null> => {
     if (!chatId) {
       return null;
     }
@@ -138,68 +139,67 @@ function App() {
 
     pendingChatIdsRef.current.delete(chatId);
 
-    const existingState = chatClaimBalances[chatId];
-    const fallbackBalance = existingState?.balance ?? null;
+    const existingState = chatProfiles[chatId];
+    const fallbackProfile = existingState?.profile ?? null;
 
-    if (!options.force && existingState && fallbackBalance !== null && !existingState.error) {
-      return fallbackBalance;
+    if (!options.force && existingState && fallbackProfile !== null && !existingState.error) {
+      return fallbackProfile;
     }
 
-    if (!options.force && claimBalanceRequestsRef.current.has(chatId)) {
-      return claimBalanceRequestsRef.current.get(chatId)!;
+    if (!options.force && profileRequestsRef.current.has(chatId)) {
+      return profileRequestsRef.current.get(chatId)!;
     }
 
     const fetchPromise = (async () => {
-      setChatClaimBalances(prev => ({
+      setChatProfiles(prev => ({
         ...prev,
         [chatId]: {
-          balance: prev[chatId]?.balance ?? null,
+          profile: prev[chatId]?.profile ?? null,
           loading: true,
           error: undefined
         }
       }));
-
       try {
-        const result = await ApiService.fetchClaimBalance(userData.currentUserId, chatId, initData);
-        setChatClaimBalances(prev => ({
+        const result = await ApiService.fetchUserProfile(userData.currentUserId, chatId, initData);
+        setChatProfiles(prev => ({
           ...prev,
           [chatId]: {
-            balance: result.balance,
+            profile: result,
             loading: false,
             error: undefined
           }
         }));
-        return result.balance ?? null;
+        return result;
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to fetch claim balance';
-        console.error(`Failed to fetch claim balance for chat ${chatId}`, err);
-        setChatClaimBalances(prev => ({
+        const message = err instanceof Error ? err.message : 'Failed to fetch user profile';
+        console.error(`Failed to fetch user profile for chat ${chatId}`, err);
+        setChatProfiles(prev => ({
           ...prev,
           [chatId]: {
-            balance: prev[chatId]?.balance ?? fallbackBalance,
+            profile: prev[chatId]?.profile ?? fallbackProfile,
             loading: false,
             error: message
           }
         }));
-        return fallbackBalance;
+        return fallbackProfile;
       }
     })();
 
-    claimBalanceRequestsRef.current.set(chatId, fetchPromise);
+    profileRequestsRef.current.set(chatId, fetchPromise);
 
-    const resolvedBalance = await fetchPromise;
-    claimBalanceRequestsRef.current.delete(chatId);
+    const resolvedProfile = await fetchPromise;
+    profileRequestsRef.current.delete(chatId);
 
-    return resolvedBalance;
-  }, [chatClaimBalances, initData, userData]);
+    return resolvedProfile;
+  }, [chatProfiles, initData, userData]);
 
   const handleCardOpen = useCallback((card: Pick<CardData, 'id' | 'chat_id'>) => {
     if (!card.chat_id) {
       return;
     }
 
-    void ensureClaimBalance(card.chat_id);
-  }, [ensureClaimBalance]);
+    void ensureUserProfile(card.chat_id);
+  }, [ensureUserProfile]);
 
   useEffect(() => {
     if (!userData || !initData || pendingChatIdsRef.current.size === 0) {
@@ -210,9 +210,26 @@ function App() {
     pendingChatIdsRef.current.clear();
 
     queuedChatIds.forEach(chatId => {
-      void ensureClaimBalance(chatId, { force: true });
+      void ensureUserProfile(chatId, { force: true });
     });
-  }, [ensureClaimBalance, initData, userData]);
+  }, [ensureUserProfile, initData, userData]);
+
+  useEffect(() => {
+    if (!userData || !initData || !userData.chatId) return;
+
+    const fetchViewedProfile = async () => {
+      setViewedProfile(prev => ({ ...prev, loading: true, error: undefined }));
+      try {
+        const userId = userData.isOwnCollection ? userData.currentUserId : userData.targetUserId;
+        const result = await ApiService.fetchUserProfile(userId, userData.chatId!, initData);
+        setViewedProfile({ profile: result, loading: false, error: undefined });
+      } catch (err) {
+        setViewedProfile({ profile: null, loading: false, error: err instanceof Error ? err.message : 'Failed' });
+      }
+    };
+
+    fetchViewedProfile();
+  }, [userData, initData]);
 
   // Load card config when card view is first loaded
   useEffect(() => {
@@ -399,8 +416,16 @@ function App() {
   // Feature hooks
   const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
   const currentDialogCard = modalCard ?? cards[currentIndex] ?? null;
-  const currentDialogClaimState = currentDialogCard?.chat_id
-    ? chatClaimBalances[currentDialogCard.chat_id]
+  const currentDialogProfileState = currentDialogCard?.chat_id
+    ? chatProfiles[currentDialogCard.chat_id]
+    : undefined;
+
+  const currentDialogClaimState: ClaimBalanceState | undefined = currentDialogProfileState
+    ? {
+        balance: currentDialogProfileState.profile?.claim_balance ?? null,
+        loading: currentDialogProfileState.loading,
+        error: currentDialogProfileState.error
+      }
     : undefined;
   const currentDialogCardName = currentDialogCard
     ? `${currentDialogCard.modifier} ${currentDialogCard.base_name}`.trim()
@@ -568,6 +593,12 @@ function App() {
     setSelectedCardForTrade(null);
     setView('all');
     // Don't reset filters - preserve All view state
+  }, []);
+
+  const handleProfileTabClick = useCallback(() => {
+    setIsTradeGridActive(false);
+    setSelectedCardForTrade(null);
+    setView('profile');
   }, []);
 
   const handleGridToggle = useCallback(() => {
@@ -741,7 +772,7 @@ function App() {
 
     const rarityLockCost = Math.max(1, lockCosts?.[targetCard.rarity] ?? 1);
     if (rarityLockCost > 0) {
-      void ensureClaimBalance(targetCard.chat_id);
+      void ensureUserProfile(targetCard.chat_id);
     }
 
     setShowLockDialog(true);
@@ -791,14 +822,21 @@ function App() {
         initData
       );
 
-      setChatClaimBalances(prev => ({
-        ...prev,
-        [chatId]: {
-          balance: result.balance,
-          loading: false,
-          error: undefined
-        }
-      }));
+      setChatProfiles(prev => {
+        const currentProfile = prev[chatId]?.profile;
+        if (!currentProfile) return prev;
+        
+        return {
+          ...prev,
+          [chatId]: {
+            ...prev[chatId],
+            profile: {
+              ...currentProfile,
+              claim_balance: result.balance
+            }
+          }
+        };
+      });
 
       setLockingCard(false);
       setShowLockDialog(false);
@@ -816,14 +854,14 @@ function App() {
       await refreshCardsData();
     } catch (error) {
       console.error('Failed to lock/unlock card:', error);
-      setChatClaimBalances(prev => {
+      setChatProfiles(prev => {
         const existing = prev[chatId];
         const message = error instanceof Error ? error.message : 'Failed to lock/unlock card';
         return {
           ...prev,
           [chatId]: existing
             ? { ...existing, loading: false, error: message }
-            : { balance: null, loading: false, error: message }
+            : { profile: null, loading: false, error: message }
         };
       });
       TelegramUtils.showAlert(error instanceof Error ? error.message : 'Failed to lock/unlock card');
@@ -996,8 +1034,10 @@ function App() {
           currentIndex={currentIndex}
           tabs={{
             onCurrentTabClick: handleCurrentTabClick,
-            onAllTabClick: handleAllTabClick
+            onAllTabClick: handleAllTabClick,
+            onProfileTabClick: handleProfileTabClick
           }}
+          profileView={viewedProfile}
           currentView={{
             cards,
             filteredCards: filteredCurrentCards,
