@@ -14,7 +14,6 @@ from telegram.constants import ParseMode
 from fastapi import FastAPI, HTTPException, Header, Query, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -22,8 +21,36 @@ load_dotenv()
 # Add project root to sys.path to allow importing from bot
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from api.schemas import (
+    BurnCardRequest,
+    BurnCardResponse,
+    CardConfigResponse,
+    CardImageResponse,
+    CardImagesRequest,
+    ClaimBalanceResponse,
+    ConsumeSpinResponse,
+    LockCardRequest,
+    LockCardResponse,
+    MinesweeperStartRequest,
+    MinesweeperStartResponse,
+    MinesweeperUpdateRequest,
+    MinesweeperUpdateResponse,
+    ShareCardRequest,
+    SlotSymbolInfo,
+    SlotSymbolSummary,
+    SlotsClaimWinRequest,
+    SlotsClaimWinResponse,
+    SlotsVictoryRequest,
+    SlotVerifyRequest,
+    SlotVerifyResponse,
+    SpinsRequest,
+    SpinsResponse,
+    UserCollectionResponse,
+    UserProfileResponse,
+    UserSummary,
+)
 from utils import database, gemini, rolling, minesweeper
-from utils.database import Card as APICard
+from utils.schemas import Card as APICard
 from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     RARITIES,
@@ -113,197 +140,6 @@ gemini_util = gemini.GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
 
 
 MAX_SLOT_VICTORY_IMAGE_RETRIES = 2
-
-
-class UserSummary(BaseModel):
-    user_id: int
-    username: Optional[str] = None
-    display_name: Optional[str] = None
-
-
-class UserProfileResponse(BaseModel):
-    user_id: int
-    username: str
-    display_name: Optional[str] = None
-    profile_imageb64: Optional[str] = None
-    claim_balance: int
-    spin_balance: int
-    card_count: int
-
-
-class UserCollectionResponse(BaseModel):
-    user: UserSummary
-    cards: List[APICard]
-
-
-class CardImagesRequest(BaseModel):
-    card_ids: List[int]
-
-
-class CardImageResponse(BaseModel):
-    card_id: int
-    image_b64: str
-
-
-class ShareCardRequest(BaseModel):
-    card_id: int
-    user_id: int
-
-
-class LockCardRequest(BaseModel):
-    card_id: int
-    user_id: int
-    chat_id: str
-    lock: bool  # True to lock, False to unlock
-
-
-class LockCardResponse(BaseModel):
-    success: bool
-    locked: bool
-    balance: int
-    message: str
-    lock_cost: int
-
-
-class CardConfigResponse(BaseModel):
-    burn_rewards: Dict[str, int]
-    lock_costs: Dict[str, int]
-
-
-class BurnCardRequest(BaseModel):
-    card_id: int
-    user_id: int
-    chat_id: str
-
-
-class BurnCardResponse(BaseModel):
-    success: bool
-    message: str
-    spins_awarded: int
-    new_spin_total: int
-
-
-class SlotSymbolSummary(BaseModel):
-    id: int
-    display_name: Optional[str] = None
-    slot_iconb64: Optional[str] = None
-    type: str  # "user", "character", or "claim"
-
-
-class SlotsVictorySource(BaseModel):
-    id: int
-    type: str
-
-
-class SlotsVictoryRequest(BaseModel):
-    user_id: int
-    chat_id: str
-    rarity: str
-    source: SlotsVictorySource
-
-
-class SlotsClaimWinRequest(BaseModel):
-    user_id: int
-    chat_id: str
-    amount: int
-
-
-class SlotsClaimWinResponse(BaseModel):
-    success: bool
-    balance: int
-
-
-class SpinsRequest(BaseModel):
-    user_id: int
-    chat_id: str
-
-
-class SpinsResponse(BaseModel):
-    spins: int
-    success: bool = True
-    next_refresh_time: Optional[str] = None
-
-
-class ClaimBalanceResponse(BaseModel):
-    balance: int
-    user_id: int
-    chat_id: str
-
-
-class ConsumeSpinResponse(BaseModel):
-    success: bool
-    spins_remaining: Optional[int] = None
-    message: Optional[str] = None
-
-
-class SlotSymbolInfo(BaseModel):
-    id: int
-    type: str  # "user", "character", or "claim"
-
-
-class SlotVerifyRequest(BaseModel):
-    user_id: int
-    chat_id: str
-    random_number: int
-    symbols: List[SlotSymbolInfo]
-
-
-class SlotVerifyResponse(BaseModel):
-    is_win: bool
-    slot_results: List[SlotSymbolInfo]
-    rarity: Optional[str] = None
-
-
-class MinesweeperStartRequest(BaseModel):
-    user_id: int
-    chat_id: str
-    bet_card_id: int
-
-
-class MinesweeperGameRequest(BaseModel):
-    user_id: int
-    chat_id: str
-
-
-class MinesweeperStartResponse(BaseModel):
-    game_id: int
-    status: str  # 'active', 'won', 'lost'
-    bet_card_title: str  # Title of the bet card ("Rarity Modifier Name")
-    card_rarity: str  # Rarity of the bet card
-    revealed_cells: List[int]
-    moves_count: int
-    started_timestamp: str
-    last_updated_timestamp: str
-    reward_card_id: Optional[int] = None  # Only populated if status is 'won'
-    mine_positions: Optional[List[int]] = None  # Only populated if status is 'won' or 'lost'
-    claim_point_positions: Optional[List[int]] = (
-        None  # Visible claim points (revealed or all if game over)
-    )
-    card_icon: Optional[str] = None  # Base64 slot icon of the game's selected source
-    claim_point_icon: Optional[str] = None  # Base64 icon for claim points
-    mine_icon: Optional[str] = None  # Base64 icon for mines
-    next_refresh_time: Optional[str] = None  # When the next game can be started (if game is over)
-
-
-class MinesweeperUpdateRequest(BaseModel):
-    user_id: int
-    game_id: int
-    cell_index: int
-
-
-class MinesweeperUpdateResponse(BaseModel):
-    revealed_cells: List[int]
-    mine_positions: Optional[List[int]] = None  # Only populated if revealed cell is a mine
-    claim_point_positions: Optional[List[int]] = (
-        None  # Visible claim points (revealed or all if game over)
-    )
-    next_refresh_time: Optional[str] = (
-        None  # When next game can be started (only if game just ended)
-    )
-    status: Optional[str] = None  # Game status: 'active', 'won', 'lost'
-    bet_card_rarity: Optional[str] = None  # Rarity of the bet card (for alerts)
-    source_display_name: Optional[str] = None  # Display name of the selected source (for alerts)
-    claim_point_awarded: bool = False  # True if this reveal awarded a claim point
 
 
 _RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [

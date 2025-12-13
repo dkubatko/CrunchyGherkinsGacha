@@ -22,7 +22,8 @@ if str(PROJECT_ROOT) not in sys.path:
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 from settings.constants import BASE_IMAGE_PATH  # noqa: E402
-from utils.database import connect  # noqa: E402
+from utils.session import get_session  # noqa: E402
+from utils.models import UserModel  # noqa: E402
 
 USERNAME_TO_DISPLAY_NAME = {
     "krypthos": "Daniel",
@@ -56,34 +57,24 @@ def main() -> None:
         base_images_dir = PROJECT_ROOT / BASE_IMAGE_PATH
     base_images_dir = base_images_dir.resolve()
 
-    conn = connect()
-    cursor = conn.cursor()
-
     updated = 0
     skipped = []
 
-    for username, display_name in USERNAME_TO_DISPLAY_NAME.items():
-        image_path = _find_image_path(base_images_dir, display_name)
-        if image_path is None:
-            skipped.append((username, display_name))
-            continue
+    with get_session(commit=True) as session:
+        for username, display_name in USERNAME_TO_DISPLAY_NAME.items():
+            image_path = _find_image_path(base_images_dir, display_name)
+            if image_path is None:
+                skipped.append((username, display_name))
+                continue
 
-        with image_path.open("rb") as img_file:
-            image_b64 = base64.b64encode(img_file.read()).decode("utf-8")
+            with image_path.open("rb") as img_file:
+                image_b64 = base64.b64encode(img_file.read()).decode("utf-8")
 
-        cursor.execute(
-            """
-            UPDATE users
-            SET display_name = ?, profile_imageb64 = ?
-            WHERE username = ?
-            """,
-            (display_name, image_b64, username),
-        )
-        if cursor.rowcount:
-            updated += 1
-
-    conn.commit()
-    conn.close()
+            user = session.query(UserModel).filter(UserModel.username == username).first()
+            if user:
+                user.display_name = display_name
+                user.profile_imageb64 = image_b64
+                updated += 1
 
     print(f"Updated {updated} users with display names and images.")
     if skipped:

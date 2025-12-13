@@ -16,7 +16,9 @@ import sys
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
-from utils.database import MinesweeperGame, connect
+from utils.schemas import MinesweeperGame
+from utils.session import get_session
+from utils.models import MinesweeperGameModel
 from utils import rolling
 from settings.constants import MINESWEEPER_MINE_COUNT, MINESWEEPER_CLAIM_POINT_COUNT
 
@@ -166,6 +168,11 @@ def generate_claim_point_position(mine_positions: List[int], n: int = 1) -> List
     return positions
 
 
+def _game_model_to_pydantic(game_orm: MinesweeperGameModel) -> MinesweeperGame:
+    """Convert SQLAlchemy MinesweeperGameModel to Pydantic MinesweeperGame."""
+    return MinesweeperGame.from_orm(game_orm)
+
+
 def get_existing_game(user_id: int, chat_id: str) -> Optional[MinesweeperGame]:
     """
     Get an existing game if one exists.
@@ -182,46 +189,21 @@ def get_existing_game(user_id: int, chat_id: str) -> Optional[MinesweeperGame]:
     Returns:
         MinesweeperGame object or None if no game exists or cooldown expired
     """
-    conn = connect()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            """
-            SELECT id, user_id, chat_id, bet_card_id, bet_card_title, bet_card_rarity, mine_positions, claim_point_positions, revealed_cells,
-                   status, moves_count, reward_card_id, started_timestamp, last_updated_timestamp,
-                   source_type, source_id
-            FROM minesweeper_games
-            WHERE user_id = ? AND chat_id = ?
-            ORDER BY started_timestamp DESC
-            LIMIT 1
-            """,
-            (user_id, chat_id),
+    with get_session() as session:
+        game_orm = (
+            session.query(MinesweeperGameModel)
+            .filter(
+                MinesweeperGameModel.user_id == user_id,
+                MinesweeperGameModel.chat_id == chat_id,
+            )
+            .order_by(MinesweeperGameModel.started_timestamp.desc())
+            .first()
         )
 
-        row = cursor.fetchone()
-
-        if not row:
+        if not game_orm:
             return None
 
-        game = MinesweeperGame(
-            id=row[0],
-            user_id=row[1],
-            chat_id=row[2],
-            bet_card_id=row[3],
-            bet_card_title=row[4],
-            bet_card_rarity=row[5],
-            mine_positions=json.loads(row[6]),
-            claim_point_positions=json.loads(row[7]),
-            revealed_cells=json.loads(row[8]),
-            status=row[9],
-            moves_count=row[10],
-            reward_card_id=row[11],
-            started_timestamp=_parse_timestamp(row[12]),
-            last_updated_timestamp=_parse_timestamp(row[13]),
-            source_type=row[14],
-            source_id=row[15],
-        )
+        game = _game_model_to_pydantic(game_orm)
 
         # If game is still active, always return it (no expiration for active games)
         if game.status == "active":
@@ -254,12 +236,6 @@ def get_existing_game(user_id: int, chat_id: str) -> Optional[MinesweeperGame]:
         )
         return None
 
-    except Exception as e:
-        logger.error(f"Error getting existing minesweeper game: {e}")
-        return None
-    finally:
-        conn.close()
-
 
 def create_game(
     user_id: int, chat_id: str, bet_card_id: int, bet_card_title: str, bet_card_rarity: str
@@ -280,49 +256,40 @@ def create_game(
     Returns:
         MinesweeperGame object or None on failure
     """
-    conn = connect()
-    cursor = conn.cursor()
+    # Select a random source (user or character) from the chat
+    selected_profile = rolling.select_random_source_with_image(chat_id)
+    if not selected_profile:
+        logger.warning(f"No eligible sources found for minesweeper game in chat {chat_id}")
+        return None
 
-    try:
-        # Select a random source (user or character) from the chat
-        selected_profile = rolling.select_random_source_with_image(chat_id)
-        if not selected_profile:
-            logger.warning(f"No eligible sources found for minesweeper game in chat {chat_id}")
-            return None
+    mine_positions = generate_mine_positions(MINESWEEPER_MINE_COUNT)
+    claim_point_positions = generate_claim_point_position(
+        mine_positions, MINESWEEPER_CLAIM_POINT_COUNT
+    )
+    now = datetime.now(timezone.utc)
 
-        mine_positions = generate_mine_positions(MINESWEEPER_MINE_COUNT)
-        claim_point_positions = generate_claim_point_position(
-            mine_positions, MINESWEEPER_CLAIM_POINT_COUNT
+    with get_session(commit=True) as session:
+        game_orm = MinesweeperGameModel(
+            user_id=user_id,
+            chat_id=chat_id,
+            bet_card_id=bet_card_id,
+            bet_card_title=bet_card_title,
+            bet_card_rarity=bet_card_rarity,
+            mine_positions=json.dumps(mine_positions),
+            claim_point_positions=json.dumps(claim_point_positions),
+            revealed_cells=json.dumps([]),
+            status="active",
+            moves_count=0,
+            started_timestamp=now,
+            last_updated_timestamp=now,
+            source_type=selected_profile.source_type,
+            source_id=selected_profile.source_id,
         )
-        now = datetime.now(timezone.utc)
-
-        cursor.execute(
-            """
-            INSERT INTO minesweeper_games
-            (user_id, chat_id, bet_card_id, bet_card_title, bet_card_rarity, mine_positions, claim_point_positions, revealed_cells, status, moves_count, started_timestamp, last_updated_timestamp, source_type, source_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', 0, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                chat_id,
-                bet_card_id,
-                bet_card_title,
-                bet_card_rarity,
-                json.dumps(mine_positions),
-                json.dumps(claim_point_positions),
-                json.dumps([]),
-                now.isoformat(),
-                now.isoformat(),
-                selected_profile.source_type,
-                selected_profile.source_id,
-            ),
-        )
-
-        game_id = cursor.lastrowid
-        conn.commit()
+        session.add(game_orm)
+        session.flush()
 
         game = MinesweeperGame(
-            id=game_id,
+            id=game_orm.id,
             user_id=user_id,
             chat_id=chat_id,
             bet_card_id=bet_card_id,
@@ -340,15 +307,10 @@ def create_game(
             source_id=selected_profile.source_id,
         )
 
-        logger.info(f"Created new minesweeper game {game_id} for user {user_id} in chat {chat_id}")
+        logger.info(
+            f"Created new minesweeper game {game_orm.id} for user {user_id} in chat {chat_id}"
+        )
         return game
-
-    except Exception as e:
-        logger.error(f"Error creating minesweeper game: {e}")
-        conn.rollback()
-        return None
-    finally:
-        conn.close()
 
 
 def get_game_by_id(game_id: int) -> Optional[MinesweeperGame]:
@@ -361,50 +323,15 @@ def get_game_by_id(game_id: int) -> Optional[MinesweeperGame]:
     Returns:
         MinesweeperGame object or None if not found
     """
-    conn = connect()
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute(
-            """
-            SELECT id, user_id, chat_id, bet_card_id, bet_card_title, bet_card_rarity, mine_positions, claim_point_positions, revealed_cells,
-                   status, moves_count, reward_card_id, started_timestamp, last_updated_timestamp,
-                   source_type, source_id
-            FROM minesweeper_games
-            WHERE id = ?
-            """,
-            (game_id,),
+    with get_session() as session:
+        game_orm = (
+            session.query(MinesweeperGameModel).filter(MinesweeperGameModel.id == game_id).first()
         )
 
-        row = cursor.fetchone()
-
-        if not row:
+        if not game_orm:
             return None
 
-        return MinesweeperGame(
-            id=row[0],
-            user_id=row[1],
-            chat_id=row[2],
-            bet_card_id=row[3],
-            bet_card_title=row[4],
-            bet_card_rarity=row[5],
-            mine_positions=json.loads(row[6]),
-            claim_point_positions=json.loads(row[7]),
-            revealed_cells=json.loads(row[8]),
-            status=row[9],
-            moves_count=row[10],
-            reward_card_id=row[11],
-            started_timestamp=_parse_timestamp(row[12]),
-            last_updated_timestamp=_parse_timestamp(row[13]),
-            source_type=row[14],
-            source_id=row[15],
-        )
-
-    except Exception as e:
-        logger.error(f"Error getting minesweeper game {game_id}: {e}")
-        return None
-    finally:
-        conn.close()
+        return _game_model_to_pydantic(game_orm)
 
 
 def reveal_cell(game_id: int, cell_index: int) -> Optional[MinesweeperGame]:
@@ -418,109 +345,89 @@ def reveal_cell(game_id: int, cell_index: int) -> Optional[MinesweeperGame]:
     Returns:
         Updated MinesweeperGame object or None on failure
     """
-    conn = connect()
-    cursor = conn.cursor()
-
-    try:
-        # Get the current game state
-        game = get_game_by_id(game_id)
-        if not game:
-            logger.warning(f"Cannot reveal cell: game {game_id} not found")
-            return None
-
-        # Validate game state
-        if game.status != "active":
-            logger.warning(
-                f"Cannot reveal cell: game {game_id} is not active (status: {game.status})"
-            )
-            return game
-
-        # Validate cell index
-        if cell_index < 0 or cell_index >= GRID_SIZE:
-            logger.warning(f"Cannot reveal cell: invalid cell_index {cell_index}")
-            return None
-
-        # Check if cell was already revealed
-        if cell_index in game.revealed_cells:
-            logger.warning(
-                f"Cannot reveal cell: cell {cell_index} already revealed in game {game_id}"
-            )
-            return game
-
-        # Add cell to revealed cells
-        new_revealed_cells = game.revealed_cells + [cell_index]
-        new_moves_count = game.moves_count + 1
-        new_status = game.status
-
-        # Check if the cell has a mine
-        is_mine = cell_index in game.mine_positions
-
-        if is_mine:
-            # Player hit a mine - game lost
-            new_status = "lost"
-            logger.info(f"Game {game_id}: Player revealed mine at cell {cell_index} - LOST")
-        else:
-            # Count only character/card icon cells (exclude both mines and claim points)
-            character_cells_revealed = len(
-                [
-                    cell
-                    for cell in new_revealed_cells
-                    if cell not in game.mine_positions and cell not in game.claim_point_positions
-                ]
-            )
-
-            if character_cells_revealed >= SAFE_REVEALS_REQUIRED:
-                # Player revealed enough character cells - game won
-                new_status = "won"
-                logger.info(
-                    f"Game {game_id}: Player revealed {character_cells_revealed} character cells - WON"
-                )
-            else:
-                logger.info(
-                    f"Game {game_id}: Cell {cell_index} revealed. Character cells: {character_cells_revealed}/{SAFE_REVEALS_REQUIRED}"
-                )
-
-        # Update the database
-        now = datetime.now(timezone.utc)
-        cursor.execute(
-            """
-            UPDATE minesweeper_games
-            SET revealed_cells = ?,
-                moves_count = ?,
-                status = ?,
-                last_updated_timestamp = ?
-            WHERE id = ?
-            """,
-            (
-                json.dumps(new_revealed_cells),
-                new_moves_count,
-                new_status,
-                now.isoformat(),
-                game_id,
-            ),
-        )
-
-        conn.commit()
-
-        # Return updated game state
-        return MinesweeperGame(
-            id=game.id,
-            user_id=game.user_id,
-            chat_id=game.chat_id,
-            bet_card_id=game.bet_card_id,
-            mine_positions=game.mine_positions,
-            claim_point_positions=game.claim_point_positions,
-            revealed_cells=new_revealed_cells,
-            status=new_status,
-            moves_count=new_moves_count,
-            reward_card_id=game.reward_card_id,
-            started_timestamp=game.started_timestamp,
-            last_updated_timestamp=now,
-        )
-
-    except Exception as e:
-        logger.error(f"Error revealing cell in game {game_id}: {e}")
-        conn.rollback()
+    # Get the current game state
+    game = get_game_by_id(game_id)
+    if not game:
+        logger.warning(f"Cannot reveal cell: game {game_id} not found")
         return None
-    finally:
-        conn.close()
+
+    # Validate game state
+    if game.status != "active":
+        logger.warning(f"Cannot reveal cell: game {game_id} is not active (status: {game.status})")
+        return game
+
+    # Validate cell index
+    if cell_index < 0 or cell_index >= GRID_SIZE:
+        logger.warning(f"Cannot reveal cell: invalid cell_index {cell_index}")
+        return None
+
+    # Check if cell was already revealed
+    if cell_index in game.revealed_cells:
+        logger.warning(f"Cannot reveal cell: cell {cell_index} already revealed in game {game_id}")
+        return game
+
+    # Add cell to revealed cells
+    new_revealed_cells = game.revealed_cells + [cell_index]
+    new_moves_count = game.moves_count + 1
+    new_status = game.status
+
+    # Check if the cell has a mine
+    is_mine = cell_index in game.mine_positions
+
+    if is_mine:
+        # Player hit a mine - game lost
+        new_status = "lost"
+        logger.info(f"Game {game_id}: Player revealed mine at cell {cell_index} - LOST")
+    else:
+        # Count only character/card icon cells (exclude both mines and claim points)
+        character_cells_revealed = len(
+            [
+                cell
+                for cell in new_revealed_cells
+                if cell not in game.mine_positions and cell not in game.claim_point_positions
+            ]
+        )
+
+        if character_cells_revealed >= SAFE_REVEALS_REQUIRED:
+            # Player revealed enough character cells - game won
+            new_status = "won"
+            logger.info(
+                f"Game {game_id}: Player revealed {character_cells_revealed} character cells - WON"
+            )
+        else:
+            logger.info(
+                f"Game {game_id}: Cell {cell_index} revealed. Character cells: {character_cells_revealed}/{SAFE_REVEALS_REQUIRED}"
+            )
+
+    # Update the database
+    now = datetime.now(timezone.utc)
+    with get_session(commit=True) as session:
+        game_orm = (
+            session.query(MinesweeperGameModel).filter(MinesweeperGameModel.id == game_id).first()
+        )
+
+        if game_orm:
+            game_orm.revealed_cells = json.dumps(new_revealed_cells)
+            game_orm.moves_count = new_moves_count
+            game_orm.status = new_status
+            game_orm.last_updated_timestamp = now
+
+    # Return updated game state
+    return MinesweeperGame(
+        id=game.id,
+        user_id=game.user_id,
+        chat_id=game.chat_id,
+        bet_card_id=game.bet_card_id,
+        bet_card_title=game.bet_card_title,
+        bet_card_rarity=game.bet_card_rarity,
+        mine_positions=game.mine_positions,
+        claim_point_positions=game.claim_point_positions,
+        revealed_cells=new_revealed_cells,
+        status=new_status,
+        moves_count=new_moves_count,
+        reward_card_id=game.reward_card_id,
+        started_timestamp=game.started_timestamp,
+        last_updated_timestamp=now,
+        source_type=game.source_type,
+        source_id=game.source_id,
+    )
