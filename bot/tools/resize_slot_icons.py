@@ -15,7 +15,8 @@ from PIL import Image
 # Add project root to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import database
+from utils.session import get_session
+from utils.models import UserModel, CharacterModel
 
 TARGET_SIZE = 256
 
@@ -67,22 +68,16 @@ def resize_user_icons(dry_run: bool = False):
     print("Resizing user slot icons")
     print("=" * 80)
 
-    with database._managed_connection() as (_, cursor):
+    with get_session() as session:
         # Get all users with slot icons
-        cursor.execute(
-            "SELECT user_id, display_name, slot_iconb64 FROM users WHERE slot_iconb64 IS NOT NULL"
-        )
-        users = cursor.fetchall()
+        users = session.query(UserModel).filter(UserModel.slot_iconb64.isnot(None)).all()
+        users_data = [(u.user_id, u.display_name, u.slot_iconb64) for u in users]
 
-    print(f"Found {len(users)} users with slot icons")
+    print(f"Found {len(users_data)} users with slot icons")
 
     total_saved = 0
 
-    for user in users:
-        user_id = user["user_id"]
-        display_name = user["display_name"]
-        icon_b64 = user["slot_iconb64"]
-
+    for user_id, display_name, icon_b64 in users_data:
         print(f"\nProcessing user {user_id} ({display_name})...")
         original_size = len(icon_b64)
 
@@ -93,10 +88,10 @@ def resize_user_icons(dry_run: bool = False):
         total_saved += saved
 
         if not dry_run:
-            with database._managed_connection(commit=True) as (_, cursor):
-                cursor.execute(
-                    "UPDATE users SET slot_iconb64 = ? WHERE user_id = ?", (resized_b64, user_id)
-                )
+            with get_session(commit=True) as session:
+                user = session.query(UserModel).filter(UserModel.user_id == user_id).first()
+                if user:
+                    user.slot_iconb64 = resized_b64
             print(f"  ✓ Updated user {user_id}")
         else:
             print(f"  [DRY RUN] Would update user {user_id}")
@@ -112,22 +107,18 @@ def resize_character_icons(dry_run: bool = False):
     print("Resizing character slot icons")
     print("=" * 80)
 
-    with database._managed_connection() as (_, cursor):
+    with get_session() as session:
         # Get all characters with slot icons
-        cursor.execute(
-            "SELECT id, name, slot_iconb64 FROM characters WHERE slot_iconb64 IS NOT NULL"
+        characters = (
+            session.query(CharacterModel).filter(CharacterModel.slot_iconb64.isnot(None)).all()
         )
-        characters = cursor.fetchall()
+        chars_data = [(c.id, c.name, c.slot_iconb64) for c in characters]
 
-    print(f"Found {len(characters)} characters with slot icons")
+    print(f"Found {len(chars_data)} characters with slot icons")
 
     total_saved = 0
 
-    for char in characters:
-        char_id = char["id"]
-        char_name = char["name"]
-        icon_b64 = char["slot_iconb64"]
-
+    for char_id, char_name, icon_b64 in chars_data:
         print(f"\nProcessing character {char_id} ({char_name})...")
         original_size = len(icon_b64)
 
@@ -138,10 +129,10 @@ def resize_character_icons(dry_run: bool = False):
         total_saved += saved
 
         if not dry_run:
-            with database._managed_connection(commit=True) as (_, cursor):
-                cursor.execute(
-                    "UPDATE characters SET slot_iconb64 = ? WHERE id = ?", (resized_b64, char_id)
-                )
+            with get_session(commit=True) as session:
+                char = session.query(CharacterModel).filter(CharacterModel.id == char_id).first()
+                if char:
+                    char.slot_iconb64 = resized_b64
             print(f"  ✓ Updated character {char_id}")
         else:
             print(f"  [DRY RUN] Would update character {char_id}")
