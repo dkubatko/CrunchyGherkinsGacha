@@ -35,15 +35,16 @@ from dotenv import load_dotenv
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.database import (
-    connect,
-    Character,
-    User,
     add_card,
     get_user_id_by_username,
     get_username_for_user_id,
     get_most_frequent_chat_id_for_user,
     set_card_owner,
 )
+from utils.schemas import Character, User
+from utils.session import get_session
+from utils.models import CharacterModel, UserModel
+from sqlalchemy import func
 from utils.gemini import GeminiUtil
 from settings.constants import RARITIES
 
@@ -110,33 +111,31 @@ def load_random_modifier_from_file(filename: str, rarity: str = None) -> str:
 
 def find_character_by_name(character_name: str):
     """Find a character by name across ALL chats in the database."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM characters WHERE LOWER(name) = LOWER(?)", (character_name,))
-        row = cursor.fetchone()
-        if row:
-            return Character(**row)
+    with get_session() as session:
+        char_orm = (
+            session.query(CharacterModel)
+            .filter(func.lower(CharacterModel.name) == func.lower(character_name))
+            .first()
+        )
+        if char_orm:
+            return Character.from_orm(char_orm)
         return None
-    finally:
-        conn.close()
 
 
 def find_user_by_name(display_name: str):
     """Find a user by display name across ALL users in the database."""
-    conn = connect()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM users WHERE LOWER(display_name) = LOWER(?) AND profile_imageb64 IS NOT NULL",
-            (display_name,),
+    with get_session() as session:
+        user_orm = (
+            session.query(UserModel)
+            .filter(
+                func.lower(UserModel.display_name) == func.lower(display_name),
+                UserModel.profile_imageb64.isnot(None),
+            )
+            .first()
         )
-        row = cursor.fetchone()
-        if row:
-            return User(**row)
+        if user_orm:
+            return User.from_orm(user_orm)
         return None
-    finally:
-        conn.close()
 
 
 def generate_single_card(

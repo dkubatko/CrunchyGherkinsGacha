@@ -23,7 +23,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Now that the path is correct, we can import from the bot directory
-from utils.database import connect  # noqa: E402
+from utils.session import get_session  # noqa: E402
+from utils.models import SpinsModel, UserModel  # noqa: E402
 
 # Determine if running in debug mode
 DEBUG_MODE = os.getenv("DEBUG", "").lower() in ("true", "1", "yes")
@@ -107,42 +108,35 @@ def main() -> None:
     parser.add_argument("--message", type=str, help="Custom message to send with the notification.")
     args = parser.parse_args()
 
-    conn = connect()
-    cursor = conn.cursor()
-
-    if args.user:
-        # Add spins to a specific user
-        cursor.execute(
-            """
-            UPDATE spins
-            SET count = count + ?
-            WHERE chat_id = ? AND user_id IN (
-                SELECT user_id FROM users WHERE username = ?
-            )
-            """,
-            (args.count, str(args.chat_id), args.user),
-        )
-        updated_rows = cursor.rowcount
-
-        if updated_rows > 0:
-            print(f"Added {args.count} spins to user @{args.user} in chat {args.chat_id}.")
+    updated_rows = 0
+    with get_session(commit=True) as session:
+        if args.user:
+            # Add spins to a specific user
+            user = session.query(UserModel).filter(UserModel.username == args.user).first()
+            if user:
+                spin = (
+                    session.query(SpinsModel)
+                    .filter(
+                        SpinsModel.chat_id == str(args.chat_id),
+                        SpinsModel.user_id == user.user_id,
+                    )
+                    .first()
+                )
+                if spin:
+                    spin.count += args.count
+                    updated_rows = 1
+                    print(f"Added {args.count} spins to user @{args.user} in chat {args.chat_id}.")
+                else:
+                    print(f"No spins record found for user @{args.user} in chat {args.chat_id}.")
+            else:
+                print(f"No user found with username @{args.user}.")
         else:
-            print(f"No user found with username @{args.user} in chat {args.chat_id}.")
-    else:
-        # Add spins to all users in the chat
-        cursor.execute(
-            """
-            UPDATE spins
-            SET count = count + ?
-            WHERE chat_id = ?
-            """,
-            (args.count, str(args.chat_id)),
-        )
-        updated_rows = cursor.rowcount
-        print(f"Added {args.count} spins to {updated_rows} users in chat {args.chat_id}.")
-
-    conn.commit()
-    conn.close()
+            # Add spins to all users in the chat
+            spins = session.query(SpinsModel).filter(SpinsModel.chat_id == str(args.chat_id)).all()
+            for spin in spins:
+                spin.count += args.count
+                updated_rows += 1
+            print(f"Added {args.count} spins to {updated_rows} users in chat {args.chat_id}.")
 
     # Send notification
     if updated_rows > 0:
