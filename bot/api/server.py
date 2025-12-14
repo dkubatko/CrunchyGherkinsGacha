@@ -51,6 +51,14 @@ from api.schemas import (
 )
 from utils import database, gemini, rolling, minesweeper
 from utils.schemas import Card as APICard
+from utils.services import (
+    card_service,
+    user_service,
+    spin_service,
+    claim_service,
+    character_service,
+    thread_service,
+)
 from settings.constants import (
     TRADE_REQUEST_MESSAGE,
     RARITIES,
@@ -489,7 +497,7 @@ async def get_all_cards_endpoint(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get all cards that have been claimed."""
-    cards = await asyncio.to_thread(database.get_all_cards, chat_id)
+    cards = await asyncio.to_thread(card_service.get_all_cards, chat_id)
     return cards
 
 
@@ -503,13 +511,13 @@ async def get_user_collection(
 
     This endpoint requires authentication via Authorization header with Telegram WebApp initData.
     """
-    cards = await asyncio.to_thread(database.get_user_collection, user_id, chat_id)
-    user_record = await asyncio.to_thread(database.get_user, user_id)
+    cards = await asyncio.to_thread(card_service.get_user_collection, user_id, chat_id)
+    user_record = await asyncio.to_thread(user_service.get_user, user_id)
     username = user_record.username if user_record else None
     display_name = user_record.display_name if user_record else None
 
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, user_id)
 
     if not cards and username is None:
         logger.warning(f"No user or cards found for user_id: {user_id}")
@@ -531,7 +539,7 @@ async def get_card_detail(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Fetch metadata for a single card."""
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if not card:
         logger.warning("Card detail requested for non-existent card_id: %s", card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -552,7 +560,7 @@ async def share_card(
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
 
-    card = await asyncio.to_thread(database.get_card, request.card_id)
+    card = await asyncio.to_thread(card_service.get_card, request.card_id)
     if not card:
         logger.warning("Share requested for non-existent card_id: %s", request.card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -564,7 +572,7 @@ async def share_card(
 
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
 
     if not username:
         logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
@@ -596,7 +604,7 @@ async def share_card(
             message += f"\n\n<i>Owned by @{card.owner}</i>"
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, card_chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, card_chat_id)
 
         send_params = {
             "chat_id": card_chat_id,
@@ -635,7 +643,7 @@ async def lock_card(
     auth_user_id = user_data.get("id")
 
     # Get the card from database
-    card = await asyncio.to_thread(database.get_card, request.card_id)
+    card = await asyncio.to_thread(card_service.get_card, request.card_id)
     if not card:
         logger.warning("Lock requested for non-existent card_id: %s", request.card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -643,7 +651,7 @@ async def lock_card(
     # Verify ownership
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
 
     if not username:
         logger.warning("Unable to resolve username for user_id %s during lock", auth_user_id)
@@ -661,7 +669,7 @@ async def lock_card(
 
     # Verify user is enrolled in the chat
     chat_id = str(request.chat_id)
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, auth_user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, auth_user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
@@ -675,7 +683,9 @@ async def lock_card(
             raise HTTPException(status_code=400, detail="Card is already locked")
 
         # Check if user has enough claim points
-        current_balance = await asyncio.to_thread(database.get_claim_balance, auth_user_id, chat_id)
+        current_balance = await asyncio.to_thread(
+            claim_service.get_claim_balance, auth_user_id, chat_id
+        )
 
         if current_balance < lock_cost:
             raise HTTPException(
@@ -687,13 +697,13 @@ async def lock_card(
 
         # Consume claim points based on rarity
         remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, auth_user_id, chat_id, lock_cost
+            claim_service.reduce_claim_points, auth_user_id, chat_id, lock_cost
         )
 
         if remaining_balance is None:
             # This shouldn't happen since we checked above, but handle it anyway
             current_balance = await asyncio.to_thread(
-                database.get_claim_balance, auth_user_id, chat_id
+                claim_service.get_claim_balance, auth_user_id, chat_id
             )
             raise HTTPException(
                 status_code=400,
@@ -703,7 +713,7 @@ async def lock_card(
             )
 
         # Lock the card
-        await asyncio.to_thread(database.set_card_locked, request.card_id, True)
+        await asyncio.to_thread(card_service.set_card_locked, request.card_id, True)
 
         logger.info(
             "User %s locked card %s. Remaining balance: %s",
@@ -725,10 +735,12 @@ async def lock_card(
             raise HTTPException(status_code=400, detail="Card is not locked")
 
         # Unlock the card (no refund)
-        await asyncio.to_thread(database.set_card_locked, request.card_id, False)
+        await asyncio.to_thread(card_service.set_card_locked, request.card_id, False)
 
         # Get current balance for response
-        current_balance = await asyncio.to_thread(database.get_claim_balance, auth_user_id, chat_id)
+        current_balance = await asyncio.to_thread(
+            claim_service.get_claim_balance, auth_user_id, chat_id
+        )
 
         logger.info("User %s unlocked card %s", username, request.card_id)
 
@@ -755,7 +767,7 @@ async def burn_card(
     auth_user_id = user_data.get("id")
 
     # Get the card from database
-    card = await asyncio.to_thread(database.get_card, request.card_id)
+    card = await asyncio.to_thread(card_service.get_card, request.card_id)
     if not card:
         logger.warning("Burn requested for non-existent card_id: %s", request.card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -763,7 +775,7 @@ async def burn_card(
     # Verify ownership
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
 
     if not username:
         logger.warning("Unable to resolve username for user_id %s during burn", auth_user_id)
@@ -791,7 +803,7 @@ async def burn_card(
 
     # Verify user is enrolled in the chat
     chat_id = str(request.chat_id)
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, auth_user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, auth_user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
@@ -803,7 +815,7 @@ async def burn_card(
         raise HTTPException(status_code=500, detail="No spin reward configured for this rarity")
 
     # Delete the card from the database
-    success = await asyncio.to_thread(database.delete_card, request.card_id)
+    success = await asyncio.to_thread(card_service.delete_card, request.card_id)
 
     if not success:
         logger.error("Failed to delete card %s", request.card_id)
@@ -811,7 +823,7 @@ async def burn_card(
 
     # Award spins to the user
     new_spin_total = await asyncio.to_thread(
-        database.increment_user_spins, auth_user_id, chat_id, spin_reward
+        spin_service.increment_user_spins, auth_user_id, chat_id, spin_reward
     )
 
     if new_spin_total is None:
@@ -873,7 +885,7 @@ async def get_card_image_route(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the base64 encoded image for a card."""
-    image_b64 = await asyncio.to_thread(database.get_card_image, card_id)
+    image_b64 = await asyncio.to_thread(card_service.get_card_image, card_id)
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
     return image_b64
@@ -896,7 +908,7 @@ async def get_card_images_route(
             status_code=400, detail="A maximum of 3 card IDs can be requested per batch"
         )
 
-    images = await asyncio.to_thread(database.get_card_images_batch, unique_card_ids)
+    images = await asyncio.to_thread(card_service.get_card_images_batch, unique_card_ids)
 
     if not images:
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")
@@ -924,7 +936,7 @@ async def get_trade_options(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get trade options for a specific card, scoped to the same chat."""
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if not card:
         logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
         raise HTTPException(status_code=404, detail="Card not found")
@@ -933,7 +945,7 @@ async def get_trade_options(
         logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
         raise HTTPException(status_code=400, detail="Card is not associated with a chat")
 
-    cards = await asyncio.to_thread(database.get_all_cards, card.chat_id)
+    cards = await asyncio.to_thread(card_service.get_all_cards, card.chat_id)
 
     initiating_owner = card.owner
     filtered_cards = [
@@ -968,8 +980,8 @@ async def execute_trade(
 
     try:
         # Get cards from database
-        card1 = await asyncio.to_thread(database.get_card, card_id1)
-        card2 = await asyncio.to_thread(database.get_card, card_id2)
+        card1 = await asyncio.to_thread(card_service.get_card, card_id1)
+        card2 = await asyncio.to_thread(card_service.get_card, card_id2)
 
         if not card1 or not card2:
             raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
@@ -1046,9 +1058,11 @@ async def execute_trade(
             bot = create_bot_instance()
 
             # Get thread_id for trade notifications, fallback to main if trade not set
-            thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id), "trade")
+            thread_id = await asyncio.to_thread(thread_service.get_thread_id, str(chat_id), "trade")
             if thread_id is None:
-                thread_id = await asyncio.to_thread(database.get_thread_id, str(chat_id), "main")
+                thread_id = await asyncio.to_thread(
+                    thread_service.get_thread_id, str(chat_id), "main"
+                )
 
             send_params = {
                 "chat_id": chat_id,
@@ -1090,20 +1104,20 @@ async def get_user_profile(
         # We don't enforce user_id match here because we might be viewing another user's profile
 
         # Get user info
-        user = await asyncio.to_thread(database.get_user, user_id)
+        user = await asyncio.to_thread(user_service.get_user, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         # Get claim balance
-        claim_balance = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
+        claim_balance = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
 
         # Get spin balance (with refresh logic)
         spin_balance = await asyncio.to_thread(
-            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
+            spin_service.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
         )
 
         # Get card count
-        card_count = await asyncio.to_thread(database.get_user_card_count, user_id, chat_id)
+        card_count = await asyncio.to_thread(card_service.get_user_card_count, user_id, chat_id)
 
         return UserProfileResponse(
             user_id=user.user_id,
@@ -1140,12 +1154,12 @@ async def get_user_spins(
 
         # Get spins with daily refresh logic
         spins_count = await asyncio.to_thread(
-            database.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
+            spin_service.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
         )
 
         # Get next refresh time separately
         next_refresh_time = await asyncio.to_thread(
-            database.get_next_spin_refresh, user_id, chat_id
+            spin_service.get_next_spin_refresh, user_id, chat_id
         )
 
         return SpinsResponse(spins=spins_count, success=True, next_refresh_time=next_refresh_time)
@@ -1171,13 +1185,13 @@ async def consume_user_spin(
 
         # Attempt to consume a spin
         success = await asyncio.to_thread(
-            database.consume_user_spin, request.user_id, request.chat_id
+            spin_service.consume_user_spin, request.user_id, request.chat_id
         )
 
         if success:
             # Get remaining spins after consumption
             remaining_spins = await asyncio.to_thread(
-                database.get_or_update_user_spins_with_daily_refresh,
+                spin_service.get_or_update_user_spins_with_daily_refresh,
                 request.user_id,
                 request.chat_id,
             )
@@ -1188,7 +1202,7 @@ async def consume_user_spin(
         else:
             # Get current spins to show in error
             current_spins = await asyncio.to_thread(
-                database.get_or_update_user_spins_with_daily_refresh,
+                spin_service.get_or_update_user_spins_with_daily_refresh,
                 request.user_id,
                 request.chat_id,
             )
@@ -1320,7 +1334,7 @@ async def slots_victory(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -1346,19 +1360,21 @@ async def slots_victory(
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
     # Ensure the winner is enrolled in the chat
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in chat")
 
     # Get source display name for validation
     if source_type == "user":
-        source_user = await asyncio.to_thread(database.get_user, request.source.id)
+        source_user = await asyncio.to_thread(user_service.get_user, request.source.id)
         if not source_user or not source_user.display_name:
             raise HTTPException(status_code=404, detail="Source user not found or incomplete")
         display_name = source_user.display_name
     else:
-        source_character = await asyncio.to_thread(database.get_character_by_id, request.source.id)
+        source_character = await asyncio.to_thread(
+            character_service.get_character_by_id, request.source.id
+        )
         if not source_character or not source_character.name:
             raise HTTPException(status_code=404, detail="Source character not found")
         if str(source_character.chat_id) != chat_id:
@@ -1405,7 +1421,7 @@ async def slots_claim_win(
         raise HTTPException(status_code=400, detail="chat_id is required")
 
     # Ensure the winner is enrolled in the chat
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in chat")
@@ -1414,7 +1430,7 @@ async def slots_claim_win(
         # Add claim points to the user's balance
         amount = max(1, request.amount)  # Ensure at least 1 point is added
         new_balance = await asyncio.to_thread(
-            database.increment_claim_balance, request.user_id, chat_id, amount
+            claim_service.increment_claim_balance, request.user_id, chat_id, amount
         )
 
         logger.info(
@@ -1474,7 +1490,7 @@ async def _process_slots_victory_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1500,12 +1516,12 @@ async def _process_slots_victory_background(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                database.add_card_from_generated,
+                card_service.add_card_from_generated,
                 generated_card,
                 chat_id,
             )
 
-            await asyncio.to_thread(database.set_card_owner, card_id, username, user_id)
+            await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
 
             # Mark that card was successfully generated and assigned
             card_generated_and_assigned = True
@@ -1546,7 +1562,7 @@ async def _process_slots_victory_background(
             # Save the file_id from the card message
             if card_message.photo:
                 file_id = card_message.photo[-1].file_id
-                await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+                await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
 
             logger.info(
                 "Successfully processed slots victory for user %s: card %s", username, card_id
@@ -1626,7 +1642,7 @@ async def _process_burn_notification(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1666,7 +1682,7 @@ async def _process_minesweeper_bet_notification(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1717,7 +1733,7 @@ async def _process_minesweeper_victory_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1743,12 +1759,12 @@ async def _process_minesweeper_victory_background(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                database.add_card_from_generated,
+                card_service.add_card_from_generated,
                 generated_card,
                 chat_id,
             )
 
-            await asyncio.to_thread(database.set_card_owner, card_id, username, user_id)
+            await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
 
             # Create final caption and keyboard
             final_caption = MINESWEEPER_VICTORY_RESULT_MESSAGE.format(
@@ -1786,7 +1802,7 @@ async def _process_minesweeper_victory_background(
             # Save the file_id from the card message
             if card_message.photo:
                 file_id = card_message.photo[-1].file_id
-                await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+                await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
 
             logger.info(
                 "Successfully processed minesweeper victory for user %s: card %s", username, card_id
@@ -1823,7 +1839,7 @@ async def _process_minesweeper_loss_background(
     """Process minesweeper loss in background after responding to client."""
     try:
         # Delete the bet card from database
-        success = await asyncio.to_thread(database.delete_card, bet_card_id)
+        success = await asyncio.to_thread(card_service.delete_card, bet_card_id)
 
         if not success:
             logger.error("Failed to delete bet card %s after minesweeper loss", bet_card_id)
@@ -1839,7 +1855,7 @@ async def _process_minesweeper_loss_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1885,7 +1901,7 @@ async def _refund_slots_victory_failure(
 
     try:
         new_total = await asyncio.to_thread(
-            database.increment_user_spins, user_id, chat_id, spin_amount
+            spin_service.increment_user_spins, user_id, chat_id, spin_amount
         )
     except Exception as exc:
         logger.error(
@@ -1916,7 +1932,7 @@ async def _refund_slots_victory_failure(
 
     try:
         if thread_id is None:
-            thread_id = await asyncio.to_thread(database.get_thread_id, chat_id)
+            thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -1966,7 +1982,7 @@ async def minesweeper_game(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -1978,7 +1994,7 @@ async def minesweeper_game(
         raise HTTPException(status_code=400, detail="chat_id is required")
 
     # Verify user is enrolled in the chat
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
@@ -2086,7 +2102,7 @@ async def minesweeper_create(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -2098,13 +2114,13 @@ async def minesweeper_create(
         raise HTTPException(status_code=400, detail="chat_id is required")
 
     # Verify user is enrolled in the chat
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, request.user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
     if not is_member:
         logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
 
     # Verify the bet card exists and is owned by the user
-    card = await asyncio.to_thread(database.get_card, request.bet_card_id)
+    card = await asyncio.to_thread(card_service.get_card, request.bet_card_id)
     if not card:
         logger.warning(
             "Minesweeper start requested with non-existent card_id: %s", request.bet_card_id
@@ -2313,7 +2329,7 @@ async def minesweeper_update(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -2351,7 +2367,7 @@ async def minesweeper_update(
             )
 
         # Get the bet card info for responses
-        card = await asyncio.to_thread(database.get_card, game.bet_card_id)
+        card = await asyncio.to_thread(card_service.get_card, game.bet_card_id)
         if not card:
             logger.error("Bet card %s not found for game %s", game.bet_card_id, request.game_id)
             raise HTTPException(status_code=500, detail="Game data inconsistent")
@@ -2403,7 +2419,7 @@ async def minesweeper_update(
         if is_claim_point and request.cell_index not in game.revealed_cells:
             try:
                 new_balance = await asyncio.to_thread(
-                    database.increment_claim_balance,
+                    claim_service.increment_claim_balance,
                     request.user_id,
                     game.chat_id,
                     1,
@@ -2529,7 +2545,7 @@ async def get_slot_symbols_endpoint(
     """Get all slot symbols (users, characters, and claim) for a specific chat with their display names and icons."""
     try:
         # Get users and characters data from database
-        data = await asyncio.to_thread(database.get_chat_users_and_characters, chat_id)
+        data = await asyncio.to_thread(user_service.get_chat_users_and_characters, chat_id)
 
         # Load claim icon from file
         claim_icon_path = os.path.join(
