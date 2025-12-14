@@ -15,7 +15,8 @@ from settings.constants import (
     CARD_STATUS_REROLLED,
     get_claim_cost,
 )
-from utils import database
+from utils.services import card_service, claim_service, rolled_card_service
+from utils.schemas import CardWithImage, RolledCard
 
 
 class ClaimStatus(Enum):
@@ -47,9 +48,9 @@ class RolledCardManager:
         self.roll_id = roll_id
 
     @property
-    def rolled_card(self) -> Optional[database.RolledCard]:
+    def rolled_card(self) -> Optional[RolledCard]:
         """Get the rolled card state, loading it if necessary."""
-        return database.get_rolled_card_by_roll_id(self.roll_id)
+        return rolled_card_service.get_rolled_card_by_roll_id(self.roll_id)
 
     @property
     def current_card_id(self) -> Optional[int]:
@@ -59,26 +60,26 @@ class RolledCardManager:
         return rolled_card.current_card_id
 
     @property
-    def card(self) -> Optional[database.CardWithImage]:
+    def card(self) -> Optional[CardWithImage]:
         """Get the active card data, loading it if necessary."""
         rolled_card = self.rolled_card
         if not rolled_card:
             return None
-        return database.get_card(rolled_card.current_card_id)
+        return card_service.get_card(rolled_card.current_card_id)
 
     @property
-    def original_card(self) -> Optional[database.CardWithImage]:
+    def original_card(self) -> Optional[CardWithImage]:
         rolled_card = self.rolled_card
         if not rolled_card:
             return None
-        return database.get_card(rolled_card.original_card_id)
+        return card_service.get_card(rolled_card.original_card_id)
 
     def is_valid(self) -> bool:
         """Check if both card and rolled_card data exist."""
         rolled_card = self.rolled_card
         if rolled_card is None:
             return False
-        return database.get_card(rolled_card.current_card_id) is not None
+        return card_service.get_card(rolled_card.current_card_id) is not None
 
     def is_claimed(self) -> bool:
         """Check if the card is claimed."""
@@ -102,7 +103,7 @@ class RolledCardManager:
 
     def is_reroll_expired(self) -> bool:
         """Check if the reroll time limit has expired."""
-        return database.is_rolled_card_reroll_expired(self.roll_id)
+        return rolled_card_service.is_rolled_card_reroll_expired(self.roll_id)
 
     def claim_card(
         self,
@@ -119,7 +120,7 @@ class RolledCardManager:
 
         balance: Optional[int] = None
         if user_id is not None and chat_id is not None:
-            balance = database.get_claim_balance(user_id, chat_id)
+            balance = claim_service.get_claim_balance(user_id, chat_id)
             if balance < claim_cost:
                 return ClaimAttemptResult(
                     ClaimStatus.INSUFFICIENT_BALANCE,
@@ -127,10 +128,10 @@ class RolledCardManager:
                     claim_cost,
                 )
 
-        claimed = database.try_claim_card(card.id, owner_username, user_id)
+        claimed = card_service.try_claim_card(card.id, owner_username, user_id)
         if not claimed:
             # Check if the user actually owns it (e.g. double click)
-            current_card = database.get_card(card.id)
+            current_card = card_service.get_card(card.id)
             if current_card and current_card.owner == owner_username:
                 return ClaimAttemptResult(
                     ClaimStatus.ALREADY_OWNED_BY_USER,
@@ -139,7 +140,7 @@ class RolledCardManager:
                 )
 
             if owner_username:
-                database.update_rolled_card_attempted_by(self.roll_id, owner_username)
+                rolled_card_service.update_rolled_card_attempted_by(self.roll_id, owner_username)
             return ClaimAttemptResult(
                 ClaimStatus.ALREADY_CLAIMED,
                 balance,
@@ -148,7 +149,7 @@ class RolledCardManager:
 
         # Double-check ownership before deducting points to prevent race conditions
         # where try_claim_card might have reported success incorrectly or in edge cases.
-        confirmed_card = database.get_card(card.id)
+        confirmed_card = card_service.get_card(card.id)
         if not confirmed_card or confirmed_card.owner != owner_username:
             # We thought we claimed it, but we didn't. Do not deduct points.
             return ClaimAttemptResult(
@@ -159,9 +160,9 @@ class RolledCardManager:
 
         remaining_balance = balance
         if user_id is not None and chat_id is not None:
-            new_balance = database.reduce_claim_points(user_id, chat_id, claim_cost)
+            new_balance = claim_service.reduce_claim_points(user_id, chat_id, claim_cost)
             if new_balance is None:
-                database.nullify_card_owner(card.id)
+                card_service.nullify_card_owner(card.id)
                 return ClaimAttemptResult(
                     ClaimStatus.INSUFFICIENT_BALANCE,
                     balance,
@@ -199,11 +200,11 @@ class RolledCardManager:
             if user_id is None or chat_id is None:
                 raise ValueError("User and chat IDs are required to lock with a cost")
 
-            current_balance = database.get_claim_balance(user_id, chat_id)
+            current_balance = claim_service.get_claim_balance(user_id, chat_id)
             if current_balance < cost:
                 return LockAttemptResult(False, cost, None, current_balance)
 
-            new_balance = database.reduce_claim_points(user_id, chat_id, cost)
+            new_balance = claim_service.reduce_claim_points(user_id, chat_id, cost)
             if new_balance is None:
                 return LockAttemptResult(False, cost, None, current_balance)
 
@@ -247,7 +248,7 @@ class RolledCardManager:
         if rolled_card is None:
             return "Error: Card data not found"
 
-        card = database.get_card(rolled_card.current_card_id)
+        card = card_service.get_card(rolled_card.current_card_id)
         if card is None:
             return "Error: Card data not found"
 
@@ -279,7 +280,7 @@ class RolledCardManager:
 
             # Show reroll status even when claimed
             if rolled_card.rerolled:
-                original_card = database.get_card(rolled_card.original_card_id)
+                original_card = card_service.get_card(rolled_card.original_card_id)
                 original_rarity = original_card.rarity if original_card else "Unknown"
                 caption += CARD_STATUS_REROLLED.format(
                     original_rarity=original_rarity,
@@ -292,7 +293,7 @@ class RolledCardManager:
 
             if rolled_card.rerolled:
                 # This was rerolled from a higher rarity - show the original rarity
-                original_card = database.get_card(rolled_card.original_card_id)
+                original_card = card_service.get_card(rolled_card.original_card_id)
                 original_rarity = original_card.rarity if original_card else "Unknown"
                 caption += CARD_STATUS_REROLLED.format(
                     original_rarity=original_rarity,
@@ -307,7 +308,7 @@ class RolledCardManager:
         if rolled_card is None:
             return None
 
-        card = database.get_card(rolled_card.current_card_id)
+        card = card_service.get_card(rolled_card.current_card_id)
         if card is None:
             return None
 
@@ -340,16 +341,16 @@ class RolledCardManager:
 
     def set_being_rerolled(self, being_rerolled: bool) -> None:
         """Set the being_rerolled status in the database."""
-        database.set_rolled_card_being_rerolled(self.roll_id, being_rerolled)
+        rolled_card_service.set_rolled_card_being_rerolled(self.roll_id, being_rerolled)
 
     def mark_rerolled(self, new_card_id: Optional[int] = None) -> None:
         """Mark the card as having been rerolled in the database."""
-        database.set_rolled_card_rerolled(self.roll_id, new_card_id)
+        rolled_card_service.set_rolled_card_rerolled(self.roll_id, new_card_id)
 
     def set_locked(self, is_locked: bool) -> None:
         """Set the locked status in the database."""
-        database.set_rolled_card_locked(self.roll_id, is_locked)
+        rolled_card_service.set_rolled_card_locked(self.roll_id, is_locked)
 
     def add_claim_attempt(self, username: str) -> None:
         """Add a user to the attempted_by list in the database."""
-        database.update_rolled_card_attempted_by(self.roll_id, username)
+        rolled_card_service.update_rolled_card_attempted_by(self.roll_id, username)

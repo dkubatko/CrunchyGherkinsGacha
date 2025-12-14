@@ -100,6 +100,17 @@ from settings.constants import (
 )
 from settings.constants import get_claim_cost, get_lock_cost, get_spin_reward
 from utils import database, decorators, gemini, minesweeper, rolling
+from utils.services import (
+    card_service,
+    user_service,
+    spin_service,
+    claim_service,
+    character_service,
+    rolled_card_service,
+    thread_service,
+    roll_service,
+)
+from utils.schemas import User, Card, CardWithImage
 from utils.decorators import verify_admin, verify_user, verify_user_in_chat
 from utils.miniapp import (
     encode_miniapp_token,
@@ -155,7 +166,7 @@ def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
     Uses the same timezone as the database (system local time).
     """
-    last_roll_time = database.get_last_roll_time(user_id, chat_id)
+    last_roll_time = roll_service.get_last_roll_time(user_id, chat_id)
     if last_roll_time is None:
         return 0, 0  # Can roll immediately if never rolled before
 
@@ -182,7 +193,7 @@ async def save_card_file_id_from_message(message, card_id: int) -> None:
     """
     if message and message.photo:
         file_id = message.photo[-1].file_id  # Get the largest photo size
-        await asyncio.to_thread(database.update_card_file_id, card_id, file_id)
+        await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
         logger.debug(f"Saved file_id for card {card_id}")
 
 
@@ -204,13 +215,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    user_exists = await asyncio.to_thread(database.user_exists, user.id)
+    user_exists = await asyncio.to_thread(user_service.user_exists, user.id)
 
     display_name = None
     if not user_exists:
         display_name = user.full_name or user.username
 
-    await asyncio.to_thread(database.upsert_user, user.id, user.username, display_name, None)
+    await asyncio.to_thread(user_service.upsert_user, user.id, user.username, display_name, None)
 
     if user_exists:
         await message.reply_text("You're already registered! You're good to go.")
@@ -273,12 +284,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             chat_id = str(update.effective_chat.id)
             existing_character = await asyncio.to_thread(
-                database.get_character_by_name, chat_id, character_name
+                character_service.get_character_by_name, chat_id, character_name
             )
 
             if existing_character:
                 updated = await asyncio.to_thread(
-                    database.update_character_image, existing_character.id, image_b64
+                    character_service.update_character_image, existing_character.id, image_b64
                 )
 
                 if updated:
@@ -291,7 +302,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
             else:
                 character_id = await asyncio.to_thread(
-                    database.add_character, chat_id, character_name, image_b64
+                    character_service.add_character, chat_id, character_name, image_b64
                 )
 
                 await message.reply_text(
@@ -316,7 +327,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("Please set a Telegram username before updating your profile.")
         return
 
-    exists = await asyncio.to_thread(database.user_exists, user.id)
+    exists = await asyncio.to_thread(user_service.user_exists, user.id)
     if not exists:
         await message.reply_text("Please send /start first so I can register you.")
         return
@@ -327,7 +338,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Handle /profile with no arguments - show current profile
     if len(parts) < 2 or not parts[1].strip():
         # Get user's current profile data
-        user_data = await asyncio.to_thread(database.get_user, user.id)
+        user_data = await asyncio.to_thread(user_service.get_user, user.id)
 
         if not user_data or not user_data.display_name:
             await message.reply_text(
@@ -386,8 +397,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
     try:
-        await asyncio.to_thread(database.upsert_user, user.id, user.username, None, None)
-        await asyncio.to_thread(database.update_user_profile, user.id, display_name, image_b64)
+        await asyncio.to_thread(user_service.upsert_user, user.id, user.username, None, None)
+        await asyncio.to_thread(user_service.update_user_profile, user.id, display_name, image_b64)
 
         await message.reply_text("Profile updated! Your new display name and image are saved.")
     finally:
@@ -425,7 +436,9 @@ async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         await message.reply_text("Character name cannot be empty.")
         return
 
-    deleted_count = await asyncio.to_thread(database.delete_characters_by_name, character_name)
+    deleted_count = await asyncio.to_thread(
+        character_service.delete_characters_by_name, character_name
+    )
 
     if deleted_count == 0:
         await message.reply_text(f"No characters found with the name '{character_name}'.")
@@ -439,7 +452,7 @@ async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def enroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Add the calling user to the current chat."""
 
@@ -454,13 +467,13 @@ async def enroll(
         return
 
     chat_id = str(chat.id)
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user.user_id)
 
     if is_member:
         await message.reply_text("You're already enrolled in this chat.")
         return
 
-    inserted = await asyncio.to_thread(database.add_user_to_chat, chat_id, user.user_id)
+    inserted = await asyncio.to_thread(user_service.add_user_to_chat, chat_id, user.user_id)
 
     if inserted:
         await message.reply_text("You're enrolled! Have fun out there.")
@@ -486,7 +499,7 @@ async def enroll(
 async def unenroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Remove the calling user from the current chat."""
 
@@ -501,13 +514,13 @@ async def unenroll(
         return
 
     chat_id = str(chat.id)
-    is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, user.user_id)
+    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user.user_id)
 
     if not is_member:
         await message.reply_text("You're not enrolled in this chat.")
         return
 
-    removed = await asyncio.to_thread(database.remove_user_from_chat, chat_id, user.user_id)
+    removed = await asyncio.to_thread(user_service.remove_user_from_chat, chat_id, user.user_id)
 
     if removed:
         await message.reply_text(
@@ -521,7 +534,7 @@ async def unenroll(
 async def casino(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Open the casino mini-app with catalog view."""
 
@@ -555,7 +568,7 @@ async def casino(
 async def roll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Roll a new card."""
     chat_id_str = str(update.effective_chat.id)
@@ -589,7 +602,7 @@ async def roll(
                 reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
             )
         if not DEBUG_MODE:
-            if not await asyncio.to_thread(database.can_roll, user.user_id, chat_id_str):
+            if not await asyncio.to_thread(spin_service.can_roll, user.user_id, chat_id_str):
                 hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
                 await update.message.reply_text(
                     f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
@@ -614,7 +627,7 @@ async def roll(
         log_card_generation(generated_card, "roll")
 
         card_id = await asyncio.to_thread(
-            database.add_card_from_generated,
+            card_service.add_card_from_generated,
             generated_card,
             update.effective_chat.id,
         )
@@ -622,14 +635,16 @@ async def roll(
         # Award claim points based on the rolled card's rarity
         claim_reward = get_claim_cost(generated_card.rarity)
         await asyncio.to_thread(
-            database.increment_claim_balance,
+            claim_service.increment_claim_balance,
             user.user_id,
             chat_id_str,
             claim_reward,
         )
 
         # Create rolled card entry to track state
-        roll_id = await asyncio.to_thread(database.create_rolled_card, card_id, user.user_id)
+        roll_id = await asyncio.to_thread(
+            rolled_card_service.create_rolled_card, card_id, user.user_id
+        )
 
         # Use RolledCardManager to generate caption and keyboard
         rolled_card_manager = RolledCardManager(roll_id)
@@ -648,7 +663,7 @@ async def roll(
         await save_card_file_id_from_message(message, card_id)
 
         if not DEBUG_MODE:
-            await asyncio.to_thread(database.record_roll, user.user_id, chat_id_str)
+            await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
 
     except rolling.NoEligibleUserError:
         await update.message.reply_text(
@@ -696,7 +711,7 @@ def _build_burning_text(card_titles: list[str], revealed: int, strike_all: bool 
 async def burn(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     message = update.message
     chat = update.effective_chat
@@ -728,7 +743,7 @@ async def burn(
         )
         return
 
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if not card:
         await message.reply_text(
             BURN_CARD_NOT_FOUND_MESSAGE,
@@ -746,7 +761,7 @@ async def burn(
 
     username = user.username
     if not username:
-        username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, user.user_id)
 
     owns_card = card.user_id == user.user_id or (username and card.owner == username)
     if not owns_card:
@@ -798,7 +813,7 @@ async def burn(
 async def handle_burn_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     query = update.callback_query
     if not query:
@@ -852,7 +867,7 @@ async def handle_burn_callback(
             await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
             return
 
-        card = await asyncio.to_thread(database.get_card, card_id)
+        card = await asyncio.to_thread(card_service.get_card, card_id)
         if not card:
             await query.answer(BURN_CARD_NOT_FOUND_MESSAGE, show_alert=True)
             try:
@@ -871,7 +886,7 @@ async def handle_burn_callback(
 
         username = user.username
         if not username:
-            username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+            username = await asyncio.to_thread(user_service.get_username_for_user_id, user.user_id)
 
         owns_card = card.user_id == user.user_id or (username and card.owner == username)
         if not owns_card:
@@ -905,7 +920,7 @@ async def handle_burn_callback(
         except Exception:
             pass
 
-        success = await asyncio.to_thread(database.delete_card, card_id)
+        success = await asyncio.to_thread(card_service.delete_card, card_id)
         if not success:
             await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
             try:
@@ -915,7 +930,7 @@ async def handle_burn_callback(
             return
 
         new_spin_total = await asyncio.to_thread(
-            database.increment_user_spins, user.user_id, chat_id_str, spin_reward
+            spin_service.increment_user_spins, user.user_id, chat_id_str, spin_reward
         )
 
         if new_spin_total is None:
@@ -969,7 +984,7 @@ async def handle_burn_callback(
 async def create_unique_card(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     message = update.message
     chat = update.effective_chat
@@ -1023,7 +1038,7 @@ async def create_unique_card(
     # Check cost
     cost = rolling.RARITIES["Unique"]["recycle_cost"]
     unlocked_legendaries = await asyncio.to_thread(
-        database.get_user_cards_by_rarity,
+        card_service.get_user_cards_by_rarity,
         user.user_id,
         user.username,
         "Legendary",
@@ -1040,7 +1055,9 @@ async def create_unique_card(
         return
 
     # Check if modifier exists
-    existing_modifiers = await asyncio.to_thread(database.get_modifier_counts_for_chat, chat_id_str)
+    existing_modifiers = await asyncio.to_thread(
+        card_service.get_modifier_counts_for_chat, chat_id_str
+    )
     warning = ""
     if modifier in existing_modifiers:
         warning = CREATE_WARNING_EXISTING_MODIFIER.format(modifier=modifier)
@@ -1104,9 +1121,9 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
     if action == "yes":
         # Double check cost
         cost = session["cost"]
-        user = await asyncio.to_thread(database.get_user, user_id)
+        user = await asyncio.to_thread(user_service.get_user, user_id)
         unlocked_legendaries = await asyncio.to_thread(
-            database.get_user_cards_by_rarity,
+            card_service.get_user_cards_by_rarity,
             user_id,
             user.username,
             "Legendary",
@@ -1173,21 +1190,21 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
 
             # Add to DB
             card_id = await asyncio.to_thread(
-                database.add_card_from_generated,
+                card_service.add_card_from_generated,
                 generated_card,
                 chat_id_str,
             )
 
             # Set owner
-            await asyncio.to_thread(database.set_card_owner, card_id, user.username, user_id)
+            await asyncio.to_thread(card_service.set_card_owner, card_id, user.username, user_id)
 
             # NOW delete the cards (skip in debug mode)
             if not DEBUG_MODE:
                 card_ids = [c.id for c in cards_to_burn]
-                await asyncio.to_thread(database.delete_cards, card_ids)
+                await asyncio.to_thread(card_service.delete_cards, card_ids)
 
             # Send result
-            card = await asyncio.to_thread(database.get_card, card_id)
+            card = await asyncio.to_thread(card_service.get_card, card_id)
 
             # Clean up session
             del context.user_data[session_key]
@@ -1228,7 +1245,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
 async def refresh(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Refresh a card's image for 5 claim points."""
     message = update.message
@@ -1261,7 +1278,7 @@ async def refresh(
         )
         return
 
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if not card:
         await message.reply_text(
             REFRESH_CARD_NOT_FOUND_MESSAGE,
@@ -1291,7 +1308,7 @@ async def refresh(
 
     # Check claim balance
     refresh_cost = get_refresh_cost(card.rarity)
-    balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id_str)
+    balance = await asyncio.to_thread(claim_service.get_claim_balance, user.user_id, chat_id_str)
     if balance < refresh_cost:
         await message.reply_text(
             REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
@@ -1371,7 +1388,7 @@ async def _handle_refresh_cancel(
     card_id: int,
 ) -> None:
     """Handle refresh cancellation from confirmation screen."""
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if card:
         card_title = card.title(include_id=True, include_rarity=True)
         cancel_msg = REFRESH_CANCELLED_MESSAGE.format(card_title=card_title)
@@ -1388,7 +1405,7 @@ async def _handle_refresh_cancel(
 
 async def _handle_refresh_nav(
     query,
-    user: database.User,
+    user: User,
     card_id: int,
     option_index: int,
     refresh_sessions: dict,
@@ -1406,7 +1423,7 @@ async def _handle_refresh_nav(
         return
 
     # Get the card info for caption
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
     remaining_balance = session["remaining_balance"]
 
@@ -1449,7 +1466,7 @@ async def _handle_refresh_nav(
 async def _handle_refresh_pick(
     query,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
     card_id: int,
     option_index: int,
     refresh_sessions: dict,
@@ -1467,14 +1484,14 @@ async def _handle_refresh_pick(
         await query.answer("Invalid option.", show_alert=True)
         return
 
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
     chat_id_for_balance = session["chat_id"]
 
     # If user selected the original image (option 1), keep the original without updating
     if option_index == 1:
         latest_balance = await asyncio.to_thread(
-            database.get_claim_balance, user.user_id, chat_id_for_balance
+            claim_service.get_claim_balance, user.user_id, chat_id_for_balance
         )
         success_message = (
             f"<b>{card_title}</b>\n\nKept original image.\n\nBalance: {latest_balance}"
@@ -1482,10 +1499,10 @@ async def _handle_refresh_pick(
     else:
         # Update the card with the new image
         chosen_image_b64 = options[selection_idx]
-        await asyncio.to_thread(database.update_card_image, card_id, chosen_image_b64)
+        await asyncio.to_thread(card_service.update_card_image, card_id, chosen_image_b64)
 
         latest_balance = await asyncio.to_thread(
-            database.get_claim_balance, user.user_id, chat_id_for_balance
+            claim_service.get_claim_balance, user.user_id, chat_id_for_balance
         )
         success_message = REFRESH_SUCCESS_MESSAGE.format(
             card_title=card_title,
@@ -1529,8 +1546,8 @@ async def _handle_refresh_pick(
 
 
 async def _validate_refresh_ownership(
-    card: database.Card,
-    user: database.User,
+    card: Card,
+    user: User,
 ) -> bool:
     """Validate that the user owns the card."""
     username = user.username
@@ -1541,7 +1558,7 @@ async def _validate_refresh_ownership(
 
 
 async def _generate_refresh_options(
-    card: database.Card,
+    card: Card,
     gemini_util,
     max_retries: int,
 ) -> tuple[str, str]:
@@ -1598,7 +1615,7 @@ async def _update_to_refresh_options(
 async def _handle_refresh_confirm(
     query,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
     card_id: int,
     chat_id_str: Optional[str],
     refresh_sessions: dict,
@@ -1607,7 +1624,7 @@ async def _handle_refresh_confirm(
 ) -> None:
     """Handle the confirmation 'yes' action to start refresh process."""
     try:
-        card = await asyncio.to_thread(database.get_card, card_id)
+        card = await asyncio.to_thread(card_service.get_card, card_id)
         if not card:
             await query.answer(REFRESH_CARD_NOT_FOUND_MESSAGE, show_alert=True)
             return
@@ -1618,7 +1635,9 @@ async def _handle_refresh_confirm(
 
         refresh_cost = get_refresh_cost(card.rarity)
         active_chat_id = card.chat_id or chat_id_str
-        balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, active_chat_id)
+        balance = await asyncio.to_thread(
+            claim_service.get_claim_balance, user.user_id, active_chat_id
+        )
 
         if balance < refresh_cost:
             await query.answer(
@@ -1628,7 +1647,7 @@ async def _handle_refresh_confirm(
             return
 
         remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
+            claim_service.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
         )
 
         if remaining_balance is None:
@@ -1660,7 +1679,7 @@ async def _handle_refresh_confirm(
         ) as exc:
             logger.warning("Image regeneration failed for card %s: %s", card_id, exc)
             await asyncio.to_thread(
-                database.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
             failure_msg = REFRESH_FAILURE_MESSAGE.format(card_title=card_title)
             await query.answer(
@@ -1690,7 +1709,7 @@ async def _handle_refresh_confirm(
         except Exception as exc:
             logger.warning("Failed to show refresh options for card %s: %s", card_id, exc)
             await asyncio.to_thread(
-                database.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
             await query.answer(
                 "Refresh failed. Image generation is unavailable right now.", show_alert=True
@@ -1716,7 +1735,7 @@ async def _handle_refresh_confirm(
         logger.exception("Unexpected error during refresh for card %s: %s", card_id, exc)
         await query.answer("Refresh failed due to an unexpected error.", show_alert=True)
         try:
-            error_card = await asyncio.to_thread(database.get_card, card_id)
+            error_card = await asyncio.to_thread(card_service.get_card, card_id)
             if error_card:
                 error_title = error_card.title(include_id=True, include_rarity=True)
                 error_msg = REFRESH_FAILURE_MESSAGE.format(card_title=error_title)
@@ -1735,7 +1754,7 @@ async def _handle_refresh_confirm(
 async def handle_refresh_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle refresh flow: confirmation, image generation, selection, and cancellation."""
     query = update.callback_query
@@ -1825,7 +1844,7 @@ async def handle_refresh_callback(
 async def recycle(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     message = update.message
     chat = update.effective_chat
@@ -1861,7 +1880,7 @@ async def recycle(
     chat_id_str = str(chat.id)
 
     cards = await asyncio.to_thread(
-        database.get_user_cards_by_rarity,
+        card_service.get_user_cards_by_rarity,
         user.user_id,
         user.username,
         rarity_name,
@@ -1909,7 +1928,7 @@ async def recycle(
 async def handle_recycle_callback(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     query = update.callback_query
     if not query:
@@ -1977,7 +1996,7 @@ async def handle_recycle_callback(
 
     try:
         cards = await asyncio.to_thread(
-            database.get_user_cards_by_rarity,
+            card_service.get_user_cards_by_rarity,
             user.user_id,
             user.username,
             rarity_name,
@@ -2066,14 +2085,14 @@ async def handle_recycle_callback(
             return
 
         new_card_id = await asyncio.to_thread(
-            database.add_card_from_generated,
+            card_service.add_card_from_generated,
             generated_card,
             chat_id,
         )
 
         owner_username = user.username or f"user_{user.user_id}"
         claimed = await asyncio.to_thread(
-            database.try_claim_card,
+            card_service.try_claim_card,
             new_card_id,
             owner_username,
             user.user_id,
@@ -2087,7 +2106,7 @@ async def handle_recycle_callback(
             )
 
         for card in cards_to_burn:
-            await asyncio.to_thread(database.nullify_card_owner, card.id)
+            await asyncio.to_thread(card_service.nullify_card_owner, card.id)
 
         burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])
         # Note: generated_card.card_title doesn't use Card.title() - it's directly from GeneratedCard
@@ -2123,7 +2142,7 @@ async def handle_recycle_callback(
 async def handle_reroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle reroll button click."""
     query = update.callback_query
@@ -2197,13 +2216,13 @@ async def handle_reroll(
         # Add new card to database
         new_card_chat_id = active_card.chat_id or (query.message.chat_id if query.message else None)
         new_card_id = await asyncio.to_thread(
-            database.add_card_from_generated,
+            card_service.add_card_from_generated,
             generated_card,
             new_card_chat_id,
         )
 
         # Nullify the original card's owner (preserves history)
-        await asyncio.to_thread(database.nullify_card_owner, active_card.id)
+        await asyncio.to_thread(card_service.nullify_card_owner, active_card.id)
 
         # Update rolled card state to point to the new card
         rolled_card_manager.mark_rerolled(new_card_id)
@@ -2228,7 +2247,7 @@ async def handle_reroll(
         # If original card was claimed, give the claimer a claim point back
         if original_owner_id is not None and original_claim_chat_id is not None:
             await asyncio.to_thread(
-                database.increment_claim_balance,
+                claim_service.increment_claim_balance,
                 original_owner_id,
                 original_claim_chat_id,
             )
@@ -2283,7 +2302,7 @@ async def handle_reroll(
 async def handle_lock(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle lock button click to prevent rerolling."""
     query = update.callback_query
@@ -2369,7 +2388,7 @@ async def handle_lock(
 async def claim_card(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle claim button click."""
     query = update.callback_query
@@ -2425,7 +2444,7 @@ async def claim_card(
         remaining_balance = claim_result.balance
         if remaining_balance is None and chat_id and user.user_id:
             remaining_balance = await asyncio.to_thread(
-                database.get_claim_balance, user.user_id, chat_id
+                claim_service.get_claim_balance, user.user_id, chat_id
             )
         await query.answer(_build_claim_message(remaining_balance), show_alert=True)
     elif claim_result.status is ClaimStatus.INSUFFICIENT_BALANCE:
@@ -2454,7 +2473,7 @@ async def claim_card(
 async def balance(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Report claim balance for the calling user or a specified username."""
     message = update.effective_message
@@ -2475,7 +2494,9 @@ async def balance(
 
     if context.args and len(context.args) > 0:
         target_username = context.args[0].lstrip("@")
-        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+        target_user_id = await asyncio.to_thread(
+            user_service.get_user_id_by_username, target_username
+        )
         if target_user_id is None:
             if message:
                 await message.reply_text(
@@ -2484,7 +2505,7 @@ async def balance(
                 )
             return
 
-        is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+        is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, target_user_id)
         if not is_member:
             if message:
                 await message.reply_text(
@@ -2494,18 +2515,20 @@ async def balance(
             return
 
         resolved_username = await asyncio.to_thread(
-            database.get_username_for_user_id, target_user_id
+            user_service.get_username_for_user_id, target_user_id
         )
         display_username = resolved_username or target_username
     else:
         target_user_id = user.user_id
         display_username = user.username
 
-    balance_value = await asyncio.to_thread(database.get_claim_balance, target_user_id, chat_id)
+    balance_value = await asyncio.to_thread(
+        claim_service.get_claim_balance, target_user_id, chat_id
+    )
     point_label = "point" if balance_value == 1 else "points"
 
     spin_count = await asyncio.to_thread(
-        database.get_or_update_user_spins_with_daily_refresh,
+        spin_service.get_or_update_user_spins_with_daily_refresh,
         target_user_id,
         chat_id,
     )
@@ -2534,7 +2557,7 @@ async def balance(
 async def collection(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Display user's card collection."""
 
@@ -2543,7 +2566,9 @@ async def collection(
     if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
-        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
+        is_member = await asyncio.to_thread(
+            user_service.is_user_in_chat, str(chat.id), user.user_id
+        )
         if not is_member:
             prompt = "You're not enrolled in this chat yet. Use /enroll in this chat to join."
             if update.callback_query:
@@ -2564,7 +2589,9 @@ async def collection(
             return
 
         target_username = context.args[0].lstrip("@")  # Remove @ if present
-        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+        target_user_id = await asyncio.to_thread(
+            user_service.get_user_id_by_username, target_username
+        )
         if target_user_id is None:
             await update.message.reply_text(
                 f"@{target_username} doesn't exist or isn't enrolled yet.",
@@ -2574,7 +2601,7 @@ async def collection(
 
         # Check if the target user exists by trying to get their collection
         target_cards = await asyncio.to_thread(
-            database.get_user_collection, target_user_id, chat_id_filter
+            card_service.get_user_collection, target_user_id, chat_id_filter
         )
         if not target_cards:
             await update.message.reply_text(
@@ -2588,14 +2615,18 @@ async def collection(
             return
         cards = target_cards
         resolved_username = await asyncio.to_thread(
-            database.get_username_for_user_id, target_user_id
+            user_service.get_username_for_user_id, target_user_id
         )
         display_username = resolved_username or target_username
         viewed_user_id = target_user_id
     else:
         # Default to current user's collection
-        cards = await asyncio.to_thread(database.get_user_collection, user.user_id, chat_id_filter)
-        resolved_username = await asyncio.to_thread(database.get_username_for_user_id, user.user_id)
+        cards = await asyncio.to_thread(
+            card_service.get_user_collection, user.user_id, chat_id_filter
+        )
+        resolved_username = await asyncio.to_thread(
+            user_service.get_username_for_user_id, user.user_id
+        )
         display_username = resolved_username or user.username
         viewed_user_id = user.user_id
 
@@ -2662,7 +2693,7 @@ async def collection(
 async def handle_collection_show(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     query = update.callback_query
     if not query:
@@ -2673,7 +2704,9 @@ async def handle_collection_show(
     if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
-        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
+        is_member = await asyncio.to_thread(
+            user_service.is_user_in_chat, str(chat.id), user.user_id
+        )
         if not is_member:
             await query.answer(
                 "You're not enrolled in this chat yet. Use /enroll in this chat to join.",
@@ -2693,7 +2726,9 @@ async def handle_collection_show(
         await query.answer("You can only open collections you requested!", show_alert=True)
         return
 
-    cards = await asyncio.to_thread(database.get_user_collection, viewed_user_id, chat_id_filter)
+    cards = await asyncio.to_thread(
+        card_service.get_user_collection, viewed_user_id, chat_id_filter
+    )
     if not cards:
         await query.answer("No cards found.", show_alert=True)
         try:
@@ -2702,14 +2737,16 @@ async def handle_collection_show(
             pass
         return
 
-    resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
+    resolved_username = await asyncio.to_thread(
+        user_service.get_username_for_user_id, viewed_user_id
+    )
     display_username = resolved_username or f"user_{viewed_user_id}"
 
     collection_indices = context.user_data.setdefault("collection_index", {})
     collection_key = (viewed_user_id, chat_id_filter)
     collection_indices[collection_key] = 0
 
-    card_with_image = await asyncio.to_thread(database.get_card, cards[0].id)
+    card_with_image = await asyncio.to_thread(card_service.get_card, cards[0].id)
     if not card_with_image:
         await query.answer("Card not found.", show_alert=True)
         try:
@@ -2809,7 +2846,7 @@ async def handle_collection_show(
 async def handle_collection_navigation(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle collection navigation (Prev/Next/Close buttons)."""
     query = update.callback_query
@@ -2821,7 +2858,9 @@ async def handle_collection_navigation(
     if chat and chat.type in (ChatType.GROUP, ChatType.SUPERGROUP):
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
-        is_member = await asyncio.to_thread(database.is_user_in_chat, str(chat.id), user.user_id)
+        is_member = await asyncio.to_thread(
+            user_service.is_user_in_chat, str(chat.id), user.user_id
+        )
         if not is_member:
             await query.answer(
                 "You're not enrolled in this chat yet. Use /enroll in this chat to join.",
@@ -2852,13 +2891,17 @@ async def handle_collection_navigation(
         return
 
     # Re-fetch the correct user's collection for navigation
-    cards = await asyncio.to_thread(database.get_user_collection, viewed_user_id, chat_id_filter)
+    cards = await asyncio.to_thread(
+        card_service.get_user_collection, viewed_user_id, chat_id_filter
+    )
     if not cards:
         await query.answer("No cards found.", show_alert=True)
         return
 
     # Update display_username for the viewed user
-    resolved_username = await asyncio.to_thread(database.get_username_for_user_id, viewed_user_id)
+    resolved_username = await asyncio.to_thread(
+        user_service.get_username_for_user_id, viewed_user_id
+    )
     display_username = resolved_username or f"user_{viewed_user_id}"
     collection_key = (viewed_user_id, chat_id_filter)
 
@@ -2880,7 +2923,7 @@ async def handle_collection_navigation(
     collection_indices[collection_key] = current_index
 
     # Get card details
-    card_with_image = await asyncio.to_thread(database.get_card, cards[current_index].id)
+    card_with_image = await asyncio.to_thread(card_service.get_card, cards[current_index].id)
     if not card_with_image:
         await query.answer("Card not found.", show_alert=True)
         return
@@ -2967,7 +3010,7 @@ async def handle_collection_navigation(
 async def handle_collection_dismiss(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle dismissing the collection initial prompt."""
     query = update.callback_query
@@ -3002,7 +3045,7 @@ async def handle_collection_dismiss(
 
 
 async def _get_user_targets_for_stats(
-    chat_id: str, is_private_chat: bool, user: database.User, args: list[str]
+    chat_id: str, is_private_chat: bool, user: User, args: list[str]
 ) -> list[tuple[str, Optional[int]]]:
     """Get list of target users for stats display."""
     targets = []
@@ -3014,12 +3057,14 @@ async def _get_user_targets_for_stats(
     elif args:
         # Specific user requested
         target_username = args[0].lstrip("@")
-        target_user_id = await asyncio.to_thread(database.get_user_id_by_username, target_username)
+        target_user_id = await asyncio.to_thread(
+            user_service.get_user_id_by_username, target_username
+        )
 
         if target_user_id is None:
             raise ValueError(f"@{target_username} doesn't exist or isn't enrolled yet.")
 
-        is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+        is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, target_user_id)
         if not is_member:
             raise ValueError(f"@{target_username} isn't enrolled in this chat.")
 
@@ -3027,13 +3072,13 @@ async def _get_user_targets_for_stats(
     else:
         # All users in chat
         chat_scope = None if is_private_chat else chat_id
-        usernames = await asyncio.to_thread(database.get_all_users_with_cards, chat_scope)
+        usernames = await asyncio.to_thread(user_service.get_all_users_with_cards, chat_scope)
 
         if not usernames:
             raise ValueError("No users have claimed any cards yet.")
 
         for username in usernames:
-            user_id = await asyncio.to_thread(database.get_user_id_by_username, username)
+            user_id = await asyncio.to_thread(user_service.get_user_id_by_username, username)
             targets.append((username, user_id))
 
     return targets
@@ -3041,15 +3086,15 @@ async def _get_user_targets_for_stats(
 
 async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str) -> str:
     """Format stats for a single user."""
-    user_stats = await asyncio.to_thread(database.get_user_stats, username)
+    user_stats = await asyncio.to_thread(user_service.get_user_stats, username)
 
     if user_id is not None:
-        balance_value = await asyncio.to_thread(database.get_claim_balance, user_id, chat_id)
+        balance_value = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
         point_label = "point" if balance_value == 1 else "points"
         balance_line = f"{balance_value} {point_label}"
 
         spin_count = await asyncio.to_thread(
-            database.get_or_update_user_spins_with_daily_refresh,
+            spin_service.get_or_update_user_spins_with_daily_refresh,
             user_id,
             chat_id,
         )
@@ -3077,7 +3122,7 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
 async def stats(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Display stats for the current chat, optionally filtered to one user."""
     message = update.effective_message
@@ -3125,7 +3170,7 @@ async def stats(
 async def trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Initiate a card trade."""
 
@@ -3144,8 +3189,8 @@ async def trade(
         await update.message.reply_text("Card IDs must be numbers.")
         return
 
-    card1 = await asyncio.to_thread(database.get_card, card_id1)
-    card2 = await asyncio.to_thread(database.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
 
     if not card1 or not card2:
         await update.message.reply_text("One or both card IDs are invalid.")
@@ -3210,7 +3255,7 @@ async def trade(
 async def lock_card_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Initiate lock/unlock for a card by ID."""
     message = update.message
@@ -3233,7 +3278,7 @@ async def lock_card_command(
         await message.reply_text("Card ID must be a number.")
         return
 
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
 
     if not card:
         await message.reply_text("Card ID is invalid.")
@@ -3287,7 +3332,7 @@ async def lock_card_command(
 async def handle_lock_card_confirm(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle confirmation (yes) for locking/unlocking a card."""
     query = update.callback_query
@@ -3329,7 +3374,7 @@ async def handle_lock_card_confirm(
         return
 
     # Get the card and verify ownership
-    card = await asyncio.to_thread(database.get_card, card_id)
+    card = await asyncio.to_thread(card_service.get_card, card_id)
     if not card:
         await query.answer("Card not found!", show_alert=True)
         try:
@@ -3358,13 +3403,15 @@ async def handle_lock_card_confirm(
 
     if card.locked:
         # Unlock the card (no cost)
-        await asyncio.to_thread(database.set_card_locked, card_id, False)
+        await asyncio.to_thread(card_service.set_card_locked, card_id, False)
         response_text = f"🔓 <b>{card_title}</b> unlocked!"
         await query.answer(f"{card_title} unlocked!", show_alert=False)
     else:
         # Lock the card (consumes configured claim points)
         # First check if user has enough balance
-        current_balance = await asyncio.to_thread(database.get_claim_balance, user.user_id, chat_id)
+        current_balance = await asyncio.to_thread(
+            claim_service.get_claim_balance, user.user_id, chat_id
+        )
 
         if current_balance < lock_cost:
             # Insufficient balance
@@ -3386,13 +3433,13 @@ async def handle_lock_card_confirm(
 
         # Now try to consume the claim point
         remaining_balance = await asyncio.to_thread(
-            database.reduce_claim_points, user.user_id, chat_id, lock_cost
+            claim_service.reduce_claim_points, user.user_id, chat_id, lock_cost
         )
 
         if remaining_balance is None:
             # This shouldn't happen since we checked above, but handle it anyway
             current_balance = await asyncio.to_thread(
-                database.get_claim_balance, user.user_id, chat_id
+                claim_service.get_claim_balance, user.user_id, chat_id
             )
             await query.answer(
                 ("Not enough claim points!\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"),
@@ -3411,7 +3458,7 @@ async def handle_lock_card_confirm(
             return
 
         # Lock the card
-        await asyncio.to_thread(database.set_card_locked, card_id, True)
+        await asyncio.to_thread(card_service.set_card_locked, card_id, True)
         response_text = (
             f"🔒 <b>{card_title}</b> locked!\n\n"
             + (f"Cost: {lock_cost}\n" if lock_cost > 0 else "")
@@ -3434,7 +3481,7 @@ async def handle_lock_card_confirm(
 async def reject_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle trade rejection or cancellation (if initiator)."""
     query = update.callback_query
@@ -3443,8 +3490,8 @@ async def reject_trade(
     card_id1 = int(card_id1_str)
     card_id2 = int(card_id2_str)
 
-    card1 = await asyncio.to_thread(database.get_card, card_id1)
-    card2 = await asyncio.to_thread(database.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
 
     if not card1 or not card2:
         await query.answer()
@@ -3504,7 +3551,7 @@ async def reject_trade(
 async def accept_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Handle trade acceptance."""
     query = update.callback_query
@@ -3513,8 +3560,8 @@ async def accept_trade(
     card_id1 = int(card_id1_str)
     card_id2 = int(card_id2_str)
 
-    card1 = await asyncio.to_thread(database.get_card, card_id1)
-    card2 = await asyncio.to_thread(database.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
 
     if not card1 or not card2:
         await query.answer()
@@ -3530,7 +3577,7 @@ async def accept_trade(
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(database.swap_card_owners, card_id1, card_id2)
+    success = await asyncio.to_thread(card_service.swap_card_owners, card_id1, card_id2)
 
     if success:
         message_text = TRADE_COMPLETE_MESSAGE.format(
@@ -3564,7 +3611,7 @@ async def accept_trade(
 async def spins(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Add spins to a specific user or all members of the current chat. Admin only."""
     message = update.message
@@ -3644,7 +3691,7 @@ async def spins(
         if target_username:
             # Add spins to a specific user
             target_user_id = await asyncio.to_thread(
-                database.get_user_id_by_username, target_username
+                user_service.get_user_id_by_username, target_username
             )
 
             if target_user_id is None:
@@ -3655,7 +3702,9 @@ async def spins(
                 return
 
             # Check if user is enrolled in this chat
-            is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, target_user_id)
+            is_member = await asyncio.to_thread(
+                user_service.is_user_in_chat, chat_id, target_user_id
+            )
 
             if not is_member:
                 await message.reply_text(
@@ -3666,7 +3715,7 @@ async def spins(
 
             # Add spins to the target user
             new_total = await asyncio.to_thread(
-                database.increment_user_spins, target_user_id, chat_id, spins_to_add
+                spin_service.increment_user_spins, target_user_id, chat_id, spins_to_add
             )
 
             plural = "spin" if spins_to_add == 1 else "spins"
@@ -3682,7 +3731,7 @@ async def spins(
             )
         else:
             # Add spins to all users in the chat
-            all_user_ids = await asyncio.to_thread(database.get_all_chat_users, chat_id)
+            all_user_ids = await asyncio.to_thread(user_service.get_all_chat_users, chat_id)
 
             if not all_user_ids:
                 await message.reply_text(
@@ -3696,7 +3745,7 @@ async def spins(
             for user_id in all_user_ids:
                 try:
                     await asyncio.to_thread(
-                        database.increment_user_spins, user_id, chat_id, spins_to_add
+                        spin_service.increment_user_spins, user_id, chat_id, spins_to_add
                     )
                     successful_count += 1
                 except Exception as e:
@@ -3727,7 +3776,7 @@ async def spins(
 async def reload(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Reload command - clears all file_ids. Only accessible to admin."""
     # Silently ignore if user is not the admin
@@ -3736,7 +3785,7 @@ async def reload(
 
     try:
         # Clear all file_ids from database
-        affected_rows = await asyncio.to_thread(database.clear_all_file_ids)
+        affected_rows = await asyncio.to_thread(card_service.clear_all_file_ids)
 
         await update.message.reply_text(
             f"🔄 Reload complete! Cleared file_ids for {affected_rows} cards.\n"
@@ -3758,7 +3807,7 @@ async def reload(
 async def set_thread(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
-    user: database.User,
+    user: User,
 ) -> None:
     """Set the thread ID for the current chat. Admin only.
 
@@ -3801,7 +3850,7 @@ async def set_thread(
 
         # Handle clear command
         if is_clear:
-            success = await asyncio.to_thread(database.clear_thread_ids, chat_id)
+            success = await asyncio.to_thread(thread_service.clear_thread_ids, chat_id)
             if success:
                 await message.reply_text(
                     "✅ All thread configurations have been cleared for this chat.\n\n"
@@ -3826,7 +3875,9 @@ async def set_thread(
             )
             return
 
-        success = await asyncio.to_thread(database.set_thread_id, chat_id, thread_id, thread_type)
+        success = await asyncio.to_thread(
+            thread_service.set_thread_id, chat_id, thread_id, thread_type
+        )
 
         if success:
             type_label = "main" if thread_type == "main" else "trade"

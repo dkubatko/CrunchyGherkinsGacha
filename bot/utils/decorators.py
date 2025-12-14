@@ -8,7 +8,7 @@ from telegram import Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
-from . import database
+from utils.services import user_service
 
 HandlerFunc = Callable[..., Awaitable[Any]]
 
@@ -76,7 +76,7 @@ def verify_user(handler: HandlerFunc) -> HandlerFunc:
             await _notify_user(update, context, "I couldn't identify your Telegram account.")
             return None
 
-        db_user = await asyncio.to_thread(database.get_user, user.id)
+        db_user = await asyncio.to_thread(user_service.get_user, user.id)
         if not db_user:
             await _notify_user(update, context, registration_prompt)
             return None
@@ -109,7 +109,7 @@ def verify_user_in_chat(handler: HandlerFunc) -> HandlerFunc:
             return None
 
         chat_id = str(chat.id)
-        is_member = await asyncio.to_thread(database.is_user_in_chat, chat_id, db_user.user_id)
+        is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, db_user.user_id)
         if is_member:
             return await handler(update, context, *args, **kwargs)
 

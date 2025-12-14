@@ -34,13 +34,7 @@ from dotenv import load_dotenv
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.database import (
-    add_card,
-    get_user_id_by_username,
-    get_username_for_user_id,
-    get_most_frequent_chat_id_for_user,
-    set_card_owner,
-)
+from utils.services import card_service, user_service
 from utils.schemas import Character, User
 from utils.session import get_session
 from utils.models import CharacterModel, UserModel
@@ -221,19 +215,19 @@ def generate_single_card(
     owner_user_id = None
     owner_username = None
     if assign_username:
-        owner_user_id = get_user_id_by_username(assign_username)
+        owner_user_id = user_service.get_user_id_by_username(assign_username)
         if not owner_user_id:
             logger.error(f"Could not find user with username: {assign_username}")
             logger.info("Tip: Check the exact username in the database")
             return None, None
         # Get the actual username from the database (in case of case differences)
-        owner_username = get_username_for_user_id(owner_user_id)
+        owner_username = user_service.get_username_for_user_id(owner_user_id)
         if not owner_username:
             owner_username = assign_username  # fallback to provided username
         logger.info(f"Found user to assign card to: {owner_username} (ID: {owner_user_id})")
 
         # Set chat_id to the user's most frequently used chat_id
-        user_chat_id = get_most_frequent_chat_id_for_user(owner_user_id)
+        user_chat_id = user_service.get_most_frequent_chat_id_for_user(owner_user_id)
         if user_chat_id:
             chat_id = user_chat_id
             logger.info(f"Using user's most frequent chat_id: {chat_id}")
@@ -256,7 +250,7 @@ def generate_single_card(
 
         # Add the card to the database
         logger.info("Adding card to database...")
-        card_id = add_card(
+        card_id = card_service.add_card(
             base_name=base_name,
             modifier=modifier,
             rarity=rarity,
@@ -271,7 +265,9 @@ def generate_single_card(
         # If assign_username was provided, set the card owner
         if owner_user_id and owner_username:
             logger.info(f"Assigning card to user {owner_username} (ID: {owner_user_id})...")
-            success = set_card_owner(card_id=card_id, owner=owner_username, user_id=owner_user_id)
+            success = card_service.set_card_owner(
+                card_id=card_id, owner=owner_username, user_id=owner_user_id
+            )
             if success:
                 logger.info(f"✅ Card ownership set successfully")
             else:
