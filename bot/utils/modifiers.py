@@ -92,9 +92,9 @@ def _sync_set_metadata(set_id: int, document: dict[str, Any], default_name: str)
 
     set_display_name = document.get("set", default_name)
     try:
-        from utils import database
+        from utils.services import set_service
 
-        database.upsert_set(set_id, set_display_name)
+        set_service.upsert_set(set_id, set_display_name)
         LOGGER.info("Synced set %s (id=%s) to database", set_display_name, set_id)
     except Exception as exc:  # pragma: no cover - defensive logging
         LOGGER.warning("Failed to sync set %s to database: %s", default_name, exc)

@@ -294,12 +294,18 @@ class MinesweeperGame(BaseModel):
             started_timestamp = datetime.datetime.fromisoformat(
                 started_timestamp.replace("Z", "+00:00")
             )
+        elif started_timestamp is not None and started_timestamp.tzinfo is None:
+            # Make naive datetime timezone-aware (assume UTC)
+            started_timestamp = started_timestamp.replace(tzinfo=datetime.timezone.utc)
 
         last_updated_timestamp = game_orm.last_updated_timestamp
         if isinstance(last_updated_timestamp, str):
             last_updated_timestamp = datetime.datetime.fromisoformat(
                 last_updated_timestamp.replace("Z", "+00:00")
             )
+        elif last_updated_timestamp is not None and last_updated_timestamp.tzinfo is None:
+            # Make naive datetime timezone-aware (assume UTC)
+            last_updated_timestamp = last_updated_timestamp.replace(tzinfo=datetime.timezone.utc)
 
         return cls(
             id=game_orm.id,

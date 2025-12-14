@@ -108,16 +108,16 @@ def get_source_icon(source_type: str, source_id: int) -> Optional[str]:
     Returns:
         Base64-encoded icon or None if not found
     """
-    from utils import database
+    from utils.services import user_service, character_service
 
     normalized_type = (source_type or "").strip().lower()
 
     if normalized_type == "user":
-        user = database.get_user(source_id)
+        user = user_service.get_user(source_id)
         if user and user.slot_iconb64:
             return user.slot_iconb64
     elif normalized_type == "character":
-        character = database.get_character_by_id(source_id)
+        character = character_service.get_character_by_id(source_id)
         if character and character.slot_iconb64:
             return character.slot_iconb64
 

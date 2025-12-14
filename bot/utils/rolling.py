@@ -5,7 +5,8 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from settings.constants import RARITIES, UNIQUE_ADDENDUM
-from utils import database
+from utils.services import card_service, character_service, user_service
+from utils.schemas import Card, Character, User
 from utils.gemini import GeminiUtil
 from utils.modifiers import load_modifiers_with_sets, ModifierWithSet
 
@@ -43,8 +44,8 @@ class SelectedProfile:
     image_b64: str
     source_type: str  # "user" or "character"
     source_id: Optional[int] = None  # user_id for users, character id for characters
-    user: Optional[database.User] = None
-    character: Optional[database.Character] = None
+    user: Optional[User] = None
+    character: Optional[Character] = None
 
 
 @dataclass
@@ -62,7 +63,7 @@ class GeneratedCard:
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     """Pick a random source (user or character) that can be used for card generation."""
     # Get all eligible users from the chat
-    eligible_users = database.get_all_chat_users_with_profile(chat_id)
+    eligible_users = user_service.get_all_chat_users_with_profile(chat_id)
 
     # Create SelectedProfile objects for all eligible users
     user_profiles = []
@@ -82,7 +83,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
             )
 
     # Get all characters for this chat and create SelectedProfile objects
-    characters = database.get_characters_by_chat(chat_id)
+    characters = character_service.get_characters_by_chat(chat_id)
     character_profiles = [
         SelectedProfile(
             name=char.name,
@@ -103,9 +104,9 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     return random.choice(all_profiles)
 
 
-def select_random_user_with_image(chat_id: str) -> Optional[database.User]:
+def select_random_user_with_image(chat_id: str) -> Optional[User]:
     """Pick a random enrolled user who has both a profile image and display name."""
-    user = database.get_random_chat_user_with_profile(chat_id)
+    user = user_service.get_random_chat_user_with_profile(chat_id)
     if not user:
         return None
 
@@ -176,10 +177,10 @@ def _choose_modifier_for_rarity(
         return chosen, 1.0
 
     # Get modifier usage counts for this chat
-    modifier_counts = database.get_modifier_counts_for_chat(chat_id)
+    modifier_counts = card_service.get_modifier_counts_for_chat(chat_id)
 
     # Get unique modifiers to exclude
-    unique_modifiers = set(database.get_unique_modifiers(chat_id))
+    unique_modifiers = set(card_service.get_unique_modifiers(chat_id))
 
     # Calculate weights: 1.0 for new modifiers, 1/N for existing ones
     weights = []
@@ -266,7 +267,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
     normalized_type = (source_type or "").strip().lower()
 
     if normalized_type == "user":
-        user = database.get_user(source_id)
+        user = user_service.get_user(source_id)
         if not user:
             raise InvalidSourceError(f"User {source_id} not found")
 
@@ -285,7 +286,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
         )
 
     if normalized_type == "character":
-        character = database.get_character_by_id(source_id)
+        character = character_service.get_character_by_id(source_id)
         if not character:
             raise InvalidSourceError(f"Character {source_id} not found")
 
@@ -418,7 +419,7 @@ def generate_card_for_chat(
 
 
 def regenerate_card_image(
-    card: database.Card,
+    card: Card,
     gemini_util: GeminiUtil,
     max_retries: int = 0,
     refresh_attempt: int = 1,
@@ -503,7 +504,7 @@ def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
     name_lower = name.strip().lower()
 
     # Check characters first
-    characters = database.get_characters_by_chat(chat_id)
+    characters = character_service.get_characters_by_chat(chat_id)
     for char in characters:
         if char.name.strip().lower() == name_lower:
             return SelectedProfile(
@@ -515,7 +516,7 @@ def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
             )
 
     # Check users
-    users = database.get_all_chat_users_with_profile(chat_id)
+    users = user_service.get_all_chat_users_with_profile(chat_id)
     for user in users:
         display_name = (user.display_name or "").strip()
         if display_name.lower() == name_lower:
