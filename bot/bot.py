@@ -3072,7 +3072,7 @@ async def _get_user_targets_for_stats(
     else:
         # All users in chat
         chat_scope = None if is_private_chat else chat_id
-        usernames = await asyncio.to_thread(user_service.get_all_users_with_cards, chat_scope)
+        usernames = await asyncio.to_thread(card_service.get_all_users_with_cards, chat_scope)
 
         if not usernames:
             raise ValueError("No users have claimed any cards yet.")
@@ -3086,7 +3086,7 @@ async def _get_user_targets_for_stats(
 
 async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str) -> str:
     """Format stats for a single user."""
-    user_stats = await asyncio.to_thread(user_service.get_user_stats, username)
+    user_stats = await asyncio.to_thread(card_service.get_user_stats, username)
 
     if user_id is not None:
         balance_value = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
