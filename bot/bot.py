@@ -602,7 +602,7 @@ async def roll(
                 reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
             )
         if not DEBUG_MODE:
-            if not await asyncio.to_thread(spin_service.can_roll, user.user_id, chat_id_str):
+            if not await asyncio.to_thread(roll_service.can_roll, user.user_id, chat_id_str):
                 hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
                 await update.message.reply_text(
                     f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
