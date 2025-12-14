@@ -2105,8 +2105,8 @@ async def handle_recycle_callback(
                 user.user_id,
             )
 
-        for card in cards_to_burn:
-            await asyncio.to_thread(card_service.nullify_card_owner, card.id)
+        card_ids_to_delete = [card.id for card in cards_to_burn]
+        await asyncio.to_thread(card_service.delete_cards, card_ids_to_delete)
 
         burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])
         # Note: generated_card.card_title doesn't use Card.title() - it's directly from GeneratedCard
@@ -2221,8 +2221,8 @@ async def handle_reroll(
             new_card_chat_id,
         )
 
-        # Nullify the original card's owner (preserves history)
-        await asyncio.to_thread(card_service.nullify_card_owner, active_card.id)
+        # Delete the original card
+        await asyncio.to_thread(card_service.delete_card, active_card.id)
 
         # Update rolled card state to point to the new card
         rolled_card_manager.mark_rerolled(new_card_id)
