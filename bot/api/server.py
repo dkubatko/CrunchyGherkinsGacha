@@ -31,23 +31,19 @@ app = FastAPI(
 )
 
 # CORS configuration
-allowed_origins = [
-    "https://app.crunchygherkins.com",
-    "http://localhost:5173",  # For local development
-]
-
 if DEBUG_MODE:
-    allowed_origins.extend(
-        [
-            "http://192.168.1.142:5173",  # Local IP for mobile testing
-            "https://192.168.1.142:5173",  # HTTPS version if needed
-        ]
-    )
+    # Allow any origin in debug mode for easier local development
+    allowed_origins = ["*"]
+else:
+    allowed_origins = [
+        "https://app.crunchygherkins.com",
+        "http://localhost:5173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=not DEBUG_MODE,  # credentials not supported with wildcard origin
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
