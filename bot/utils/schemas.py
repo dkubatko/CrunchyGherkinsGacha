@@ -164,6 +164,7 @@ class RolledCard(BaseModel):
     being_rerolled: bool
     attempted_by: Optional[str]
     is_locked: bool
+    original_rarity: Optional[str] = None
 
     @property
     def current_card_id(self) -> int:
@@ -190,6 +191,7 @@ class RolledCard(BaseModel):
             being_rerolled=rolled_orm.being_rerolled,
             attempted_by=rolled_orm.attempted_by,
             is_locked=rolled_orm.is_locked,
+            original_rarity=rolled_orm.original_rarity,
         )
 
 
