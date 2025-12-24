@@ -172,12 +172,21 @@ class SpinsRequest(BaseModel):
     chat_id: str
 
 
+class MegaspinInfo(BaseModel):
+    """Megaspin progress information."""
+
+    spins_until_megaspin: int
+    total_spins_required: int
+    megaspin_available: bool
+
+
 class SpinsResponse(BaseModel):
     """Response with spin balance info."""
 
     spins: int
     success: bool = True
     next_refresh_time: Optional[str] = None
+    megaspin: Optional[MegaspinInfo] = None
 
 
 class ClaimBalanceResponse(BaseModel):
@@ -194,6 +203,7 @@ class ConsumeSpinResponse(BaseModel):
     success: bool
     spins_remaining: Optional[int] = None
     message: Optional[str] = None
+    megaspin: Optional[MegaspinInfo] = None
 
 
 class SlotVerifyRequest(BaseModel):

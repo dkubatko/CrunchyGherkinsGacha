@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
+import type { MegaspinInfo } from '../types';
 
 interface SlotSymbol {
   id: number;
@@ -16,13 +17,23 @@ interface UserSpinsData {
   nextRefreshTime?: string | null;
 }
 
+interface MegaspinData {
+  spinsUntilMegaspin: number;
+  totalSpinsRequired: number;
+  megaspinAvailable: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
 interface UseSlotsResult {
   symbols: SlotSymbol[];
   spins: UserSpinsData;
+  megaspin: MegaspinData;
   loading: boolean;
   error: string | null;
   refetchSpins: () => Promise<void>;
   updateSpins: (count: number, nextRefreshTime?: string | null) => void;
+  updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
 export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
@@ -33,17 +44,26 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
     error: null,
     nextRefreshTime: null
   });
+  const [megaspin, setMegaspin] = useState<MegaspinData>({
+    spinsUntilMegaspin: 100,
+    totalSpinsRequired: 100,
+    megaspinAvailable: false,
+    loading: true,
+    error: null
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const fetchSpins = useCallback(async () => {
     if (!chatId || !userId) {
       setSpins(prev => ({ ...prev, loading: false, error: 'Missing chat ID or user ID' }));
+      setMegaspin(prev => ({ ...prev, loading: false, error: 'Missing chat ID or user ID' }));
       return;
     }
 
     try {
       setSpins(prev => ({ ...prev, loading: true, error: null }));
+      setMegaspin(prev => ({ ...prev, loading: true, error: null }));
 
       const initData = TelegramUtils.getInitData();
       if (!initData) {
@@ -57,9 +77,23 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
         error: null,
         nextRefreshTime: spinsData.next_refresh_time || null
       });
+
+      // Update megaspin state from the response
+      if (spinsData.megaspin) {
+        setMegaspin({
+          spinsUntilMegaspin: spinsData.megaspin.spins_until_megaspin,
+          totalSpinsRequired: spinsData.megaspin.total_spins_required,
+          megaspinAvailable: spinsData.megaspin.megaspin_available,
+          loading: false,
+          error: null
+        });
+      } else {
+        setMegaspin(prev => ({ ...prev, loading: false }));
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to load spins';
       setSpins({ count: 0, loading: false, error: errorMessage, nextRefreshTime: null });
+      setMegaspin(prev => ({ ...prev, loading: false, error: errorMessage }));
     }
   }, [chatId, userId]);
 
@@ -72,6 +106,15 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
       ...prev,
       count,
       nextRefreshTime: nextRefreshTime !== undefined ? nextRefreshTime : prev.nextRefreshTime
+    }));
+  }, []);
+
+  const updateMegaspin = useCallback((megaspinInfo: MegaspinInfo) => {
+    setMegaspin(prev => ({
+      ...prev,
+      spinsUntilMegaspin: megaspinInfo.spins_until_megaspin,
+      totalSpinsRequired: megaspinInfo.total_spins_required,
+      megaspinAvailable: megaspinInfo.megaspin_available
     }));
   }, []);
 
@@ -129,9 +172,11 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
   return {
     symbols,
     spins,
+    megaspin,
     loading,
     error,
     refetchSpins,
-    updateSpins
+    updateSpins,
+    updateMegaspin
   };
 };

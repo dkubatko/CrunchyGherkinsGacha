@@ -55,7 +55,7 @@ function App() {
     refetch: refetchCards,
     updateCard: updateCardInCollection
   } = useCards();
-  const { symbols: slotsSymbols, spins: slotsSpins, loading: slotsLoading, error: slotsError, refetchSpins, updateSpins } = useSlots(
+  const { symbols: slotsSymbols, spins: slotsSpins, megaspin: slotsMegaspin, loading: slotsLoading, error: slotsError, refetchSpins, updateSpins, updateMegaspin } = useSlots(
     userData?.casinoView && userData.chatId ? userData.chatId : undefined,
     userData?.currentUserId
   );
@@ -976,8 +976,10 @@ function App() {
           initData={initData}
           slotsSymbols={slotsSymbols}
           slotsSpins={slotsSpins}
+          slotsMegaspin={slotsMegaspin}
           refetchSpins={refetchSpins}
           updateSpins={updateSpins}
+          updateMegaspin={updateMegaspin}
         />
       </div>
     );

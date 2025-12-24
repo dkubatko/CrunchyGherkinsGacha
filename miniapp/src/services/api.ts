@@ -6,6 +6,7 @@ import type {
   SlotSymbolInfo,
   CardConfigResponse,
   UserProfile,
+  MegaspinInfo,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
@@ -310,7 +311,7 @@ export class ApiService {
     return response.json();
   }
 
-  static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean; next_refresh_time?: string | null }> {
+  static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean; next_refresh_time?: string | null; megaspin?: MegaspinInfo | null }> {
     const params = new URLSearchParams({
       user_id: userId.toString(),
       chat_id: chatId
@@ -336,7 +337,7 @@ export class ApiService {
     return response.json();
   }
 
-  static async consumeUserSpin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string }> {
+  static async consumeUserSpin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string; megaspin?: MegaspinInfo | null }> {
     const response = await fetch(`${API_BASE_URL}/slots/spins`, {
       method: 'POST',
       headers: this.getHeaders(initData),
@@ -382,6 +383,66 @@ export class ApiService {
 
     if (!response.ok) {
       let detail = `Failed to verify slot spin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async consumeMegaspin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string; megaspin?: MegaspinInfo | null }> {
+    const response = await fetch(`${API_BASE_URL}/slots/megaspin`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to consume megaspin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async verifyMegaspin(
+    userId: number,
+    chatId: string,
+    randomNumber: number,
+    symbols: SlotSymbolInfo[],
+    initData: string
+  ): Promise<SlotVerifyResponse> {
+    const response = await fetch(`${API_BASE_URL}/slots/megaspin/verify`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        random_number: randomNumber,
+        symbols: symbols
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to verify megaspin (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

@@ -1,7 +1,8 @@
 """Spin service for managing user spin balances.
 
 This module provides all spin-related business logic including
-retrieving, consuming, and refreshing spin balances.
+retrieving, consuming, and refreshing spin balances, as well as
+megaspin tracking and consumption.
 """
 
 from __future__ import annotations
@@ -13,8 +14,8 @@ import os
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from utils.models import SpinsModel
-from utils.schemas import Spins
+from utils.models import MegaspinsModel, SpinsModel
+from utils.schemas import Megaspins, Spins
 from utils.session import get_session
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,18 @@ def _get_spins_config() -> tuple[int, int]:
     """Get SPINS_PER_REFRESH and SPINS_REFRESH_HOURS from config. Returns (spins_per_refresh, hours_per_refresh)."""
     config = _load_config()
     return config.get("SPINS_PER_REFRESH", 5), config.get("SPINS_REFRESH_HOURS", 3)
+
+
+def _get_spins_for_megaspin() -> int:
+    """Get SPINS_FOR_MEGASPIN from config. Returns the number of spins required for a megaspin.
+    In DEBUG_MODE, returns 5 for easier testing.
+    """
+    from api.config import DEBUG_MODE
+
+    if DEBUG_MODE:
+        return 5
+    config = _load_config()
+    return config.get("SPINS_FOR_MEGASPIN", 100)
 
 
 def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
@@ -264,3 +277,132 @@ def consume_user_spin(user_id: int, chat_id: str) -> bool:
             spins.count -= 1
             return True
         return False
+
+
+# =============================================================================
+# MEGASPIN FUNCTIONS
+# =============================================================================
+
+
+def get_user_megaspins(user_id: int, chat_id: str) -> Megaspins:
+    """Get or create the megaspin record for a user in a specific chat."""
+    spins_for_megaspin = _get_spins_for_megaspin()
+
+    with get_session(commit=True) as session:
+        megaspins = (
+            session.query(MegaspinsModel)
+            .filter(
+                MegaspinsModel.user_id == user_id,
+                MegaspinsModel.chat_id == str(chat_id),
+            )
+            .first()
+        )
+
+        if not megaspins:
+            # Create default megaspins record
+            megaspins = MegaspinsModel(
+                user_id=user_id,
+                chat_id=str(chat_id),
+                spins_until_megaspin=spins_for_megaspin,
+                megaspin_available=False,
+            )
+            session.add(megaspins)
+
+        return Megaspins.from_orm(megaspins)
+
+
+def decrement_megaspin_counter(user_id: int, chat_id: str) -> Megaspins:
+    """Decrement the spins_until_megaspin counter by 1 after a regular spin.
+
+    If counter reaches 0 and no megaspin is already available, sets megaspin_available=True.
+    Returns the updated Megaspins record.
+    """
+    spins_for_megaspin = _get_spins_for_megaspin()
+
+    with get_session(commit=True) as session:
+        megaspins = (
+            session.query(MegaspinsModel)
+            .filter(
+                MegaspinsModel.user_id == user_id,
+                MegaspinsModel.chat_id == str(chat_id),
+            )
+            .first()
+        )
+
+        if not megaspins:
+            # Create new record with decremented counter
+            megaspins = MegaspinsModel(
+                user_id=user_id,
+                chat_id=str(chat_id),
+                spins_until_megaspin=spins_for_megaspin - 1,
+                megaspin_available=False,
+            )
+            session.add(megaspins)
+        else:
+            # Only decrement if megaspin is not already available
+            # (megaspins can't accrue, so we stop counting once one is available)
+            if not megaspins.megaspin_available:
+                megaspins.spins_until_megaspin -= 1
+
+                if megaspins.spins_until_megaspin <= 0:
+                    megaspins.megaspin_available = True
+                    megaspins.spins_until_megaspin = 0
+                    logger.info(f"User {user_id} in chat {chat_id} earned a megaspin!")
+
+        return Megaspins.from_orm(megaspins)
+
+
+def consume_megaspin(user_id: int, chat_id: str) -> bool:
+    """Consume a megaspin if available. Returns True if successful, False otherwise."""
+    spins_for_megaspin = _get_spins_for_megaspin()
+
+    with get_session(commit=True) as session:
+        megaspins = (
+            session.query(MegaspinsModel)
+            .filter(
+                MegaspinsModel.user_id == user_id,
+                MegaspinsModel.chat_id == str(chat_id),
+            )
+            .first()
+        )
+
+        if not megaspins or not megaspins.megaspin_available:
+            return False
+
+        # Consume the megaspin and reset the counter
+        megaspins.megaspin_available = False
+        megaspins.spins_until_megaspin = spins_for_megaspin
+        logger.info(f"User {user_id} in chat {chat_id} consumed their megaspin")
+        return True
+
+
+def reset_megaspin_counter(user_id: int, chat_id: str) -> Megaspins:
+    """Reset the megaspin counter to SPINS_FOR_MEGASPIN and set megaspin_available=False.
+
+    This is typically called after consuming a megaspin.
+    """
+    spins_for_megaspin = _get_spins_for_megaspin()
+
+    with get_session(commit=True) as session:
+        megaspins = (
+            session.query(MegaspinsModel)
+            .filter(
+                MegaspinsModel.user_id == user_id,
+                MegaspinsModel.chat_id == str(chat_id),
+            )
+            .first()
+        )
+
+        if not megaspins:
+            megaspins = MegaspinsModel(
+                user_id=user_id,
+                chat_id=str(chat_id),
+                spins_until_megaspin=spins_for_megaspin,
+                megaspin_available=False,
+            )
+            session.add(megaspins)
+        else:
+            megaspins.megaspin_available = False
+            megaspins.spins_until_megaspin = spins_for_megaspin
+
+        return Megaspins.from_orm(megaspins)

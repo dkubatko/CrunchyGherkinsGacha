@@ -11,6 +11,12 @@ else
     echo "🚀 Starting API server in PRODUCTION mode"
 fi
 
+# Check for --no-generation flag (only effective with --debug)
+if [[ "$*" == *"--no-generation"* ]]; then
+    export NO_GENERATION=1
+    echo "🚫 Card generation DISABLED for spin wins"
+fi
+
 # Run with gunicorn + uvloop + httptools for maximum performance (5 workers)
 # --preload ensures logging is configured before workers fork
 # Access/error logs stay on stdout to align with our centralized logging

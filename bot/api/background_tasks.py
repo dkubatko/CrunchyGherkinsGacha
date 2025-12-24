@@ -15,6 +15,7 @@ from telegram.constants import ParseMode
 from api.config import (
     create_bot_instance,
     DEBUG_MODE,
+    NO_GENERATION,
     TELEGRAM_TOKEN,
     MAX_SLOT_VICTORY_IMAGE_RETRIES,
     gemini_util,
@@ -87,6 +88,35 @@ async def process_slots_victory_background(
         pending_message = await bot.send_message(**send_params)
 
         try:
+            # Skip card generation if NO_GENERATION is enabled (debug mode only)
+            if NO_GENERATION:
+                logger.info("NO_GENERATION mode: Skipping card generation for slots victory")
+                # Edit the pending message to indicate skipped generation
+                skip_caption = (
+                    f"🎰 <b>SLOTS WIN!</b> (Generation Disabled)\n\n"
+                    f"👤 Winner: @{username}\n"
+                    f"⭐ Rarity: <b>{normalized_rarity}</b>\n"
+                    f"🎭 Source: {display_name}\n\n"
+                    f"<i>Card generation is disabled in debug mode.</i>"
+                )
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=pending_message.message_id,
+                    text=skip_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+                # Give spin refund since user "won"
+                await asyncio.to_thread(
+                    spin_service.increment_user_spins, user_id, chat_id, spin_refund_amount
+                )
+                refund_processed = True
+                logger.info(
+                    "NO_GENERATION: Slots victory skipped for user %s, refunded %d spins",
+                    username,
+                    spin_refund_amount,
+                )
+                return
+
             # Generate card from source with built-in retry support
             generated_card = await asyncio.to_thread(
                 rolling.generate_card_from_source,
