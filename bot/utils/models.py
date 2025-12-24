@@ -215,6 +215,17 @@ class SpinsModel(Base):
     refresh_timestamp: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class MegaspinsModel(Base):
+    """Tracks megaspin progress and availability per user per chat."""
+
+    __tablename__ = "megaspins"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    spins_until_megaspin: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    megaspin_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
 class ThreadModel(Base):
     """Stores thread IDs for chats (for topic-based messaging)."""
 
