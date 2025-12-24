@@ -31,14 +31,30 @@ interface UserSpinsData {
   nextRefreshTime?: string | null;
 }
 
+interface MegaspinData {
+  spinsUntilMegaspin: number;
+  totalSpinsRequired: number;
+  megaspinAvailable: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+interface MegaspinInfo {
+  spins_until_megaspin: number;
+  total_spins_required: number;
+  megaspin_available: boolean;
+}
+
 interface SlotsProps {
   symbols: SlotSymbol[];
   spins: UserSpinsData;
+  megaspin: MegaspinData;
   userId: number;
   chatId: string;
   initData: string;
   refetchSpins: () => void;
   onSpinsUpdate: (count: number, nextRefreshTime?: string | null) => void;
+  onMegaspinUpdate: (megaspinInfo: MegaspinInfo) => void;
 }
 
 interface SlotSymbol {
@@ -129,7 +145,7 @@ const buildRarityHighlightVariables = (primary: string, secondary: string): Reco
 });
 
 
-const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, userId, chatId, initData, refetchSpins, onSpinsUpdate }) => {
+const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, refetchSpins, onSpinsUpdate, onMegaspinUpdate }) => {
   const symbols = useSlotsStore((state) => state.symbols);
   const setSymbols = useSlotsStore((state) => state.setSymbols);
   const results = useSlotsStore((state) => state.results);
@@ -157,6 +173,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const [imagesReady, setImagesReady] = useState(false);
   const [, setRefreshTick] = useState(0);
   const [speedMultiplier, setSpeedMultiplier] = useState(1);
+  const [isMegaspinning, setIsMegaspinning] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
 
@@ -397,6 +414,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     const resetReels = () => {
       setReelStates([...INITIAL_REEL_STATES]);
       setSpinning(false);
+      setIsMegaspinning(false);
       resetRarityWheel();
     };
 
@@ -508,6 +526,10 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         } else {
           refetchSpins();
         }
+        // Update megaspin info if provided
+        if (consumeResult.megaspin) {
+          onMegaspinUpdate(consumeResult.megaspin);
+        }
         return;
       }
 
@@ -516,6 +538,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         onSpinsUpdate(consumeResult.spins_remaining);
       } else {
         refetchSpins();
+      }
+
+      // Update megaspin info if provided
+      if (consumeResult.megaspin) {
+        onMegaspinUpdate(consumeResult.megaspin);
       }
 
       const { isWin, slotResults, rarity: serverRarity } = await generateServerVerifiedResults();
@@ -621,6 +648,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     initData,
     refetchSpins,
     onSpinsUpdate,
+    onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
     generateServerVerifiedResults,
@@ -674,6 +702,170 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
   }, []);
 
+  // Generate megaspin results (guaranteed card win)
+  const generateMegaspinResults = useCallback(async (): Promise<{ 
+    isWin: boolean;
+    slotResults: SlotSymbolInfo[];
+    rarity: string | null;
+  }> => {
+    const availableSymbols = symbols.length;
+
+    if (availableSymbols === 0) {
+      return { isWin: false, slotResults: [], rarity: null };
+    }
+
+    const randomNumber = Math.floor(Math.random() * availableSymbols);
+
+    // Send the full symbol list to the server for megaspin verification
+    const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
+
+    const verifyResult = await ApiService.verifyMegaspin(
+      userId,
+      chatId,
+      randomNumber,
+      symbolsInfo,
+      initData
+    );
+
+    return {
+      isWin: verifyResult.is_win,
+      slotResults: verifyResult.slot_results,
+      rarity: verifyResult.rarity ?? null
+    };
+  }, [userId, chatId, initData, symbols]);
+
+  const handleMegaspin = useCallback(async () => {
+    if (spinning || symbols.length === 0 || megaspinData.loading) {
+      return;
+    }
+
+    if (!megaspinData.megaspinAvailable) {
+      TelegramUtils.showAlert('No megaspin available! Keep spinning to earn one.');
+      return;
+    }
+
+    TelegramUtils.triggerHapticImpact('heavy');
+
+    resetRarityWheel();
+    setSpinning(true);
+    setIsMegaspinning(true);
+    setReelStates(Array.from({ length: SLOT_REEL_COUNT }, () => 'spinning' as ReelState));
+    clearReelTimeouts();
+    pendingWinRef.current = null;
+
+    try {
+      // Consume the megaspin first
+      const consumeResult = await ApiService.consumeMegaspin(userId, chatId, initData);
+
+      if (!consumeResult.success) {
+        const message = consumeResult.message || 'Failed to use megaspin';
+        TelegramUtils.showAlert(message);
+        setSpinning(false);
+        setReelStates([...INITIAL_REEL_STATES]);
+        // Update megaspin info if provided
+        if (consumeResult.megaspin) {
+          onMegaspinUpdate(consumeResult.megaspin);
+        }
+        return;
+      }
+
+      // Update megaspin info from server response
+      if (consumeResult.megaspin) {
+        onMegaspinUpdate(consumeResult.megaspin);
+      }
+
+      // Megaspin verification - guaranteed win
+      const { slotResults, rarity: serverRarity } = await generateMegaspinResults();
+      
+      // Convert server-provided symbol results to indices
+      const normalizedResults = slotResults.map(symbolInfo => {
+        const index = symbols.findIndex(s => s.id === symbolInfo.id && s.type === symbolInfo.type);
+        return index !== -1 ? index : 0;
+      });
+
+      while (normalizedResults.length < SLOT_REEL_COUNT) {
+        normalizedResults.push(0);
+      }
+
+      setResults(normalizedResults.slice(0, SLOT_REEL_COUNT));
+
+      const spinTransforms = normalizedResults.map((result) =>
+        computeSlotSpinTransforms(result, symbols.length)
+      );
+      const finalTransforms = spinTransforms.map((value) => value.final);
+      const initialTransforms = spinTransforms.map((value) => value.initial);
+      const durations = normalizedResults.map(
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / speedMultiplier
+      );
+
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(initialTransforms);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setStripDurations(durations);
+          setStripTransforms(finalTransforms);
+        });
+      });
+
+      durations.forEach((duration, index) => {
+        const finalTimeout = setTimeout(() => {
+          setReelStates((prev) => {
+            const next = [...prev];
+            next[index] = 'stopped';
+            return next;
+          });
+
+          TelegramUtils.triggerHapticImpact('medium');
+
+          if (index === SLOT_REEL_COUNT - 1) {
+            finalizeSpin();
+          }
+        }, duration);
+        addReelTimeout(finalTimeout);
+      });
+
+      // Megaspin is guaranteed win - set up pending win
+      if (serverRarity && slotResults.length > 0) {
+        const winningIndex = normalizedResults[0];
+        const winningSymbolFromArray = symbols[winningIndex];
+
+        if (winningSymbolFromArray) {
+          const normalizedRarity = normalizeRarityName(serverRarity);
+          if (normalizedRarity) {
+            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to use megaspin:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to use megaspin';
+      TelegramUtils.showAlert(errorMessage);
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(Array(SLOT_REEL_COUNT).fill(0));
+      setReelStates([...INITIAL_REEL_STATES]);
+      setSpinning(false);
+      setIsMegaspinning(false);
+    }
+  }, [
+    spinning,
+    symbols,
+    megaspinData,
+    userId,
+    chatId,
+    initData,
+    onMegaspinUpdate,
+    clearReelTimeouts,
+    setReelStates,
+    generateMegaspinResults,
+    setResults,
+    addReelTimeout,
+    finalizeSpin,
+    setSpinning,
+    resetRarityWheel,
+    speedMultiplier
+  ]);
+
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) {
@@ -700,8 +892,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     <div className="slots-container">
       <h1>🎰 Slots</h1>
 
-      <div className="slot-machine-container">
-        <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''}`}>
+      <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
+        <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>
           {Array.from({ length: SLOT_REEL_COUNT }, (_, reelIndex) => reelIndex).map((reelIndex) => (
             <div
               key={`reel-${reelIndex}`}
@@ -788,6 +980,25 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 disabled={spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
               >
                 {spinning ? 'SPINNING…' : speedMultiplier === 2 ? 'QUICK SPIN' : 'SPIN'}
+              </button>
+
+              {/* Megaspin Button */}
+              <button
+                className={`megaspin-button ${megaspinData.megaspinAvailable ? 'megaspin-button-ready' : ''} ${isMegaspinning ? 'megaspin-button-spinning' : ''}`}
+                onClick={handleMegaspin}
+                disabled={spinning || symbols.length === 0 || megaspinData.loading || !megaspinData.megaspinAvailable}
+              >
+                <div 
+                  className="megaspin-fill"
+                  style={{
+                    width: megaspinData.megaspinAvailable 
+                      ? '100%' 
+                      : `${((megaspinData.totalSpinsRequired - megaspinData.spinsUntilMegaspin) / megaspinData.totalSpinsRequired) * 100}%`
+                  }}
+                />
+                <span className="megaspin-text">
+                  MEGA SPIN
+                </span>
               </button>
 
               <div className="spins-container">

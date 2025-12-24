@@ -25,6 +25,9 @@ from settings.constants import RARITIES
 # Debug mode detection
 DEBUG_MODE = "--debug" in sys.argv or os.getenv("DEBUG_MODE") == "1"
 
+# No generation mode (only effective with DEBUG_MODE)
+NO_GENERATION = ("--no-generation" in sys.argv or os.getenv("NO_GENERATION") == "1") and DEBUG_MODE
+
 # Configure logging
 configure_logging(debug=DEBUG_MODE)
 

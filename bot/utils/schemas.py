@@ -235,6 +235,25 @@ class Spins(BaseModel):
         )
 
 
+class Megaspins(BaseModel):
+    """User megaspins progress data transfer object."""
+
+    user_id: int
+    chat_id: str
+    spins_until_megaspin: int
+    megaspin_available: bool
+
+    @classmethod
+    def from_orm(cls, megaspins_orm) -> "Megaspins":
+        """Convert a MegaspinsModel ORM object to a Megaspins schema."""
+        return cls(
+            user_id=megaspins_orm.user_id,
+            chat_id=megaspins_orm.chat_id,
+            spins_until_megaspin=megaspins_orm.spins_until_megaspin,
+            megaspin_available=megaspins_orm.megaspin_available,
+        )
+
+
 class MinesweeperGame(BaseModel):
     """Minesweeper game state data transfer object."""
 

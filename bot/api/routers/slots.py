@@ -21,6 +21,7 @@ from api.dependencies import get_validated_user, verify_user_match
 from api.helpers import generate_slot_loss_pattern, normalize_rarity, pick_slot_rarity
 from api.schemas import (
     ConsumeSpinResponse,
+    MegaspinInfo,
     SlotSymbolInfo,
     SlotsClaimWinRequest,
     SlotsClaimWinResponse,
@@ -64,7 +65,21 @@ async def get_user_spins(
             spin_service.get_next_spin_refresh, user_id, chat_id
         )
 
-        return SpinsResponse(spins=spins_count, success=True, next_refresh_time=next_refresh_time)
+        # Get megaspin info
+        megaspins_data = await asyncio.to_thread(spin_service.get_user_megaspins, user_id, chat_id)
+        total_spins_required = spin_service._get_spins_for_megaspin()
+        megaspin_info = MegaspinInfo(
+            spins_until_megaspin=megaspins_data.spins_until_megaspin,
+            total_spins_required=total_spins_required,
+            megaspin_available=megaspins_data.megaspin_available,
+        )
+
+        return SpinsResponse(
+            spins=spins_count,
+            success=True,
+            next_refresh_time=next_refresh_time,
+            megaspin=megaspin_info,
+        )
 
     except HTTPException:
         raise
@@ -91,6 +106,17 @@ async def consume_user_spin(
         )
 
         if success:
+            # Update megaspin counter (decrement by 1)
+            megaspins_data = await asyncio.to_thread(
+                spin_service.decrement_megaspin_counter, request.user_id, request.chat_id
+            )
+            total_spins_required = spin_service._get_spins_for_megaspin()
+            megaspin_info = MegaspinInfo(
+                spins_until_megaspin=megaspins_data.spins_until_megaspin,
+                total_spins_required=total_spins_required,
+                megaspin_available=megaspins_data.megaspin_available,
+            )
+
             # Get remaining spins after consumption
             remaining_spins = await asyncio.to_thread(
                 spin_service.get_or_update_user_spins_with_daily_refresh,
@@ -99,7 +125,10 @@ async def consume_user_spin(
             )
 
             return ConsumeSpinResponse(
-                success=True, spins_remaining=remaining_spins, message="Spin consumed successfully"
+                success=True,
+                spins_remaining=remaining_spins,
+                message="Spin consumed successfully",
+                megaspin=megaspin_info,
             )
         else:
             # Get current spins to show in error
@@ -109,8 +138,22 @@ async def consume_user_spin(
                 request.chat_id,
             )
 
+            # Get current megaspin info
+            megaspins_data = await asyncio.to_thread(
+                spin_service.get_user_megaspins, request.user_id, request.chat_id
+            )
+            total_spins_required = spin_service._get_spins_for_megaspin()
+            megaspin_info = MegaspinInfo(
+                spins_until_megaspin=megaspins_data.spins_until_megaspin,
+                total_spins_required=total_spins_required,
+                megaspin_available=megaspins_data.megaspin_available,
+            )
+
             return ConsumeSpinResponse(
-                success=False, spins_remaining=current_spins, message="No spins available"
+                success=False,
+                spins_remaining=current_spins,
+                message="No spins available",
+                megaspin=megaspin_info,
             )
 
     except Exception as e:
@@ -118,6 +161,54 @@ async def consume_user_spin(
             f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
         )
         raise HTTPException(status_code=500, detail="Failed to consume spin")
+
+
+@router.post("/megaspin", response_model=ConsumeSpinResponse)
+async def consume_megaspin(
+    request: SpinsRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Consume a megaspin for a user in a specific chat. Megaspins are guaranteed wins."""
+    try:
+        # Verify the authenticated user matches the requested user_id
+        await verify_user_match(request.user_id, validated_user)
+
+        # Attempt to consume the megaspin
+        success = await asyncio.to_thread(
+            spin_service.consume_megaspin, request.user_id, request.chat_id
+        )
+
+        # Get updated megaspin info
+        megaspins_data = await asyncio.to_thread(
+            spin_service.get_user_megaspins, request.user_id, request.chat_id
+        )
+        total_spins_required = spin_service._get_spins_for_megaspin()
+        megaspin_info = MegaspinInfo(
+            spins_until_megaspin=megaspins_data.spins_until_megaspin,
+            total_spins_required=total_spins_required,
+            megaspin_available=megaspins_data.megaspin_available,
+        )
+
+        if success:
+            return ConsumeSpinResponse(
+                success=True,
+                spins_remaining=None,  # Megaspin doesn't affect regular spin count
+                message="Megaspin consumed successfully",
+                megaspin=megaspin_info,
+            )
+        else:
+            return ConsumeSpinResponse(
+                success=False,
+                spins_remaining=None,
+                message="No megaspin available",
+                megaspin=megaspin_info,
+            )
+
+    except Exception as e:
+        logger.error(
+            f"Error consuming megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to consume megaspin")
 
 
 @router.post("/verify", response_model=SlotVerifyResponse)
@@ -215,6 +306,51 @@ async def verify_slot_spin(
             f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
         )
         raise HTTPException(status_code=500, detail="Failed to verify slot spin")
+
+
+@router.post("/megaspin/verify", response_model=SlotVerifyResponse)
+async def verify_megaspin(
+    request: SlotVerifyRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Verify a megaspin result - guaranteed card win."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Validate input parameters
+    if not request.symbols or len(request.symbols) == 0:
+        raise HTTPException(status_code=400, detail="Symbols list cannot be empty")
+
+    try:
+        random.seed()  # Reset to system randomness
+
+        # Filter out claim symbols - megaspins only give cards
+        eligible_symbols = [s for s in request.symbols if s.type != "claim"]
+
+        if not eligible_symbols:
+            raise HTTPException(status_code=400, detail="No eligible symbols for megaspin")
+
+        # Pick a random eligible symbol - guaranteed win
+        winning_symbol = random.choice(eligible_symbols)
+        rarity = pick_slot_rarity(random)
+
+        # All three reels show the winning symbol
+        slot_results = [winning_symbol, winning_symbol, winning_symbol]
+
+        logger.info(
+            f"Megaspin verification for user {request.user_id} in chat {request.chat_id}: "
+            f"rarity={rarity}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
+        )
+
+        return SlotVerifyResponse(is_win=True, slot_results=slot_results, rarity=rarity)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error verifying megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        raise HTTPException(status_code=500, detail="Failed to verify megaspin")
 
 
 @router.post("/victory")

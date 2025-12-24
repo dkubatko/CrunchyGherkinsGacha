@@ -20,14 +20,30 @@ interface UserSpinsData {
   nextRefreshTime?: string | null;
 }
 
+interface MegaspinData {
+  spinsUntilMegaspin: number;
+  totalSpinsRequired: number;
+  megaspinAvailable: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+interface MegaspinInfo {
+  spins_until_megaspin: number;
+  total_spins_required: number;
+  megaspin_available: boolean;
+}
+
 interface CasinoProps {
   userId: number;
   chatId: string;
   initData: string;
   slotsSymbols: SlotSymbol[];
   slotsSpins: UserSpinsData;
+  slotsMegaspin: MegaspinData;
   refetchSpins: () => Promise<void>;
   updateSpins: (count: number, nextRefreshTime?: string | null) => void;
+  updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
 type GameView = 'catalog' | 'slots' | 'minesweeper';
@@ -65,8 +81,10 @@ export default function Casino({
   initData,
   slotsSymbols,
   slotsSpins,
+  slotsMegaspin,
   refetchSpins,
-  updateSpins
+  updateSpins,
+  updateMegaspin
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
   const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | null>(null);
@@ -106,11 +124,13 @@ export default function Casino({
       <Slots
         symbols={slotsSymbols}
         spins={slotsSpins}
+        megaspin={slotsMegaspin}
         userId={userId}
         chatId={chatId}
         initData={initData}
         refetchSpins={refetchSpins}
         onSpinsUpdate={updateSpins}
+        onMegaspinUpdate={updateMegaspin}
       />
     );
   }

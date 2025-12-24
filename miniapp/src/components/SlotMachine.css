@@ -29,6 +29,35 @@
   border: 4px solid #f39c12;
   border-radius: 18px;
   box-shadow: 0 0 18px rgba(243, 156, 18, 0.3), inset 0 0 18px rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.3s ease, border-color 0.3s ease;
+}
+
+/* Megaspin active state for container */
+.slot-machine-megaspin {
+  border-color: #f1c40f;
+  animation: megaspin-container-glow 0.8s ease-in-out infinite;
+  box-shadow: 
+    0 0 30px rgba(241, 196, 15, 0.6),
+    0 0 60px rgba(241, 196, 15, 0.4),
+    0 0 90px rgba(241, 196, 15, 0.2),
+    inset 0 0 18px rgba(241, 196, 15, 0.1);
+}
+
+@keyframes megaspin-container-glow {
+  0%, 100% {
+    box-shadow: 
+      0 0 30px rgba(241, 196, 15, 0.6),
+      0 0 60px rgba(241, 196, 15, 0.4),
+      0 0 90px rgba(241, 196, 15, 0.2),
+      inset 0 0 18px rgba(241, 196, 15, 0.1);
+  }
+  50% {
+    box-shadow: 
+      0 0 50px rgba(241, 196, 15, 0.8),
+      0 0 100px rgba(241, 196, 15, 0.5),
+      0 0 150px rgba(241, 196, 15, 0.3),
+      inset 0 0 25px rgba(241, 196, 15, 0.2);
+  }
 }
 
 .slot-reels {
@@ -39,10 +68,32 @@
   background: #1a1a1a;
   border-radius: 16px;
   box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.5);
+  transition: box-shadow 0.3s ease;
 }
 
 .slot-reels-winning {
   box-shadow: inset 0 0 16px rgba(46, 204, 113, 0.25), 0 0 14px rgba(46, 204, 113, 0.35);
+}
+
+/* Megaspin active state for reels */
+.slot-reels-megaspin {
+  animation: megaspin-reels-pulse 0.5s ease-in-out infinite;
+  box-shadow: 
+    inset 0 0 20px rgba(241, 196, 15, 0.3),
+    0 0 20px rgba(241, 196, 15, 0.4);
+}
+
+@keyframes megaspin-reels-pulse {
+  0%, 100% {
+    box-shadow: 
+      inset 0 0 20px rgba(241, 196, 15, 0.3),
+      0 0 20px rgba(241, 196, 15, 0.4);
+  }
+  50% {
+    box-shadow: 
+      inset 0 0 30px rgba(241, 196, 15, 0.5),
+      0 0 35px rgba(241, 196, 15, 0.6);
+  }
 }
 
 .slot-reel {
@@ -159,6 +210,164 @@
 
 .spin-button-quick:not(:disabled):active {
   box-shadow: 0 6px 18px rgba(52, 152, 219, 0.35);
+}
+
+/* Megaspin Button Styles */
+.megaspin-button {
+  position: relative;
+  width: 100%;
+  max-width: 300px;
+  height: 60px;
+  background: linear-gradient(145deg, #4a4a5a 0%, #3a3a4a 100%);
+  border: none;
+  border-radius: 30px;
+  color: #888;
+  font-size: 22px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: not-allowed;
+  overflow: hidden;
+  margin-top: 0;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.megaspin-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: linear-gradient(145deg, #f1c40f 0%, #f39c12 50%, #d68910 100%);
+  transition: width 0.4s ease-out;
+  border-radius: 30px;
+  box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.3);
+}
+
+.megaspin-text {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+
+.megaspin-button-ready {
+  cursor: pointer;
+  animation: megaspin-shine 2s ease-in-out infinite;
+  box-shadow: 0 8px 25px rgba(241, 196, 15, 0.5), 0 0 20px rgba(241, 196, 15, 0.3);
+}
+
+.megaspin-button-ready .megaspin-fill {
+  background: linear-gradient(145deg, #f5d742 0%, #f1c40f 30%, #f39c12 70%, #d68910 100%);
+}
+
+.megaspin-button-ready .megaspin-text {
+  color: #1a1a2a;
+  font-weight: 900;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+
+.megaspin-button-ready::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.4),
+    transparent
+  );
+  animation: megaspin-shimmer 2s ease-in-out infinite;
+  z-index: 2;
+  border-radius: 30px;
+}
+
+.megaspin-button-ready:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 30px rgba(241, 196, 15, 0.6), 0 0 30px rgba(241, 196, 15, 0.4);
+}
+
+.megaspin-button-ready:not(:disabled):active {
+  transform: translateY(0);
+  box-shadow: 0 6px 18px rgba(241, 196, 15, 0.5), 0 0 15px rgba(241, 196, 15, 0.3);
+}
+
+.megaspin-button:disabled {
+  opacity: 0.7;
+}
+
+@keyframes megaspin-shine {
+  0%, 100% {
+    box-shadow: 0 8px 25px rgba(241, 196, 15, 0.5), 0 0 20px rgba(241, 196, 15, 0.3);
+  }
+  50% {
+    box-shadow: 0 8px 35px rgba(241, 196, 15, 0.7), 0 0 40px rgba(241, 196, 15, 0.5), 0 0 60px rgba(241, 196, 15, 0.2);
+  }
+}
+
+@keyframes megaspin-shimmer {
+  0% {
+    left: -100%;
+  }
+  50%, 100% {
+    left: 150%;
+  }
+}
+
+/* Megaspin button while actively spinning */
+.megaspin-button-spinning {
+  animation: megaspin-button-active 0.4s ease-in-out infinite !important;
+  box-shadow: 
+    0 0 40px rgba(241, 196, 15, 0.8),
+    0 0 80px rgba(241, 196, 15, 0.5),
+    0 0 120px rgba(241, 196, 15, 0.3) !important;
+}
+
+.megaspin-button-spinning .megaspin-fill {
+  background: linear-gradient(145deg, #ffe066 0%, #f5d742 30%, #f1c40f 70%, #f39c12 100%) !important;
+}
+
+.megaspin-button-spinning .megaspin-text {
+  animation: megaspin-text-pulse 0.3s ease-in-out infinite;
+}
+
+@keyframes megaspin-button-active {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 
+      0 0 40px rgba(241, 196, 15, 0.8),
+      0 0 80px rgba(241, 196, 15, 0.5),
+      0 0 120px rgba(241, 196, 15, 0.3);
+  }
+  50% {
+    transform: scale(1.02);
+    box-shadow: 
+      0 0 60px rgba(241, 196, 15, 1),
+      0 0 100px rgba(241, 196, 15, 0.7),
+      0 0 150px rgba(241, 196, 15, 0.4);
+  }
+}
+
+@keyframes megaspin-text-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
 }
 
 .spins-container {
@@ -334,10 +543,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0;
-  min-height: 240px;
-  justify-content: space-evenly;
-  margin-top: 2px;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 10px 0 10px 0;
 }
 
 
@@ -349,6 +557,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 12px;
 }
 .rarity-wheel-wrapper-final .rarity-wheel-reel {
@@ -454,6 +663,12 @@
     font-size: 20px;
   }
 
+  .megaspin-button {
+    height: 54px;
+    font-size: 20px;
+    margin-top: 0;
+  }
+
   .spins-display {
     padding: 12px 18px;
     min-width: 180px;
@@ -478,12 +693,6 @@
 
   .rarity-wheel-label {
     font-size: 15px;
-  }
-
-  .slot-controls-area {
-    min-height: 210px;
-    gap: 0;
-    justify-content: space-evenly;
   }
 
 }

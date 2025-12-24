@@ -80,6 +80,12 @@ export interface SlotVerifyResponse {
   rarity?: string | null;
 }
 
+export interface MegaspinInfo {
+  spins_until_megaspin: number;
+  total_spins_required: number;
+  megaspin_available: boolean;
+}
+
 export interface ClaimBalanceState {
   balance: number | null;
   loading: boolean;
