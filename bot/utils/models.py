@@ -173,6 +173,7 @@ class RolledCardModel(Base):
     being_rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     attempted_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    original_rarity: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("ix_rolled_cards_original_roller_id", "original_roller_id"),)
 
