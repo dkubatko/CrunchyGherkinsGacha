@@ -87,7 +87,9 @@ def set_rolled_card_being_rerolled(roll_id: int, being_rerolled: bool) -> None:
             rolled.being_rerolled = being_rerolled
 
 
-def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
+def set_rolled_card_rerolled(
+    roll_id: int, new_card_id: Optional[int], original_rarity: Optional[str] = None
+) -> None:
     """Mark a rolled card as having been rerolled."""
     with get_session(commit=True) as session:
         rolled = session.query(RolledCardModel).filter(RolledCardModel.roll_id == roll_id).first()
@@ -95,6 +97,8 @@ def set_rolled_card_rerolled(roll_id: int, new_card_id: Optional[int]) -> None:
             rolled.rerolled = True
             rolled.being_rerolled = False
             rolled.rerolled_card_id = new_card_id
+            if original_rarity is not None:
+                rolled.original_rarity = original_rarity
 
 
 def set_rolled_card_locked(roll_id: int, is_locked: bool) -> None:

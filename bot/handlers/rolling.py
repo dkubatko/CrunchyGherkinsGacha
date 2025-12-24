@@ -253,7 +253,7 @@ async def handle_reroll(
         await asyncio.to_thread(card_service.delete_card, active_card.id)
 
         # Update rolled card state to point to the new card
-        rolled_card_manager.mark_rerolled(new_card_id)
+        rolled_card_manager.mark_rerolled(new_card_id, original_card.rarity)
 
         # Generate caption and keyboard for the new card
         caption = rolled_card_manager.generate_caption()

@@ -280,8 +280,7 @@ class RolledCardManager:
 
             # Show reroll status even when claimed
             if rolled_card.rerolled:
-                original_card = card_service.get_card(rolled_card.original_card_id)
-                original_rarity = original_card.rarity if original_card else "Unknown"
+                original_rarity = rolled_card.original_rarity or "Unknown"
                 caption += CARD_STATUS_REROLLED.format(
                     original_rarity=original_rarity,
                     downgraded_rarity=card.rarity,
@@ -293,8 +292,7 @@ class RolledCardManager:
 
             if rolled_card.rerolled:
                 # This was rerolled from a higher rarity - show the original rarity
-                original_card = card_service.get_card(rolled_card.original_card_id)
-                original_rarity = original_card.rarity if original_card else "Unknown"
+                original_rarity = rolled_card.original_rarity or "Unknown"
                 caption += CARD_STATUS_REROLLED.format(
                     original_rarity=original_rarity,
                     downgraded_rarity=card.rarity,
@@ -343,9 +341,11 @@ class RolledCardManager:
         """Set the being_rerolled status in the database."""
         rolled_card_service.set_rolled_card_being_rerolled(self.roll_id, being_rerolled)
 
-    def mark_rerolled(self, new_card_id: Optional[int] = None) -> None:
+    def mark_rerolled(
+        self, new_card_id: Optional[int] = None, original_rarity: Optional[str] = None
+    ) -> None:
         """Mark the card as having been rerolled in the database."""
-        rolled_card_service.set_rolled_card_rerolled(self.roll_id, new_card_id)
+        rolled_card_service.set_rolled_card_rerolled(self.roll_id, new_card_id, original_rarity)
 
     def set_locked(self, is_locked: bool) -> None:
         """Set the locked status in the database."""
