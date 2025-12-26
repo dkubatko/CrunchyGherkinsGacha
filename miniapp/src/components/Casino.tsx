@@ -1,10 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './Casino.css';
 import Slots from './Slots';
 import Minesweeper from './Minesweeper';
+import RideTheBus from './RideTheBus';
+import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
 import slotsCover from '../assets/casino/slots_cover.png';
 import minesweeperCover from '../assets/casino/minesweeper_cover.png';
+import rtbCover from '../assets/casino/rtb_cover.png';
 
 interface SlotSymbol {
   id: number;
@@ -46,7 +49,7 @@ interface CasinoProps {
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
-type GameView = 'catalog' | 'slots' | 'minesweeper';
+type GameView = 'catalog' | 'slots' | 'minesweeper' | 'ridethebus';
 
 type GameInfo = {
   title: string;
@@ -54,7 +57,7 @@ type GameInfo = {
   rules: string[];
 };
 
-const GAME_INFO: Record<'slots' | 'minesweeper', GameInfo> = {
+const GAME_INFO: Record<'slots' | 'minesweeper' | 'ridethebus', GameInfo> = {
   slots: {
     title: 'Slots',
     description: 'Spin the reels to win cards!',
@@ -72,6 +75,16 @@ const GAME_INFO: Record<'slots' | 'minesweeper', GameInfo> = {
       'Reveal three symbols to win a card',
       'Reveal a bomb and lose your bet card!'
     ]
+  },
+  ridethebus: {
+    title: 'Ride the Bus',
+    description: 'Guess card rarities to multiply your spins!',
+    rules: [
+      'Bet 10-50 spins to start',
+      'Guess if the next card is higher or lower rarity',
+      'Multiplier goes 2x → 3x → 5x → 10x',
+      'Cash out anytime or ride to the end!'
+    ]
   }
 };
 
@@ -87,7 +100,25 @@ export default function Casino({
   updateMegaspin
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
-  const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | null>(null);
+  const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | 'ridethebus' | null>(null);
+  const [rtbAvailable, setRtbAvailable] = useState<boolean>(true);
+  const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
+  const rtbCheckRef = useRef(false);
+
+  // Check RTB availability on mount
+  useEffect(() => {
+    if (rtbCheckRef.current) return;
+    rtbCheckRef.current = true;
+
+    ApiService.getRTBConfig(initData, chatId)
+      .then((config) => {
+        setRtbAvailable(config.available);
+        setRtbUnavailableReason(config.unavailable_reason);
+      })
+      .catch((err) => {
+        console.error('Failed to check RTB availability:', err);
+      });
+  }, [initData, chatId]);
 
   // Setup back button when viewing a game
   useEffect(() => {
@@ -103,12 +134,12 @@ export default function Casino({
     return cleanup;
   }, [currentView]);
 
-  const handleGameSelect = (game: 'slots' | 'minesweeper') => {
+  const handleGameSelect = (game: 'slots' | 'minesweeper' | 'ridethebus') => {
     TelegramUtils.triggerHapticSelection();
     setCurrentView(game);
   };
 
-  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'minesweeper') => {
+  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'minesweeper' | 'ridethebus') => {
     e.stopPropagation(); // Prevent card click
     TelegramUtils.triggerHapticImpact('light');
     setShowInfo(game);
@@ -138,6 +169,15 @@ export default function Casino({
   if (currentView === 'minesweeper') {
     return (
       <Minesweeper
+        chatId={chatId}
+        initData={initData}
+      />
+    );
+  }
+
+  if (currentView === 'ridethebus') {
+    return (
+      <RideTheBus
         chatId={chatId}
         initData={initData}
       />
@@ -185,6 +225,32 @@ export default function Casino({
             <div className="casino-game-info">
               <div className="casino-game-name">Minesweeper</div>
               <div className="casino-game-description">Clear the board</div>
+            </div>
+          </div>
+          
+          <div 
+            className={`casino-game-card ${!rtbAvailable ? 'locked' : ''}`}
+            onClick={() => rtbAvailable && handleGameSelect('ridethebus')}
+          >
+            <img src={rtbCover} alt="Ride the Bus" className="casino-game-image" />
+            {!rtbAvailable && (
+              <div className="casino-game-locked-overlay">
+                <span className="casino-game-locked-icon">🔒</span>
+                <span className="casino-game-locked-text">
+                  {rtbUnavailableReason || 'Unavailable'}
+                </span>
+              </div>
+            )}
+            <button 
+              className="casino-info-icon"
+              onClick={(e) => handleInfoClick(e, 'ridethebus')}
+              aria-label="Ride the Bus info"
+            >
+              i
+            </button>
+            <div className="casino-game-info">
+              <div className="casino-game-name">Ride the Bus</div>
+              <div className="casino-game-description">Guess & multiply</div>
             </div>
           </div>
         </div>

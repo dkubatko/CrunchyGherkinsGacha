@@ -346,3 +346,85 @@ class MinesweeperGame(BaseModel):
             source_type=game_orm.source_type,
             source_id=game_orm.source_id,
         )
+
+
+class RideTheBusGame(BaseModel):
+    """Ride the Bus game state data transfer object."""
+
+    id: int
+    user_id: int
+    chat_id: str
+    bet_amount: int
+    card_ids: List[int]
+    card_rarities: List[str]
+    card_titles: List[str]
+    current_position: int  # 1-5, how many cards have been revealed
+    current_multiplier: int  # x2 -> x3 -> x5 -> x10
+    status: str  # 'active', 'won', 'lost', 'cashed_out'
+    started_timestamp: datetime.datetime
+    last_updated_timestamp: datetime.datetime
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert game state to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "chat_id": self.chat_id,
+            "bet_amount": self.bet_amount,
+            "card_ids": self.card_ids,
+            "card_rarities": self.card_rarities,
+            "card_titles": self.card_titles,
+            "current_position": self.current_position,
+            "current_multiplier": self.current_multiplier,
+            "status": self.status,
+            "started_timestamp": self.started_timestamp.isoformat(),
+            "last_updated_timestamp": self.last_updated_timestamp.isoformat(),
+        }
+
+    @classmethod
+    def from_orm(cls, game_orm) -> "RideTheBusGame":
+        """Convert a RideTheBusGameModel ORM object to a RideTheBusGame schema."""
+        # Handle JSON fields that may be strings or already parsed
+        card_ids = game_orm.card_ids
+        if isinstance(card_ids, str):
+            card_ids = json.loads(card_ids)
+
+        card_rarities = game_orm.card_rarities
+        if isinstance(card_rarities, str):
+            card_rarities = json.loads(card_rarities)
+
+        card_titles = game_orm.card_titles
+        if isinstance(card_titles, str):
+            card_titles = json.loads(card_titles)
+
+        # Handle timestamps that may be strings or datetime objects
+        started_timestamp = game_orm.started_timestamp
+        if isinstance(started_timestamp, str):
+            started_timestamp = datetime.datetime.fromisoformat(
+                started_timestamp.replace("Z", "+00:00")
+            )
+        elif started_timestamp is not None and started_timestamp.tzinfo is None:
+            started_timestamp = started_timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        last_updated_timestamp = game_orm.last_updated_timestamp
+        if isinstance(last_updated_timestamp, str):
+            last_updated_timestamp = datetime.datetime.fromisoformat(
+                last_updated_timestamp.replace("Z", "+00:00")
+            )
+        elif last_updated_timestamp is not None and last_updated_timestamp.tzinfo is None:
+            last_updated_timestamp = last_updated_timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        return cls(
+            id=game_orm.id,
+            user_id=game_orm.user_id,
+            chat_id=game_orm.chat_id,
+            bet_amount=game_orm.bet_amount,
+            card_ids=card_ids,
+            card_rarities=card_rarities,
+            card_titles=card_titles,
+            current_position=game_orm.current_position,
+            current_multiplier=game_orm.current_multiplier,
+            status=game_orm.status,
+            started_timestamp=started_timestamp,
+            last_updated_timestamp=last_updated_timestamp,
+        )

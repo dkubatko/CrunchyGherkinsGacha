@@ -277,6 +277,31 @@ class MinesweeperGameModel(Base):
     )
 
 
+class RideTheBusGameModel(Base):
+    """Represents a Ride the Bus game state."""
+
+    __tablename__ = "rtb_games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[str] = mapped_column(String, nullable=False)
+    bet_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    card_ids: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    card_rarities: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    card_titles: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    current_position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    current_multiplier: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    started_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("idx_rtb_user_chat", "user_id", "chat_id"),
+        Index("idx_rtb_status", "status"),
+        Index("idx_rtb_started", "started_timestamp"),
+    )
+
+
 # Configure SQLite-specific settings via events
 @event.listens_for(Base.metadata, "after_create")
 def set_sqlite_pragma(target, connection, **kw):
