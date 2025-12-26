@@ -115,6 +115,23 @@ from utils.services.roll_service import (
     record_roll,
 )
 
+from utils.services.rtb_service import (
+    create_game as rtb_create_game,
+    cash_out as rtb_cash_out,
+    check_availability as rtb_check_availability,
+    get_active_game as rtb_get_active_game,
+    get_game_by_id as rtb_get_game_by_id,
+    process_guess as rtb_process_guess,
+)
+
+from settings.constants import (
+    RTB_CARDS_PER_GAME,
+    RTB_MIN_BET,
+    RTB_MAX_BET,
+    RTB_MULTIPLIER_PROGRESSION,
+    RARITY_ORDER,
+)
+
 __all__ = [
     # Card service
     "add_card",
@@ -198,4 +215,16 @@ __all__ = [
     "can_roll",
     "get_last_roll_time",
     "record_roll",
+    # RTB (Ride the Bus) service
+    "rtb_check_availability",
+    "rtb_create_game",
+    "rtb_cash_out",
+    "rtb_get_active_game",
+    "rtb_get_game_by_id",
+    "rtb_process_guess",
+    "RTB_CARDS_PER_GAME",
+    "RTB_MIN_BET",
+    "RTB_MAX_BET",
+    "RTB_MULTIPLIER_PROGRESSION",
+    "RARITY_ORDER",
 ]

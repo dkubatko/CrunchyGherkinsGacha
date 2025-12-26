@@ -34,6 +34,48 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
 }
 
+.casino-game-card.locked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.casino-game-card.locked:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.casino-game-card.locked:active {
+  transform: none;
+}
+
+.casino-game-locked-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 3rem; /* Above the info section */
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 5;
+  border-radius: 8px 8px 0 0;
+}
+
+.casino-game-locked-icon {
+  font-size: 2rem;
+}
+
+.casino-game-locked-text {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.9);
+  text-align: center;
+  padding: 0 8px;
+  line-height: 1.3;
+}
+
 .casino-game-image {
   position: absolute;
   top: 0;

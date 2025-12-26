@@ -7,6 +7,10 @@ import type {
   CardConfigResponse,
   UserProfile,
   MegaspinInfo,
+  RTBGameResponse,
+  RTBGuessResponse,
+  RTBCashOutResponse,
+  RTBConfigResponse,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
@@ -612,6 +616,163 @@ export class ApiService {
 
     if (!response.ok) {
       let detail = `Failed to update minesweeper game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  // ========== Ride the Bus (RTB) Methods ==========
+
+  static async getRTBGame(
+    userId: number,
+    chatId: string,
+    initData: string
+  ): Promise<RTBGameResponse | null> {
+    const params = new URLSearchParams({
+      user_id: userId.toString(),
+      chat_id: chatId
+    });
+
+    const response = await fetch(`${API_BASE_URL}/rtb/game?${params.toString()}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to get RTB game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  static async startRTBGame(
+    userId: number,
+    chatId: string,
+    betAmount: number,
+    initData: string
+  ): Promise<RTBGameResponse> {
+    const response = await fetch(`${API_BASE_URL}/rtb/start`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        bet_amount: betAmount
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to start RTB game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async makeRTBGuess(
+    userId: number,
+    gameId: number,
+    guess: 'higher' | 'lower' | 'equal',
+    initData: string
+  ): Promise<RTBGuessResponse> {
+    const response = await fetch(`${API_BASE_URL}/rtb/guess`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        game_id: gameId,
+        guess: guess
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to make RTB guess (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async cashOutRTB(
+    userId: number,
+    gameId: number,
+    initData: string
+  ): Promise<RTBCashOutResponse> {
+    const response = await fetch(`${API_BASE_URL}/rtb/cashout`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        game_id: gameId
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to cash out RTB game (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async getRTBConfig(initData: string, chatId?: string): Promise<RTBConfigResponse> {
+    const params = new URLSearchParams();
+    if (chatId) {
+      params.set('chat_id', chatId);
+    }
+    
+    const url = params.size > 0 
+      ? `${API_BASE_URL}/rtb/config?${params.toString()}`
+      : `${API_BASE_URL}/rtb/config`;
+    
+    const response = await fetch(url, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to get RTB config (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {
