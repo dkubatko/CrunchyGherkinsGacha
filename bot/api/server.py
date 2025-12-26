@@ -6,16 +6,19 @@ configures middleware, and includes all routers from the modular router files.
 """
 
 import logging
+import traceback
 import uvicorn
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from api.config import DEBUG_MODE
 from api.routers import (
     cards_router,
     chat_router,
     minesweeper_router,
+    rtb_router,
     slots_router,
     trade_router,
     user_router,
@@ -29,6 +32,19 @@ app = FastAPI(
     description="API for the Telegram Mini App",
     version="1.0.0",
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Log full tracebacks for unhandled exceptions."""
+    logger.error(
+        f"Unhandled exception on {request.method} {request.url.path}:\n" f"{traceback.format_exc()}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
 
 # CORS configuration
 if DEBUG_MODE:
@@ -54,6 +70,7 @@ app.include_router(trade_router)
 app.include_router(user_router)
 app.include_router(slots_router)
 app.include_router(minesweeper_router)
+app.include_router(rtb_router)
 app.include_router(chat_router)
 
 

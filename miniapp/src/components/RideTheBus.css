@@ -1,0 +1,672 @@
+.rtb-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  gap: 10px;
+  min-height: 100vh;
+  background: var(--tg-theme-bg-color, #1a1a1a);
+  color: var(--tg-theme-text-color, white);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.rtb-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  position: relative;
+}
+
+.rtb-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  text-align: center;
+}
+
+.rtb-header .rtb-spins-display {
+  position: absolute;
+  right: 0;
+}
+
+.rtb-spins-display {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 6px 12px;
+  border-radius: 16px;
+}
+
+.rtb-spins-count {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+/* Spins coin icon - base style with shine animation */
+.rtb-coin {
+  display: inline-block;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.08) 38%, transparent 67%),
+    radial-gradient(circle at 52% 62%, #ffe9a8 0%, #ffce5a 38%, #f5a321 70%, #b87414 100%);
+  background-blend-mode: screen;
+  border: 1px solid rgba(255, 213, 110, 0.95);
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.22), inset 0 -3px 6px rgba(166, 88, 8, 0.55), inset 0 3px 6px rgba(255, 236, 163, 0.45);
+  animation: rtb-coin-spin 3.2s ease-in-out infinite;
+  position: relative;
+  flex-shrink: 0;
+  transform-origin: center;
+  will-change: transform, box-shadow;
+  backface-visibility: hidden;
+  perspective: 140px;
+}
+
+.rtb-coin::before {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 205, 115, 0.25) 0%, rgba(255, 178, 64, 0.35) 45%, rgba(201, 110, 12, 0.55) 100%);
+  box-shadow: inset 0 1px 2px rgba(255, 255, 255, 0.5), inset 0 -1px 2px rgba(191, 104, 12, 0.6);
+  opacity: 0.85;
+  pointer-events: none;
+  transform-origin: center;
+  animation: rtb-coin-rim 6s linear infinite;
+}
+
+.rtb-coin::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.2) 35%, transparent 70%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.45) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.35) 60%, rgba(255, 255, 255, 0) 100%);
+  background-size: 120% 120%, 220% 220%;
+  background-position: 20% 25%, -80% 60%;
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  filter: blur(0.15px);
+  pointer-events: none;
+  animation: rtb-coin-shimmer 2.8s ease-in-out infinite;
+}
+
+/* Header coin size */
+.rtb-spins-display .rtb-coin {
+  width: 16px;
+  height: 16px;
+}
+
+/* Inline coin for text - same style, scales with font */
+.rtb-coin-inline {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 28% 28%, rgba(255, 255, 255, 0.8) 0%, rgba(255, 255, 255, 0.08) 38%, transparent 67%),
+    radial-gradient(circle at 52% 62%, #ffe9a8 0%, #ffce5a 38%, #f5a321 70%, #b87414 100%);
+  background-blend-mode: screen;
+  border: 1px solid rgba(255, 213, 110, 0.95);
+  box-shadow: 0 3px 7px rgba(0, 0, 0, 0.22), inset 0 -2px 3px rgba(166, 88, 8, 0.55), inset 0 2px 3px rgba(255, 236, 163, 0.45);
+  animation: rtb-coin-spin 3.2s ease-in-out infinite;
+  position: relative;
+  flex-shrink: 0;
+  transform-origin: center;
+  vertical-align: -0.15em;
+  margin-left: 0;
+}
+
+.rtb-coin-inline::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.2) 35%, transparent 70%);
+  mix-blend-mode: screen;
+  opacity: 0.9;
+  pointer-events: none;
+  animation: rtb-coin-shimmer 2.8s ease-in-out infinite;
+}
+
+@keyframes rtb-coin-spin {
+  0%, 100% {
+    transform: rotateY(0deg) rotateZ(0deg) scale(1);
+  }
+  20% {
+    transform: rotateY(12deg) rotateZ(1deg) scaleX(0.98);
+  }
+  45% {
+    transform: rotateY(-10deg) rotateZ(-1deg) scaleX(0.97);
+  }
+  70% {
+    transform: rotateY(8deg) rotateZ(0.6deg) scaleX(0.985);
+  }
+}
+
+@keyframes rtb-coin-shimmer {
+  0%, 100% {
+    background-position: 20% 25%, -80% 60%;
+    opacity: 0.85;
+  }
+  45% {
+    background-position: 30% 20%, 110% 45%;
+    opacity: 1;
+  }
+  60% {
+    background-position: 36% 24%, 160% 30%;
+    opacity: 0.95;
+  }
+}
+
+@keyframes rtb-coin-rim {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Cards container - preview (betting/finished phase) */
+.rtb-cards-container {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: nowrap;
+  width: 100%;
+  padding: 0 8px;
+  min-height: 180px; /* Fixed min-height to accommodate rotated cards */
+  height: 180px;
+  box-sizing: border-box;
+}
+
+.rtb-cards-preview .rtb-card {
+  flex: 1;
+  max-width: 115px;
+  aspect-ratio: 5 / 7;
+}
+
+/* Cards - game layout (playing phase) */
+.rtb-cards-game-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 220px;
+  height: 220px;
+  box-sizing: border-box;
+}
+
+/* Unified container for all cards during active gameplay */
+/* All cards use absolute positioning relative to this container's center */
+.rtb-cards-unified {
+  position: relative;
+  width: 270px; /* STACK_WIDTH * 2 + STACK_GAP = 115 * 2 + 40 */
+  height: 161px; /* Card height: 5:7 ratio of 115px width */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Legacy stack containers - kept for backwards compatibility but not used in unified mode */
+.rtb-main-cards {
+  display: flex;
+  gap: 40px;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+/* Card stack container - legacy, not used in unified mode */
+.rtb-card-stack {
+  position: relative;
+  width: 115px;
+  height: 161px; /* 5:7 ratio: 115 * 7/5 = 161 */
+}
+
+/* Top card in stack gets highlight - target the back face */
+.rtb-card-top .rtb-card-back {
+  box-shadow: 0 0 20px rgba(82, 136, 193, 0.6);
+  border-color: var(--tg-theme-button-color, #5288c1);
+}
+
+.rtb-card {
+  position: relative;
+  aspect-ratio: 5 / 7;
+  /* No overflow: hidden to allow 3D flip transform */
+  /* No border-radius here - applied to card faces instead */
+}
+
+/* ============================================
+   CARD FLIP ANIMATION STRUCTURE
+   ============================================ */
+
+/* Inner wrapper for 3D flip - handles the rotation */
+.rtb-card-inner {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* Both faces share these base styles */
+.rtb-card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+/* Back face - shows placeholder "?" */
+.rtb-card-back {
+  transform: rotateY(0deg);
+  background: linear-gradient(135deg, #3a3a5a 0%, #2a2a4a 100%);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  box-sizing: border-box;
+}
+
+/* Front face - shows card image, pre-rotated so hidden initially */
+.rtb-card-front {
+  transform: rotateY(180deg);
+  background: linear-gradient(135deg, #2a2a4a 0%, #1a1a3a 100%);
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+}
+
+/* ============================================ */
+
+.rtb-card.hidden {
+  background: transparent;
+}
+
+.rtb-card.revealed {
+  background: transparent;
+}
+
+.rtb-card-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, #3a3a5a 0%, #2a2a4a 100%);
+}
+
+.rtb-card-question {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.rtb-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rtb-card-rarity {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 3px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  text-align: center;
+  text-transform: uppercase;
+  background: #000000;
+}
+
+.rtb-rarity-common { color: #4A90E2; }
+.rtb-rarity-uncommon { color: #4caf50; }
+.rtb-rarity-rare { color: #4CAF50; }
+.rtb-rarity-epic { color: #9C27B0; }
+.rtb-rarity-legendary { color: #FFD700; }
+.rtb-rarity-unique { color: #E0E0E0; }
+
+/* Multiplier display - vertical layout with dynamic colors */
+.rtb-multiplier-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 80px; /* Fixed height to prevent layout shift */
+  margin-top: -6px;
+  margin-bottom: 10px;
+}
+
+.rtb-multiplier {
+  font-size: 2.5rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Low multiplier (1x) */
+.rtb-multiplier-low {
+  background: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Medium multiplier (2x) */
+.rtb-multiplier-medium {
+  transform: scale(1.1);
+  background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 10px rgba(255, 152, 0, 0.5));
+}
+
+/* High multiplier (3-4x) */
+.rtb-multiplier-high {
+  transform: scale(1.2);
+  background: linear-gradient(135deg, #f44336 0%, #e91e63 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 15px rgba(244, 67, 54, 0.6));
+}
+
+/* Extreme multiplier (5x+) */
+.rtb-multiplier-extreme {
+  transform: scale(1.3);
+  background: linear-gradient(135deg, #9c27b0 0%, #673ab7 50%, #3f51b5 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 20px rgba(156, 39, 176, 0.8));
+}
+
+.rtb-payout {
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #ffd700;
+}
+
+.rtb-status {
+  font-size: 1.4rem;
+  font-weight: 700;
+}
+
+.rtb-status.win {
+  background: linear-gradient(135deg, #81c784 0%, #4caf50 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 8px rgba(129, 199, 132, 0.6));
+}
+
+.rtb-status.lose {
+  background: linear-gradient(135deg, #e57373 0%, #f44336 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 8px rgba(229, 115, 115, 0.6));
+}
+
+.rtb-status.cashout {
+  background: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 0 8px rgba(255, 215, 0, 0.6));
+}
+
+/* Betting controls - simplified */
+.rtb-betting-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.rtb-bet-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  width: 100%;
+}
+
+.rtb-bet-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1;
+  padding: 14px 20px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+  color: var(--tg-theme-text-color, white);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.rtb-bet-option:hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.05) 100%);
+  transform: translateY(-2px);
+}
+
+.rtb-bet-option.selected {
+  border-color: var(--tg-theme-button-color, #5288c1);
+  background: linear-gradient(180deg, rgba(82, 136, 193, 0.3) 0%, rgba(82, 136, 193, 0.15) 100%);
+  box-shadow: 0 0 12px rgba(82, 136, 193, 0.3);
+}
+
+.rtb-bet-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rtb-start-button {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tg-theme-button-color, #5288c1) 0%, #3a6a9a 100%);
+  color: var(--tg-theme-button-text-color, white);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rtb-start-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Game controls */
+.rtb-game-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.rtb-guess-buttons {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.rtb-guess-button {
+  flex: 1;
+  padding: 16px 8px;
+  border: none;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.rtb-guess-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.rtb-guess-button.higher {
+  background: linear-gradient(135deg, #4caf50 0%, #388e3c 100%);
+  color: white;
+}
+
+.rtb-guess-button.equal {
+  background: linear-gradient(135deg, #9e9e9e 0%, #757575 100%);
+  color: white;
+}
+
+.rtb-guess-button.lower {
+  background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);
+  color: white;
+}
+
+.rtb-cashout-button {
+  width: 100%;
+  padding: 16px 8px;
+  border: none;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #ffd700 0%, #ffaa00 100%);
+  color: #1a1a1a;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.rtb-cashout-button.disabled,
+.rtb-cashout-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Finished controls */
+.rtb-finished-controls {
+  width: 100%;
+  max-width: 100%;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.rtb-new-game-button {
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--tg-theme-button-color, #5288c1) 0%, #3a6a9a 100%);
+  color: var(--tg-theme-button-text-color, white);
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+/* Error display */
+.rtb-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+  text-align: center;
+}
+
+.rtb-error p {
+  color: #e57373;
+  margin: 0;
+}
+
+.rtb-error button {
+  padding: 10px 24px;
+  border: none;
+  border-radius: 8px;
+  background: var(--tg-theme-button-color, #5288c1);
+  color: var(--tg-theme-button-text-color, white);
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Finished phase - spread layout */
+.rtb-cards-finished {
+  overflow: visible;
+}
+
+/* Arc layout for finished phase cards */
+.rtb-cards-arc {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+}
+
+.rtb-card-arc {
+  /* position, width, and transforms handled by Framer Motion */
+  cursor: pointer;
+}
+
+.rtb-card-arc.hidden {
+  cursor: default;
+}
+
+/* Red glow for the card the user lost on - target the front face */
+.rtb-card.rtb-card-losing .rtb-card-front {
+  box-shadow: 0 0 8px 2px rgba(255, 70, 70, 0.6),
+              0 0 14px 4px rgba(220, 50, 50, 0.3);
+  animation: rtb-losing-pulse 1.8s ease-in-out infinite;
+}
+
+@keyframes rtb-losing-pulse {
+  0%, 100% {
+    box-shadow: 0 0 8px 2px rgba(255, 70, 70, 0.6),
+                0 0 14px 4px rgba(220, 50, 50, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 10px 3px rgba(255, 70, 70, 0.7),
+                0 0 18px 5px rgba(220, 50, 50, 0.4);
+  }
+}
+
+/* Card info overlay on selected card */
+.rtb-card-info-overlay {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.85);
+  padding: 4px 10px;
+  border-radius: 6px;
+  white-space: nowrap;
+  z-index: 10;
+}
+
+.rtb-card-info-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: white;
+}
