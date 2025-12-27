@@ -198,18 +198,48 @@
   box-shadow: none !important;
 }
 
-.spin-button-quick:not(:disabled) {
+/* Autospin mode button (enabled but not running) */
+.spin-button-autospin:not(:disabled):not(.spin-button-stop) {
   background: linear-gradient(145deg, #3498db 0%, #2980b9 100%) !important;
   box-shadow: 0 8px 20px rgba(52, 152, 219, 0.35);
 }
 
-.spin-button-quick:not(:disabled):hover {
+.spin-button-autospin:not(:disabled):not(.spin-button-stop):hover {
   background: linear-gradient(145deg, #5dade2 0%, #3498db 100%) !important;
   box-shadow: 0 12px 26px rgba(52, 152, 219, 0.45);
 }
 
-.spin-button-quick:not(:disabled):active {
+.spin-button-autospin:not(:disabled):not(.spin-button-stop):active {
   box-shadow: 0 6px 18px rgba(52, 152, 219, 0.35);
+}
+
+/* Autospin running - STOP button */
+.spin-button-stop:not(:disabled) {
+  background: linear-gradient(145deg, #e67e22 0%, #d35400 100%) !important;
+  box-shadow: 0 8px 20px rgba(230, 126, 34, 0.35);
+  animation: pulse-stop 1.5s ease-in-out infinite;
+}
+
+.spin-button-stop:not(:disabled):hover {
+  background: linear-gradient(145deg, #f39c12 0%, #e67e22 100%) !important;
+  box-shadow: 0 12px 26px rgba(230, 126, 34, 0.45);
+}
+
+.spin-button-stop:not(:disabled):active {
+  box-shadow: 0 6px 18px rgba(230, 126, 34, 0.35);
+}
+
+.spin-button-stop:disabled {
+  animation: none;
+}
+
+@keyframes pulse-stop {
+  0%, 100% {
+    box-shadow: 0 8px 20px rgba(230, 126, 34, 0.35);
+  }
+  50% {
+    box-shadow: 0 8px 30px rgba(230, 126, 34, 0.55);
+  }
 }
 
 /* Megaspin Button Styles */
