@@ -15,6 +15,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -50,22 +51,35 @@ class CardModel(Base):
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    set_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sets.id"), nullable=True)
+    set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    season_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Relationship to card images (one-to-one)
     image: Mapped[Optional["CardImageModel"]] = relationship(
         "CardImageModel", back_populates="card", uselist=False, cascade="all, delete-orphan"
     )
 
-    # Relationship to set
-    card_set: Mapped[Optional["SetModel"]] = relationship("SetModel", back_populates="cards")
+    # Relationship to set (composite FK: set_id + season_id)
+    card_set: Mapped[Optional["SetModel"]] = relationship(
+        "SetModel",
+        back_populates="cards",
+        foreign_keys="[CardModel.set_id, CardModel.season_id]",
+        primaryjoin="and_(CardModel.set_id == SetModel.id, CardModel.season_id == SetModel.season_id)",
+    )
 
     # Indices for performance
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["set_id", "season_id"],
+            ["sets.id", "sets.season_id"],
+            name="fk_cards_set_season",
+        ),
         Index("idx_cards_chat_id", "chat_id"),
         Index("idx_cards_user_id", "user_id"),
         Index("idx_cards_owner", "owner"),
         Index("idx_cards_rarity", "rarity"),
+        Index("idx_cards_season_id", "season_id"),
+        Index("idx_cards_season_user", "season_id", "user_id"),
     )
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
@@ -242,10 +256,16 @@ class SetModel(Base):
     __tablename__ = "sets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
     name: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # Relationship to cards
-    cards: Mapped[List["CardModel"]] = relationship("CardModel", back_populates="card_set")
+    # Relationship to cards (uses composite FK from cards table)
+    cards: Mapped[List["CardModel"]] = relationship(
+        "CardModel",
+        back_populates="card_set",
+        foreign_keys="[CardModel.set_id, CardModel.season_id]",
+        primaryjoin="and_(SetModel.id == CardModel.set_id, SetModel.season_id == CardModel.season_id)",
+    )
 
 
 class MinesweeperGameModel(Base):

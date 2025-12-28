@@ -55,6 +55,7 @@ class Card(BaseModel):
     source_type: Optional[str] = None
     source_id: Optional[int] = None
     set_id: Optional[int] = None
+    season_id: int = 0
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
@@ -97,6 +98,7 @@ class Card(BaseModel):
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
+            season_id=card_orm.season_id,
         )
 
 
@@ -131,6 +133,7 @@ class CardWithImage(Card):
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
+            season_id=card_orm.season_id,
             image_b64=image_b64,
         )
 
