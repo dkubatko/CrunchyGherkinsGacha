@@ -80,8 +80,8 @@ const GAME_INFO: Record<'slots' | 'minesweeper' | 'ridethebus', GameInfo> = {
     title: 'Ride the Bus',
     description: 'Guess card rarities to multiply your spins!',
     rules: [
-      'Bet 10-50 spins to start',
-      'Guess if the next card is higher or lower rarity',
+      'Bet 10, 20 or 30 spins to start',
+      'Guess the next card\'s rarity',
       'Multiplier goes 2x → 3x → 5x → 10x',
       'Cash out anytime or ride to the end!'
     ]
