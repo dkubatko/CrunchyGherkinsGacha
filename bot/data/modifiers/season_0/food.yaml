@@ -1,5 +1,6 @@
 id: 10
 set: food
+source: all
 rarities:
 - name: Common
   modifiers:

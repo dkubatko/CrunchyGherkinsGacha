@@ -1,5 +1,6 @@
 id: 5
 set: fantasy
+source: all
 rarities:
 - name: Common
   modifiers:

@@ -1,5 +1,6 @@
 id: 7
 set: christmas
+source: all
 rarities:
 - name: Common
   modifiers:

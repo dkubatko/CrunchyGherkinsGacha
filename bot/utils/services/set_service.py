@@ -16,13 +16,16 @@ from utils.session import get_session
 logger = logging.getLogger(__name__)
 
 
-def upsert_set(set_id: int, name: str, season_id: Optional[int] = None) -> None:
+def upsert_set(
+    set_id: int, name: str, season_id: Optional[int] = None, source: str = "all"
+) -> None:
     """Insert or update a set in the database.
 
     Args:
         set_id: The set's unique identifier within a season.
         name: The display name of the set.
         season_id: The season this set belongs to. Defaults to CURRENT_SEASON.
+        source: The source filter for this set. Can be "roll", "slots", or "all".
     """
     if season_id is None:
         season_id = CURRENT_SEASON
@@ -35,8 +38,9 @@ def upsert_set(set_id: int, name: str, season_id: Optional[int] = None) -> None:
         )
         if existing:
             existing.name = name
+            existing.source = source
         else:
-            new_set = SetModel(id=set_id, season_id=season_id, name=name)
+            new_set = SetModel(id=set_id, season_id=season_id, name=name, source=source)
             session.add(new_set)
 
 

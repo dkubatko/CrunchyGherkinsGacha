@@ -13,7 +13,7 @@ from typing import List, Optional, Set
 
 from fastapi import HTTPException
 
-from api.config import MINIAPP_URL, get_rarity_weight_pairs, get_rarity_total_weight
+from api.config import MINIAPP_URL
 from api.schemas import SlotSymbolInfo
 from settings.constants import RARITIES
 from utils.miniapp import encode_single_card_token
@@ -120,34 +120,6 @@ def format_timestamp(dt: Optional[datetime]) -> Optional[str]:
     if iso_value.endswith("+00:00"):
         return f"{iso_value[:-6]}Z"
     return iso_value
-
-
-def pick_slot_rarity(random_module) -> str:
-    """
-    Select a rarity based on configured weights.
-
-    Args:
-        random_module: Random module instance for generating random numbers
-
-    Returns:
-        Selected rarity name
-    """
-    rarity_weight_pairs = get_rarity_weight_pairs()
-    rarity_total_weight = get_rarity_total_weight()
-
-    if not rarity_weight_pairs or rarity_total_weight <= 0:
-        # Fall back to the first configured rarity or Common
-        return next(iter(RARITIES.keys()), "Common")
-
-    threshold = random_module.uniform(0, rarity_total_weight)
-    cumulative = 0.0
-    for name, weight in rarity_weight_pairs:
-        cumulative += weight
-        if threshold <= cumulative:
-            return name
-
-    # Numeric instability fallback
-    return rarity_weight_pairs[-1][0]
 
 
 def generate_slot_loss_pattern(

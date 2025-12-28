@@ -1,6 +1,7 @@
 # Animal-themed modifier keywords by rarity. Lists are alphabetized and de-duplicated.
 id: 1
 set: animals
+source: all
 rarities:
 - name: Common
   modifiers:

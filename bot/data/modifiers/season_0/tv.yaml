@@ -1,5 +1,6 @@
 id: 8
 set: tv
+source: all
 rarities:
 - name: Common
   modifiers:

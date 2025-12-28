@@ -1,6 +1,7 @@
 # Default set modifier keywords by rarity. Lists are alphabetized and de-duplicated.
 id: 0
 set: classic
+source: all
 rarities:
 - name: Common
   modifiers:

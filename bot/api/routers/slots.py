@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from api.background_tasks import process_slots_victory_background
 from api.config import DEBUG_MODE, TELEGRAM_TOKEN, gemini_util
 from api.dependencies import get_validated_user, verify_user_match
-from api.helpers import generate_slot_loss_pattern, normalize_rarity, pick_slot_rarity
+from api.helpers import generate_slot_loss_pattern, normalize_rarity
 from api.schemas import (
     ConsumeSpinResponse,
     MegaspinInfo,
@@ -32,6 +32,7 @@ from api.schemas import (
     SpinsResponse,
 )
 from settings.constants import SLOT_CLAIM_CHANCE, SLOT_WIN_CHANCE
+from utils.rolling import get_random_rarity
 from utils.services import (
     character_service,
     claim_service,
@@ -262,7 +263,7 @@ async def verify_slot_spin(
             else:
                 # Pick a random eligible symbol
                 winning_symbol = random.choice(eligible_symbols)
-                rarity = pick_slot_rarity(random)
+                rarity = get_random_rarity(source="slots")
                 # All three reels show the winning symbol
                 slot_results = [winning_symbol, winning_symbol, winning_symbol]
                 is_win = True
@@ -332,7 +333,7 @@ async def verify_megaspin(
 
         # Pick a random eligible symbol - guaranteed win
         winning_symbol = random.choice(eligible_symbols)
-        rarity = pick_slot_rarity(random)
+        rarity = get_random_rarity(source="slots")
 
         # All three reels show the winning symbol
         slot_results = [winning_symbol, winning_symbol, winning_symbol]

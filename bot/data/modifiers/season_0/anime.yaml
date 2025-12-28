@@ -1,6 +1,7 @@
 # Anime and pop culture modifier keywords by rarity. Lists are alphabetized and de-duplicated.
 id: 2
 set: anime
+source: all
 rarities:
 - name: Common
   modifiers:

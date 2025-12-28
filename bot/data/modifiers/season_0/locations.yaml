@@ -1,5 +1,6 @@
 id: 9
 set: locations
+source: all
 rarities:
 - name: Common
   modifiers:

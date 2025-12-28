@@ -1,6 +1,7 @@
 # Brand modifier keywords by rarity. Lists are alphabetized and de-duplicated.
 id: 3
 set: brands
+source: all
 rarities:
 - name: Common
   modifiers:
