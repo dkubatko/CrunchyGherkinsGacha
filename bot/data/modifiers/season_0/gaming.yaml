@@ -1,5 +1,6 @@
 id: 6
 set: gaming
+source: all
 rarities:
 - name: Common
   modifiers:

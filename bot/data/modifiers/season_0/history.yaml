@@ -1,5 +1,6 @@
 id: 4
 set: history
+source: all
 rarities:
 - name: Common
   modifiers:

@@ -8,7 +8,6 @@ and shared utilities that are used across all API routers.
 import os
 import sys
 import logging
-from typing import List, Tuple
 
 from dotenv import load_dotenv
 
@@ -58,24 +57,6 @@ gemini_util = gemini.GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
 
 # Maximum retries for slot victory image generation
 MAX_SLOT_VICTORY_IMAGE_RETRIES = 2
-
-# Rarity weight configuration for slot machine
-_RARITY_WEIGHT_PAIRS: List[Tuple[str, int]] = [
-    (name, int(details.get("weight", 0)))
-    for name, details in RARITIES.items()
-    if isinstance(details, dict) and int(details.get("weight", 0)) > 0
-]
-_RARITY_TOTAL_WEIGHT = sum(weight for _, weight in _RARITY_WEIGHT_PAIRS)
-
-
-def get_rarity_weight_pairs() -> List[Tuple[str, int]]:
-    """Get the list of rarity weight pairs."""
-    return _RARITY_WEIGHT_PAIRS
-
-
-def get_rarity_total_weight() -> int:
-    """Get the total weight of all rarities."""
-    return _RARITY_TOTAL_WEIGHT
 
 
 def create_bot_instance():

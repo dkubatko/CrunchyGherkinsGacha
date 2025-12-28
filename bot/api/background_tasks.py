@@ -117,15 +117,16 @@ async def process_slots_victory_background(
                 )
                 return
 
-            # Generate card from source with built-in retry support
+            # Generate card from profile with built-in retry support
             generated_card = await asyncio.to_thread(
-                rolling.generate_card_from_source,
+                rolling.generate_card_from_profile,
                 source_type,
                 source_id,
                 gemini_util_instance,
                 normalized_rarity,
                 max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
                 chat_id=chat_id,
+                source="slots",
             )
 
             # Add card to database and assign to winner
@@ -360,15 +361,16 @@ async def process_minesweeper_victory_background(
         pending_message = await bot.send_message(**send_params)
 
         try:
-            # Generate card from source with built-in retry support
+            # Generate card from profile with built-in retry support
             generated_card = await asyncio.to_thread(
-                rolling.generate_card_from_source,
+                rolling.generate_card_from_profile,
                 source_type,
                 source_id,
                 gemini_util_instance,
                 rarity,
                 max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
                 chat_id=chat_id,
+                source="slots",
             )
 
             # Add card to database and assign to winner
