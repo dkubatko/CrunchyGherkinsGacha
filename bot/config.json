@@ -13,6 +13,7 @@
   "RTB_MIN_BET": 10,
   "RTB_MAX_BET": 50,
   "RTB_CARDS_PER_GAME": 5,
+  "RTB_NUM_CARDS_TO_UNLOCK": 100,
   "RTB_MULTIPLIER_PROGRESSION": {"1": 1, "2": 2, "3": 3, "4": 5, "5": 10},
   "RARITIES": {
     "Common": {

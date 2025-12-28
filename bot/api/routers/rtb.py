@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from api.background_tasks import process_rtb_result_notification
 from api.dependencies import get_validated_user, verify_user_match
 from api.helpers import format_timestamp
 from api.schemas import (
@@ -204,10 +205,34 @@ async def make_rtb_guess(
             spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
         )
         message = f"🎉 Correct! You won {payout} spins!"
+        # Send win notification
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+        if username:
+            asyncio.create_task(
+                process_rtb_result_notification(
+                    username=username,
+                    chat_id=updated_game.chat_id,
+                    result="won",
+                    amount=payout,
+                    multiplier=updated_game.current_multiplier,
+                )
+            )
     elif correct:
         message = f"✅ Correct! Next card is {actual}. Multiplier is now {updated_game.current_multiplier}x!"
     else:
         message = f"❌ Wrong! Next card was {actual}. You lost {updated_game.bet_amount} spins."
+        # Send loss notification
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+        if username:
+            asyncio.create_task(
+                process_rtb_result_notification(
+                    username=username,
+                    chat_id=updated_game.chat_id,
+                    result="lost",
+                    amount=updated_game.bet_amount,
+                    multiplier=updated_game.current_multiplier,
+                )
+            )
 
     return RTBGuessResponse(
         correct=correct,
@@ -248,6 +273,19 @@ async def cash_out_rtb_game(
     await asyncio.to_thread(
         spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
     )
+
+    # Send cashout notification
+    username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+    if username:
+        asyncio.create_task(
+            process_rtb_result_notification(
+                username=username,
+                chat_id=updated_game.chat_id,
+                result="cashed out",
+                amount=payout,
+                multiplier=updated_game.current_multiplier,
+            )
+        )
 
     return RTBCashOutResponse(
         success=True,

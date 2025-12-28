@@ -30,6 +30,7 @@ MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
 RTB_MIN_BET = config.get("RTB_MIN_BET", 10)
 RTB_MAX_BET = config.get("RTB_MAX_BET", 50)
 RTB_CARDS_PER_GAME = config.get("RTB_CARDS_PER_GAME", 5)
+RTB_NUM_CARDS_TO_UNLOCK = config.get("RTB_NUM_CARDS_TO_UNLOCK", 100)
 _rtb_mult = config.get("RTB_MULTIPLIER_PROGRESSION", {"1": 1, "2": 2, "3": 3, "4": 5, "5": 10})
 RTB_MULTIPLIER_PROGRESSION = {int(k): v for k, v in _rtb_mult.items()}
 
@@ -365,6 +366,8 @@ MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
 MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Minesweeper!"
 
 MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
+
+RTB_RESULT_MESSAGE = "@{username} {action} <b>{amount} spins ({multiplier}x)</b> in Ride the Bus!"
 
 LOCK_USAGE_MESSAGE = (
     "Usage: /lock <card_id>.\n\n"

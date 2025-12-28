@@ -320,6 +320,52 @@ async def process_minesweeper_bet_notification(
         )
 
 
+async def process_rtb_result_notification(
+    username: str,
+    chat_id: str,
+    result: str,  # "won", "lost", or "cashed out"
+    amount: int,
+    multiplier: float,
+):
+    """Send RTB game result notification to chat in background after responding to client."""
+    from settings.constants import RTB_RESULT_MESSAGE
+
+    try:
+        # Initialize bot
+        bot = create_bot_instance()
+
+        # Format the message with the action
+        message = RTB_RESULT_MESSAGE.format(
+            username=username,
+            action=result,
+            amount=amount,
+            multiplier=multiplier,
+        )
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info("Sent RTB %s notification for user %s in chat %s", result, username, chat_id)
+
+    except Exception as exc:
+        logger.error(
+            "Failed to send RTB result notification for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+
+
 async def process_minesweeper_victory_background(
     username: str,
     user_id: int,
