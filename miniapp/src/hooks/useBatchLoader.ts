@@ -241,29 +241,11 @@ export const useBatchLoader = (
     });
   }, [addToPendingBatch]);
 
-  // If the remaining unfetched cards are fewer than the batch size, load them immediately.
+  // Reset state when cards change significantly, then load small collections immediately.
+  // These must be in a single effect to avoid race conditions where the reset clears
+  // processedCardsRef after loadCardsInBatches has already marked cards as processing.
   useEffect(() => {
-    if (!cards.length || !initData) return;
-
-    const remainingCards = cards.filter(card =>
-      !imageCache.has(card.id, 'thumb') &&
-      !processedCardsRef.current.has(card.id)
-    );
-
-    if (remainingCards.length > 0 && remainingCards.length < BATCH_SIZE) {
-      console.log('Loading remaining cards directly:', remainingCards.map(card => card.id));
-      loadCardsInBatches(remainingCards);
-    }
-  }, [cards, initData, loadCardsInBatches]);
-
-  useEffect(() => {
-    if (initData && pendingCardsRef.current.size > 0) {
-      processPendingBatch();
-    }
-  }, [initData, processPendingBatch]);
-
-  // Reset state when cards change significantly
-  useEffect(() => {
+    // First, reset all state
     dispatch({ type: 'reset' });
     processedCardsRef.current.clear();
     pendingCardsRef.current.clear();
@@ -272,7 +254,27 @@ export const useBatchLoader = (
       clearTimeout(flushTimerRef.current);
       flushTimerRef.current = null;
     }
-  }, [cardIdsString]);
+
+    // Then, if we have a small collection (< BATCH_SIZE), load all cards immediately.
+    // This handles the case where visibility-based loading won't trigger because
+    // the batch never reaches BATCH_SIZE to flush.
+    if (!cards.length || !initData) return;
+
+    const remainingCards = cards.filter(card =>
+      !imageCache.has(card.id, 'thumb')
+    );
+
+    if (remainingCards.length > 0 && remainingCards.length < BATCH_SIZE) {
+      console.log('Loading small collection directly:', remainingCards.map(card => card.id));
+      loadCardsInBatches(remainingCards);
+    }
+  }, [cards, cardIdsString, initData, loadCardsInBatches]);
+
+  useEffect(() => {
+    if (initData && pendingCardsRef.current.size > 0) {
+      processPendingBatch();
+    }
+  }, [initData, processPendingBatch]);
 
   useEffect(() => {
     return () => {
