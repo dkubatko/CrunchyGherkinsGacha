@@ -27,6 +27,7 @@ from settings.constants import (
     RTB_MIN_BET,
     RTB_MAX_BET,
     RTB_CARDS_PER_GAME,
+    RTB_NUM_CARDS_TO_UNLOCK,
     RTB_MULTIPLIER_PROGRESSION,
 )
 
@@ -69,11 +70,20 @@ def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
     """Check if RTB game is available for a chat.
 
     Returns (is_available, reason_if_unavailable).
+    Requires at least RTB_NUM_CARDS_TO_UNLOCK cards total and at least 1 card of each rarity.
     """
     all_cards = card_service.get_all_cards(chat_id=chat_id)
+    total_cards = len(all_cards)
 
-    if len(all_cards) < RTB_CARDS_PER_GAME:
-        return False, f"Not enough cards. Need at least {RTB_CARDS_PER_GAME} cards in this chat."
+    if total_cards < RTB_NUM_CARDS_TO_UNLOCK:
+        return False, f"Requires {RTB_NUM_CARDS_TO_UNLOCK - total_cards} more cards"
+
+    # Check that we have at least 1 card of each rarity
+    rarities_present = set(c.rarity for c in all_cards)
+    missing_rarities = set(RARITY_ORDER) - rarities_present
+    if missing_rarities:
+        missing_list = ", ".join(sorted(missing_rarities))
+        return False, f"Missing rarities: {missing_list}"
 
     return True, None
 
