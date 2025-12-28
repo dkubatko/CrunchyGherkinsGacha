@@ -1838,6 +1838,7 @@ async def handle_recycle_callback(
                 gemini_util,
                 upgrade_rarity,
                 max_retries=MAX_BOT_IMAGE_RETRIES,
+                source="roll",
             )
         )
 

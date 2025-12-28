@@ -94,6 +94,7 @@ async def roll(
             chat_id_str,
             gemini_util,
             max_retries=MAX_BOT_IMAGE_RETRIES,
+            source="roll",
         )
 
         # Log the card generation details
@@ -236,6 +237,7 @@ async def handle_reroll(
             gemini_util,
             downgraded_rarity,
             max_retries=MAX_BOT_IMAGE_RETRIES,
+            source="roll",
         )
 
         # Log the card generation details

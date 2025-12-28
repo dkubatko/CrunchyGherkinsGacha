@@ -32,10 +32,11 @@ def _get_modifiers_dir(season_id: Optional[int] = None) -> Path:
 
 
 class ModifierWithSet(NamedTuple):
-    """A modifier with its associated set ID."""
+    """A modifier with its associated set ID and source."""
 
     modifier: str
     set_id: int
+    source: str = "all"
 
 
 def load_modifiers_with_sets(
@@ -94,8 +95,16 @@ def _process_set_file(
     if set_id is None:
         raise ValueError(f"Set file {file_path.name} must have an 'id' field")
 
+    # Parse source field (defaults to "all" if not specified)
+    source = document.get("source", "all")
+    if source not in ("roll", "slots", "all"):
+        raise ValueError(
+            f"Set file {file_path.name} has invalid 'source' value '{source}'. "
+            "Must be 'roll', 'slots', or 'all'."
+        )
+
     if sync_db:
-        _sync_set_metadata(set_id, document, set_name, season_id)
+        _sync_set_metadata(set_id, document, set_name, season_id, source)
 
     payload = document.get("rarities")
     if not isinstance(payload, list):
@@ -105,6 +114,7 @@ def _process_set_file(
     normalized_entries, mutated, modifiers_by_rarity = _normalize_rarity_entries(
         set_name=set_name,
         set_id=set_id,
+        source=source,
         entries=entries,
         original_payload=payload,
         cross_rarity_tracker=cross_rarity_tracker,
@@ -118,7 +128,7 @@ def _process_set_file(
 
 
 def _sync_set_metadata(
-    set_id: int, document: dict[str, Any], default_name: str, season_id: int
+    set_id: int, document: dict[str, Any], default_name: str, season_id: int, source: str
 ) -> None:
     """Upsert the set metadata, keeping logging noise consistent."""
 
@@ -126,12 +136,13 @@ def _sync_set_metadata(
     try:
         from utils.services import set_service
 
-        set_service.upsert_set(set_id, set_display_name, season_id=season_id)
+        set_service.upsert_set(set_id, set_display_name, season_id=season_id, source=source)
         LOGGER.info(
-            "Synced set %s (id=%s, season=%s) to database",
+            "Synced set %s (id=%s, season=%s, source=%s) to database",
             set_display_name,
             set_id,
             season_id,
+            source,
         )
     except Exception as exc:  # pragma: no cover - defensive logging
         LOGGER.warning("Failed to sync set %s to database: %s", default_name, exc)
@@ -141,6 +152,7 @@ def _normalize_rarity_entries(
     *,
     set_name: str,
     set_id: int,
+    source: str,
     entries: list[dict[str, Any]],
     original_payload: list[dict[str, Any]],
     cross_rarity_tracker: dict[str, dict[str, str]],
@@ -173,7 +185,8 @@ def _normalize_rarity_entries(
         modifiers_for_rarity = modifiers_by_rarity[rarity]
         if normalized:
             modifiers_for_rarity.extend(
-                ModifierWithSet(modifier=modifier, set_id=set_id) for modifier in normalized
+                ModifierWithSet(modifier=modifier, set_id=set_id, source=source)
+                for modifier in normalized
             )
 
         for modifier in normalized:

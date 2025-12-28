@@ -258,6 +258,7 @@ class SetModel(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     season_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="all")
 
     # Relationship to cards (uses composite FK from cards table)
     cards: Mapped[List["CardModel"]] = relationship(

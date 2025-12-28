@@ -17,7 +17,8 @@
   "RARITIES": {
     "Common": {
       "spin_reward": 10,
-      "weight": 55,
+      "roll_weight": 35,
+      "slots_weight": 55,
       "claim_cost": 1,
       "recycle_cost": 0,
       "lock_cost": 1,
@@ -27,7 +28,8 @@
     },
     "Rare": {
       "spin_reward": 25,
-      "weight": 30,
+      "roll_weight": 30,
+      "slots_weight": 30,
       "claim_cost": 2,
       "recycle_cost": 3,
       "lock_cost": 2,
@@ -37,7 +39,8 @@
     },
     "Epic": {
       "spin_reward": 60,
-      "weight": 12,
+      "roll_weight": 25,
+      "slots_weight": 12,
       "claim_cost": 3,
       "recycle_cost": 3,
       "lock_cost": 3,
@@ -47,7 +50,8 @@
     },
     "Legendary": {
       "spin_reward": 200,
-      "weight": 3,
+      "roll_weight": 10,
+      "slots_weight": 3,
       "claim_cost": 5,
       "recycle_cost": 4,
       "lock_cost": 5,
@@ -57,7 +61,8 @@
     },
     "Unique": {
       "spin_reward": 1000,
-      "weight": -1,
+      "roll_weight": -1,
+      "slots_weight": -1,
       "claim_cost": -1,
       "recycle_cost": 5,
       "lock_cost": 10,
