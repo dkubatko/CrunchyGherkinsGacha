@@ -7,6 +7,7 @@ export interface CardData {
   user_id?: number | null;
   chat_id?: string | null;
   locked?: boolean;
+  set_name?: string | null;
 }
 
 export interface OrientationData {
