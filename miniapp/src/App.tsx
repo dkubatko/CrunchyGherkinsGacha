@@ -97,7 +97,9 @@ function App() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions>({
     owner: '',
     rarity: '',
-    locked: ''
+    locked: '',
+    characterName: '',
+    setName: ''
   });
   const [sortOptions, setSortOptions] = useState<SortOptions>({
     field: 'rarity',
@@ -108,7 +110,9 @@ function App() {
   const [currentGridFilterOptions, setCurrentGridFilterOptions] = useState<FilterOptions>({
     owner: '', // Always empty for current view
     rarity: '',
-    locked: ''
+    locked: '',
+    characterName: '',
+    setName: ''
   });
   const [currentGridSortOptions, setCurrentGridSortOptions] = useState<SortOptions>({
     field: 'rarity',
@@ -300,6 +304,16 @@ function App() {
       filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
     }
 
+    // Apply character name filter
+    if (filterOptions.characterName) {
+      filtered = filtered.filter(card => card.base_name === filterOptions.characterName);
+    }
+
+    // Apply set name filter
+    if (filterOptions.setName) {
+      filtered = filtered.filter(card => card.set_name === filterOptions.setName);
+    }
+
     // Apply sorting
     const sorted = [...filtered].sort((a, b) => {
       let aValue: string | number;
@@ -364,6 +378,16 @@ function App() {
     if (currentGridFilterOptions.locked) {
       const shouldBeLocked = currentGridFilterOptions.locked === 'locked';
       filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
+    }
+
+    // Apply character name filter
+    if (currentGridFilterOptions.characterName) {
+      filtered = filtered.filter(card => card.base_name === currentGridFilterOptions.characterName);
+    }
+
+    // Apply set name filter
+    if (currentGridFilterOptions.setName) {
+      filtered = filtered.filter(card => card.set_name === currentGridFilterOptions.setName);
     }
 
     // Apply sorting
@@ -509,7 +533,7 @@ function App() {
     closeModal();
     setView('current');
     if (!options?.preserveAllFilters) {
-      setFilterOptions({ owner: '', rarity: '', locked: '' });
+      setFilterOptions({ owner: '', rarity: '', locked: '', characterName: '', setName: '' });
       setSortOptions({ field: 'rarity', direction: 'desc' });
     }
     TelegramUtils.hideBackButton();

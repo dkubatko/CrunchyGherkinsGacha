@@ -25,6 +25,7 @@ interface CardProps {
   onCardOpen?: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
+  set_name?: string | null;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -44,13 +45,15 @@ const Card: React.FC<CardProps> = ({
   locked = false,
   onCardOpen,
   triggerBurn = false,
-  onBurnComplete
+  onBurnComplete,
+  set_name
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [lockExpanded, setLockExpanded] = useState(false);
   const showInlineShareButton = Boolean(showShareButton && onShare);
 
   useEffect(() => {
@@ -150,8 +153,13 @@ const Card: React.FC<CardProps> = ({
       >
         <p>Share to the group?</p>
       </ConfirmDialog>
-      {locked && (
-        <div className="card-lock-indicator">
+      {locked ? (
+        <div 
+          className={`card-lock-indicator ${lockExpanded ? 'expanded' : ''}`}
+          onClick={() => setLockExpanded(!lockExpanded)}
+          onMouseEnter={() => setLockExpanded(true)}
+          onMouseLeave={() => setLockExpanded(false)}
+        >
           <svg
             className="lock-icon"
             xmlns="http://www.w3.org/2000/svg"
@@ -160,7 +168,10 @@ const Card: React.FC<CardProps> = ({
           >
             <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM9 6c0-1.66 1.34-3 3-3s3 1.34 3 3v2H9V6zm9 14H6V10h12v10zm-6-3c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2z"/>
           </svg>
+          <span className="lock-id">#{id}</span>
         </div>
+      ) : (
+        <div className="card-id">#{id}</div>
       )}
       {loadingImage ? (
         <div className="card-image-container">
@@ -223,7 +234,7 @@ const Card: React.FC<CardProps> = ({
           )}
         </div>
         <p className="card-rarity">{rarity}</p>
-        <p className="card-id">#{id}</p>
+        <p className="card-set">{rarity === 'Unique' ? 'Unique' : (set_name || 'Unknown')}</p>
         {showOwner && owner && (
           <p className="card-owner">
             Owned by <span className="card-owner-username">@{owner}</span>
