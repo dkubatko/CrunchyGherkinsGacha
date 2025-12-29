@@ -5,10 +5,10 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from settings.constants import RARITIES, UNIQUE_ADDENDUM
-from utils.services import card_service, character_service, user_service
+from utils.services import card_service, character_service, user_service, set_service
 from utils.schemas import Card, Character, User
 from utils.gemini import GeminiUtil
-from utils.modifiers import load_modifiers_with_sets, ModifierWithSet
+from utils.modifiers import load_modifiers_with_sets, ModifierWithSet, get_modifier_info
 
 # Store modifiers with their set information
 MODIFIERS_WITH_SETS_BY_RARITY: Dict[str, list[ModifierWithSet]] = load_modifiers_with_sets()
@@ -244,37 +244,32 @@ def _create_generated_card(
     profile: SelectedProfile,
     gemini_util: GeminiUtil,
     rarity: str,
-    modifier: Optional[str] = None,
-    set_id: Optional[int] = None,
-    source: Optional[str] = None,
+    modifier_info: ModifierWithSet,
 ) -> GeneratedCard:
+    """Generate a card image and return a GeneratedCard.
+
+    Args:
+        profile: The source profile (user or character) for the card.
+        gemini_util: GeminiUtil instance for image generation.
+        rarity: The rarity level for the card.
+        modifier_info: The modifier with its set information.
+
+    Returns:
+        A GeneratedCard with the generated image.
+
+    Raises:
+        InvalidSourceError: If the rarity is not supported.
+        ImageGenerationError: If image generation fails.
+    """
     if rarity not in RARITIES:
         raise InvalidSourceError(f"Unsupported rarity '{rarity}'")
 
-    # If modifier is provided, we need to look up its set_id
-    if modifier is not None:
-        if set_id is None:
-            # Look up the set_id for this specific modifier
-            modifiers_with_sets = MODIFIERS_WITH_SETS_BY_RARITY.get(rarity, [])
-            for mod_with_set in modifiers_with_sets:
-                if mod_with_set.modifier == modifier:
-                    set_id = mod_with_set.set_id
-                    break
-            if set_id is None:
-                # Default to 0 if we can't find the modifier (shouldn't happen)
-                set_id = 0
-        chosen_modifier = modifier
-    else:
-        # Choose a random modifier and get its set_id (no chat_id, uniform selection)
-        modifier_with_set, _ = _choose_modifier_for_rarity(rarity, chat_id=None, source=source)
-        chosen_modifier = modifier_with_set.modifier
-        set_id = modifier_with_set.set_id
-
     image_b64 = gemini_util.generate_image(
         profile.name,
-        chosen_modifier,
+        modifier_info.modifier,
         rarity,
         base_image_b64=profile.image_b64,
+        set_name=modifier_info.set_name,
     )
 
     if not image_b64:
@@ -282,13 +277,13 @@ def _create_generated_card(
 
     return GeneratedCard(
         base_name=profile.name,
-        modifier=chosen_modifier,
+        modifier=modifier_info.modifier,
         rarity=rarity,
-        card_title=f"{chosen_modifier} {profile.name}",
+        card_title=f"{modifier_info.modifier} {profile.name}",
         image_b64=image_b64,
         source_type=profile.source_type,
         source_id=profile.source_id,
-        set_id=set_id,
+        set_id=modifier_info.set_id,
     )
 
 
@@ -358,8 +353,7 @@ def generate_card_from_profile(
                 profile,
                 gemini_util,
                 rarity,
-                modifier=modifier_with_set.modifier,
-                set_id=modifier_with_set.set_id,
+                modifier_info=modifier_with_set,
             )
             logger.info(
                 "Successfully generated card for profile %s:%s (rarity=%s, modifier=%s, weight=%.2f)",
@@ -421,8 +415,7 @@ def generate_card_for_chat(
                 profile,
                 gemini_util,
                 chosen_rarity,
-                modifier=modifier_with_set.modifier,
-                set_id=modifier_with_set.set_id,
+                modifier_info=modifier_with_set,
             )
             logger.info(
                 "Successfully generated card for chat %s (source=%s:%s, rarity=%s, modifier=%s, weight=%.2f)",
@@ -489,6 +482,13 @@ def regenerate_card_image(
     # Get the source profile using the stored source_type and source_id
     profile = get_profile_for_source(card.source_type, card.source_id)
 
+    # Get the set_name from the card's set_id
+    set_name = ""
+    if card.set_id is not None:
+        set_model = set_service.get_set_by_id(card.set_id)
+        if set_model:
+            set_name = set_model.name
+
     # Now regenerate with the same rarity and modifier
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
@@ -509,6 +509,7 @@ def regenerate_card_image(
                 base_image_b64=profile.image_b64,
                 temperature=temperature,
                 instruction_addendum=instruction_addendum,
+                set_name=set_name,
             )
 
             if not image_b64:
