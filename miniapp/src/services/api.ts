@@ -283,7 +283,8 @@ export class ApiService {
     rarity: string, 
     sourceId: number, 
     sourceType: 'user' | 'character' | 'claim', 
-    initData: string
+    initData: string,
+    isMegaspin: boolean = false
   ): Promise<{ status: string; message: string }> {
     const response = await fetch(`${API_BASE_URL}/slots/victory`, {
       method: 'POST',
@@ -295,7 +296,8 @@ export class ApiService {
         source: {
           id: sourceId,
           type: sourceType
-        }
+        },
+        is_megaspin: isMegaspin
       })
     });
 
