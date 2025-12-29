@@ -18,10 +18,11 @@ from settings.constants import (
     TRADE_REJECTED_MESSAGE,
     TRADE_CANCELLED_MESSAGE,
 )
-from utils.services import card_service
+from utils.services import card_service, event_service
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.miniapp import encode_single_card_token
+from utils.events import EventType, TradeOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +98,19 @@ async def trade(
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
+    chat_id_str = str(update.effective_chat.id)
+
+    # Log trade created
+    event_service.log(
+        EventType.TRADE,
+        TradeOutcome.CREATED,
+        user_id=user.user_id,
+        chat_id=chat_id_str,
+        card_id=card_id1,
+        target_card_id=card_id2,
+        target_user=user2_username,
+    )
+
     await update.message.reply_text(
         TRADE_REQUEST_MESSAGE.format(
             user1_username=user.username,
@@ -145,6 +159,8 @@ async def reject_trade(
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
+    chat_id_str = str(query.message.chat_id)
+
     # Use TRADE_CANCELLED_MESSAGE if initiator pressed Reject, otherwise TRADE_REJECTED_MESSAGE
     if is_initiator:
         message_text = TRADE_CANCELLED_MESSAGE.format(
@@ -153,12 +169,32 @@ async def reject_trade(
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
         )
+        # Log trade cancelled by initiator
+        event_service.log(
+            EventType.TRADE,
+            TradeOutcome.CANCELLED,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id1,
+            target_card_id=card_id2,
+            target_user=user2_username,
+        )
     else:
         message_text = TRADE_REJECTED_MESSAGE.format(
             user1_username=user1_username,
             card1_title=card1.title(include_rarity=True),
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
+        )
+        # Log trade rejected by target user
+        event_service.log(
+            EventType.TRADE,
+            TradeOutcome.REJECTED,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id2,
+            target_card_id=card_id1,
+            target_user=user1_username,
         )
 
     # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
@@ -211,6 +247,8 @@ async def accept_trade(
 
     success = await asyncio.to_thread(card_service.swap_card_owners, card_id1, card_id2)
 
+    chat_id_str = str(query.message.chat_id)
+
     if success:
         message_text = TRADE_COMPLETE_MESSAGE.format(
             user1_username=user1_username,
@@ -218,8 +256,29 @@ async def accept_trade(
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
         )
+        # Log successful trade (from acceptor's perspective)
+        event_service.log(
+            EventType.TRADE,
+            TradeOutcome.ACCEPTED,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id2,
+            target_card_id=card_id1,
+            target_user=user1_username,
+        )
     else:
         message_text = "Trade failed. Please try again."
+        # Log trade error
+        event_service.log(
+            EventType.TRADE,
+            TradeOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id2,
+            target_card_id=card_id1,
+            target_user=user1_username,
+            error_message="swap_card_owners failed",
+        )
 
     # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
     reply_markup = None

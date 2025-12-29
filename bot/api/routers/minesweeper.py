@@ -32,7 +32,9 @@ from utils.services import (
     card_service,
     claim_service,
     user_service,
+    event_service,
 )
+from utils.events import EventType, MinesweeperOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -307,6 +309,17 @@ async def minesweeper_create(
             logger.error("Failed to get or create minesweeper game for user %s", request.user_id)
             raise HTTPException(status_code=500, detail="Failed to start game")
 
+        # Log game created
+        event_service.log(
+            EventType.MINESWEEPER,
+            MinesweeperOutcome.CREATED,
+            user_id=request.user_id,
+            chat_id=chat_id,
+            card_id=request.bet_card_id,
+            game_id=game.id,
+            bet_card_rarity=bet_card_rarity,
+        )
+
         # Send bet notification to chat (fire-and-forget background task)
         asyncio.create_task(
             process_minesweeper_bet_notification(
@@ -570,6 +583,21 @@ async def minesweeper_update(
 
         # Spawn background tasks if game ended
         if updated_game.status == "won":
+            # Calculate total claim points earned during the game
+            claim_points_earned = len(
+                set(updated_game.revealed_cells) & set(updated_game.claim_point_positions)
+            )
+            # Log win event
+            event_service.log(
+                EventType.MINESWEEPER,
+                MinesweeperOutcome.WON,
+                user_id=request.user_id,
+                chat_id=game.chat_id,
+                card_id=game.bet_card_id,
+                game_id=request.game_id,
+                cells_revealed=len(revealed_cells),
+                claim_points_earned=claim_points_earned,
+            )
             # Victory: generate new card for the player
             asyncio.create_task(
                 process_minesweeper_victory_background(
@@ -584,6 +612,21 @@ async def minesweeper_update(
                 )
             )
         elif updated_game.status == "lost":
+            # Calculate total claim points earned during the game
+            claim_points_earned = len(
+                set(updated_game.revealed_cells) & set(updated_game.claim_point_positions)
+            )
+            # Log loss event
+            event_service.log(
+                EventType.MINESWEEPER,
+                MinesweeperOutcome.LOST,
+                user_id=request.user_id,
+                chat_id=game.chat_id,
+                card_id=game.bet_card_id,
+                game_id=request.game_id,
+                cells_revealed=len(revealed_cells),
+                claim_points_earned=claim_points_earned,
+            )
             # Loss: destroy the bet card
             asyncio.create_task(
                 process_minesweeper_loss_background(

@@ -31,7 +31,9 @@ from utils.services import (
     user_service,
     card_service,
     spin_service,
+    event_service,
 )
+from utils.events import EventType, RtbOutcome
 from utils.schemas import RideTheBusGame
 
 logger = logging.getLogger(__name__)
@@ -151,6 +153,16 @@ async def start_rtb_game(
         )
         raise HTTPException(status_code=400, detail=error or "Failed to create game")
 
+    # Log game started
+    event_service.log(
+        EventType.RTB,
+        RtbOutcome.STARTED,
+        user_id=request.user_id,
+        chat_id=chat_id,
+        game_id=game.id,
+        bet_amount=request.bet_amount,
+    )
+
     return _build_game_response(game, await _get_spins_balance(request.user_id, chat_id))
 
 
@@ -205,6 +217,17 @@ async def make_rtb_guess(
             spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
         )
         message = f"🎉 Correct! You won {payout} spins!"
+        # Log win event
+        event_service.log(
+            EventType.RTB,
+            RtbOutcome.WON,
+            user_id=request.user_id,
+            chat_id=updated_game.chat_id,
+            game_id=request.game_id,
+            bet_amount=updated_game.bet_amount,
+            payout=payout,
+            multiplier=updated_game.current_multiplier,
+        )
         # Send win notification
         username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
         if username:
@@ -221,6 +244,17 @@ async def make_rtb_guess(
         message = f"✅ Correct! Next card is {actual}. Multiplier is now {updated_game.current_multiplier}x!"
     else:
         message = f"❌ Wrong! Next card was {actual}. You lost {updated_game.bet_amount} spins."
+        # Log loss event
+        event_service.log(
+            EventType.RTB,
+            RtbOutcome.LOST,
+            user_id=request.user_id,
+            chat_id=updated_game.chat_id,
+            game_id=request.game_id,
+            bet_amount=updated_game.bet_amount,
+            guess=guess,
+            actual=actual,
+        )
         # Send loss notification
         username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
         if username:
@@ -272,6 +306,18 @@ async def cash_out_rtb_game(
 
     await asyncio.to_thread(
         spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
+    )
+
+    # Log cash out event
+    event_service.log(
+        EventType.RTB,
+        RtbOutcome.CASHED_OUT,
+        user_id=request.user_id,
+        chat_id=updated_game.chat_id,
+        game_id=request.game_id,
+        bet_amount=updated_game.bet_amount,
+        payout=payout,
+        multiplier=updated_game.current_multiplier,
     )
 
     # Send cashout notification

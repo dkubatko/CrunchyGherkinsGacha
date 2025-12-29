@@ -29,10 +29,12 @@ from utils.services import (
     claim_service,
     rolled_card_service,
     roll_service,
+    event_service,
 )
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.rolled_card import RolledCardManager
+from utils.events import EventType, RollOutcome, RerollOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -139,13 +141,41 @@ async def roll(
         if not DEBUG_MODE:
             await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
 
+        # Log successful roll
+        event_service.log(
+            EventType.ROLL,
+            RollOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id,
+            rarity=generated_card.rarity,
+            source_type=generated_card.source_type,
+            source_id=generated_card.source_id,
+            claim_reward=claim_reward,
+        )
+
     except rolling.NoEligibleUserError:
+        # Log roll error
+        event_service.log(
+            EventType.ROLL,
+            RollOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            error_message="No eligible user with profile",
+        )
         await update.message.reply_text(
             "No enrolled players here have set both a display name and profile photo yet. DM me with /profile <display_name> and a picture to join the fun!",
             reply_to_message_id=update.message.message_id,
         )
         return
     except rolling.ImageGenerationError:
+        event_service.log(
+            EventType.ROLL,
+            RollOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            error_message="Image generation failed",
+        )
         await update.message.reply_text(
             "Sorry, I couldn't generate an image at the moment.",
             reply_to_message_id=update.message.message_id,
@@ -153,6 +183,13 @@ async def roll(
         return
     except Exception as e:
         logger.error(f"Error in /roll: {e}")
+        event_service.log(
+            EventType.ROLL,
+            RollOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            error_message=str(e),
+        )
         await update.message.reply_text(
             "An error occurred while rolling for a card.",
             reply_to_message_id=update.message.message_id,
@@ -281,7 +318,33 @@ async def handle_reroll(
                 original_owner_id,
                 original_claim_chat_id,
             )
+
+        # Log successful reroll
+        event_service.log(
+            EventType.REROLL,
+            RerollOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id_for_roll,
+            card_id=new_card_id,
+            old_card_id=active_card.id,
+            old_rarity=original_card.rarity,
+            new_rarity=generated_card.rarity,
+            source_type=generated_card.source_type,
+            source_id=generated_card.source_id,
+        )
     except rolling.NoEligibleUserError:
+        # Log reroll error
+        chat_id_for_log = active_card.chat_id or (
+            str(query.message.chat_id) if query.message else "unknown"
+        )
+        event_service.log(
+            EventType.REROLL,
+            RerollOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_for_log,
+            card_id=active_card.id,
+            error_message="No eligible user with profile",
+        )
         # Restore original state on error
         rolled_card_manager.set_being_rerolled(False)
         original_caption = rolled_card_manager.generate_caption()
@@ -296,6 +359,18 @@ async def handle_reroll(
             show_alert=True,
         )
     except rolling.ImageGenerationError:
+        # Log reroll error
+        chat_id_for_log = active_card.chat_id or (
+            str(query.message.chat_id) if query.message else "unknown"
+        )
+        event_service.log(
+            EventType.REROLL,
+            RerollOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_for_log,
+            card_id=active_card.id,
+            error_message="Image generation failed",
+        )
         # Restore original state on error
         rolled_card_manager.set_being_rerolled(False)
         original_caption = rolled_card_manager.generate_caption()
