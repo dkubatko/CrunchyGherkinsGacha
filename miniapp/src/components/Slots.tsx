@@ -183,6 +183,10 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const [isAutospinStopping, setIsAutospinStopping] = useState(false);
   const autospinStopRef = useRef(false);
   const isAutospinningRef = useRef(false);
+  
+  // Autospin win tracking
+  const autospinCardsWonRef = useRef(0);
+  const autospinClaimPointsWonRef = useRef(0);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
     if (!rarityWheelTarget) {
@@ -452,6 +456,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           const claimAmount = 1;
           const result = await ApiService.processClaimWin(userId, chatId, claimAmount, initData);
           
+          // Track claim points won during autospin
+          if (currentlyAutospinning) {
+            autospinClaimPointsWonRef.current += claimAmount;
+          }
+          
           // Skip alert during autospin
           if (!currentlyAutospinning) {
             const pointsText = claimAmount === 1 ? 'claim point' : 'claim points';
@@ -493,6 +502,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           symbol.type,
           initData
         );
+
+        // Track cards won during autospin
+        if (currentlyAutospinning) {
+          autospinCardsWonRef.current += 1;
+        }
 
         // Skip alert during autospin
         if (!currentlyAutospinning) {
@@ -765,6 +779,10 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     isAutospinningRef.current = true;
     setIsAutospinning(true);
     
+    // Reset autospin win counters
+    autospinCardsWonRef.current = 0;
+    autospinClaimPointsWonRef.current = 0;
+    
     TelegramUtils.triggerHapticImpact('heavy');
 
     // Autospin loop
@@ -791,7 +809,22 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         await new Promise<void>((resolve) => setTimeout(resolve, 200));
       }
 
-      // Autospin ended
+      // Autospin ended - show summary if anything was won
+      const cardsWon = autospinCardsWonRef.current;
+      const claimPointsWon = autospinClaimPointsWonRef.current;
+      
+      if (cardsWon > 0 || claimPointsWon > 0) {
+        const lines: string[] = ['Autospin results:', ''];
+        if (cardsWon > 0) {
+          lines.push(`Cards won: ${cardsWon}`);
+        }
+        if (claimPointsWon > 0) {
+          lines.push(`Claim points: ${claimPointsWon}`);
+        }
+        TelegramUtils.showAlert(lines.join('\n'));
+        TelegramUtils.triggerHapticNotification('success');
+      }
+      
       isAutospinningRef.current = false;
       setIsAutospinning(false);
       setIsAutospinStopping(false);
