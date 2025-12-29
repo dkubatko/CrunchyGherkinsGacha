@@ -69,6 +69,7 @@ type ReelState = 'idle' | 'spinning' | 'stopped';
 interface PendingWin {
   symbol: SlotSymbol;
   rarity: RarityName;
+  isMegaspin?: boolean;
 }
 
 const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
@@ -438,7 +439,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    const { symbol, rarity } = pendingWin;
+    const { symbol, rarity, isMegaspin } = pendingWin;
     
     // Check if this is a claim win (special handling)
     if (symbol.type === 'claim') {
@@ -500,7 +501,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           rarity.toLowerCase(),
           symbol.id,
           symbol.type,
-          initData
+          initData,
+          isMegaspin ?? false
         );
 
         // Track cards won during autospin
@@ -972,7 +974,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         if (winningSymbolFromArray) {
           const normalizedRarity = normalizeRarityName(serverRarity);
           if (normalizedRarity) {
-            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity };
+            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, isMegaspin: true };
           }
         }
       }

@@ -491,6 +491,7 @@ async def slots_victory(
             source_id=request.source.id,
             user_id=request.user_id,
             gemini_util_instance=gemini_util,
+            is_megaspin=request.is_megaspin,
         )
     )
 
