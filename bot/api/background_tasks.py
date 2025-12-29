@@ -23,6 +23,9 @@ from api.config import (
 from api.helpers import build_single_card_url
 from settings.constants import (
     BURN_RESULT_MESSAGE,
+    MEGASPIN_VICTORY_FAILURE_MESSAGE,
+    MEGASPIN_VICTORY_PENDING_MESSAGE,
+    MEGASPIN_VICTORY_RESULT_MESSAGE,
     MINESWEEPER_BET_MESSAGE,
     MINESWEEPER_LOSS_MESSAGE,
     MINESWEEPER_VICTORY_FAILURE_MESSAGE,
@@ -52,6 +55,7 @@ async def process_slots_victory_background(
     source_id: int,
     user_id: int,
     gemini_util_instance,
+    is_megaspin: bool = False,
 ):
     """Process slots victory in background after responding to client."""
     spin_refund_amount = get_spin_reward(normalized_rarity)
@@ -67,8 +71,11 @@ async def process_slots_victory_background(
 
         bot = create_bot_instance()
 
-        # Send pending message
-        pending_caption = SLOTS_VICTORY_PENDING_MESSAGE.format(
+        # Send pending message (use megaspin variant if applicable)
+        pending_message_template = (
+            MEGASPIN_VICTORY_PENDING_MESSAGE if is_megaspin else SLOTS_VICTORY_PENDING_MESSAGE
+        )
+        pending_caption = pending_message_template.format(
             username=username,
             rarity=normalized_rarity,
             display_name=display_name,
@@ -141,8 +148,11 @@ async def process_slots_victory_background(
             # Mark that card was successfully generated and assigned
             card_generated_and_assigned = True
 
-            # Create final caption and keyboard
-            final_caption = SLOTS_VICTORY_RESULT_MESSAGE.format(
+            # Create final caption and keyboard (use megaspin variant if applicable)
+            result_message_template = (
+                MEGASPIN_VICTORY_RESULT_MESSAGE if is_megaspin else SLOTS_VICTORY_RESULT_MESSAGE
+            )
+            final_caption = result_message_template.format(
                 username=username,
                 rarity=normalized_rarity,
                 display_name=display_name,
@@ -185,8 +195,11 @@ async def process_slots_victory_background(
 
         except Exception as exc:
             logger.error("Error processing slots victory for user %s: %s", username, exc)
-            # Update pending message with failure
-            failure_caption = SLOTS_VICTORY_FAILURE_MESSAGE.format(
+            # Update pending message with failure (use megaspin variant if applicable)
+            failure_message_template = (
+                MEGASPIN_VICTORY_FAILURE_MESSAGE if is_megaspin else SLOTS_VICTORY_FAILURE_MESSAGE
+            )
+            failure_caption = failure_message_template.format(
                 username=username,
                 rarity=normalized_rarity,
                 display_name=display_name,

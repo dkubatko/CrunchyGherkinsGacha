@@ -148,6 +148,7 @@ class SlotsVictoryRequest(BaseModel):
     chat_id: str
     rarity: str
     source: SlotsVictorySource
+    is_megaspin: bool = False
 
 
 class SlotsClaimWinRequest(BaseModel):

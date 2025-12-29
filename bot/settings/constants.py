@@ -334,6 +334,16 @@ SLOTS_VICTORY_RESULT_MESSAGE = (
 
 SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed. Please try again later."
 
+MEGASPIN_VICTORY_PENDING_MESSAGE = "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\nGenerating card..."
+
+MEGASPIN_VICTORY_RESULT_MESSAGE = (
+    "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\n"
+    "<b>[{card_id}] {modifier} {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
+)
+
+MEGASPIN_VICTORY_FAILURE_MESSAGE = "@{username} used a <b>megaspin</b> and won a {rarity} {display_name}!\n\nCard generation failed. Please try again later."
+
 SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
 
 SLOTS_VICTORY_REFUND_MESSAGE = (
