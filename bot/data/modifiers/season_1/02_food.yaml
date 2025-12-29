@@ -1,0 +1,33 @@
+id: 2
+set: food
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Burger
+  - Burrito
+  - Coffee
+  - Croissant
+  - Mushroom
+  - Pizza
+  - Steak
+  - Sushi
+  - Taco
+- name: Rare
+  modifiers:
+  - Boba
+  - Döner
+  - Falafel
+  - Fried Chicken
+  - Kimchi
+  - Pho
+  - Ramen
+  - Shawarma
+- name: Epic
+  modifiers:
+  - Borscht
+  - Bánh Mì
+  - Pelmeni
+  - Хачапури
+- name: Legendary
+  modifiers: []

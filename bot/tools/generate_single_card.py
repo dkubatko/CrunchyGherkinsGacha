@@ -1,18 +1,19 @@
 """
 Tool to generate a single card with specified parameters.
 
-Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>] [--modifiers-file <filename>]
+Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>] [--modifiers-file <filename>] [--set <set_name>]
 
 Example: python tools/generate_single_card.py Daniel Test Epic
 Example: python tools/generate_single_card.py Daniel Golden random --assign dkubatko
 Example: python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
 Example: python tools/generate_single_card.py Daniel random random --modifiers-file anime
 Example: python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
+Example: python tools/generate_single_card.py Daniel "Fire Mage" Epic --set Fantasy
 
 This will:
 1. Look up the character by name in the database
 2. Generate a card using the specified modifier and rarity (or random values)
-3. Add the card to the database
+3. Add the card to the database (optionally with a set assignment)
 4. Save the generated card image to data/output/
 5. Optionally assign the card to a user if --assign is specified
 
@@ -34,7 +35,7 @@ from dotenv import load_dotenv
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.services import card_service, user_service
+from utils.services import card_service, set_service, user_service
 from utils.schemas import Character, User
 from utils.session import get_session
 from utils.models import CharacterModel, UserModel
@@ -139,6 +140,7 @@ def generate_single_card(
     output_dir: str,
     assign_username: str = None,
     modifiers_file: str = None,
+    set_name: str = None,
 ):
     """
     Generate a single card with specified parameters.
@@ -150,6 +152,7 @@ def generate_single_card(
         output_dir: Directory to save the output image
         assign_username: Optional username to assign the card to
         modifiers_file: Optional modifiers file to load random modifier from (e.g., 'christmas', 'anime')
+        set_name: Optional set name to assign the card to (e.g., 'Fantasy', 'Anime')
 
     Returns:
         Tuple of (output_path, card_id) or (None, None) on failure
@@ -234,6 +237,15 @@ def generate_single_card(
         else:
             logger.info("User has no existing cards, using source chat_id")
 
+    # Resolve set_id from set_name if provided (before image generation so we can pass set context)
+    set_id = None
+    if set_name:
+        set_id = set_service.get_set_id_by_name(set_name)
+        if set_id is None:
+            logger.warning(f"Set '{set_name}' not found in database, card will have no set")
+        else:
+            logger.info(f"Using set '{set_name}' (ID: {set_id})")
+
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
     gemini_util = GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
@@ -241,7 +253,11 @@ def generate_single_card(
     # Generate the card image
     try:
         generated_image_b64 = gemini_util.generate_image(
-            base_name=base_name, modifier=modifier, rarity=rarity, base_image_b64=image_b64
+            base_name=base_name,
+            modifier=modifier,
+            rarity=rarity,
+            base_image_b64=image_b64,
+            set_name=set_name or "",
         )
 
         if not generated_image_b64:
@@ -258,7 +274,7 @@ def generate_single_card(
             chat_id=chat_id,
             source_type=source_type,
             source_id=source_id,
-            set_id=0,  # Default to classic set
+            set_id=set_id,
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 
@@ -307,6 +323,7 @@ Examples:
   python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
   python tools/generate_single_card.py Daniel random random --modifiers-file anime
   python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
+  python tools/generate_single_card.py Daniel "Fire Mage" Epic --set Fantasy
 
 Available rarities: {', '.join(RARITIES.keys())}
 
@@ -314,6 +331,7 @@ Use quotes around names/modifiers only if they contain spaces.
 When using --modifiers-file, set modifier to "random" to pick a random modifier from that file.
 The random modifier will be filtered by the specified rarity (unless rarity is also "random").
 Set rarity to "random" to pick a random rarity tier.
+Use --set to assign the card to a specific set (the set must exist in the database).
         """,
     )
 
@@ -331,6 +349,11 @@ Set rarity to "random" to pick a random rarity tier.
         dest="modifiers_file",
         help="Modifiers file to pick random modifier from (e.g., 'christmas', 'anime')",
     )
+    parser.add_argument(
+        "--set",
+        dest="set_name",
+        help="Set name to assign the card to (e.g., 'Fantasy', 'Anime')",
+    )
 
     args = parser.parse_args()
 
@@ -346,6 +369,7 @@ Set rarity to "random" to pick a random rarity tier.
         output_dir,
         args.assign_username,
         args.modifiers_file,
+        args.set_name,
     )
 
     if result and card_id:

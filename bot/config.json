@@ -2,7 +2,7 @@
   "DB_PATH": "/usr/local/gacha/database/cards.db",
   "BASE_IMAGE_PATH": "data/base_images",
   "CARD_TEMPLATES_PATH": "data/card_templates",
-  "CURRENT_SEASON": 0,
+  "CURRENT_SEASON": 1,
   "SPINS_REFRESH_HOURS": 3,
   "SPINS_PER_REFRESH": 5,
   "SPINS_FOR_MEGASPIN": 100,
@@ -47,7 +47,7 @@
       "lock_cost": 3,
       "refresh_cost": 3,
       "color": "purple",
-      "creativeness_factor": 80
+      "creativeness_factor": 70
     },
     "Legendary": {
       "spin_reward": 200,

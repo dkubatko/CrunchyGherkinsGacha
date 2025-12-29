@@ -1,0 +1,33 @@
+id: 11
+set: brands
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Apple
+  - Haribon
+  - Instagram
+  - Nintendo
+  - Nutella
+  - PlayStation
+  - Red Bull
+- name: Rare
+  modifiers:
+  - Duolingo
+  - Funko Pop
+  - Google
+  - Hubba Bubba
+  - Jollibee
+  - Labubu
+  - Malrboro
+  - NASA
+  - Starbucks
+  - TikTok
+- name: Epic
+  modifiers:
+  - LEGO
+  - Love Is
+  - McDonald's
+  - Yandex
+- name: Legendary
+  modifiers: []

@@ -1,0 +1,32 @@
+id: 13
+set: anime
+source: roll
+rarities:
+- name: Common
+  modifiers:
+  - Gundam
+  - Ninja
+- name: Rare
+  modifiers:
+  - 9-tailed
+  - Akatsuki
+  - Death Note
+  - Demon Slayer
+  - Dragon Ball
+  - Gojo
+  - Naruto
+  - One Piece
+  - Pochita
+  - Pokémon
+  - Tokyo Ghoul
+- name: Epic
+  modifiers:
+  - Attack on Titan
+  - Berserk
+  - Chainsaw Man
+  - Evangelion
+  - Ghibli
+  - JoJo
+- name: Legendary
+  modifiers:
+  - Loli

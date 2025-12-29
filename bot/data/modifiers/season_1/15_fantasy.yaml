@@ -1,0 +1,26 @@
+id: 15
+set: fantasy
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Alchemist
+  - Assassin
+  - Bard
+  - Dragon
+  - Paladin
+  - Sorcerer
+- name: Rare
+  modifiers:
+  - Druid
+  - Dwarf
+  - Gnome
+  - Vampire
+  - Witch
+- name: Epic
+  modifiers:
+  - Demon
+  - Warcraft
+- name: Legendary
+  modifiers:
+  - Diablo

@@ -60,10 +60,18 @@ class GeminiUtil:
         base_image_b64: str | None = None,
         temperature: float = 1.0,
         instruction_addendum: str = "",
+        set_name: str = "",
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
+
+            # Build conditional set context if set_name is provided
+            set_context = (
+                f'The modifier is part of a themed set called **"{set_name}"**; interpret it within that theme.'
+                if set_name
+                else ""
+            )
 
             prompt = IMAGE_GENERATOR_INSTRUCTION.format(
                 modification=modifier,
@@ -71,12 +79,13 @@ class GeminiUtil:
                 rarity=rarity,
                 color=RARITIES[rarity]["color"],
                 creativeness_factor=RARITIES[rarity]["creativeness_factor"],
+                set_context=set_context,
             )
             if instruction_addendum:
                 prompt += "\n" + instruction_addendum
 
             logger.info(
-                f"Requesting image generation for '{base_name}' with modifier '{modifier}' and rarity '{rarity}' (temperature {temperature})"
+                f"Requesting image generation for '{base_name}' with modifier '{modifier}', rarity '{rarity}', set '{set_name or 'none'}' (temperature {temperature})"
             )
 
             generation_config = genai.types.GenerationConfig(temperature=temperature)
