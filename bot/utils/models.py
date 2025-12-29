@@ -323,6 +323,28 @@ class RideTheBusGameModel(Base):
     )
 
 
+class EventModel(Base):
+    """Represents a telemetry event for logging and analytics."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[str] = mapped_column(Text, nullable=False)
+    card_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob
+
+    __table_args__ = (
+        Index("idx_events_type_outcome", "event_type", "outcome"),
+        Index("idx_events_user_timestamp", "user_id", "timestamp"),
+        Index("idx_events_chat_timestamp", "chat_id", "timestamp"),
+        Index("idx_events_card_id", "card_id"),
+    )
+
+
 # Configure SQLite-specific settings via events
 @event.listens_for(Base.metadata, "after_create")
 def set_sqlite_pragma(target, connection, **kw):

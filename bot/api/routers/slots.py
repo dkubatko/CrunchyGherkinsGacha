@@ -38,7 +38,9 @@ from utils.services import (
     claim_service,
     spin_service,
     user_service,
+    event_service,
 )
+from utils.events import EventType, SpinOutcome, MegaspinOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -300,11 +302,45 @@ async def verify_slot_spin(
             f"winning_symbol={winning_symbol}, slot_results={[f'{s.type}:{s.id}' for s in slot_results]}"
         )
 
+        # Log spin event
+        if is_card_win and rarity:
+            event_service.log(
+                EventType.SPIN,
+                SpinOutcome.CARD_WIN,
+                user_id=request.user_id,
+                chat_id=request.chat_id,
+                rarity=rarity,
+                source_type=winning_symbol.type if winning_symbol else None,
+                source_id=winning_symbol.id if winning_symbol else None,
+            )
+        elif winning_symbol and winning_symbol.type == "claim":
+            event_service.log(
+                EventType.SPIN,
+                SpinOutcome.CLAIM_WIN,
+                user_id=request.user_id,
+                chat_id=request.chat_id,
+            )
+        else:
+            event_service.log(
+                EventType.SPIN,
+                SpinOutcome.LOSS,
+                user_id=request.user_id,
+                chat_id=request.chat_id,
+            )
+
         return SlotVerifyResponse(is_win=is_win, slot_results=slot_results, rarity=rarity)
 
     except Exception as e:
         logger.error(
             f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        # Log spin error
+        event_service.log(
+            EventType.SPIN,
+            SpinOutcome.ERROR,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            error_message=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to verify slot spin")
 
@@ -343,6 +379,17 @@ async def verify_megaspin(
             f"rarity={rarity}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
         )
 
+        # Log megaspin event
+        event_service.log(
+            EventType.MEGASPIN,
+            MegaspinOutcome.SUCCESS,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            rarity=rarity,
+            source_type=winning_symbol.type,
+            source_id=winning_symbol.id,
+        )
+
         return SlotVerifyResponse(is_win=True, slot_results=slot_results, rarity=rarity)
 
     except HTTPException:
@@ -350,6 +397,14 @@ async def verify_megaspin(
     except Exception as e:
         logger.error(
             f"Error verifying megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
+        )
+        # Log megaspin error
+        event_service.log(
+            EventType.MEGASPIN,
+            MegaspinOutcome.ERROR,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            error_message=str(e),
         )
         raise HTTPException(status_code=500, detail="Failed to verify megaspin")
 

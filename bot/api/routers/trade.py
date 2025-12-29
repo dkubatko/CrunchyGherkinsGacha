@@ -16,7 +16,8 @@ from api.dependencies import get_validated_user
 from api.helpers import build_single_card_url
 from settings.constants import TRADE_REQUEST_MESSAGE
 from utils.schemas import Card as APICard
-from utils.services import card_service, thread_service
+from utils.services import card_service, thread_service, event_service
+from utils.events import EventType, TradeOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +167,18 @@ async def execute_trade(
 
             # Send message using the new bot instance
             await bot.send_message(**send_params)
+
+            # Log trade created event
+            event_service.log(
+                EventType.TRADE,
+                TradeOutcome.CREATED,
+                user_id=user_id,
+                chat_id=str(chat_id),
+                card_id=card_id1,
+                target_card_id=card_id2,
+                target_user=card2.owner,
+                source="miniapp",
+            )
         except Exception as e:
             logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")
             raise HTTPException(status_code=500, detail="Failed to send trade request")

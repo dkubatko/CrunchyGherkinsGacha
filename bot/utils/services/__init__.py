@@ -124,6 +124,8 @@ from utils.services.rtb_service import (
     process_guess as rtb_process_guess,
 )
 
+from utils.services import event_service
+
 from settings.constants import (
     RTB_CARDS_PER_GAME,
     RTB_MIN_BET,
@@ -227,4 +229,6 @@ __all__ = [
     "RTB_MAX_BET",
     "RTB_MULTIPLIER_PROGRESSION",
     "RARITY_ORDER",
+    # Event service
+    "event_service",
 ]
