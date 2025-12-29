@@ -90,10 +90,19 @@ from settings.constants import (
 )
 from utils import rolling
 from utils.miniapp import encode_single_card_token
-from utils.services import card_service, user_service, claim_service, spin_service
+from utils.services import card_service, user_service, claim_service, spin_service, event_service
 from utils.schemas import User, Card
 from utils.decorators import verify_user, verify_user_in_chat
 from utils.rolled_card import ClaimStatus, RolledCardManager
+from utils.events import (
+    EventType,
+    ClaimOutcome,
+    LockOutcome,
+    BurnOutcome,
+    RefreshOutcome,
+    RecycleOutcome,
+    CreateOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +147,16 @@ async def claim_card(
         if claim_result.balance is not None:
             message += f"\n\nBalance: {claim_result.balance}"
         await query.answer(message, show_alert=True)
+        # Log insufficient balance claim attempt
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.INSUFFICIENT,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card.id if card else None,
+            cost=cost_to_spend,
+            balance=claim_result.balance,
+        )
         return
 
     card = rolled_card_manager.card
@@ -153,6 +172,17 @@ async def claim_card(
 
     if claim_result.status is ClaimStatus.SUCCESS:
         await query.answer(_build_claim_message(claim_result.balance), show_alert=True)
+        # Log successful claim
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card.id,
+            cost=cost_to_spend,
+            rarity=card.rarity,
+            balance=claim_result.balance,
+        )
     elif claim_result.status is ClaimStatus.ALREADY_OWNED_BY_USER:
         # Show success message with current balance for user's own card
         remaining_balance = claim_result.balance
@@ -161,6 +191,14 @@ async def claim_card(
                 claim_service.get_claim_balance, user.user_id, chat_id
             )
         await query.answer(_build_claim_message(remaining_balance), show_alert=True)
+        # Log already owned claim (user double-clicked)
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.ALREADY_OWNED,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card.id,
+        )
     elif claim_result.status is ClaimStatus.INSUFFICIENT_BALANCE:
         await query.answer("Insufficient claim points!", show_alert=True)
     else:
@@ -169,6 +207,15 @@ async def claim_card(
         fresh_card = rolled_card_manager.card
         owner = fresh_card.owner if fresh_card else "someone"
         await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
+        # Log taken claim attempt
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.TAKEN,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card.id if card else None,
+            claimed_by=owner,
+        )
 
     # Update the message with new caption and keyboard
     caption = rolled_card_manager.generate_caption()
@@ -241,6 +288,16 @@ async def handle_lock(
         if lock_result.current_balance is not None:
             message += f"\n\nBalance: {lock_result.current_balance}"
         await query.answer(message, show_alert=True)
+        # Log insufficient balance for lock
+        event_service.log(
+            EventType.LOCK,
+            LockOutcome.INSUFFICIENT,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card.id,
+            cost=lock_result.cost,
+            balance=lock_result.current_balance,
+        )
         return
 
     if lock_result.cost > 0:
@@ -255,6 +312,17 @@ async def handle_lock(
     else:
         # Original roller - no claim point needed since they can't reroll their own claimed card anyway
         await query.answer("Card locked from re-rolling!", show_alert=True)
+
+    # Log successful lock via button
+    event_service.log(
+        EventType.LOCK,
+        LockOutcome.LOCKED,
+        user_id=user.user_id,
+        chat_id=chat_id,
+        card_id=card.id,
+        cost=lock_result.cost,
+        via="button",
+    )
 
     # Set the card as locked
     # Update the message caption and remove all buttons when locked
@@ -426,6 +494,15 @@ async def handle_lock_card_confirm(
         await asyncio.to_thread(card_service.set_card_locked, card_id, False)
         response_text = f"🔓 <b>{card_title}</b> unlocked!"
         await query.answer(f"{card_title} unlocked!", show_alert=False)
+        # Log unlock
+        event_service.log(
+            EventType.LOCK,
+            LockOutcome.UNLOCKED,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card_id,
+            via="command",
+        )
     else:
         # Lock the card (consumes configured claim points)
         # First check if user has enough balance
@@ -438,6 +515,16 @@ async def handle_lock_card_confirm(
             await query.answer(
                 ("Not enough claim points!\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"),
                 show_alert=True,
+            )
+            # Log insufficient balance
+            event_service.log(
+                EventType.LOCK,
+                LockOutcome.INSUFFICIENT,
+                user_id=user.user_id,
+                chat_id=chat_id,
+                card_id=card_id,
+                cost=lock_cost,
+                balance=current_balance,
             )
             try:
                 await query.edit_message_text(
@@ -479,6 +566,17 @@ async def handle_lock_card_confirm(
 
         # Lock the card
         await asyncio.to_thread(card_service.set_card_locked, card_id, True)
+        # Log successful lock via command
+        event_service.log(
+            EventType.LOCK,
+            LockOutcome.LOCKED,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=card_id,
+            cost=lock_cost,
+            balance=remaining_balance,
+            via="command",
+        )
         response_text = (
             f"🔒 <b>{card_title}</b> locked!\n\n"
             + (f"Cost: {lock_cost}\n" if lock_cost > 0 else "")
@@ -797,6 +895,17 @@ async def _handle_refresh_pick(
         card_id,
     )
 
+    # Log refresh success event
+    event_service.log(
+        EventType.REFRESH,
+        RefreshOutcome.SUCCESS,
+        user_id=user.user_id,
+        chat_id=chat_id_for_balance,
+        card_id=card_id,
+        option_selected=option_index,
+        kept_original=(option_index == 1),
+    )
+
     refresh_sessions.pop(session_key, None)
     await query.answer(f"Saved option {option_index}!")
 
@@ -936,6 +1045,15 @@ async def _handle_refresh_confirm(
             logger.warning("Image regeneration failed for card %s: %s", card_id, exc)
             await asyncio.to_thread(
                 claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+            )
+            # Log refresh error event
+            event_service.log(
+                EventType.REFRESH,
+                RefreshOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=active_chat_id,
+                card_id=card_id,
+                error_message=str(exc),
             )
             failure_msg = REFRESH_FAILURE_MESSAGE.format(card_title=card_title)
             await query.answer(
@@ -1233,8 +1351,20 @@ async def handle_burn_callback(
         await query.answer(BURN_NOT_YOURS_MESSAGE)
         return
 
+    chat = update.effective_chat
+    chat_id_str = str(chat.id) if chat else None
+
     if action == "cancel":
         await query.answer(BURN_CANCELLED_MESSAGE)
+        # Log burn cancelled
+        if chat_id_str:
+            event_service.log(
+                EventType.BURN,
+                BurnOutcome.CANCELLED,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                card_id=card_id,
+            )
         try:
             await query.message.delete()
         except Exception:
@@ -1254,9 +1384,6 @@ async def handle_burn_callback(
         return
 
     burning_users.add(user.user_id)
-
-    chat = update.effective_chat
-    chat_id_str = str(chat.id) if chat else None
 
     try:
         if not chat_id_str:
@@ -1357,6 +1484,18 @@ async def handle_burn_callback(
         )
         await query.answer("Burn complete!")
 
+        # Log successful burn
+        event_service.log(
+            EventType.BURN,
+            BurnOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id,
+            rarity=card.rarity,
+            spin_reward=spin_reward,
+            new_spin_total=new_spin_total,
+        )
+
         logger.info(
             "User %s (%s) burned card %s in chat %s for %s spins",
             username or f"user_{user.user_id}",
@@ -1367,6 +1506,15 @@ async def handle_burn_callback(
         )
     except Exception as exc:
         logger.exception("Unexpected error during burn for card %s: %s", card_id, exc)
+        # Log burn error
+        event_service.log(
+            EventType.BURN,
+            BurnOutcome.ERROR,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id,
+            error_message=str(exc),
+        )
         await query.answer(BURN_FAILURE_MESSAGE, show_alert=True)
         try:
             await query.edit_message_text(BURN_FAILURE_MESSAGE)
@@ -1606,6 +1754,17 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 card_ids = [c.id for c in cards_to_burn]
                 await asyncio.to_thread(card_service.delete_cards, card_ids)
 
+            # Log create success event
+            event_service.log(
+                EventType.CREATE,
+                CreateOutcome.SUCCESS,
+                user_id=user_id,
+                chat_id=chat_id_str,
+                card_id=card_id,
+                modifier=session["modifier"],
+                cards_burned=len(cards_to_burn),
+            )
+
             # Send result
             card = await asyncio.to_thread(card_service.get_card, card_id)
 
@@ -1650,6 +1809,14 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
 
         except Exception as e:
             logger.error(f"Error creating unique card: {e}", exc_info=True)
+            # Log create error event
+            event_service.log(
+                EventType.CREATE,
+                CreateOutcome.ERROR,
+                user_id=user_id,
+                chat_id=chat_id_str,
+                error_message=str(e),
+            )
             await query.edit_message_text(CREATE_FAILURE_UNEXPECTED)
             # Note: Cards are NOT deleted if we land here
 
@@ -1884,6 +2051,13 @@ async def handle_recycle_callback(
             # Log the card generation details
             log_card_generation(generated_card, "recycle")
         except rolling.NoEligibleUserError:
+            event_service.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=str(chat_id),
+                error_message="No eligible user profile",
+            )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -1891,6 +2065,13 @@ async def handle_recycle_callback(
             )
             return
         except rolling.ImageGenerationError:
+            event_service.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=str(chat_id),
+                error_message="Image generation failed",
+            )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -1899,6 +2080,13 @@ async def handle_recycle_callback(
             return
         except Exception as exc:
             logger.error("Error while generating recycled card: %s", exc)
+            event_service.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=str(chat_id),
+                error_message=str(exc),
+            )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
@@ -1929,6 +2117,18 @@ async def handle_recycle_callback(
 
         card_ids_to_delete = [card.id for card in cards_to_burn]
         await asyncio.to_thread(card_service.delete_cards, card_ids_to_delete)
+
+        # Log recycle success event
+        event_service.log(
+            EventType.RECYCLE,
+            RecycleOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=str(chat_id),
+            card_id=new_card_id,
+            source_rarity=rarity_name,
+            new_rarity=upgrade_rarity,
+            cards_burned=len(cards_to_burn),
+        )
 
         burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])
         # Note: generated_card.card_title doesn't use Card.title() - it's directly from GeneratedCard

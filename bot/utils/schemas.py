@@ -436,3 +436,42 @@ class RideTheBusGame(BaseModel):
             started_timestamp=started_timestamp,
             last_updated_timestamp=last_updated_timestamp,
         )
+
+
+class Event(BaseModel):
+    """Event data transfer object for telemetry."""
+
+    id: int
+    event_type: str
+    outcome: str
+    user_id: int
+    chat_id: str
+    card_id: Optional[int] = None
+    timestamp: datetime.datetime
+    payload: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_orm(cls, event_orm) -> "Event":
+        """Convert an EventModel ORM object to an Event schema."""
+        # Handle timestamp that may be a string or datetime
+        timestamp = event_orm.timestamp
+        if isinstance(timestamp, str):
+            timestamp = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        elif timestamp is not None and timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        # Parse JSON payload if it's a string
+        payload = event_orm.payload
+        if isinstance(payload, str):
+            payload = json.loads(payload) if payload else None
+
+        return cls(
+            id=event_orm.id,
+            event_type=event_orm.event_type,
+            outcome=event_orm.outcome,
+            user_id=event_orm.user_id,
+            chat_id=event_orm.chat_id,
+            card_id=event_orm.card_id,
+            timestamp=timestamp,
+            payload=payload,
+        )
