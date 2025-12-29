@@ -18,7 +18,7 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMe
 from telegram.constants import ChatType, ParseMode
 from telegram.ext import ContextTypes
 
-from config import DEBUG_MODE, MAX_BOT_IMAGE_RETRIES, gemini_util
+from config import DEBUG_MODE, MAX_BOT_IMAGE_RETRIES, MINIAPP_URL_ENV, gemini_util
 from handlers.helpers import (
     build_burning_text,
     log_card_generation,
@@ -86,8 +86,10 @@ from settings.constants import (
     CREATE_FAILURE_UNEXPECTED,
     CREATE_CANCELLED_MESSAGE,
     UNIQUE_ADDENDUM,
+    SLOTS_VIEW_IN_APP_LABEL,
 )
 from utils import rolling
+from utils.miniapp import encode_single_card_token
 from utils.services import card_service, user_service, claim_service, spin_service
 from utils.schemas import User, Card
 from utils.decorators import verify_user, verify_user_in_chat
@@ -1625,12 +1627,22 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 + f"\n\nBurned cards:\n\n<b>{burned_block}</b>"
             )
 
+            # Build View in app button if MINIAPP_URL is configured
+            reply_markup = None
+            if MINIAPP_URL_ENV:
+                card_token = encode_single_card_token(card_id)
+                card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
+                reply_markup = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
+                )
+
             await context.bot.send_photo(
                 chat_id=query.message.chat_id,
                 message_thread_id=query.message.message_thread_id,
                 photo=image_bytes,
                 caption=caption,
                 parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
             )
 
             # Delete processing message
@@ -1935,10 +1947,20 @@ async def handle_recycle_callback(
             parse_mode=ParseMode.HTML,
         )
 
+        # Build View in app button if MINIAPP_URL is configured
+        reply_markup = None
+        if MINIAPP_URL_ENV:
+            card_token = encode_single_card_token(new_card_id)
+            card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
+            reply_markup = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
+            )
+
         message = await context.bot.edit_message_media(
             chat_id=chat_id,
             message_id=message_id,
             media=media,
+            reply_markup=reply_markup,
         )
 
         # Save the file_id returned by Telegram for future use
