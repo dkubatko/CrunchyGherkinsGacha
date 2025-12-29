@@ -32,10 +32,11 @@ def _get_modifiers_dir(season_id: Optional[int] = None) -> Path:
 
 
 class ModifierWithSet(NamedTuple):
-    """A modifier with its associated set ID and source."""
+    """A modifier with its associated set ID, name, and source."""
 
     modifier: str
     set_id: int
+    set_name: str = ""
     source: str = "all"
 
 
@@ -91,6 +92,11 @@ def _process_set_file(
     if not isinstance(document, dict):
         raise ValueError(f"Expected mapping at top level in {file_path.name}")
 
+    # Skip inactive sets (default to active if not specified)
+    if not document.get("active", True):
+        LOGGER.info("Skipping inactive set: %s", file_path.name)
+        return {}
+
     set_id = document.get("id")
     if set_id is None:
         raise ValueError(f"Set file {file_path.name} must have an 'id' field")
@@ -103,6 +109,9 @@ def _process_set_file(
             "Must be 'roll', 'slots', or 'all'."
         )
 
+    # Get display name from document, falling back to filename-derived name
+    set_display_name = document.get("set", set_name)
+
     if sync_db:
         _sync_set_metadata(set_id, document, set_name, season_id, source)
 
@@ -113,6 +122,7 @@ def _process_set_file(
     entries = _prepare_rarity_entries(payload)
     normalized_entries, mutated, modifiers_by_rarity = _normalize_rarity_entries(
         set_name=set_name,
+        set_display_name=set_display_name,
         set_id=set_id,
         source=source,
         entries=entries,
@@ -151,6 +161,7 @@ def _sync_set_metadata(
 def _normalize_rarity_entries(
     *,
     set_name: str,
+    set_display_name: str,
     set_id: int,
     source: str,
     entries: list[dict[str, Any]],
@@ -185,7 +196,9 @@ def _normalize_rarity_entries(
         modifiers_for_rarity = modifiers_by_rarity[rarity]
         if normalized:
             modifiers_for_rarity.extend(
-                ModifierWithSet(modifier=modifier, set_id=set_id, source=source)
+                ModifierWithSet(
+                    modifier=modifier, set_id=set_id, set_name=set_display_name, source=source
+                )
                 for modifier in normalized
             )
 
@@ -401,3 +414,25 @@ def _coerce_modifier_list(value: object) -> list[str]:
     if isinstance(value, list):
         return ["" if item is None else str(item) for item in value]
     return [str(value)]
+
+
+def get_modifier_info(
+    modifier: str,
+    rarity: str,
+    modifiers_by_rarity: dict[str, list[ModifierWithSet]],
+) -> Optional[ModifierWithSet]:
+    """Look up a modifier's set information by name and rarity.
+
+    Args:
+        modifier: The modifier keyword to look up.
+        rarity: The rarity level to search in.
+        modifiers_by_rarity: The loaded modifiers dictionary.
+
+    Returns:
+        The ModifierWithSet if found, otherwise None.
+    """
+    modifiers_list = modifiers_by_rarity.get(rarity, [])
+    for mod_with_set in modifiers_list:
+        if mod_with_set.modifier == modifier:
+            return mod_with_set
+    return None

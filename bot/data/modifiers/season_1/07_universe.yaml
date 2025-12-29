@@ -1,0 +1,24 @@
+id: 7
+set: universe
+source: roll
+rarities:
+- name: Common
+  modifiers:
+  - Asteroid
+  - Gravity
+- name: Rare
+  modifiers:
+  - Alien
+  - Cosmos
+  - Galaxy
+  - Singularity
+  - Supernova
+- name: Epic
+  modifiers:
+  - Big Bang
+  - Black Hole
+  - Dark Matter
+  - Multiverse
+- name: Legendary
+  modifiers:
+  - Creator

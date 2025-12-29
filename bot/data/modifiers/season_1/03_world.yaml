@@ -1,0 +1,30 @@
+id: 3
+set: world
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - American
+  - Asian
+  - European
+  - Nordic
+  - Swiss
+  - Texan
+- name: Rare
+  modifiers:
+  - African
+  - Alaska
+  - Antarctic
+  - Chinese
+  - Indian
+  - Japanese
+  - Kazakh
+  - Scandinavian
+- name: Epic
+  modifiers:
+  - Armenian
+  - Jewish
+  - Korean
+  - Russian
+- name: Legendary
+  modifiers: []
