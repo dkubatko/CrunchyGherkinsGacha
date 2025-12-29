@@ -32,7 +32,7 @@ from utils.services import (
     event_service,
 )
 from utils.schemas import User
-from utils.decorators import verify_user_in_chat
+from utils.decorators import verify_user_in_chat, prevent_concurrency
 from utils.rolled_card import RolledCardManager
 from utils.events import EventType, RollOutcome, RerollOutcome
 
@@ -205,6 +205,7 @@ async def roll(
 
 
 @verify_user_in_chat
+@prevent_concurrency("pending_roll_actions")
 async def handle_reroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,

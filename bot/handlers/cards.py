@@ -92,7 +92,7 @@ from utils import rolling
 from utils.miniapp import encode_single_card_token
 from utils.services import card_service, user_service, claim_service, spin_service, event_service
 from utils.schemas import User, Card
-from utils.decorators import verify_user, verify_user_in_chat
+from utils.decorators import verify_user, verify_user_in_chat, prevent_concurrency
 from utils.rolled_card import ClaimStatus, RolledCardManager
 from utils.events import (
     EventType,
@@ -108,6 +108,7 @@ logger = logging.getLogger(__name__)
 
 
 @verify_user_in_chat
+@prevent_concurrency("pending_roll_actions")
 async def claim_card(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
@@ -231,6 +232,7 @@ async def claim_card(
 
 
 @verify_user_in_chat
+@prevent_concurrency("pending_roll_actions")
 async def handle_lock(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
