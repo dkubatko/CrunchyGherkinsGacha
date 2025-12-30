@@ -26,6 +26,16 @@ class UserSummary(BaseModel):
     display_name: Optional[str] = None
 
 
+class UserAchievementResponse(BaseModel):
+    """Achievement data for API responses."""
+
+    id: int
+    name: str
+    description: str
+    icon_b64: Optional[str] = None
+    unlocked_at: str  # ISO format datetime string
+
+
 class UserProfileResponse(BaseModel):
     """Full user profile response."""
 
@@ -36,6 +46,7 @@ class UserProfileResponse(BaseModel):
     claim_balance: int
     spin_balance: int
     card_count: int
+    achievements: List[UserAchievementResponse] = []
 
 
 class UserCollectionResponse(BaseModel):

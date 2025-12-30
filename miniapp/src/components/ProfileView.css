@@ -235,6 +235,19 @@
   width: 100%;
   flex-wrap: wrap;
   justify-content: flex-start;
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+  border-radius: 12px;
+  padding: 1rem;
+  box-sizing: border-box;
+}
+
+.no-achievements {
+  width: 100%;
+  text-align: center;
+  padding: 1rem;
+  color: var(--tg-theme-hint-color, #999999);
+  font-size: 1rem;
+  font-style: italic;
 }
 
 
