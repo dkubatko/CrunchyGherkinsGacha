@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo } from 'react';
+import React, { useState, useEffect, memo, useRef } from 'react';
 import { useInView } from 'react-intersection-observer';
 import { imageCache } from '../lib/imageCache';
 import type { CardData } from '../types';
@@ -16,47 +16,51 @@ const MiniCard: React.FC<MiniCardProps> = ({ card, onClick, isLoading = false, h
   // Check if we have cached data immediately to set initial state
   const cachedImage = imageCache.has(card.id, 'thumb') ? imageCache.get(card.id, 'thumb') : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
+  const hasNotifiedVisible = useRef(false);
 
   // Use react-intersection-observer for reliable visibility detection
+  // Don't skip even if we have an image - we need to track visibility for the parent
   const { ref, inView } = useInView({
     threshold: 0,
-    rootMargin: '400px', // Load images 400px before they become visible
-    triggerOnce: false, // Keep monitoring visibility changes
-    skip: !!imageB64, // Skip observer if image already loaded
+    rootMargin: '600px', // Increased prefetch distance for mobile scrolling
+    triggerOnce: false,
   });
 
   // Notify parent when visibility changes
   useEffect(() => {
-    setCardVisible(card.id, inView);
-  }, [card.id, inView, setCardVisible]);
-
-  // Effect to check cache when loading state changes or periodically
-  useEffect(() => {
-    if (imageB64) return; // Already have image, no need to check
-    
-    if (imageCache.has(card.id, 'thumb')) {
-      const cached = imageCache.get(card.id, 'thumb');
-      if (cached) {
-        setImageB64(cached);
-        return;
+    // Only notify if we don't have the image yet
+    if (!imageB64) {
+      setCardVisible(card.id, inView);
+      if (inView) {
+        hasNotifiedVisible.current = true;
       }
     }
+  }, [card.id, inView, imageB64, setCardVisible]);
 
-    // If we're loading, check cache periodically
-    if (isLoading) {
+  // Check cache periodically while loading or visible without image
+  useEffect(() => {
+    if (imageB64) return;
+    
+    // Check immediately
+    const cached = imageCache.get(card.id, 'thumb');
+    if (cached) {
+      setImageB64(cached);
+      return;
+    }
+
+    // Poll the cache while we're loading or visible
+    if (isLoading || inView) {
       const interval = setInterval(() => {
-        if (imageCache.has(card.id, 'thumb')) {
-          const cached = imageCache.get(card.id, 'thumb');
-          if (cached) {
-            setImageB64(cached);
-            clearInterval(interval);
-          }
+        const cached = imageCache.get(card.id, 'thumb');
+        if (cached) {
+          setImageB64(cached);
+          clearInterval(interval);
         }
-      }, 100);
+      }, 32); // Poll every ~2 frames for snappy updates
 
       return () => clearInterval(interval);
     }
-  }, [card.id, isLoading, imageB64]);
+  }, [card.id, isLoading, imageB64, inView]);
 
   const showImage = imageB64 && !hasFailed;
   const showLoading = !imageB64 && isLoading && !hasFailed;

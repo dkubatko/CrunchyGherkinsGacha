@@ -34,8 +34,7 @@
   -webkit-user-select: none;
   -moz-user-select: none;
   -ms-user-select: none;
-  /* Performance optimizations */
-  content-visibility: auto;
+  /* Performance optimizations - removed content-visibility: auto which breaks IntersectionObserver on mobile */
   contain: layout style paint;
   will-change: transform;
 }
