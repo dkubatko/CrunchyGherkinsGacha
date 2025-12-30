@@ -475,3 +475,58 @@ class Event(BaseModel):
             timestamp=timestamp,
             payload=payload,
         )
+
+
+class Achievement(BaseModel):
+    """Achievement data transfer object."""
+
+    id: int
+    name: str
+    description: str
+    icon_b64: Optional[str] = None
+
+    @classmethod
+    def from_orm(cls, achievement_orm) -> "Achievement":
+        """Convert an AchievementModel ORM object to an Achievement schema."""
+        return cls(
+            id=achievement_orm.id,
+            name=achievement_orm.name,
+            description=achievement_orm.description,
+            icon_b64=achievement_orm.icon_b64,
+        )
+
+
+class UserAchievement(BaseModel):
+    """User achievement data transfer object."""
+
+    id: int
+    user_id: int
+    achievement_id: int
+    unlocked_at: datetime.datetime
+    achievement: Optional[Achievement] = None
+
+    @classmethod
+    def from_orm(cls, user_achievement_orm, include_achievement: bool = True) -> "UserAchievement":
+        """Convert a UserAchievementModel ORM object to a UserAchievement schema."""
+        # Handle timestamp that may be a string or datetime
+        unlocked_at = user_achievement_orm.unlocked_at
+        if isinstance(unlocked_at, str):
+            unlocked_at = datetime.datetime.fromisoformat(unlocked_at.replace("Z", "+00:00"))
+        elif unlocked_at is not None and unlocked_at.tzinfo is None:
+            unlocked_at = unlocked_at.replace(tzinfo=datetime.timezone.utc)
+
+        achievement = None
+        if (
+            include_achievement
+            and hasattr(user_achievement_orm, "achievement")
+            and user_achievement_orm.achievement
+        ):
+            achievement = Achievement.from_orm(user_achievement_orm.achievement)
+
+        return cls(
+            id=user_achievement_orm.id,
+            user_id=user_achievement_orm.user_id,
+            achievement_id=user_achievement_orm.achievement_id,
+            unlocked_at=unlocked_at,
+            achievement=achievement,
+        )

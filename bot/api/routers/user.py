@@ -11,12 +11,13 @@ from typing import Any, Dict
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_validated_user
-from api.schemas import UserProfileResponse
+from api.schemas import UserProfileResponse, UserAchievementResponse
 from utils.services import (
     card_service,
     claim_service,
     spin_service,
     user_service,
+    get_user_achievements,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +51,19 @@ async def get_user_profile(
         # Get card count
         card_count = await asyncio.to_thread(card_service.get_user_card_count, user_id, chat_id)
 
+        # Get user achievements
+        user_achievements = await asyncio.to_thread(get_user_achievements, user_id)
+        achievements_response = [
+            UserAchievementResponse(
+                id=ua.achievement.id if ua.achievement else ua.achievement_id,
+                name=ua.achievement.name if ua.achievement else "Unknown",
+                description=ua.achievement.description if ua.achievement else "",
+                icon_b64=ua.achievement.icon_b64 if ua.achievement else None,
+                unlocked_at=ua.unlocked_at.isoformat(),
+            )
+            for ua in user_achievements
+        ]
+
         return UserProfileResponse(
             user_id=user.user_id,
             username=user.username,
@@ -58,6 +72,7 @@ async def get_user_profile(
             claim_balance=claim_balance,
             spin_balance=spin_balance,
             card_count=card_count,
+            achievements=achievements_response,
         )
 
     except HTTPException:

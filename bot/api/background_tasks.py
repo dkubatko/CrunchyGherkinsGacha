@@ -627,3 +627,72 @@ async def refund_slots_victory_failure(
         )
 
     return True
+
+
+async def send_achievement_notification(
+    user_id: int,
+    chat_id: str,
+    user_achievement,
+) -> bool:
+    """
+    Send a notification when a user unlocks an achievement.
+
+    Args:
+        user_id: The user who earned the achievement.
+        chat_id: The chat where the triggering event occurred.
+        user_achievement: The UserAchievement schema with achievement details.
+
+    Returns:
+        True if notification was sent successfully, False otherwise.
+    """
+    from settings.constants import ACHIEVEMENT_NOTIFICATION_MESSAGE
+    from utils.services import user_service
+
+    try:
+        bot = create_bot_instance()
+
+        # Get username for mention
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, user_id)
+        if not username:
+            logger.warning("Cannot send achievement notification: no username for user %d", user_id)
+            return False
+
+        # Get thread_id if available
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+
+        # Build notification message
+        achievement = user_achievement.achievement
+        achievement_name = achievement.name if achievement else "Unknown Achievement"
+
+        message = ACHIEVEMENT_NOTIFICATION_MESSAGE.format(
+            username=username,
+            achievement_name=achievement_name,
+        )
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info(
+            "Sent achievement notification: user=%d earned '%s' in chat=%s",
+            user_id,
+            achievement_name,
+            chat_id,
+        )
+        return True
+
+    except Exception as exc:
+        logger.error(
+            "Failed to send achievement notification for user %d in chat %s: %s",
+            user_id,
+            chat_id,
+            exc,
+            exc_info=True,
+        )
+        return False

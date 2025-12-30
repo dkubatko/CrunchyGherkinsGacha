@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import type { UserProfile, CardData } from '../types';
 import Achievement from './Achievement';
-import achievementIcon from '../assets/icons/achievement.png';
 import './ProfileView.css';
 
 interface ProfileViewProps {
@@ -99,12 +98,19 @@ const ProfileView = ({ profile, cards, loading, error }: ProfileViewProps) => {
       <div className="achievements-section">
         <h3 className="achievements-title">Achievements</h3>
         <div className="achievements-grid">
-          <Achievement 
-            id="wip"
-            icon={achievementIcon}
-            name="WIP"
-            description="This feature is WIP, stay tuned!"
-          />
+          {profile.achievements && profile.achievements.length > 0 ? (
+            profile.achievements.map(achievement => (
+              <Achievement 
+                key={achievement.id}
+                id={String(achievement.id)}
+                icon={achievement.icon_b64 ? `data:image/png;base64,${achievement.icon_b64}` : ''}
+                name={achievement.name}
+                description={achievement.description}
+              />
+            ))
+          ) : (
+            <div className="no-achievements">No achievements yet</div>
+          )}
         </div>
       </div>
     </div>

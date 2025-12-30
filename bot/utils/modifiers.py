@@ -75,6 +75,31 @@ def load_modifiers_with_sets(
 
     ordered = _deduplicate_and_order_modifiers(combined)
     _warn_cross_rarity_conflicts(cross_rarity_tracker)
+
+    # Log summary
+    total_modifiers = sum(len(mods) for mods in ordered.values())
+    rarity_abbrev = {
+        "common": "C",
+        "Common": "C",
+        "uncommon": "U",
+        "Uncommon": "U",
+        "rare": "R",
+        "Rare": "R",
+        "epic": "E",
+        "Epic": "E",
+        "legendary": "L",
+        "Legendary": "L",
+    }
+    rarity_summary = ", ".join(
+        f"{rarity_abbrev.get(r, r)}: {len(ordered.get(r, []))}" for r in ordered
+    )
+    LOGGER.info(
+        "Loaded %d modifiers from %d sets (%s)",
+        total_modifiers,
+        len(set_files),
+        rarity_summary,
+    )
+
     return ordered
 
 
