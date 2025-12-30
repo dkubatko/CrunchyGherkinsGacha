@@ -1,6 +1,6 @@
 .achievement-item {
-  width: 64px;
-  height: 64px;
+  width: 56px;
+  height: 56px;
   border-radius: 50%;
   background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
   display: flex;

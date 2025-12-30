@@ -126,6 +126,18 @@ from utils.services.rtb_service import (
 
 from utils.services import event_service
 
+from utils.services.achievement_service import (
+    get_achievement_by_name,
+    get_achievement_by_id,
+    get_all_achievements,
+    register_achievement,
+    update_achievement_icon,
+    has_achievement,
+    grant_achievement,
+    get_user_achievements,
+    get_achievement_holders,
+)
+
 from settings.constants import (
     RTB_CARDS_PER_GAME,
     RTB_MIN_BET,
@@ -231,4 +243,14 @@ __all__ = [
     "RARITY_ORDER",
     # Event service
     "event_service",
+    # Achievement service
+    "get_achievement_by_name",
+    "get_achievement_by_id",
+    "get_all_achievements",
+    "register_achievement",
+    "update_achievement_icon",
+    "has_achievement",
+    "grant_achievement",
+    "get_user_achievements",
+    "get_achievement_holders",
 ]

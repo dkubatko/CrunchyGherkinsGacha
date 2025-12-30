@@ -93,6 +93,14 @@ export interface ClaimBalanceState {
   error?: string;
 }
 
+export interface UserAchievement {
+  id: number;
+  name: string;
+  description: string;
+  icon_b64?: string | null;
+  unlocked_at: string;
+}
+
 export interface UserProfile {
   user_id: number;
   username: string;
@@ -101,6 +109,7 @@ export interface UserProfile {
   claim_balance: number;
   spin_balance: number;
   card_count: number;
+  achievements: UserAchievement[];
 }
 
 export interface ProfileState {

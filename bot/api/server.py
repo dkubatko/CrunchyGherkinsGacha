@@ -74,6 +74,16 @@ app.include_router(rtb_router)
 app.include_router(chat_router)
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on API startup."""
+    from utils.achievements import init_achievements, ensure_achievements_registered
+
+    init_achievements()
+    ensure_achievements_registered()
+    logger.info("Achievement system initialized for API")
+
+
 def run_server():
     """Run the FastAPI server."""
     if DEBUG_MODE:

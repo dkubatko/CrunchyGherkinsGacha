@@ -61,7 +61,6 @@ def subscribe(callback: Callable[[Event], None]) -> None:
     with _observers_lock:
         if callback not in _observers:
             _observers.append(callback)
-            logger.debug("Event observer subscribed: %s", callback.__name__)
 
 
 def unsubscribe(callback: Callable[[Event], None]) -> None:

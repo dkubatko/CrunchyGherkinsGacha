@@ -345,6 +345,45 @@ class EventModel(Base):
     )
 
 
+class AchievementModel(Base):
+    """Represents an achievement definition."""
+
+    __tablename__ = "achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    icon_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationship to user achievements
+    user_achievements: Mapped[List["UserAchievementModel"]] = relationship(
+        "UserAchievementModel", back_populates="achievement", cascade="all, delete-orphan"
+    )
+
+
+class UserAchievementModel(Base):
+    """Tracks which users have earned which achievements."""
+
+    __tablename__ = "user_achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    achievement_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("achievements.id", ondelete="CASCADE"), nullable=False
+    )
+    unlocked_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+
+    # Relationship to achievement
+    achievement: Mapped["AchievementModel"] = relationship(
+        "AchievementModel", back_populates="user_achievements"
+    )
+
+    __table_args__ = (
+        Index("idx_user_achievements_user_id", "user_id"),
+        Index("idx_user_achievements_achievement_id", "achievement_id"),
+    )
+
+
 # Configure SQLite-specific settings via events
 @event.listens_for(Base.metadata, "after_create")
 def set_sqlite_pragma(target, connection, **kw):
