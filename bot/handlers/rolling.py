@@ -205,7 +205,7 @@ async def roll(
 
 
 @verify_user_in_chat
-@prevent_concurrency("pending_roll_actions")
+@prevent_concurrency("pending_roll_actions", cross_user=True)
 async def handle_reroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,

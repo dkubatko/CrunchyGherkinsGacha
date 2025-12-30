@@ -142,7 +142,9 @@ def verify_admin(handler: HandlerFunc) -> HandlerFunc:
     return wrapper
 
 
-def prevent_concurrency(bot_data_key: str) -> Callable[[HandlerFunc], HandlerFunc]:
+def prevent_concurrency(
+    bot_data_key: str, cross_user: bool = False
+) -> Callable[[HandlerFunc], HandlerFunc]:
     """
     Prevent concurrent callback executions for the same user + resource combination.
 
@@ -150,20 +152,31 @@ def prevent_concurrency(bot_data_key: str) -> Callable[[HandlerFunc], HandlerFun
     operations in context.bot_data[bot_data_key]. Duplicate requests are silently dropped.
 
     The decorator extracts an ID from query.data by splitting on '_' and taking index 1.
-    It builds a composite key as f"{user.user_id}_{resource_id}" to allow the same user
-    to interact with different resources concurrently, while blocking duplicate clicks
-    on the same resource.
+    By default, it builds a composite key as f"{user.user_id}_{resource_id}" to allow the
+    same user to interact with different resources concurrently, while blocking duplicate
+    clicks on the same resource.
+
+    When cross_user=True, the key is just resource_id, which blocks ALL users from
+    performing concurrent operations on the same resource. Use this for mutually exclusive
+    actions like lock vs reroll where different users must not race.
 
     Must be used AFTER @verify_user_in_chat (which injects the 'user' kwarg).
 
     Args:
         bot_data_key: The key in context.bot_data where the set of in-progress
                       operations is stored (e.g., "pending_roll_actions").
+        cross_user: If True, lock per resource_id only (cross-user exclusion).
+                    If False (default), lock per user_id + resource_id.
 
     Example:
         @verify_user_in_chat
         @prevent_concurrency("pending_roll_actions")
         async def claim_card(update, context, user):
+            ...
+
+        @verify_user_in_chat
+        @prevent_concurrency("pending_roll_actions", cross_user=True)
+        async def handle_lock(update, context, user):
             ...
     """
 
@@ -184,7 +197,7 @@ def prevent_concurrency(bot_data_key: str) -> Callable[[HandlerFunc], HandlerFun
                 return await handler(update, context, *args, **kwargs)
 
             resource_id = data_parts[1]
-            action_key = f"{db_user.user_id}_{resource_id}"
+            action_key = resource_id if cross_user else f"{db_user.user_id}_{resource_id}"
 
             pending_actions = context.bot_data.setdefault(bot_data_key, set())
 
