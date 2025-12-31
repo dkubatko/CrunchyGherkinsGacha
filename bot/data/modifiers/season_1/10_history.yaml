@@ -5,26 +5,26 @@ rarities:
 - name: Common
   modifiers:
   - Knight
+  - Mongol
+  - Roman
+  - Samurai
   - Slave
   - Крепостной
+  - Холоп
 - name: Rare
   modifiers:
   - Gladiator
   - King
-  - Mongol
   - Queen
-  - Roman
-  - Samurai
+  - Боярин
   - Казак
   - Крестьянин
-  - Холоп
 - name: Epic
   modifiers:
   - Emperor
   - Exorcist
   - Pharaoh
   - Spartan
-  - Боярин
   - Царь
 - name: Legendary
   modifiers:

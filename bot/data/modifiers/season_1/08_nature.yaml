@@ -8,17 +8,19 @@ rarities:
   - Floral
   - Forest
   - Jungle
+  - Lamb
   - Mountain
   - Ocean
+  - Penguin
+  - Pigeon
   - Turtle
+  - Whale
 - name: Rare
   modifiers:
   - Dinosaur
   - Everest
   - Fuji
   - Glacier
-  - Penguin
-  - Whale
   - Yosemite
 - name: Epic
   modifiers:

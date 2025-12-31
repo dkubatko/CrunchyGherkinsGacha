@@ -1,0 +1,22 @@
+id: 18
+set: Christmas
+source: roll
+rarities:
+- name: Common
+  modifiers:
+  - Candy Cane
+  - Festive
+  - Reindeer
+- name: Rare
+  modifiers:
+  - Nutcracker
+  - Snowman
+  - Снегурочка
+- name: Epic
+  modifiers:
+  - Grinch
+  - Santa
+  - Snow Globe
+- name: Legendary
+  modifiers:
+  - Дед Мороз
