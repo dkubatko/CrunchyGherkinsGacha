@@ -1,0 +1,27 @@
+id: 14
+set: jobs
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Cashier
+  - Contractor
+  - Farmer
+  - Plumber
+  - Police
+- name: Rare
+  modifiers:
+  - Fisherman
+  - Janitor
+  - Model
+- name: Epic
+  modifiers:
+  - Astronaut
+  - Ballerina
+  - Coal Miner
+  - Coroner
+  - Dog Trainer
+  - Mafia
+- name: Legendary
+  modifiers:
+  - Stripper

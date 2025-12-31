@@ -1,0 +1,40 @@
+id: 1
+set: classic
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Dealer
+  - Father
+  - Gambler
+  - Mother
+  - Old
+  - Pajamas
+  - Tipsy
+  - Young
+  - Бритый
+  - Сытый
+- name: Rare
+  modifiers:
+  - Baby
+  - Cabaret
+  - Democrat
+  - Drunk
+  - Emo
+  - Poker
+  - Religious
+  - Roulette
+  - Tarot
+  - Злодей
+  - Лысый
+- name: Epic
+  modifiers:
+  - Coca-Cola
+  - Gachimuchi
+  - Nun
+  - Мытый
+- name: Legendary
+  modifiers:
+  - Crunchy Gherkins
+  - Jesus
+  - MAGA

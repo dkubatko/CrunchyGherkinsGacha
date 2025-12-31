@@ -1,0 +1,67 @@
+# Job and profession modifier keywords by rarity. Lists are alphabetized and de-duplicated.
+id: 3
+set: jobs
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Actor
+  - Athlete
+  - Business
+  - Cheerleader
+  - Detective
+  - Doctor
+  - Gamer
+  - Hunter
+  - Pilot
+  - Police
+  - Sailor
+  - Scout
+  - Student
+  - Tourist
+  - Повар
+- name: Rare
+  modifiers:
+  - Accountant
+  - Astronomer
+  - Boss
+  - Captain
+  - Carpenter
+  - Cartel
+  - Citizen
+  - Cowboy
+  - Criminal
+  - DJ
+  - Electrician
+  - Engineer
+  - Entrepreneur
+  - Hitman
+  - Housewife
+  - Influencer
+  - Investor
+  - Manager
+  - Mime
+  - Nailtech
+  - Painter
+  - Politician
+  - Scientist
+  - Streamer
+  - Taxist
+  - Teacher
+  - Trainer
+  - Кондитер
+  - Шеф
+- name: Epic
+  modifiers:
+  - Bodybuilder
+  - CEO
+  - Clown
+  - Hacker
+  - Judge
+  - Military
+  - Pastor
+  - Rock Star
+- name: Legendary
+  modifiers:
+  - Pimp
+  - Stripper

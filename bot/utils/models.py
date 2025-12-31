@@ -15,6 +15,7 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -50,22 +51,35 @@ class CardModel(Base):
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    set_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("sets.id"), nullable=True)
+    set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    season_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     # Relationship to card images (one-to-one)
     image: Mapped[Optional["CardImageModel"]] = relationship(
         "CardImageModel", back_populates="card", uselist=False, cascade="all, delete-orphan"
     )
 
-    # Relationship to set
-    card_set: Mapped[Optional["SetModel"]] = relationship("SetModel", back_populates="cards")
+    # Relationship to set (composite FK: set_id + season_id)
+    card_set: Mapped[Optional["SetModel"]] = relationship(
+        "SetModel",
+        back_populates="cards",
+        foreign_keys="[CardModel.set_id, CardModel.season_id]",
+        primaryjoin="and_(CardModel.set_id == SetModel.id, CardModel.season_id == SetModel.season_id)",
+    )
 
     # Indices for performance
     __table_args__ = (
+        ForeignKeyConstraint(
+            ["set_id", "season_id"],
+            ["sets.id", "sets.season_id"],
+            name="fk_cards_set_season",
+        ),
         Index("idx_cards_chat_id", "chat_id"),
         Index("idx_cards_user_id", "user_id"),
         Index("idx_cards_owner", "owner"),
         Index("idx_cards_rarity", "rarity"),
+        Index("idx_cards_season_id", "season_id"),
+        Index("idx_cards_season_user", "season_id", "user_id"),
     )
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
@@ -173,6 +187,7 @@ class RolledCardModel(Base):
     being_rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     attempted_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    original_rarity: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     __table_args__ = (Index("ix_rolled_cards_original_roller_id", "original_roller_id"),)
 
@@ -214,6 +229,17 @@ class SpinsModel(Base):
     refresh_timestamp: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class MegaspinsModel(Base):
+    """Tracks megaspin progress and availability per user per chat."""
+
+    __tablename__ = "megaspins"
+
+    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    spins_until_megaspin: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    megaspin_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
 class ThreadModel(Base):
     """Stores thread IDs for chats (for topic-based messaging)."""
 
@@ -230,10 +256,17 @@ class SetModel(Base):
     __tablename__ = "sets"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    source: Mapped[str] = mapped_column(Text, nullable=False, default="all")
 
-    # Relationship to cards
-    cards: Mapped[List["CardModel"]] = relationship("CardModel", back_populates="card_set")
+    # Relationship to cards (uses composite FK from cards table)
+    cards: Mapped[List["CardModel"]] = relationship(
+        "CardModel",
+        back_populates="card_set",
+        foreign_keys="[CardModel.set_id, CardModel.season_id]",
+        primaryjoin="and_(SetModel.id == CardModel.set_id, SetModel.season_id == CardModel.season_id)",
+    )
 
 
 class MinesweeperGameModel(Base):
@@ -262,6 +295,92 @@ class MinesweeperGameModel(Base):
         Index("idx_minesweeper_user_chat", "user_id", "chat_id"),
         Index("idx_minesweeper_status", "status"),
         Index("idx_minesweeper_started", "started_timestamp"),
+    )
+
+
+class RideTheBusGameModel(Base):
+    """Represents a Ride the Bus game state."""
+
+    __tablename__ = "rtb_games"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[str] = mapped_column(String, nullable=False)
+    bet_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    card_ids: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    card_rarities: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    card_titles: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
+    current_position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    current_multiplier: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    started_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+
+    __table_args__ = (
+        Index("idx_rtb_user_chat", "user_id", "chat_id"),
+        Index("idx_rtb_status", "status"),
+        Index("idx_rtb_started", "started_timestamp"),
+    )
+
+
+class EventModel(Base):
+    """Represents a telemetry event for logging and analytics."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    event_type: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(Text, nullable=False)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[str] = mapped_column(Text, nullable=False)
+    card_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob
+
+    __table_args__ = (
+        Index("idx_events_type_outcome", "event_type", "outcome"),
+        Index("idx_events_user_timestamp", "user_id", "timestamp"),
+        Index("idx_events_chat_timestamp", "chat_id", "timestamp"),
+        Index("idx_events_card_id", "card_id"),
+    )
+
+
+class AchievementModel(Base):
+    """Represents an achievement definition."""
+
+    __tablename__ = "achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    icon_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationship to user achievements
+    user_achievements: Mapped[List["UserAchievementModel"]] = relationship(
+        "UserAchievementModel", back_populates="achievement", cascade="all, delete-orphan"
+    )
+
+
+class UserAchievementModel(Base):
+    """Tracks which users have earned which achievements."""
+
+    __tablename__ = "user_achievements"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    achievement_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("achievements.id", ondelete="CASCADE"), nullable=False
+    )
+    unlocked_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+
+    # Relationship to achievement
+    achievement: Mapped["AchievementModel"] = relationship(
+        "AchievementModel", back_populates="user_achievements"
+    )
+
+    __table_args__ = (
+        Index("idx_user_achievements_user_id", "user_id"),
+        Index("idx_user_achievements_achievement_id", "achievement_id"),
     )
 
 

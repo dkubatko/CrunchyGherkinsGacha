@@ -1,0 +1,27 @@
+id: 6
+set: gods
+source: roll
+rarities:
+- name: Common
+  modifiers: []
+- name: Rare
+  modifiers:
+  - Athena
+  - Hades
+  - Loki
+  - Poseidon
+- name: Epic
+  modifiers:
+  - Aphrodite
+  - Ares
+  - Odin
+  - Shiva
+  - Thor
+- name: Legendary
+  modifiers:
+  - Amaterasu
+  - Buddha
+  - God
+  - Moon God
+  - Sun God
+  - Zeus

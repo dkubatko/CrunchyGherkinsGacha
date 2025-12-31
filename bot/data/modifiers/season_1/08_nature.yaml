@@ -1,0 +1,29 @@
+id: 8
+set: nature
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Desert
+  - Floral
+  - Forest
+  - Jungle
+  - Mountain
+  - Ocean
+  - Turtle
+- name: Rare
+  modifiers:
+  - Dinosaur
+  - Everest
+  - Fuji
+  - Glacier
+  - Penguin
+  - Whale
+  - Yosemite
+- name: Epic
+  modifiers:
+  - Stargazing
+  - Volcano
+- name: Legendary
+  modifiers:
+  - Aurora

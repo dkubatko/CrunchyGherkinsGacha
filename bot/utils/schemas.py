@@ -55,6 +55,8 @@ class Card(BaseModel):
     source_type: Optional[str] = None
     source_id: Optional[int] = None
     set_id: Optional[int] = None
+    season_id: int = 0
+    set_name: Optional[str] = None
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
@@ -83,6 +85,7 @@ class Card(BaseModel):
     @classmethod
     def from_orm(cls, card_orm) -> "Card":
         """Convert a CardModel ORM object to a Card schema."""
+        set_name = card_orm.card_set.name if card_orm.card_set else None
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -97,6 +100,8 @@ class Card(BaseModel):
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
+            season_id=card_orm.season_id,
+            set_name=set_name,
         )
 
 
@@ -117,6 +122,7 @@ class CardWithImage(Card):
         image_b64 = card_orm.image.image_b64 if card_orm.image else None
         if image_b64 is None:
             image_b64 = ""
+        set_name = card_orm.card_set.name if card_orm.card_set else None
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -131,6 +137,8 @@ class CardWithImage(Card):
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
+            season_id=card_orm.season_id,
+            set_name=set_name,
             image_b64=image_b64,
         )
 
@@ -164,6 +172,7 @@ class RolledCard(BaseModel):
     being_rerolled: bool
     attempted_by: Optional[str]
     is_locked: bool
+    original_rarity: Optional[str] = None
 
     @property
     def current_card_id(self) -> int:
@@ -190,6 +199,7 @@ class RolledCard(BaseModel):
             being_rerolled=rolled_orm.being_rerolled,
             attempted_by=rolled_orm.attempted_by,
             is_locked=rolled_orm.is_locked,
+            original_rarity=rolled_orm.original_rarity,
         )
 
 
@@ -230,6 +240,25 @@ class Spins(BaseModel):
             chat_id=spins_orm.chat_id,
             count=spins_orm.count,
             refresh_timestamp=spins_orm.refresh_timestamp,
+        )
+
+
+class Megaspins(BaseModel):
+    """User megaspins progress data transfer object."""
+
+    user_id: int
+    chat_id: str
+    spins_until_megaspin: int
+    megaspin_available: bool
+
+    @classmethod
+    def from_orm(cls, megaspins_orm) -> "Megaspins":
+        """Convert a MegaspinsModel ORM object to a Megaspins schema."""
+        return cls(
+            user_id=megaspins_orm.user_id,
+            chat_id=megaspins_orm.chat_id,
+            spins_until_megaspin=megaspins_orm.spins_until_megaspin,
+            megaspin_available=megaspins_orm.megaspin_available,
         )
 
 
@@ -324,4 +353,180 @@ class MinesweeperGame(BaseModel):
             last_updated_timestamp=last_updated_timestamp,
             source_type=game_orm.source_type,
             source_id=game_orm.source_id,
+        )
+
+
+class RideTheBusGame(BaseModel):
+    """Ride the Bus game state data transfer object."""
+
+    id: int
+    user_id: int
+    chat_id: str
+    bet_amount: int
+    card_ids: List[int]
+    card_rarities: List[str]
+    card_titles: List[str]
+    current_position: int  # 1-5, how many cards have been revealed
+    current_multiplier: int  # x2 -> x3 -> x5 -> x10
+    status: str  # 'active', 'won', 'lost', 'cashed_out'
+    started_timestamp: datetime.datetime
+    last_updated_timestamp: datetime.datetime
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert game state to dictionary for API responses."""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "chat_id": self.chat_id,
+            "bet_amount": self.bet_amount,
+            "card_ids": self.card_ids,
+            "card_rarities": self.card_rarities,
+            "card_titles": self.card_titles,
+            "current_position": self.current_position,
+            "current_multiplier": self.current_multiplier,
+            "status": self.status,
+            "started_timestamp": self.started_timestamp.isoformat(),
+            "last_updated_timestamp": self.last_updated_timestamp.isoformat(),
+        }
+
+    @classmethod
+    def from_orm(cls, game_orm) -> "RideTheBusGame":
+        """Convert a RideTheBusGameModel ORM object to a RideTheBusGame schema."""
+        # Handle JSON fields that may be strings or already parsed
+        card_ids = game_orm.card_ids
+        if isinstance(card_ids, str):
+            card_ids = json.loads(card_ids)
+
+        card_rarities = game_orm.card_rarities
+        if isinstance(card_rarities, str):
+            card_rarities = json.loads(card_rarities)
+
+        card_titles = game_orm.card_titles
+        if isinstance(card_titles, str):
+            card_titles = json.loads(card_titles)
+
+        # Handle timestamps that may be strings or datetime objects
+        started_timestamp = game_orm.started_timestamp
+        if isinstance(started_timestamp, str):
+            started_timestamp = datetime.datetime.fromisoformat(
+                started_timestamp.replace("Z", "+00:00")
+            )
+        elif started_timestamp is not None and started_timestamp.tzinfo is None:
+            started_timestamp = started_timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        last_updated_timestamp = game_orm.last_updated_timestamp
+        if isinstance(last_updated_timestamp, str):
+            last_updated_timestamp = datetime.datetime.fromisoformat(
+                last_updated_timestamp.replace("Z", "+00:00")
+            )
+        elif last_updated_timestamp is not None and last_updated_timestamp.tzinfo is None:
+            last_updated_timestamp = last_updated_timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        return cls(
+            id=game_orm.id,
+            user_id=game_orm.user_id,
+            chat_id=game_orm.chat_id,
+            bet_amount=game_orm.bet_amount,
+            card_ids=card_ids,
+            card_rarities=card_rarities,
+            card_titles=card_titles,
+            current_position=game_orm.current_position,
+            current_multiplier=game_orm.current_multiplier,
+            status=game_orm.status,
+            started_timestamp=started_timestamp,
+            last_updated_timestamp=last_updated_timestamp,
+        )
+
+
+class Event(BaseModel):
+    """Event data transfer object for telemetry."""
+
+    id: int
+    event_type: str
+    outcome: str
+    user_id: int
+    chat_id: str
+    card_id: Optional[int] = None
+    timestamp: datetime.datetime
+    payload: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    def from_orm(cls, event_orm) -> "Event":
+        """Convert an EventModel ORM object to an Event schema."""
+        # Handle timestamp that may be a string or datetime
+        timestamp = event_orm.timestamp
+        if isinstance(timestamp, str):
+            timestamp = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        elif timestamp is not None and timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
+
+        # Parse JSON payload if it's a string
+        payload = event_orm.payload
+        if isinstance(payload, str):
+            payload = json.loads(payload) if payload else None
+
+        return cls(
+            id=event_orm.id,
+            event_type=event_orm.event_type,
+            outcome=event_orm.outcome,
+            user_id=event_orm.user_id,
+            chat_id=event_orm.chat_id,
+            card_id=event_orm.card_id,
+            timestamp=timestamp,
+            payload=payload,
+        )
+
+
+class Achievement(BaseModel):
+    """Achievement data transfer object."""
+
+    id: int
+    name: str
+    description: str
+    icon_b64: Optional[str] = None
+
+    @classmethod
+    def from_orm(cls, achievement_orm) -> "Achievement":
+        """Convert an AchievementModel ORM object to an Achievement schema."""
+        return cls(
+            id=achievement_orm.id,
+            name=achievement_orm.name,
+            description=achievement_orm.description,
+            icon_b64=achievement_orm.icon_b64,
+        )
+
+
+class UserAchievement(BaseModel):
+    """User achievement data transfer object."""
+
+    id: int
+    user_id: int
+    achievement_id: int
+    unlocked_at: datetime.datetime
+    achievement: Optional[Achievement] = None
+
+    @classmethod
+    def from_orm(cls, user_achievement_orm, include_achievement: bool = True) -> "UserAchievement":
+        """Convert a UserAchievementModel ORM object to a UserAchievement schema."""
+        # Handle timestamp that may be a string or datetime
+        unlocked_at = user_achievement_orm.unlocked_at
+        if isinstance(unlocked_at, str):
+            unlocked_at = datetime.datetime.fromisoformat(unlocked_at.replace("Z", "+00:00"))
+        elif unlocked_at is not None and unlocked_at.tzinfo is None:
+            unlocked_at = unlocked_at.replace(tzinfo=datetime.timezone.utc)
+
+        achievement = None
+        if (
+            include_achievement
+            and hasattr(user_achievement_orm, "achievement")
+            and user_achievement_orm.achievement
+        ):
+            achievement = Achievement.from_orm(user_achievement_orm.achievement)
+
+        return cls(
+            id=user_achievement_orm.id,
+            user_id=user_achievement_orm.user_id,
+            achievement_id=user_achievement_orm.achievement_id,
+            unlocked_at=unlocked_at,
+            achievement=achievement,
         )

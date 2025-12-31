@@ -1,0 +1,32 @@
+id: 5
+set: hobby
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Coding
+  - Fitness
+  - Gaming
+  - Gym
+  - Hiking
+  - Reading
+  - Skiing
+  - Snowboarding
+- name: Rare
+  modifiers:
+  - Blogger
+  - Crochet
+  - Gardening
+  - Meloman
+  - Musician
+  - Pilates
+  - Poet
+  - Quilting
+  - Rock Climbing
+  - Streamer
+- name: Epic
+  modifiers:
+  - Polyglot
+- name: Legendary
+  modifiers:
+  - Hookah

@@ -310,7 +310,7 @@ body {
   align-items: center;
   justify-content: center;
   column-gap: var(--card-share-gap);
-  margin: 0 auto 0rem;
+  margin: 0 auto 0.2rem;
   min-height: var(--card-share-size);
   max-width: 95%;
   width: max-content;
@@ -335,7 +335,7 @@ body {
 .card-rarity {
   font-size: 0.9rem;
   color: #ccc;
-  margin: 0 0 0.1rem 0;
+  margin: 0 0 0.2rem 0;
   text-transform: capitalize;
 }
 
@@ -352,9 +352,30 @@ body {
 }
 
 .card-id {
-  font-size: 0.8rem;
-  color: #999;
-  margin: 0;
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 10;
+}
+
+.card-set {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(128, 128, 128, 0.4);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  margin: 0 0 0.2rem 0;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
 }
 
 
@@ -971,11 +992,11 @@ body {
 /* Lock indicator styles */
 .card-lock-indicator {
   position: absolute;
-  top: 0.75rem;
-  left: 0.75rem;
-  width: 2.5rem;
+  top: 8px;
+  left: 8px;
   height: 2.5rem;
-  border-radius: 50%;
+  min-width: 2.5rem;
+  border-radius: 1.25rem;
   border: none;
   outline: none;
   background: rgba(0, 0, 0, 0.8);
@@ -983,17 +1004,44 @@ body {
   z-index: 10;
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding: 0;
+  justify-content: flex-start;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: min-width 0.2s ease, padding-right 0.2s ease;
+  overflow: hidden;
+}
+
+.card-lock-indicator.expanded {
+  padding-right: 0.7rem;
 }
 
 .lock-icon {
   width: 1.4rem;
   height: 1.4rem;
+  flex-shrink: 0;
   filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.6));
-  transform-origin: 50% 20%; /* Rotate around top point (shackle) */
+  transform-origin: 50% 20%;
   animation: lockShake 6s ease-in-out infinite;
+}
+
+.lock-id {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-width 0.2s ease, margin-left 0.2s ease;
+  margin-left: 0;
+}
+
+.card-lock-indicator.expanded .lock-id {
+  opacity: 1;
+  max-width: 4rem;
+  margin-left: 0.4rem;
 }
 
 @keyframes lockShake {
@@ -1023,14 +1071,19 @@ body {
 /* Mobile-specific lock indicator styles */
 @media (max-width: 480px) {
   .card-lock-indicator {
-    top: 0.6rem;
-    left: 0.6rem;
-    width: 2.2rem;
+    top: 6px;
+    left: 6px;
     height: 2.2rem;
+    min-width: 2.2rem;
+    border-radius: 1.1rem;
   }
 
   .lock-icon {
     width: 1.2rem;
     height: 1.2rem;
+  }
+
+  .lock-id {
+    font-size: 0.8rem;
   }
 }

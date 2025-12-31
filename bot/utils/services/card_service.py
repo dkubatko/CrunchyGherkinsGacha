@@ -14,6 +14,7 @@ from typing import Dict, List, Optional
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import joinedload
 
+from settings.constants import CURRENT_SEASON
 from utils.image import ImageUtil
 from utils.models import CardImageModel, CardModel
 from utils.schemas import Card, CardWithImage
@@ -42,12 +43,26 @@ def add_card(
     source_type: str,
     source_id: int,
     set_id: Optional[int] = None,
+    season_id: Optional[int] = None,
 ) -> int:
     """Add a new card to the database.
+
+    Args:
+        base_name: The base name for the card.
+        modifier: The modifier for the card.
+        rarity: The rarity of the card.
+        image_b64: Base64-encoded image data.
+        chat_id: The chat ID where the card was created.
+        source_type: The source type (e.g., "user", "character").
+        source_id: The source ID.
+        set_id: Optional set ID for the modifier set.
+        season_id: The season this card belongs to. Defaults to CURRENT_SEASON.
 
     Returns:
         int: The card ID of the newly created card
     """
+    if season_id is None:
+        season_id = CURRENT_SEASON
     now = datetime.datetime.now().isoformat()
     if chat_id is not None:
         chat_id = str(chat_id)
@@ -72,6 +87,7 @@ def add_card(
             source_type=source_type,
             source_id=source_id,
             set_id=set_id,
+            season_id=season_id,
         )
         session.add(card)
         session.flush()  # Get the card ID
@@ -115,13 +131,17 @@ def add_card_from_generated(generated_card, chat_id: Optional[str]) -> int:
 
 
 def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
-    """Attempt to claim a card for a user without touching claim balances."""
+    """Attempt to claim a card for a user without touching claim balances.
+
+    Only works for cards in the current season.
+    """
     with get_session(commit=True) as session:
         card = (
             session.query(CardModel)
             .filter(
                 CardModel.id == card_id,
                 CardModel.owner.is_(None),
+                CardModel.season_id == CURRENT_SEASON,
             )
             .first()
         )
@@ -138,6 +158,8 @@ def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> b
 def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Card]:
     """Get all cards owned by a user (by user_id), optionally scoped to a chat.
 
+    Only returns cards from the current season.
+
     Returns:
         List[Card]: List of Card objects owned by the user
     """
@@ -152,7 +174,10 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
         if username:
             owner_conditions.append(func.lower(CardModel.owner) == func.lower(username))
 
-        query = session.query(CardModel).filter(or_(*owner_conditions))
+        query = session.query(CardModel).filter(
+            or_(*owner_conditions),
+            CardModel.season_id == CURRENT_SEASON,
+        )
 
         if chat_id is not None:
             query = query.filter(CardModel.chat_id == str(chat_id))
@@ -163,7 +188,10 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
 
 
 def get_user_card_count(user_id: int, chat_id: Optional[str] = None) -> int:
-    """Get count of cards owned by a user (by user_id), optionally scoped to a chat."""
+    """Get count of cards owned by a user (by user_id), optionally scoped to a chat.
+
+    Only counts cards from the current season.
+    """
     # Import here to avoid circular dependency
     from utils.services.user_service import get_username_for_user_id
 
@@ -174,7 +202,10 @@ def get_user_card_count(user_id: int, chat_id: Optional[str] = None) -> int:
         if username:
             owner_conditions.append(func.lower(CardModel.owner) == func.lower(username))
 
-        query = session.query(func.count(CardModel.id)).filter(or_(*owner_conditions))
+        query = session.query(func.count(CardModel.id)).filter(
+            or_(*owner_conditions),
+            CardModel.season_id == CURRENT_SEASON,
+        )
 
         if chat_id is not None:
             query = query.filter(CardModel.chat_id == str(chat_id))
@@ -190,7 +221,10 @@ def get_user_cards_by_rarity(
     limit: Optional[int] = None,
     unlocked: bool = False,
 ) -> List[Card]:
-    """Return cards owned by the user for a specific rarity, optionally limited in count."""
+    """Return cards owned by the user for a specific rarity, optionally limited in count.
+
+    Only returns cards from the current season.
+    """
     owner_conditions = []
 
     if user_id is not None:
@@ -206,6 +240,7 @@ def get_user_cards_by_rarity(
         query = session.query(CardModel).filter(
             or_(*owner_conditions),
             CardModel.rarity == rarity,
+            CardModel.season_id == CURRENT_SEASON,
         )
 
         if chat_id is not None:
@@ -223,9 +258,15 @@ def get_user_cards_by_rarity(
 
 
 def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
-    """Get all cards that have an owner, optionally filtered by chat."""
+    """Get all cards that have an owner, optionally filtered by chat.
+
+    Only returns cards from the current season.
+    """
     with get_session() as session:
-        query = session.query(CardModel).filter(CardModel.owner.isnot(None))
+        query = session.query(CardModel).filter(
+            CardModel.owner.isnot(None),
+            CardModel.season_id == CURRENT_SEASON,
+        )
 
         if chat_id is not None:
             query = query.filter(CardModel.chat_id == str(chat_id))
@@ -235,13 +276,25 @@ def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
         return [Card.from_orm(card) for card in query.all()]
 
 
-def get_card(card_id) -> Optional[CardWithImage]:
-    """Get a card by its ID."""
+def get_card(card_id: int) -> Optional[CardWithImage]:
+    """Get a card by its ID.
+
+    Only returns cards from the current season.
+
+    Args:
+        card_id: The ID of the card to retrieve.
+
+    Returns:
+        CardWithImage if found, None otherwise.
+    """
     with get_session() as session:
         card_orm = (
             session.query(CardModel)
             .options(joinedload(CardModel.image))
-            .filter(CardModel.id == card_id)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
             .first()
         )
         if card_orm is None:
@@ -250,20 +303,65 @@ def get_card(card_id) -> Optional[CardWithImage]:
 
 
 def get_card_image(card_id: int) -> str | None:
-    """Get the base64 encoded image for a card."""
+    """Get the base64 encoded image for a card.
+
+    Only returns images for cards in the current season.
+
+    Args:
+        card_id: The ID of the card.
+
+    Returns:
+        Base64 encoded image string, or None if not found or wrong season.
+    """
     with get_session() as session:
+        # First verify the card exists and is in the current season
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+
+        if not card:
+            return None
+
         card_image = session.query(CardImageModel).filter(CardImageModel.card_id == card_id).first()
         return card_image.image_b64 if card_image else None
 
 
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
-    """Get thumbnail base64 images for multiple cards, generating them when missing."""
+    """Get thumbnail base64 images for multiple cards, generating them when missing.
+
+    Only returns images for cards in the current season.
+
+    Args:
+        card_ids: List of card IDs to fetch images for.
+
+    Returns:
+        Dictionary mapping card_id to thumbnail base64 string.
+    """
     if not card_ids:
         return {}
 
     with get_session(commit=True) as session:
+        # First filter to only cards in the current season
+        valid_card_ids = {
+            row[0]
+            for row in session.query(CardModel.id)
+            .filter(
+                CardModel.id.in_(card_ids),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .all()
+        }
+
+        if not valid_card_ids:
+            return {}
+
         card_images = (
-            session.query(CardImageModel).filter(CardImageModel.card_id.in_(card_ids)).all()
+            session.query(CardImageModel).filter(CardImageModel.card_id.in_(valid_card_ids)).all()
         )
 
         fetched: dict[int, str] = {}
@@ -302,17 +400,29 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
 
 
 def get_total_cards_count() -> int:
-    """Get the total number of cards ever generated."""
+    """Get the total number of cards owned in the current season."""
     with get_session() as session:
-        count = session.query(func.count(CardModel.id)).filter(CardModel.owner.isnot(None)).scalar()
+        count = (
+            session.query(func.count(CardModel.id))
+            .filter(
+                CardModel.owner.isnot(None),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .scalar()
+        )
         return count or 0
 
 
 def get_user_stats(username):
-    """Get card statistics for a user."""
+    """Get card statistics for a user in the current season."""
     with get_session() as session:
         owned_count = (
-            session.query(func.count(CardModel.id)).filter(CardModel.owner == username).scalar()
+            session.query(func.count(CardModel.id))
+            .filter(
+                CardModel.owner == username,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .scalar()
             or 0
         )
 
@@ -321,7 +431,11 @@ def get_user_stats(username):
         for rarity in rarities:
             count = (
                 session.query(func.count(CardModel.id))
-                .filter(CardModel.owner == username, CardModel.rarity == rarity)
+                .filter(
+                    CardModel.owner == username,
+                    CardModel.rarity == rarity,
+                    CardModel.season_id == CURRENT_SEASON,
+                )
                 .scalar()
                 or 0
             )
@@ -333,9 +447,16 @@ def get_user_stats(username):
 
 
 def get_all_users_with_cards(chat_id: Optional[str] = None):
-    """Get all unique users who have claimed cards, optionally scoped to a chat."""
+    """Get all unique users who have claimed cards in the current season, optionally scoped to a chat."""
     with get_session() as session:
-        query = session.query(CardModel.owner).filter(CardModel.owner.isnot(None)).distinct()
+        query = (
+            session.query(CardModel.owner)
+            .filter(
+                CardModel.owner.isnot(None),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .distinct()
+        )
 
         if chat_id is not None:
             query = query.filter(CardModel.chat_id == str(chat_id))
@@ -345,14 +466,31 @@ def get_all_users_with_cards(chat_id: Optional[str] = None):
 
 
 def swap_card_owners(card_id1, card_id2) -> bool:
-    """Swap the owners of two cards."""
+    """Swap the owners of two cards.
+
+    Only works for cards in the current season.
+    """
     try:
         with get_session(commit=True) as session:
-            card1 = session.query(CardModel).filter(CardModel.id == card_id1).first()
+            card1 = (
+                session.query(CardModel)
+                .filter(
+                    CardModel.id == card_id1,
+                    CardModel.season_id == CURRENT_SEASON,
+                )
+                .first()
+            )
             if not card1:
                 return False
 
-            card2 = session.query(CardModel).filter(CardModel.id == card_id2).first()
+            card2 = (
+                session.query(CardModel)
+                .filter(
+                    CardModel.id == card_id2,
+                    CardModel.season_id == CURRENT_SEASON,
+                )
+                .first()
+            )
             if not card2:
                 return False
 
@@ -365,9 +503,19 @@ def swap_card_owners(card_id1, card_id2) -> bool:
 
 
 def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
-    """Set the owner and optional user_id for a card without affecting claim balances."""
+    """Set the owner and optional user_id for a card without affecting claim balances.
+
+    Only works for cards in the current season.
+    """
     with get_session(commit=True) as session:
-        card = session.query(CardModel).filter(CardModel.id == card_id).first()
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
         if not card:
             return False
         card.owner = owner
@@ -375,17 +523,53 @@ def set_card_owner(card_id: int, owner: str, user_id: Optional[int] = None) -> b
         return True
 
 
-def update_card_file_id(card_id, file_id) -> None:
-    """Update the Telegram file_id for a card."""
+def update_card_file_id(card_id: int, file_id: str) -> bool:
+    """Update the Telegram file_id for a card.
+
+    Only works for cards in the current season.
+
+    Returns:
+        bool: True if the card was found and updated, False otherwise.
+    """
     with get_session(commit=True) as session:
-        card = session.query(CardModel).filter(CardModel.id == card_id).first()
-        if card:
-            card.file_id = file_id
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not card:
+            logger.info(f"Updated file_id for card {card_id}: False (not found or wrong season)")
+            return False
+        card.file_id = file_id
     logger.info(f"Updated file_id for card {card_id}: {file_id}")
+    return True
 
 
-def update_card_image(card_id: int, image_b64: str) -> None:
-    """Update the image for a card, regenerating thumbnail and clearing file_id."""
+def update_card_image(card_id: int, image_b64: str) -> bool:
+    """Update the image for a card, regenerating thumbnail and clearing file_id.
+
+    Only works for cards in the current season.
+
+    Returns:
+        bool: True if the card was found and updated, False otherwise.
+    """
+    # First check if card exists and is in current season
+    with get_session() as session:
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not card:
+            logger.info(f"Update image for card {card_id}: False (not found or wrong season)")
+            return False
+
     # Generate new thumbnail
     image_thumb_b64: Optional[str] = None
     if image_b64:
@@ -416,15 +600,34 @@ def update_card_image(card_id: int, image_b64: str) -> None:
             card.file_id = None
 
     logger.info(f"Updated image for card {card_id}, cleared file_id")
+    return True
 
 
-def set_card_locked(card_id: int, is_locked: bool) -> None:
-    """Set the locked status for a card."""
+def set_card_locked(card_id: int, is_locked: bool) -> bool:
+    """Set the locked status for a card.
+
+    Only works for cards in the current season.
+
+    Returns:
+        bool: True if the card was found and updated, False otherwise.
+    """
     with get_session(commit=True) as session:
-        card = session.query(CardModel).filter(CardModel.id == card_id).first()
-        if card:
-            card.locked = is_locked
-    logger.info(f"Set locked={is_locked} for card {card_id}")
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not card:
+            logger.info(
+                f"Set locked={is_locked} for card {card_id}: False (not found or wrong season)"
+            )
+            return False
+        card.locked = is_locked
+    logger.info(f"Set locked={is_locked} for card {card_id}: True")
+    return True
 
 
 def clear_all_file_ids():
@@ -436,11 +639,21 @@ def clear_all_file_ids():
 
 
 def nullify_card_owner(card_id) -> bool:
-    """Set card owner to NULL (for rerolls/burns) instead of deleting."""
+    """Set card owner to NULL (for rerolls/burns) instead of deleting.
+
+    Only works for cards in the current season.
+    """
     with get_session(commit=True) as session:
-        card = session.query(CardModel).filter(CardModel.id == card_id).first()
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
         if not card:
-            logger.info(f"Nullified owner for card {card_id}: False")
+            logger.info(f"Nullified owner for card {card_id}: False (not found or wrong season)")
             return False
         card.owner = None
         card.user_id = None
@@ -449,15 +662,25 @@ def nullify_card_owner(card_id) -> bool:
 
 
 def delete_card(card_id) -> bool:
-    """Delete a card from the database (use sparingly - prefer nullify_card_owner)."""
+    """Delete a card from the database (use sparingly - prefer nullify_card_owner).
+
+    Only works for cards in the current season.
+    """
     with get_session(commit=True) as session:
-        deleted = session.query(CardModel).filter(CardModel.id == card_id).delete()
+        deleted = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .delete()
+        )
     logger.info(f"Deleted card {card_id}: {deleted > 0}")
     return deleted > 0
 
 
 def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
-    """Get the count of each modifier used in cards for a specific chat.
+    """Get the count of each modifier used in cards for a specific chat in the current season.
 
     Args:
         chat_id: The chat ID to get modifier counts for.
@@ -468,7 +691,10 @@ def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
     with get_session() as session:
         results = (
             session.query(CardModel.modifier, func.count(CardModel.id).label("count"))
-            .filter(CardModel.chat_id == str(chat_id))
+            .filter(
+                CardModel.chat_id == str(chat_id),
+                CardModel.season_id == CURRENT_SEASON,
+            )
             .group_by(CardModel.modifier)
             .all()
         )
@@ -476,13 +702,14 @@ def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
 
 
 def get_unique_modifiers(chat_id: str) -> List[str]:
-    """Get a list of modifiers used in Unique cards for a specific chat."""
+    """Get a list of modifiers used in Unique cards for a specific chat in the current season."""
     with get_session() as session:
         results = (
             session.query(CardModel.modifier)
             .filter(
                 CardModel.chat_id == str(chat_id),
                 CardModel.rarity == "Unique",
+                CardModel.season_id == CURRENT_SEASON,
             )
             .distinct()
             .all()
@@ -491,14 +718,20 @@ def get_unique_modifiers(chat_id: str) -> List[str]:
 
 
 def delete_cards(card_ids: List[int]) -> int:
-    """Delete multiple cards by ID. Returns number of deleted cards."""
+    """Delete multiple cards by ID. Returns number of deleted cards.
+
+    Only works for cards in the current season.
+    """
     if not card_ids:
         return 0
 
     with get_session(commit=True) as session:
         deleted = (
             session.query(CardModel)
-            .filter(CardModel.id.in_(card_ids))
+            .filter(
+                CardModel.id.in_(card_ids),
+                CardModel.season_id == CURRENT_SEASON,
+            )
             .delete(synchronize_session=False)
         )
         return deleted

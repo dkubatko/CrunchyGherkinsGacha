@@ -1,0 +1,30 @@
+id: 10
+set: food
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Cherry
+  - Cookie
+  - Lemon
+  - Milk
+  - Mushroom
+  - Olive
+  - Salad
+  - Soup
+  - Sour
+  - Sweet
+  - Tea
+  - Tomato
+- name: Rare
+  modifiers:
+  - Eggplant
+  - Kosher
+  - Salty
+  - Tangerine
+  - Wine
+- name: Epic
+  modifiers:
+  - Shroom
+- name: Legendary
+  modifiers: []

@@ -9,26 +9,56 @@ from typing import Any, Iterable, Optional, NamedTuple
 
 import yaml
 
+from settings.constants import CURRENT_SEASON
+
 LOGGER = logging.getLogger(__name__)
 
-_MODIFIERS_DIR = Path(__file__).resolve().parents[1] / "data" / "modifiers"
+_MODIFIERS_BASE_DIR = Path(__file__).resolve().parents[1] / "data" / "modifiers"
 _RARITY_ORDER = ("Common", "Rare", "Epic", "Legendary")
 
 
+def _get_modifiers_dir(season_id: Optional[int] = None) -> Path:
+    """Get the modifiers directory for the specified season.
+
+    Args:
+        season_id: The season to load modifiers for. Defaults to CURRENT_SEASON.
+
+    Returns:
+        Path to the modifiers directory for the given season.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+    return _MODIFIERS_BASE_DIR / f"season_{season_id}"
+
+
 class ModifierWithSet(NamedTuple):
-    """A modifier with its associated set ID."""
+    """A modifier with its associated set ID, name, and source."""
 
     modifier: str
     set_id: int
+    set_name: str = ""
+    source: str = "all"
 
 
 def load_modifiers_with_sets(
-    sets: Optional[Iterable[str]] = None, sync_db: bool = True
+    sets: Optional[Iterable[str]] = None,
+    sync_db: bool = True,
+    season_id: Optional[int] = None,
 ) -> dict[str, list[ModifierWithSet]]:
-    """Load modifier keywords grouped by rarity with set information."""
+    """Load modifier keywords grouped by rarity with set information.
+
+    Args:
+        sets: Optional list of set names to load. If None, loads all sets.
+        sync_db: Whether to sync set metadata to the database.
+        season_id: The season to load modifiers for. Defaults to CURRENT_SEASON.
+
+    Returns:
+        Dictionary mapping rarity names to lists of ModifierWithSet.
+    """
 
     ensure_logging_initialized()
-    set_files = _discover_set_files(sets)
+    resolved_season_id = season_id if season_id is not None else CURRENT_SEASON
+    set_files = _discover_set_files(sets, season_id=resolved_season_id)
     combined: defaultdict[str, list[ModifierWithSet]] = defaultdict(list)
     cross_rarity_tracker: defaultdict[str, dict[str, str]] = defaultdict(dict)
 
@@ -38,12 +68,38 @@ def load_modifiers_with_sets(
             file_path=file_path,
             sync_db=sync_db,
             cross_rarity_tracker=cross_rarity_tracker,
+            season_id=resolved_season_id,
         )
         for rarity, modifiers in set_modifiers.items():
             combined[rarity].extend(modifiers)
 
     ordered = _deduplicate_and_order_modifiers(combined)
     _warn_cross_rarity_conflicts(cross_rarity_tracker)
+
+    # Log summary
+    total_modifiers = sum(len(mods) for mods in ordered.values())
+    rarity_abbrev = {
+        "common": "C",
+        "Common": "C",
+        "uncommon": "U",
+        "Uncommon": "U",
+        "rare": "R",
+        "Rare": "R",
+        "epic": "E",
+        "Epic": "E",
+        "legendary": "L",
+        "Legendary": "L",
+    }
+    rarity_summary = ", ".join(
+        f"{rarity_abbrev.get(r, r)}: {len(ordered.get(r, []))}" for r in ordered
+    )
+    LOGGER.info(
+        "Loaded %d modifiers from %d sets (%s)",
+        total_modifiers,
+        len(set_files),
+        rarity_summary,
+    )
+
     return ordered
 
 
@@ -52,6 +108,7 @@ def _process_set_file(
     file_path: Path,
     sync_db: bool,
     cross_rarity_tracker: dict[str, dict[str, str]],
+    season_id: int,
 ) -> dict[str, list[ModifierWithSet]]:
     """Load, normalize, and optionally persist a single set file."""
 
@@ -60,12 +117,28 @@ def _process_set_file(
     if not isinstance(document, dict):
         raise ValueError(f"Expected mapping at top level in {file_path.name}")
 
+    # Skip inactive sets (default to active if not specified)
+    if not document.get("active", True):
+        LOGGER.info("Skipping inactive set: %s", file_path.name)
+        return {}
+
     set_id = document.get("id")
     if set_id is None:
         raise ValueError(f"Set file {file_path.name} must have an 'id' field")
 
+    # Parse source field (defaults to "all" if not specified)
+    source = document.get("source", "all")
+    if source not in ("roll", "slots", "all"):
+        raise ValueError(
+            f"Set file {file_path.name} has invalid 'source' value '{source}'. "
+            "Must be 'roll', 'slots', or 'all'."
+        )
+
+    # Get display name from document, falling back to filename-derived name
+    set_display_name = document.get("set", set_name)
+
     if sync_db:
-        _sync_set_metadata(set_id, document, set_name)
+        _sync_set_metadata(set_id, document, set_name, season_id, source)
 
     payload = document.get("rarities")
     if not isinstance(payload, list):
@@ -74,7 +147,9 @@ def _process_set_file(
     entries = _prepare_rarity_entries(payload)
     normalized_entries, mutated, modifiers_by_rarity = _normalize_rarity_entries(
         set_name=set_name,
+        set_display_name=set_display_name,
         set_id=set_id,
+        source=source,
         entries=entries,
         original_payload=payload,
         cross_rarity_tracker=cross_rarity_tracker,
@@ -87,15 +162,23 @@ def _process_set_file(
     return modifiers_by_rarity
 
 
-def _sync_set_metadata(set_id: int, document: dict[str, Any], default_name: str) -> None:
+def _sync_set_metadata(
+    set_id: int, document: dict[str, Any], default_name: str, season_id: int, source: str
+) -> None:
     """Upsert the set metadata, keeping logging noise consistent."""
 
     set_display_name = document.get("set", default_name)
     try:
         from utils.services import set_service
 
-        set_service.upsert_set(set_id, set_display_name)
-        LOGGER.info("Synced set %s (id=%s) to database", set_display_name, set_id)
+        set_service.upsert_set(set_id, set_display_name, season_id=season_id, source=source)
+        LOGGER.info(
+            "Synced set %s (id=%s, season=%s, source=%s) to database",
+            set_display_name,
+            set_id,
+            season_id,
+            source,
+        )
     except Exception as exc:  # pragma: no cover - defensive logging
         LOGGER.warning("Failed to sync set %s to database: %s", default_name, exc)
 
@@ -103,7 +186,9 @@ def _sync_set_metadata(set_id: int, document: dict[str, Any], default_name: str)
 def _normalize_rarity_entries(
     *,
     set_name: str,
+    set_display_name: str,
     set_id: int,
+    source: str,
     entries: list[dict[str, Any]],
     original_payload: list[dict[str, Any]],
     cross_rarity_tracker: dict[str, dict[str, str]],
@@ -136,7 +221,10 @@ def _normalize_rarity_entries(
         modifiers_for_rarity = modifiers_by_rarity[rarity]
         if normalized:
             modifiers_for_rarity.extend(
-                ModifierWithSet(modifier=modifier, set_id=set_id) for modifier in normalized
+                ModifierWithSet(
+                    modifier=modifier, set_id=set_id, set_name=set_display_name, source=source
+                )
+                for modifier in normalized
             )
 
         for modifier in normalized:
@@ -227,11 +315,24 @@ def ensure_logging_initialized() -> None:
         LOGGER.setLevel(logging.INFO)
 
 
-def _discover_set_files(sets: Optional[Iterable[str]]) -> list[tuple[str, Path]]:
-    if not _MODIFIERS_DIR.is_dir():
-        raise FileNotFoundError(f"Modifiers directory not found at {_MODIFIERS_DIR}")
+def _discover_set_files(
+    sets: Optional[Iterable[str]],
+    season_id: Optional[int] = None,
+) -> list[tuple[str, Path]]:
+    """Discover set files for the specified season.
+
+    Args:
+        sets: Optional list of set names to load. If None, loads all sets.
+        season_id: The season to load modifiers for. Defaults to CURRENT_SEASON.
+
+    Returns:
+        List of (set_name, file_path) tuples.
+    """
+    modifiers_dir = _get_modifiers_dir(season_id)
+    if not modifiers_dir.is_dir():
+        raise FileNotFoundError(f"Modifiers directory not found at {modifiers_dir}")
     if sets is None:
-        files = sorted(_MODIFIERS_DIR.glob("*.yaml"))
+        files = sorted(modifiers_dir.glob("*.yaml"))
         return [(path.stem, path) for path in files]
 
     if isinstance(sets, str):
@@ -241,7 +342,7 @@ def _discover_set_files(sets: Optional[Iterable[str]]) -> list[tuple[str, Path]]
 
     result: list[tuple[str, Path]] = []
     for name in set_names:
-        path = _MODIFIERS_DIR / f"{name}.yaml"
+        path = modifiers_dir / f"{name}.yaml"
         if not path.is_file():
             raise FileNotFoundError(f"Unknown modifiers set '{name}' at {path}")
         result.append((name, path))
@@ -338,3 +439,25 @@ def _coerce_modifier_list(value: object) -> list[str]:
     if isinstance(value, list):
         return ["" if item is None else str(item) for item in value]
     return [str(value)]
+
+
+def get_modifier_info(
+    modifier: str,
+    rarity: str,
+    modifiers_by_rarity: dict[str, list[ModifierWithSet]],
+) -> Optional[ModifierWithSet]:
+    """Look up a modifier's set information by name and rarity.
+
+    Args:
+        modifier: The modifier keyword to look up.
+        rarity: The rarity level to search in.
+        modifiers_by_rarity: The loaded modifiers dictionary.
+
+    Returns:
+        The ModifierWithSet if found, otherwise None.
+    """
+    modifiers_list = modifiers_by_rarity.get(rarity, [])
+    for mod_with_set in modifiers_list:
+        if mod_with_set.modifier == modifier:
+            return mod_with_set
+    return None

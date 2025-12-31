@@ -1,0 +1,24 @@
+id: 9
+set: locations
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Tropic
+- name: Rare
+  modifiers:
+  - Arctic
+  - Hawaii
+  - Jungle
+  - London
+  - Mexico
+  - New York
+  - Paris
+  - San Francisco
+  - Tokyo
+  - Tundra
+- name: Epic
+  modifiers:
+  - Moscow
+- name: Legendary
+  modifiers: []
