@@ -88,9 +88,9 @@ class BaseAchievement(ABC):
 
 
 class SpinnerAchievement(BaseAchievement):
-    """Achievement for spending 100 spins."""
+    """Achievement for spending spins."""
 
-    REQUIRED_SPINS = 100
+    REQUIRED_SPINS = 1000
 
     @property
     def id(self) -> int:
