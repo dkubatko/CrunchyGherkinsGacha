@@ -43,10 +43,12 @@ from utils.schemas import Card as APICard
 from utils.services import (
     card_service,
     claim_service,
+    event_service,
     spin_service,
     thread_service,
     user_service,
 )
+from utils.events import EventType, BurnOutcome, LockOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +304,17 @@ async def lock_card(
             remaining_balance,
         )
 
+        # Log successful lock event
+        event_service.log(
+            EventType.LOCK,
+            LockOutcome.LOCKED,
+            user_id=auth_user_id,
+            chat_id=chat_id,
+            card_id=request.card_id,
+            cost=lock_cost,
+            via="miniapp",
+        )
+
         return LockCardResponse(
             success=True,
             locked=True,
@@ -323,6 +336,16 @@ async def lock_card(
         )
 
         logger.info("User %s unlocked card %s", username, request.card_id)
+
+        # Log successful unlock event
+        event_service.log(
+            EventType.LOCK,
+            LockOutcome.UNLOCKED,
+            user_id=auth_user_id,
+            chat_id=chat_id,
+            card_id=request.card_id,
+            via="miniapp",
+        )
 
         return LockCardResponse(
             success=True,
@@ -427,6 +450,18 @@ async def burn_card(
         chat_id,
         spin_reward,
         new_spin_total,
+    )
+
+    # Log successful burn event
+    event_service.log(
+        EventType.BURN,
+        BurnOutcome.SUCCESS,
+        user_id=auth_user_id,
+        chat_id=chat_id,
+        card_id=request.card_id,
+        rarity=card.rarity,
+        spin_reward=spin_reward,
+        new_spin_total=new_spin_total,
     )
 
     # Store card details before returning response
