@@ -1,0 +1,39 @@
+id: 12
+set: cartoons
+source: roll
+rarities:
+- name: Common
+  modifiers:
+  - Aladdin
+  - Ben 10
+  - Looney Tunes
+  - Smurf
+- name: Rare
+  modifiers:
+  - CatDog
+  - Dora
+  - Futurama
+  - Ice Age
+  - Ninja Turtle
+  - Rick and Morty
+  - Scooby Doo
+  - Shrek
+  - Simpson
+  - South Park
+  - Stuart Little
+  - Teletubbie
+  - The Flintstones
+  - W.I.T.C.H.
+  - Масяня
+- name: Epic
+  modifiers:
+  - Monsters Inc.
+  - Sponge Bob
+  - Винни Пух
+  - Лунтик
+  - Ну, Погоди!
+  - Фиксик
+- name: Legendary
+  modifiers:
+  - Смешарик
+  - Чебурашка

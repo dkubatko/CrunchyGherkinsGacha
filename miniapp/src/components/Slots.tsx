@@ -31,14 +31,30 @@ interface UserSpinsData {
   nextRefreshTime?: string | null;
 }
 
+interface MegaspinData {
+  spinsUntilMegaspin: number;
+  totalSpinsRequired: number;
+  megaspinAvailable: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
+interface MegaspinInfo {
+  spins_until_megaspin: number;
+  total_spins_required: number;
+  megaspin_available: boolean;
+}
+
 interface SlotsProps {
   symbols: SlotSymbol[];
   spins: UserSpinsData;
+  megaspin: MegaspinData;
   userId: number;
   chatId: string;
   initData: string;
   refetchSpins: () => void;
   onSpinsUpdate: (count: number, nextRefreshTime?: string | null) => void;
+  onMegaspinUpdate: (megaspinInfo: MegaspinInfo) => void;
 }
 
 interface SlotSymbol {
@@ -53,6 +69,7 @@ type ReelState = 'idle' | 'spinning' | 'stopped';
 interface PendingWin {
   symbol: SlotSymbol;
   rarity: RarityName;
+  isMegaspin?: boolean;
 }
 
 const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
@@ -129,7 +146,7 @@ const buildRarityHighlightVariables = (primary: string, secondary: string): Reco
 });
 
 
-const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, userId, chatId, initData, refetchSpins, onSpinsUpdate }) => {
+const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, refetchSpins, onSpinsUpdate, onMegaspinUpdate }) => {
   const symbols = useSlotsStore((state) => state.symbols);
   const setSymbols = useSlotsStore((state) => state.setSymbols);
   const results = useSlotsStore((state) => state.results);
@@ -156,9 +173,21 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
   const [imagesReady, setImagesReady] = useState(false);
   const [, setRefreshTick] = useState(0);
-  const [speedMultiplier, setSpeedMultiplier] = useState(1);
+  const [isMegaspinning, setIsMegaspinning] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
+  
+  // Autospin feature - fixed speed multiplier (0.75x of old quick spin = 1.5x normal speed)
+  const AUTOSPIN_SPEED_MULTIPLIER = 1.5;
+  const [isAutospinMode, setIsAutospinMode] = useState(false);
+  const [isAutospinning, setIsAutospinning] = useState(false);
+  const [isAutospinStopping, setIsAutospinStopping] = useState(false);
+  const autospinStopRef = useRef(false);
+  const isAutospinningRef = useRef(false);
+  
+  // Autospin win tracking
+  const autospinCardsWonRef = useRef(0);
+  const autospinClaimPointsWonRef = useRef(0);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
     if (!rarityWheelTarget) {
@@ -199,14 +228,14 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             setRarityWheelState({
-              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS / speedMultiplier,
+              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS / AUTOSPIN_SPEED_MULTIPLIER,
               rarityWheelTransform: final,
               rarityWheelSpinning: true,
             });
           });
         });
 
-        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS / speedMultiplier;
+        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS / AUTOSPIN_SPEED_MULTIPLIER;
         const timeout = setTimeout(() => {
           TelegramUtils.triggerHapticImpact('heavy');
           setRarityWheelState({
@@ -221,7 +250,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         setRarityWheelTimeout(timeout);
       });
     },
-    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout, speedMultiplier]
+    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout, AUTOSPIN_SPEED_MULTIPLIER]
   );
 
   useEffect(() => {
@@ -393,20 +422,24 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const finalizeSpin = useCallback(() => {
     const pendingWin = pendingWinRef.current;
     pendingWinRef.current = null;
+    const currentlyAutospinning = isAutospinningRef.current;
 
     const resetReels = () => {
       setReelStates([...INITIAL_REEL_STATES]);
       setSpinning(false);
+      setIsMegaspinning(false);
       resetRarityWheel();
     };
 
     if (!pendingWin) {
-      TelegramUtils.triggerHapticNotification('error');
+      if (!currentlyAutospinning) {
+        TelegramUtils.triggerHapticNotification('error');
+      }
       resetReels();
       return;
     }
 
-    const { symbol, rarity } = pendingWin;
+    const { symbol, rarity, isMegaspin } = pendingWin;
     
     // Check if this is a claim win (special handling)
     if (symbol.type === 'claim') {
@@ -414,19 +447,34 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       
       const processClaimWin = async () => {
         try {
-          await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+          // Delay before processing win
+          if (currentlyAutospinning) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 800));
+          } else {
+            await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          }
           
           const claimAmount = 1;
           const result = await ApiService.processClaimWin(userId, chatId, claimAmount, initData);
           
-          const pointsText = claimAmount === 1 ? 'claim point' : 'claim points';
-          const message = `Won ${claimAmount} ${pointsText}!\n\nBalance: ${result.balance}`;
-          TelegramUtils.showAlert(message);
-          TelegramUtils.triggerHapticNotification('success');
+          // Track claim points won during autospin
+          if (currentlyAutospinning) {
+            autospinClaimPointsWonRef.current += claimAmount;
+          }
+          
+          // Skip alert during autospin
+          if (!currentlyAutospinning) {
+            const pointsText = claimAmount === 1 ? 'claim point' : 'claim points';
+            const message = `Won ${claimAmount} ${pointsText}!\n\nBalance: ${result.balance}`;
+            TelegramUtils.showAlert(message);
+            TelegramUtils.triggerHapticNotification('success');
+          }
         } catch (error) {
           console.error('Failed to process claim win:', error);
-          const errorMessage = error instanceof Error ? error.message : 'Failed to process claim win';
-          TelegramUtils.showAlert(`Error: ${errorMessage}`);
+          if (!currentlyAutospinning) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to process claim win';
+            TelegramUtils.showAlert(`Error: ${errorMessage}`);
+          }
         } finally {
           resetReels();
         }
@@ -441,26 +489,43 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
     const completeVictory = async () => {
       try {
-        await new Promise<void>((resolve) => setTimeout(resolve, 1000));
+        // Delay before processing win
+        if (currentlyAutospinning) {
+          await new Promise<void>((resolve) => setTimeout(resolve, 800));
+        } else {
+          await new Promise<void>((resolve) => setTimeout(resolve, 500));
+        }
         await ApiService.processSlotsVictory(
           userId,
           chatId,
           rarity.toLowerCase(),
           symbol.id,
           symbol.type,
-          initData
+          initData,
+          isMegaspin ?? false
         );
 
-        TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
+        // Track cards won during autospin
+        if (currentlyAutospinning) {
+          autospinCardsWonRef.current += 1;
+        }
+
+        // Skip alert during autospin
+        if (!currentlyAutospinning) {
+          TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
+        }
       } catch (error) {
         console.error('Failed to process slots victory:', error);
-        const errorMessage = error instanceof Error ? error.message : 'Failed to process victory';
-        TelegramUtils.showAlert(`Error: ${errorMessage}`);
+        if (!currentlyAutospinning) {
+          const errorMessage = error instanceof Error ? error.message : 'Failed to process victory';
+          TelegramUtils.showAlert(`Error: ${errorMessage}`);
+        }
       } finally {
         resetReels();
       }
     };
 
+    // Show rarity wheel animation for all wins
     const animation = startRarityWheelAnimation(rarity);
     if (animation) {
       animation.then(completeVictory).catch(() => {
@@ -471,19 +536,21 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
   }, [chatId, initData, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
 
-  const handleSpin = useCallback(async () => {
+  const handleSpin = useCallback(async (): Promise<boolean> => {
     // Ignore click if it was a long press that just completed
     if (longPressTriggeredRef.current) {
-      return;
+      return false;
     }
 
     if (spinning || symbols.length === 0 || userSpins.loading) {
-      return;
+      return false;
     }
 
     if (userSpins.count <= 0) {
-      TelegramUtils.showAlert('No spins available! Spins refresh daily.');
-      return;
+      if (!isAutospinningRef.current) {
+        TelegramUtils.showAlert('No spins available! Spins refresh daily.');
+      }
+      return false;
     }
 
     TelegramUtils.triggerHapticImpact('medium');
@@ -508,7 +575,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         } else {
           refetchSpins();
         }
-        return;
+        // Update megaspin info if provided
+        if (consumeResult.megaspin) {
+          onMegaspinUpdate(consumeResult.megaspin);
+        }
+        return false;
       }
 
       // Update spin count from server response without refetching
@@ -516,6 +587,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         onSpinsUpdate(consumeResult.spins_remaining);
       } else {
         refetchSpins();
+      }
+
+      // Update megaspin info if provided
+      if (consumeResult.megaspin) {
+        onMegaspinUpdate(consumeResult.megaspin);
       }
 
       const { isWin, slotResults, rarity: serverRarity } = await generateServerVerifiedResults();
@@ -539,7 +615,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
       const durations = normalizedResults.map(
-        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / speedMultiplier
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / AUTOSPIN_SPEED_MULTIPLIER
       );
 
       setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
@@ -603,14 +679,18 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           }
         }
       }
+      return true;
     } catch (error) {
       console.error('Failed to spin slots:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to process spin';
-      TelegramUtils.showAlert(errorMessage);
+      if (!isAutospinningRef.current) {
+        TelegramUtils.showAlert(errorMessage);
+      }
       setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
       setStripTransforms(Array(SLOT_REEL_COUNT).fill(0));
       setReelStates([...INITIAL_REEL_STATES]);
       setSpinning(false);
+      return false;
     }
   }, [
     spinning,
@@ -621,6 +701,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     initData,
     refetchSpins,
     onSpinsUpdate,
+    onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
     generateServerVerifiedResults,
@@ -629,22 +710,22 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     finalizeSpin,
     setSpinning,
     resetRarityWheel,
-    speedMultiplier
+    AUTOSPIN_SPEED_MULTIPLIER
   ]);
 
   const handleSpinButtonMouseDown = useCallback(() => {
-    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0) {
+    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0 || isAutospinning) {
       return;
     }
 
     // Don't reset the flag here - it should persist until after onClick fires
     longPressTimerRef.current = setTimeout(() => {
       longPressTriggeredRef.current = true;
-      const newMultiplier = speedMultiplier === 1 ? 2 : 1;
-      setSpeedMultiplier(newMultiplier);
-      TelegramUtils.triggerHapticImpact(newMultiplier === 2 ? 'medium' : 'light');
+      const newMode = !isAutospinMode;
+      setIsAutospinMode(newMode);
+      TelegramUtils.triggerHapticImpact(newMode ? 'medium' : 'light');
     }, 1000);
-  }, [spinning, symbols.length, userSpins.loading, userSpins.count, speedMultiplier]);
+  }, [spinning, symbols.length, userSpins.loading, userSpins.count, isAutospinMode, isAutospinning]);
 
   const handleSpinButtonMouseUp = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -674,6 +755,258 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     }
   }, []);
 
+  // Wait for a spin to complete (watching spinning state)
+  const waitForSpinComplete = useCallback((): Promise<void> => {
+    return new Promise((resolve) => {
+      // Check spinning state periodically until it becomes false
+      const checkInterval = setInterval(() => {
+        // If spinning is false and reels are idle, spin is complete
+        if (!useSlotsStore.getState().spinning) {
+          clearInterval(checkInterval);
+          // Add a small delay to ensure finalizeSpin has completed
+          setTimeout(resolve, 100);
+        }
+      }, 100);
+    });
+  }, []);
+
+  // Start autospin loop
+  const handleStartAutospin = useCallback(async () => {
+    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0) {
+      return;
+    }
+
+    // Set autospin state
+    autospinStopRef.current = false;
+    isAutospinningRef.current = true;
+    setIsAutospinning(true);
+    
+    // Reset autospin win counters
+    autospinCardsWonRef.current = 0;
+    autospinClaimPointsWonRef.current = 0;
+    
+    TelegramUtils.triggerHapticImpact('heavy');
+
+    // Autospin loop
+    const runAutospinLoop = async () => {
+      while (!autospinStopRef.current) {
+        // Check if we have spins available (use current store state)
+        const currentSpinCount = userSpins.count;
+        if (currentSpinCount <= 0) {
+          break;
+        }
+
+        // Trigger a spin
+        const success = await handleSpin();
+        
+        if (!success) {
+          // If spin failed, stop autospin
+          break;
+        }
+
+        // Wait for the spin to complete
+        await waitForSpinComplete();
+        
+        // Small delay between spins
+        await new Promise<void>((resolve) => setTimeout(resolve, 200));
+      }
+
+      // Autospin ended - show summary if anything was won
+      const cardsWon = autospinCardsWonRef.current;
+      const claimPointsWon = autospinClaimPointsWonRef.current;
+      
+      if (cardsWon > 0 || claimPointsWon > 0) {
+        const lines: string[] = ['Autospin results:', ''];
+        if (cardsWon > 0) {
+          lines.push(`Cards won: ${cardsWon}`);
+        }
+        if (claimPointsWon > 0) {
+          lines.push(`Claim points: ${claimPointsWon}`);
+        }
+        TelegramUtils.showAlert(lines.join('\n'));
+        TelegramUtils.triggerHapticNotification('success');
+      }
+      
+      isAutospinningRef.current = false;
+      setIsAutospinning(false);
+      setIsAutospinStopping(false);
+      TelegramUtils.triggerHapticImpact('light');
+    };
+
+    runAutospinLoop();
+  }, [spinning, symbols.length, userSpins.loading, userSpins.count, handleSpin, waitForSpinComplete]);
+
+  // Stop autospin
+  const handleStopAutospin = useCallback(() => {
+    autospinStopRef.current = true;
+    setIsAutospinStopping(true);
+    TelegramUtils.triggerHapticImpact('medium');
+  }, []);
+
+  // Generate megaspin results (guaranteed card win)
+  const generateMegaspinResults = useCallback(async (): Promise<{ 
+    isWin: boolean;
+    slotResults: SlotSymbolInfo[];
+    rarity: string | null;
+  }> => {
+    const availableSymbols = symbols.length;
+
+    if (availableSymbols === 0) {
+      return { isWin: false, slotResults: [], rarity: null };
+    }
+
+    const randomNumber = Math.floor(Math.random() * availableSymbols);
+
+    // Send the full symbol list to the server for megaspin verification
+    const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
+
+    const verifyResult = await ApiService.verifyMegaspin(
+      userId,
+      chatId,
+      randomNumber,
+      symbolsInfo,
+      initData
+    );
+
+    return {
+      isWin: verifyResult.is_win,
+      slotResults: verifyResult.slot_results,
+      rarity: verifyResult.rarity ?? null
+    };
+  }, [userId, chatId, initData, symbols]);
+
+  const handleMegaspin = useCallback(async () => {
+    if (spinning || symbols.length === 0 || megaspinData.loading) {
+      return;
+    }
+
+    if (!megaspinData.megaspinAvailable) {
+      TelegramUtils.showAlert('No megaspin available! Keep spinning to earn one.');
+      return;
+    }
+
+    TelegramUtils.triggerHapticImpact('heavy');
+
+    resetRarityWheel();
+    setSpinning(true);
+    setIsMegaspinning(true);
+    setReelStates(Array.from({ length: SLOT_REEL_COUNT }, () => 'spinning' as ReelState));
+    clearReelTimeouts();
+    pendingWinRef.current = null;
+
+    try {
+      // Consume the megaspin first
+      const consumeResult = await ApiService.consumeMegaspin(userId, chatId, initData);
+
+      if (!consumeResult.success) {
+        const message = consumeResult.message || 'Failed to use megaspin';
+        TelegramUtils.showAlert(message);
+        setSpinning(false);
+        setReelStates([...INITIAL_REEL_STATES]);
+        // Update megaspin info if provided
+        if (consumeResult.megaspin) {
+          onMegaspinUpdate(consumeResult.megaspin);
+        }
+        return;
+      }
+
+      // Update megaspin info from server response
+      if (consumeResult.megaspin) {
+        onMegaspinUpdate(consumeResult.megaspin);
+      }
+
+      // Megaspin verification - guaranteed win
+      const { slotResults, rarity: serverRarity } = await generateMegaspinResults();
+      
+      // Convert server-provided symbol results to indices
+      const normalizedResults = slotResults.map(symbolInfo => {
+        const index = symbols.findIndex(s => s.id === symbolInfo.id && s.type === symbolInfo.type);
+        return index !== -1 ? index : 0;
+      });
+
+      while (normalizedResults.length < SLOT_REEL_COUNT) {
+        normalizedResults.push(0);
+      }
+
+      setResults(normalizedResults.slice(0, SLOT_REEL_COUNT));
+
+      const spinTransforms = normalizedResults.map((result) =>
+        computeSlotSpinTransforms(result, symbols.length)
+      );
+      const finalTransforms = spinTransforms.map((value) => value.final);
+      const initialTransforms = spinTransforms.map((value) => value.initial);
+      const durations = normalizedResults.map(
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / AUTOSPIN_SPEED_MULTIPLIER
+      );
+
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(initialTransforms);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setStripDurations(durations);
+          setStripTransforms(finalTransforms);
+        });
+      });
+
+      durations.forEach((duration, index) => {
+        const finalTimeout = setTimeout(() => {
+          setReelStates((prev) => {
+            const next = [...prev];
+            next[index] = 'stopped';
+            return next;
+          });
+
+          TelegramUtils.triggerHapticImpact('medium');
+
+          if (index === SLOT_REEL_COUNT - 1) {
+            finalizeSpin();
+          }
+        }, duration);
+        addReelTimeout(finalTimeout);
+      });
+
+      // Megaspin is guaranteed win - set up pending win
+      if (serverRarity && slotResults.length > 0) {
+        const winningIndex = normalizedResults[0];
+        const winningSymbolFromArray = symbols[winningIndex];
+
+        if (winningSymbolFromArray) {
+          const normalizedRarity = normalizeRarityName(serverRarity);
+          if (normalizedRarity) {
+            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, isMegaspin: true };
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to use megaspin:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to use megaspin';
+      TelegramUtils.showAlert(errorMessage);
+      setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
+      setStripTransforms(Array(SLOT_REEL_COUNT).fill(0));
+      setReelStates([...INITIAL_REEL_STATES]);
+      setSpinning(false);
+      setIsMegaspinning(false);
+    }
+  }, [
+    spinning,
+    symbols,
+    megaspinData,
+    userId,
+    chatId,
+    initData,
+    onMegaspinUpdate,
+    clearReelTimeouts,
+    setReelStates,
+    generateMegaspinResults,
+    setResults,
+    addReelTimeout,
+    finalizeSpin,
+    setSpinning,
+    resetRarityWheel,
+    AUTOSPIN_SPEED_MULTIPLIER
+  ]);
+
   useEffect(() => {
     return () => {
       if (longPressTimerRef.current) {
@@ -700,8 +1033,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     <div className="slots-container">
       <h1>🎰 Slots</h1>
 
-      <div className="slot-machine-container">
-        <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''}`}>
+      <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
+        <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>
           {Array.from({ length: SLOT_REEL_COUNT }, (_, reelIndex) => reelIndex).map((reelIndex) => (
             <div
               key={`reel-${reelIndex}`}
@@ -777,17 +1110,36 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           ) : (
             <>
               <button
-                className={`spin-button ${speedMultiplier === 2 ? 'spin-button-quick' : ''}`}
-                onClick={handleSpin}
+                className={`spin-button ${isAutospinMode ? 'spin-button-autospin' : ''} ${isAutospinning ? 'spin-button-stop' : ''}`}
+                onClick={isAutospinning ? handleStopAutospin : (isAutospinMode ? handleStartAutospin : handleSpin)}
                 onMouseDown={handleSpinButtonMouseDown}
                 onMouseUp={handleSpinButtonMouseUp}
                 onMouseLeave={handleSpinButtonMouseLeave}
                 onTouchStart={handleSpinButtonMouseDown}
                 onTouchEnd={handleSpinButtonMouseUp}
                 onTouchCancel={handleSpinButtonTouchCancel}
-                disabled={spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0}
+                disabled={(isAutospinning && isAutospinStopping) || (!isAutospinning && (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0))}
               >
-                {spinning ? 'SPINNING…' : speedMultiplier === 2 ? 'QUICK SPIN' : 'SPIN'}
+                {isAutospinning ? 'STOP' : spinning ? 'SPINNING…' : isAutospinMode ? 'AUTOSPIN' : 'SPIN'}
+              </button>
+
+              {/* Megaspin Button */}
+              <button
+                className={`megaspin-button ${megaspinData.megaspinAvailable ? 'megaspin-button-ready' : ''} ${isMegaspinning ? 'megaspin-button-spinning' : ''}`}
+                onClick={handleMegaspin}
+                disabled={spinning || symbols.length === 0 || megaspinData.loading || !megaspinData.megaspinAvailable || isAutospinning}
+              >
+                <div 
+                  className="megaspin-fill"
+                  style={{
+                    width: megaspinData.megaspinAvailable 
+                      ? '100%' 
+                      : `${((megaspinData.totalSpinsRequired - megaspinData.spinsUntilMegaspin) / megaspinData.totalSpinsRequired) * 100}%`
+                  }}
+                />
+                <span className="megaspin-text">
+                  MEGA SPIN
+                </span>
               </button>
 
               <div className="spins-container">
