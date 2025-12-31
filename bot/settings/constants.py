@@ -280,6 +280,10 @@ CREATE_CONFIRM_MESSAGE = "Burn {cost} unlocked <b>Legendary</b> cards to create 
 CREATE_WARNING_EXISTING_MODIFIER = (
     "\n\n⚠️ <b>Warning:</b> The modifier '<b>{modifier}</b>' has already been used in this chat."
 )
+CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE = (
+    "Modifier '<b>{modifier}</b>' has already been used for another Unique card in this chat. "
+    "Please choose a different modifier."
+)
 CREATE_INSUFFICIENT_CARDS_MESSAGE = (
     "You need at least {required} unlocked Legendary cards in this chat to create a Unique card."
 )

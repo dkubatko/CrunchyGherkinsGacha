@@ -79,6 +79,7 @@ from settings.constants import (
     CREATE_DM_RESTRICTED_MESSAGE,
     CREATE_CONFIRM_MESSAGE,
     CREATE_WARNING_EXISTING_MODIFIER,
+    CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE,
     CREATE_INSUFFICIENT_CARDS_MESSAGE,
     CREATE_ALREADY_RUNNING_MESSAGE,
     CREATE_NOT_YOURS_MESSAGE,
@@ -1607,12 +1608,20 @@ async def create_unique_card(
         )
         return
 
-    # Check if modifier exists
-    existing_modifiers = await asyncio.to_thread(
-        card_service.get_modifier_counts_for_chat, chat_id_str
-    )
+    # Check if modifier already exists in Unique cards (disallow duplicates)
+    unique_modifiers = await asyncio.to_thread(card_service.get_unique_modifiers, chat_id_str)
+    if modifier in unique_modifiers:
+        await message.reply_text(
+            CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE.format(modifier=modifier),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Check if modifier exists in non-unique cards (warn but allow)
+    all_modifiers = await asyncio.to_thread(card_service.get_modifier_counts_for_chat, chat_id_str)
     warning = ""
-    if modifier in existing_modifiers:
+    if modifier in all_modifiers:
         warning = CREATE_WARNING_EXISTING_MODIFIER.format(modifier=modifier)
 
     # Confirm
