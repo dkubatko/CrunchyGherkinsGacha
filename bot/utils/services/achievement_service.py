@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from utils.models import AchievementModel, UserAchievementModel
 from utils.schemas import Achievement, UserAchievement
@@ -113,6 +113,69 @@ def register_achievement(
 
         logger.info("Registered new achievement: '%s' (id=%d)", name, achievement.id)
         return Achievement.from_orm(achievement)
+
+
+def sync_achievement(
+    achievement_id: int,
+    name: str,
+    description: str,
+) -> Literal["created", "updated", "unchanged"]:
+    """
+    Sync an achievement definition with the database by ID.
+
+    This is the preferred way to ensure achievements exist and stay in sync.
+    The ID is the source of truth - if an achievement with this ID exists,
+    its name and description will be updated to match the code definition.
+
+    Args:
+        achievement_id: The fixed ID for this achievement.
+        name: The achievement name.
+        description: Human-readable description.
+
+    Returns:
+        "created" if a new achievement was added,
+        "updated" if an existing achievement was modified,
+        "unchanged" if no changes were needed.
+    """
+    with get_session(commit=True) as session:
+        existing = (
+            session.query(AchievementModel).filter(AchievementModel.id == achievement_id).first()
+        )
+
+        if existing:
+            # Check if update is needed
+            if existing.name == name and existing.description == description:
+                return "unchanged"
+
+            # Update existing achievement
+            old_name = existing.name
+            old_desc = existing.description
+            existing.name = name
+            existing.description = description
+            session.flush()
+
+            logger.info(
+                "Updated achievement id=%d: name '%s'->'%s', description '%s'->'%s'",
+                achievement_id,
+                old_name,
+                name,
+                old_desc,
+                description,
+            )
+            return "updated"
+
+        # Create new achievement with explicit ID
+        achievement = AchievementModel(
+            id=achievement_id,
+            name=name,
+            description=description,
+            icon_b64=None,
+        )
+        session.add(achievement)
+        session.flush()
+
+        logger.info("Created new achievement: '%s' (id=%d)", name, achievement_id)
+        return "created"
 
 
 def update_achievement_icon(name: str, icon_b64: str) -> Optional[Achievement]:
