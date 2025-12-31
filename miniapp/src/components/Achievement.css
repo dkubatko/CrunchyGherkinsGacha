@@ -18,6 +18,20 @@
   object-fit: cover;
 }
 
+.achievement-icon-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--tg-theme-hint-color, #999999);
+  background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+}
+
+.achievement-popup-icon-img.achievement-icon-placeholder {
+  font-size: 2.5rem;
+}
+
 .achievement-item:active {
   transform: scale(0.95);
 }
