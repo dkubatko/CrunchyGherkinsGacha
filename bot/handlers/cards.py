@@ -98,6 +98,7 @@ from utils.events import (
     EventType,
     ClaimOutcome,
     LockOutcome,
+    RollLockOutcome,
     BurnOutcome,
     RefreshOutcome,
     RecycleOutcome,
@@ -292,8 +293,8 @@ async def handle_lock(
         await query.answer(message, show_alert=True)
         # Log insufficient balance for lock
         event_service.log(
-            EventType.LOCK,
-            LockOutcome.INSUFFICIENT,
+            EventType.ROLL_LOCK,
+            RollLockOutcome.INSUFFICIENT,
             user_id=user.user_id,
             chat_id=chat_id,
             card_id=card.id,
@@ -315,15 +316,14 @@ async def handle_lock(
         # Original roller - no claim point needed since they can't reroll their own claimed card anyway
         await query.answer("Card locked from re-rolling!", show_alert=True)
 
-    # Log successful lock via button
+    # Log successful roll lock
     event_service.log(
-        EventType.LOCK,
-        LockOutcome.LOCKED,
+        EventType.ROLL_LOCK,
+        RollLockOutcome.LOCKED,
         user_id=user.user_id,
         chat_id=chat_id,
         card_id=card.id,
         cost=lock_result.cost,
-        via="button",
     )
 
     # Set the card as locked
@@ -527,6 +527,7 @@ async def handle_lock_card_confirm(
                 card_id=card_id,
                 cost=lock_cost,
                 balance=current_balance,
+                via="command",
             )
             try:
                 await query.edit_message_text(

@@ -34,6 +34,7 @@ class EventType(str, Enum):
     CLAIM = "CLAIM"
     TRADE = "TRADE"
     LOCK = "LOCK"
+    ROLL_LOCK = "ROLL_LOCK"
     BURN = "BURN"
     REFRESH = "REFRESH"
     RECYCLE = "RECYCLE"
@@ -82,10 +83,18 @@ class TradeOutcome(str, Enum):
 
 
 class LockOutcome(str, Enum):
-    """Outcomes for LOCK events."""
+    """Outcomes for LOCK events (collection locks)."""
 
     LOCKED = "LOCKED"
     UNLOCKED = "UNLOCKED"
+    INSUFFICIENT = "INSUFFICIENT"  # Not enough claim points for lock
+    ERROR = "ERROR"
+
+
+class RollLockOutcome(str, Enum):
+    """Outcomes for ROLL_LOCK events (rolled card locks to prevent reroll)."""
+
+    LOCKED = "LOCKED"
     INSUFFICIENT = "INSUFFICIENT"  # Not enough claim points for lock
     ERROR = "ERROR"
 
@@ -167,6 +176,7 @@ VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
     EventType.CLAIM: ClaimOutcome,
     EventType.TRADE: TradeOutcome,
     EventType.LOCK: LockOutcome,
+    EventType.ROLL_LOCK: RollLockOutcome,
     EventType.BURN: BurnOutcome,
     EventType.REFRESH: RefreshOutcome,
     EventType.RECYCLE: RecycleOutcome,
