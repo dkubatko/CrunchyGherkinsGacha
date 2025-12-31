@@ -103,7 +103,7 @@ const ProfileView = ({ profile, cards, loading, error }: ProfileViewProps) => {
               <Achievement 
                 key={achievement.id}
                 id={String(achievement.id)}
-                icon={achievement.icon_b64 ? `data:image/png;base64,${achievement.icon_b64}` : ''}
+                icon={achievement.icon_b64 ? `data:image/png;base64,${achievement.icon_b64}` : undefined}
                 name={achievement.name}
                 description={achievement.description}
               />

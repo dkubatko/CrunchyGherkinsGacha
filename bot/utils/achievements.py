@@ -25,8 +25,11 @@ from utils.events import (
     EventType,
     SpinOutcome,
     ClaimOutcome,
+    CreateOutcome,
     MegaspinOutcome,
     MinesweeperOutcome,
+    BurnOutcome,
+    RollOutcome,
 )
 from utils.services import achievement_service, event_service
 from utils.schemas import Event, UserAchievement
@@ -167,6 +170,193 @@ class CollectorAchievement(BaseAchievement):
         return total_cards >= self.REQUIRED_CARDS
 
 
+class CreatorAchievement(BaseAchievement):
+    """Achievement for creating a unique card."""
+
+    @property
+    def id(self) -> int:
+        return 3
+
+    @property
+    def name(self) -> str:
+        return "Creator"
+
+    @property
+    def description(self) -> str:
+        return "Create a Unique card"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user just created a unique card."""
+        # Only grant on successful unique card creation
+        return (
+            event.event_type == EventType.CREATE.value
+            and event.outcome == CreateOutcome.SUCCESS.value
+        )
+
+
+class ThiefAchievement(BaseAchievement):
+    """Achievement for stealing someone else's roll."""
+
+    @property
+    def id(self) -> int:
+        return 4
+
+    @property
+    def name(self) -> str:
+        return "Thief"
+
+    @property
+    def description(self) -> str:
+        return "Steal someone else's rolled card"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user claimed a card that was rolled by someone else."""
+        # Only check successful claims
+        if event.event_type != EventType.CLAIM.value or event.outcome != ClaimOutcome.SUCCESS.value:
+            return False
+
+        # Need card_id to look up the rolled card
+        if event.card_id is None:
+            return False
+
+        # Look up the rolled card to get the original roller
+        from utils.services import rolled_card_service
+
+        rolled_card = rolled_card_service.get_rolled_card_by_card_id(event.card_id)
+        if rolled_card is None:
+            return False
+
+        # Check if the claimer is different from the original roller
+        return rolled_card.original_roller_id != user_id
+
+
+class MasterThiefAchievement(BaseAchievement):
+    """Achievement for stealing someone else's Legendary roll."""
+
+    @property
+    def id(self) -> int:
+        return 5
+
+    @property
+    def name(self) -> str:
+        return "Master Thief"
+
+    @property
+    def description(self) -> str:
+        return "Steal someone else's Legendary card"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user claimed a Legendary card that was rolled by someone else."""
+        # Only check successful claims
+        if event.event_type != EventType.CLAIM.value or event.outcome != ClaimOutcome.SUCCESS.value:
+            return False
+
+        # Need card_id to look up the rolled card
+        if event.card_id is None:
+            return False
+
+        # Look up the rolled card to get the original roller
+        from utils.services import rolled_card_service, card_service
+
+        rolled_card = rolled_card_service.get_rolled_card_by_card_id(event.card_id)
+        if rolled_card is None:
+            return False
+
+        # Check if the claimer is different from the original roller
+        if rolled_card.original_roller_id == user_id:
+            return False
+
+        # Check if the card is Legendary
+        card = card_service.get_card(event.card_id)
+        if card is None:
+            return False
+
+        return card.rarity == "Legendary"
+
+
+class LetItBurnAchievement(BaseAchievement):
+    """Achievement for burning 100 cards."""
+
+    REQUIRED_BURNS = 100
+
+    @property
+    def id(self) -> int:
+        return 6
+
+    @property
+    def name(self) -> str:
+        return "Let it burn!"
+
+    @property
+    def description(self) -> str:
+        return f"Burn {self.REQUIRED_BURNS} cards"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user has burned 100 cards."""
+        # Only check on successful burns
+        if event.event_type != EventType.BURN.value or event.outcome != BurnOutcome.SUCCESS.value:
+            return False
+
+        # Count total successful burns
+        total_burns = event_service.count_events(
+            user_id=user_id,
+            event_type=EventType.BURN,
+            outcome=BurnOutcome.SUCCESS,
+        )
+        return total_burns >= self.REQUIRED_BURNS
+
+
+class CrunchyGherkinAchievement(BaseAchievement):
+    """Achievement for rolling a card in Season 1."""
+
+    @property
+    def id(self) -> int:
+        return 7
+
+    @property
+    def name(self) -> str:
+        return "Crunchy Gherkin"
+
+    @property
+    def description(self) -> str:
+        return "Roll a card in Season 1"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user rolled a card in Season 1."""
+        # Any successful roll in Season 1 qualifies
+        return (
+            event.event_type == EventType.ROLL.value and event.outcome == RollOutcome.SUCCESS.value
+        )
+
+
+class HighRollerAchievement(BaseAchievement):
+    """Achievement for rolling a Legendary card."""
+
+    @property
+    def id(self) -> int:
+        return 8
+
+    @property
+    def name(self) -> str:
+        return "High Roller"
+
+    @property
+    def description(self) -> str:
+        return "Roll a Legendary card"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user rolled a Legendary card."""
+        # Only check successful rolls
+        if event.event_type != EventType.ROLL.value or event.outcome != RollOutcome.SUCCESS.value:
+            return False
+
+        # Check rarity from event payload
+        if event.payload and event.payload.get("rarity") == "Legendary":
+            return True
+
+        return False
+
+
 # ============================================================================
 # Achievement Mappings
 # ============================================================================
@@ -180,6 +370,8 @@ SPIN_ACHIEVEMENTS: List[BaseAchievement] = [
 
 CLAIM_ACHIEVEMENTS: List[BaseAchievement] = [
     CollectorAchievement(),
+    ThiefAchievement(),
+    MasterThiefAchievement(),
 ]
 
 MEGASPIN_ACHIEVEMENTS: List[BaseAchievement] = [
@@ -190,12 +382,28 @@ MINESWEEPER_ACHIEVEMENTS: List[BaseAchievement] = [
     CollectorAchievement(),
 ]
 
+CREATE_ACHIEVEMENTS: List[BaseAchievement] = [
+    CreatorAchievement(),
+]
+
+BURN_ACHIEVEMENTS: List[BaseAchievement] = [
+    LetItBurnAchievement(),
+]
+
+ROLL_ACHIEVEMENTS: List[BaseAchievement] = [
+    CrunchyGherkinAchievement(),
+    HighRollerAchievement(),
+]
+
 # Master mapping from EventType to achievement instances
 EVENT_ACHIEVEMENTS: Dict[EventType, List[BaseAchievement]] = {
     EventType.SPIN: SPIN_ACHIEVEMENTS,
     EventType.CLAIM: CLAIM_ACHIEVEMENTS,
     EventType.MEGASPIN: MEGASPIN_ACHIEVEMENTS,
     EventType.MINESWEEPER: MINESWEEPER_ACHIEVEMENTS,
+    EventType.CREATE: CREATE_ACHIEVEMENTS,
+    EventType.BURN: BURN_ACHIEVEMENTS,
+    EventType.ROLL: ROLL_ACHIEVEMENTS,
 }
 
 
