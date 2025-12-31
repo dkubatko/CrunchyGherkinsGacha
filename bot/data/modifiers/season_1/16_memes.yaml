@@ -1,0 +1,26 @@
+id: 16
+set: memes
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Doge
+  - Sigma
+  - Skibidi
+  - Trollface
+- name: Rare
+  modifiers:
+  - Brainrot
+  - Chad
+  - Delulu
+  - Incel
+  - Pepe
+  - Rickroll
+  - Rizzler
+- name: Epic
+  modifiers:
+  - Soyjak
+  - Wojak
+- name: Legendary
+  modifiers:
+  - Charlie Kirk

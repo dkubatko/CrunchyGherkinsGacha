@@ -7,6 +7,7 @@ export interface CardData {
   user_id?: number | null;
   chat_id?: string | null;
   locked?: boolean;
+  set_name?: string | null;
 }
 
 export interface OrientationData {
@@ -80,10 +81,24 @@ export interface SlotVerifyResponse {
   rarity?: string | null;
 }
 
+export interface MegaspinInfo {
+  spins_until_megaspin: number;
+  total_spins_required: number;
+  megaspin_available: boolean;
+}
+
 export interface ClaimBalanceState {
   balance: number | null;
   loading: boolean;
   error?: string;
+}
+
+export interface UserAchievement {
+  id: number;
+  name: string;
+  description: string;
+  icon_b64?: string | null;
+  unlocked_at: string;
 }
 
 export interface UserProfile {
@@ -94,10 +109,58 @@ export interface UserProfile {
   claim_balance: number;
   spin_balance: number;
   card_count: number;
+  achievements: UserAchievement[];
 }
 
 export interface ProfileState {
   profile: UserProfile | null;
   loading: boolean;
   error?: string;
+}
+
+// Ride the Bus types
+export interface RTBCardInfo {
+  card_id: number;
+  rarity: string;
+  title: string;
+  image_b64: string | null;
+}
+
+export interface RTBGameResponse {
+  game_id: number;
+  status: 'active' | 'won' | 'lost' | 'cashed_out';
+  bet_amount: number;
+  current_position: number;
+  current_multiplier: number;
+  next_multiplier: number;
+  potential_payout: number;
+  cards: RTBCardInfo[];
+  started_timestamp: string;
+  last_updated_timestamp: string;
+  spins_balance: number | null;
+}
+
+export interface RTBGuessResponse {
+  correct: boolean;
+  game: RTBGameResponse;
+  actual_comparison: 'higher' | 'lower';
+  message: string;
+}
+
+export interface RTBCashOutResponse {
+  success: boolean;
+  payout: number;
+  new_spin_total: number;
+  message: string;
+  game: RTBGameResponse;
+}
+
+export interface RTBConfigResponse {
+  min_bet: number;
+  max_bet: number;
+  cards_per_game: number;
+  multiplier_progression: Record<number, number>;
+  rarity_order: string[];
+  available: boolean;
+  unavailable_reason: string | null;
 }

@@ -1,0 +1,30 @@
+id: 4
+set: tv
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Sitcom
+- name: Rare
+  modifiers:
+  - Batman
+  - Breaking Bad
+  - Deadpool
+  - Godzilla
+  - Iron Man
+  - Jedi
+  - Joker
+  - Sith
+  - Spider-Man
+  - Thanos
+  - Titanic
+- name: Epic
+  modifiers:
+  - Godfather
+  - Hogwarts
+  - Terminator
+  - Xenomorph
+- name: Legendary
+  modifiers:
+  - Gandalf
+  - Yoda

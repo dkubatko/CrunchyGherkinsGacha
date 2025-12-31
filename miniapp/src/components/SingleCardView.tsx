@@ -108,6 +108,7 @@ export const SingleCardView: React.FC<SingleCardViewProps> = ({ cardId, initData
           shiny={true}
           showOwner={true}
           owner={cardData.owner}
+          set_name={cardData.set_name}
         />
       </div>
     </div>

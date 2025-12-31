@@ -1,0 +1,31 @@
+id: 10
+set: history
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Knight
+  - Slave
+  - Крепостной
+- name: Rare
+  modifiers:
+  - Gladiator
+  - King
+  - Mongol
+  - Queen
+  - Roman
+  - Samurai
+  - Казак
+  - Крестьянин
+  - Холоп
+- name: Epic
+  modifiers:
+  - Emperor
+  - Exorcist
+  - Pharaoh
+  - Spartan
+  - Боярин
+  - Царь
+- name: Legendary
+  modifiers:
+  - Soviet

@@ -140,3 +140,84 @@ def verify_admin(handler: HandlerFunc) -> HandlerFunc:
         return await handler(update, context, *args, **kwargs)
 
     return wrapper
+
+
+def prevent_concurrency(
+    bot_data_key: str, cross_user: bool = False
+) -> Callable[[HandlerFunc], HandlerFunc]:
+    """
+    Prevent concurrent callback executions for the same user + resource combination.
+
+    This decorator guards against rapid repeated button clicks by tracking in-progress
+    operations in context.bot_data[bot_data_key]. Duplicate requests are silently dropped.
+
+    The decorator extracts an ID from query.data by splitting on '_' and taking index 1.
+    By default, it builds a composite key as f"{user.user_id}_{resource_id}" to allow the
+    same user to interact with different resources concurrently, while blocking duplicate
+    clicks on the same resource.
+
+    When cross_user=True, the key is just resource_id, which blocks ALL users from
+    performing concurrent operations on the same resource. Use this for mutually exclusive
+    actions like lock vs reroll where different users must not race.
+
+    Must be used AFTER @verify_user_in_chat (which injects the 'user' kwarg).
+
+    Args:
+        bot_data_key: The key in context.bot_data where the set of in-progress
+                      operations is stored (e.g., "pending_roll_actions").
+        cross_user: If True, lock per resource_id only (cross-user exclusion).
+                    If False (default), lock per user_id + resource_id.
+
+    Example:
+        @verify_user_in_chat
+        @prevent_concurrency("pending_roll_actions")
+        async def claim_card(update, context, user):
+            ...
+
+        @verify_user_in_chat
+        @prevent_concurrency("pending_roll_actions", cross_user=True)
+        async def handle_lock(update, context, user):
+            ...
+    """
+
+    def decorator(handler: HandlerFunc) -> HandlerFunc:
+        @wraps(handler)
+        async def wrapper(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            query = update.callback_query
+            if not query or not query.data:
+                return await handler(update, context, *args, **kwargs)
+
+            db_user = kwargs.get("user")
+            if not db_user:
+                return await handler(update, context, *args, **kwargs)
+
+            # Extract resource ID from callback data (e.g., "claim_123" -> "123")
+            data_parts = query.data.split("_")
+            if len(data_parts) < 2:
+                return await handler(update, context, *args, **kwargs)
+
+            resource_id = data_parts[1]
+            action_key = resource_id if cross_user else f"{db_user.user_id}_{resource_id}"
+
+            pending_actions = context.bot_data.setdefault(bot_data_key, set())
+
+            if action_key in pending_actions:
+                # Silently acknowledge and drop the duplicate request
+                logger.warning(
+                    "Dropping duplicate callback for user %s on resource %s (key: %s)",
+                    db_user.user_id,
+                    resource_id,
+                    bot_data_key,
+                )
+                await query.answer()
+                return None
+
+            pending_actions.add(action_key)
+            try:
+                return await handler(update, context, *args, **kwargs)
+            finally:
+                pending_actions.discard(action_key)
+
+        return wrapper
+
+    return decorator

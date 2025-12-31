@@ -26,6 +26,16 @@ class UserSummary(BaseModel):
     display_name: Optional[str] = None
 
 
+class UserAchievementResponse(BaseModel):
+    """Achievement data for API responses."""
+
+    id: int
+    name: str
+    description: str
+    icon_b64: Optional[str] = None
+    unlocked_at: str  # ISO format datetime string
+
+
 class UserProfileResponse(BaseModel):
     """Full user profile response."""
 
@@ -36,6 +46,7 @@ class UserProfileResponse(BaseModel):
     claim_balance: int
     spin_balance: int
     card_count: int
+    achievements: List[UserAchievementResponse] = []
 
 
 class UserCollectionResponse(BaseModel):
@@ -148,6 +159,7 @@ class SlotsVictoryRequest(BaseModel):
     chat_id: str
     rarity: str
     source: SlotsVictorySource
+    is_megaspin: bool = False
 
 
 class SlotsClaimWinRequest(BaseModel):
@@ -172,12 +184,21 @@ class SpinsRequest(BaseModel):
     chat_id: str
 
 
+class MegaspinInfo(BaseModel):
+    """Megaspin progress information."""
+
+    spins_until_megaspin: int
+    total_spins_required: int
+    megaspin_available: bool
+
+
 class SpinsResponse(BaseModel):
     """Response with spin balance info."""
 
     spins: int
     success: bool = True
     next_refresh_time: Optional[str] = None
+    megaspin: Optional[MegaspinInfo] = None
 
 
 class ClaimBalanceResponse(BaseModel):
@@ -194,6 +215,7 @@ class ConsumeSpinResponse(BaseModel):
     success: bool
     spins_remaining: Optional[int] = None
     message: Optional[str] = None
+    megaspin: Optional[MegaspinInfo] = None
 
 
 class SlotVerifyRequest(BaseModel):
@@ -278,3 +300,75 @@ class MinesweeperUpdateResponse(BaseModel):
     bet_card_rarity: Optional[str] = None  # Rarity of the bet card (for alerts)
     source_display_name: Optional[str] = None  # Display name of the selected source (for alerts)
     claim_point_awarded: bool = False  # True if this reveal awarded a claim point
+
+
+# =============================================================================
+# RIDE THE BUS (RTB) SCHEMAS
+# =============================================================================
+
+
+class RTBCardInfo(BaseModel):
+    """Card information for RTB game display."""
+
+    card_id: int
+    rarity: str
+    title: str
+    image_b64: Optional[str] = None  # Only provided for revealed cards
+
+
+class RTBStartRequest(BaseModel):
+    """Request to start a new RTB game."""
+
+    user_id: int
+    chat_id: str
+    bet_amount: int  # 10-50 spins
+
+
+class RTBGameResponse(BaseModel):
+    """Response with RTB game state."""
+
+    game_id: int
+    status: str  # 'active', 'won', 'lost', 'cashed_out'
+    bet_amount: int
+    current_position: int  # 1-5 (how many cards revealed)
+    current_multiplier: int  # Current multiplier (1, 2, 3, 5, or 10)
+    next_multiplier: int  # Multiplier after next correct guess
+    potential_payout: int  # Current bet * current multiplier
+    cards: List[RTBCardInfo]  # Only revealed cards have full info
+    started_timestamp: str
+    last_updated_timestamp: str
+    spins_balance: Optional[int] = None  # User's current spin balance
+
+
+class RTBGuessRequest(BaseModel):
+    """Request to make a guess in RTB."""
+
+    user_id: int
+    game_id: int
+    guess: str  # 'higher', 'lower', or 'equal'
+
+
+class RTBGuessResponse(BaseModel):
+    """Response after making a guess."""
+
+    correct: bool
+    game: RTBGameResponse
+    actual_comparison: str  # What the actual result was ('higher', 'lower', 'equal')
+    message: str  # Human-readable result message
+
+
+class RTBCashOutRequest(BaseModel):
+    """Request to cash out of an RTB game."""
+
+    user_id: int
+    game_id: int
+
+
+class RTBCashOutResponse(BaseModel):
+    """Response after cashing out."""
+
+    success: bool
+    payout: int
+    new_spin_total: int
+    message: str
+    game: RTBGameResponse
