@@ -7,11 +7,11 @@ rarities:
   - Alchemist
   - Assassin
   - Bard
-  - Dragon
   - Paladin
   - Sorcerer
 - name: Rare
   modifiers:
+  - Demon
   - Druid
   - Dwarf
   - Gnome
@@ -19,8 +19,9 @@ rarities:
   - Witch
 - name: Epic
   modifiers:
-  - Demon
+  - Diablo
+  - Dragon
   - Warcraft
 - name: Legendary
   modifiers:
-  - Diablo
+  - Inferno

@@ -14,7 +14,9 @@ rarities:
   modifiers:
   - Aphrodite
   - Ares
+  - Demigod
   - Odin
+  - Shinigami
   - Shiva
   - Thor
 - name: Legendary

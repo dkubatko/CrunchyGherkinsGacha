@@ -4,7 +4,9 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Alaskan
   - American
+  - Arctic
   - Asian
   - European
   - Nordic
@@ -13,8 +15,6 @@ rarities:
 - name: Rare
   modifiers:
   - African
-  - Alaska
-  - Antarctic
   - Chinese
   - Indian
   - Japanese

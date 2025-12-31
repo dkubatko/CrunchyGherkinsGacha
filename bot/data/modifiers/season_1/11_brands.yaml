@@ -5,22 +5,26 @@ rarities:
 - name: Common
   modifiers:
   - Apple
+  - Funko Pop
+  - Gameboy
   - Haribon
   - Instagram
   - Nintendo
   - Nutella
   - PlayStation
+  - Polaroid
+  - PSP
   - Red Bull
 - name: Rare
   modifiers:
   - Duolingo
-  - Funko Pop
   - Google
   - Hubba Bubba
   - Jollibee
   - Labubu
   - Malrboro
   - NASA
+  - Ozon
   - Starbucks
   - TikTok
 - name: Epic
@@ -28,6 +32,7 @@ rarities:
   - LEGO
   - Love Is
   - McDonald's
+  - Wildberries
   - Yandex
 - name: Legendary
   modifiers: []
