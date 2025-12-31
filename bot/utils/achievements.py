@@ -45,15 +45,25 @@ class BaseAchievement(ABC):
     """Base class for all achievements.
 
     Each achievement must define:
-    - name: Unique identifier matching the database entry
+    - id: Fixed database ID for this achievement (must be unique and never change)
+    - name: Unique identifier for the achievement
     - description: Human-readable description
     - check_condition: Method that returns True if the user qualifies
+
+    The id is the source of truth for syncing with the database. If name or
+    description change in code, the database entry will be updated to match.
     """
 
     @property
     @abstractmethod
+    def id(self) -> int:
+        """Fixed database ID for this achievement. Must be unique and never change."""
+        pass
+
+    @property
+    @abstractmethod
     def name(self) -> str:
-        """Unique name of the achievement (must match database)."""
+        """Unique name of the achievement."""
         pass
 
     @property
@@ -83,12 +93,16 @@ class SpinnerAchievement(BaseAchievement):
     REQUIRED_SPINS = 100
 
     @property
+    def id(self) -> int:
+        return 1
+
+    @property
     def name(self) -> str:
         return "Spinner"
 
     @property
     def description(self) -> str:
-        return "Spend 100 spins"
+        return f"Spend {self.REQUIRED_SPINS} spins"
 
     def check_condition(self, user_id: int, event: Event) -> bool:
         """Check if user has spent 100 spins (actual spins, not errors)."""
@@ -123,12 +137,16 @@ class CollectorAchievement(BaseAchievement):
     }
 
     @property
+    def id(self) -> int:
+        return 2
+
+    @property
     def name(self) -> str:
         return "Collector"
 
     @property
     def description(self) -> str:
-        return "Collect 100 cards"
+        return f"Collect {self.REQUIRED_CARDS} cards"
 
     def check_condition(self, user_id: int, event: Event) -> bool:
         """Check if user has 100+ cards in their collection."""
@@ -309,32 +327,47 @@ def init_achievements() -> None:
 
 def ensure_achievements_registered() -> None:
     """
-    Ensure all achievement definitions exist in the database.
+    Ensure all achievement definitions are synced with the database.
 
     This should be called after database migrations have run.
-    It registers any achievements that don't yet exist.
+    It creates new achievements and updates existing ones if name/description changed.
+    Achievements are synced by their fixed ID, making renames safe.
     """
-    # Collect unique achievements (same achievement may appear under multiple event types)
-    unique_achievements: dict[str, BaseAchievement] = {}
+    # Collect unique achievements by ID (same achievement may appear under multiple event types)
+    unique_achievements: dict[int, BaseAchievement] = {}
     for achievements in EVENT_ACHIEVEMENTS.values():
         for achievement in achievements:
-            unique_achievements[achievement.name] = achievement
+            if achievement.id in unique_achievements:
+                # Verify no ID conflicts
+                existing = unique_achievements[achievement.id]
+                if existing.name != achievement.name:
+                    logger.error(
+                        "Achievement ID conflict: id=%d used by both '%s' and '%s'",
+                        achievement.id,
+                        existing.name,
+                        achievement.name,
+                    )
+            unique_achievements[achievement.id] = achievement
 
-    registered_count = 0
+    created_count = 0
+    updated_count = 0
     for achievement in unique_achievements.values():
-        existing = achievement_service.get_achievement_by_name(achievement.name)
-        if not existing:
-            achievement_service.register_achievement(
-                name=achievement.name,
-                description=achievement.description,
-                icon_b64=None,  # Icon added separately via create_achievement tool
-            )
-            logger.debug("Registered new achievement: '%s'", achievement.name)
-            registered_count += 1
+        result = achievement_service.sync_achievement(
+            achievement_id=achievement.id,
+            name=achievement.name,
+            description=achievement.description,
+        )
+        if result == "created":
+            logger.debug("Created new achievement: '%s' (id=%d)", achievement.name, achievement.id)
+            created_count += 1
+        elif result == "updated":
+            logger.debug("Updated achievement: '%s' (id=%d)", achievement.name, achievement.id)
+            updated_count += 1
 
     logger.info(
-        "Initialized %d achievements across %d event types (%d newly registered)",
+        "Synced %d achievements across %d event types (%d created, %d updated)",
         len(unique_achievements),
         len(EVENT_ACHIEVEMENTS),
-        registered_count,
+        created_count,
+        updated_count,
     )
