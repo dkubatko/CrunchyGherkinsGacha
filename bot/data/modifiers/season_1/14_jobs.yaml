@@ -7,21 +7,24 @@ rarities:
   - Cashier
   - Contractor
   - Farmer
+  - Fisherman
+  - Model
   - Plumber
   - Police
+  - Potter
 - name: Rare
-  modifiers:
-  - Fisherman
-  - Janitor
-  - Model
-- name: Epic
   modifiers:
   - Astronaut
   - Ballerina
+  - Janitor
+  - Taxi Driver
+- name: Epic
+  modifiers:
   - Coal Miner
   - Coroner
   - Dog Trainer
   - Mafia
+  - Глиномес
 - name: Legendary
   modifiers:
   - Stripper

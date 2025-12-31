@@ -5,20 +5,21 @@ rarities:
 - name: Common
   modifiers:
   - Gundam
+  - Neko
   - Ninja
 - name: Rare
   modifiers:
   - 9-tailed
   - Akatsuki
-  - Death Note
   - Demon Slayer
   - Dragon Ball
   - Gojo
+  - Kitsune
   - Naruto
   - One Piece
   - Pochita
   - Pokémon
-  - Tokyo Ghoul
+  - Ryuk
 - name: Epic
   modifiers:
   - Attack on Titan
@@ -27,6 +28,7 @@ rarities:
   - Evangelion
   - Ghibli
   - JoJo
+  - Tokyo Ghoul
 - name: Legendary
   modifiers:
   - Loli

@@ -4,6 +4,7 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Delulu
   - Doge
   - Sigma
   - Skibidi
@@ -12,7 +13,6 @@ rarities:
   modifiers:
   - Brainrot
   - Chad
-  - Delulu
   - Incel
   - Pepe
   - Rickroll
@@ -23,4 +23,4 @@ rarities:
   - Wojak
 - name: Legendary
   modifiers:
-  - Charlie Kirk
+  - JD Vance

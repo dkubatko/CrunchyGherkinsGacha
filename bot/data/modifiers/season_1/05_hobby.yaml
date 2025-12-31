@@ -4,26 +4,26 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Blogger
   - Coding
   - Fitness
   - Gaming
+  - Gardening
   - Gym
   - Hiking
+  - Meloman
+  - Musician
+  - Poet
   - Reading
   - Skiing
   - Snowboarding
+  - Streamer
 - name: Rare
   modifiers:
-  - Blogger
   - Crochet
-  - Gardening
-  - Meloman
-  - Musician
   - Pilates
-  - Poet
   - Quilting
   - Rock Climbing
-  - Streamer
 - name: Epic
   modifiers:
   - Polyglot
