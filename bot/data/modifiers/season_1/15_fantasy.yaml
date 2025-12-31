@@ -21,6 +21,7 @@ rarities:
   modifiers:
   - Diablo
   - Dragon
+  - Gendalf
   - Warcraft
 - name: Legendary
   modifiers:
