@@ -265,6 +265,7 @@ async def process_card_victory(
                 card_id=card_id,
                 modifier=generated_card.modifier,
                 base_name=generated_card.base_name,
+                set_name=(generated_card.set_name or "").title(),
             )
 
             card_url = build_single_card_url(card_id)
