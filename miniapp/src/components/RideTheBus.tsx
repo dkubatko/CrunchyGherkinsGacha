@@ -285,7 +285,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
   }, [userId, chatId, initData]);
 
   if (phase === 'loading') {
-    return <AppLoading />;
+    return <AppLoading title="🚌 Ride the Bus" />;
   }
 
   if (error && !game) {

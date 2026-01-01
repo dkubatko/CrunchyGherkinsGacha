@@ -981,7 +981,7 @@ function App() {
 
   // Loading state
   if (loading || (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0))) {
-    return <AppLoading />;
+    return <AppLoading title="🎰 Casino" />;
   }
 
   // Error state
