@@ -23,17 +23,17 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 44px;
+  height: 36px;
   border: 1px solid var(--tg-theme-separator-color, rgba(255, 255, 255, 0.15));
-  border-radius: 12px;
+  border-radius: 10px;
   background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
   color: var(--tg-theme-text-color, #fff);
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
   font-weight: 500;
-  gap: 8px;
+  gap: 6px;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
@@ -55,8 +55,8 @@
 }
 
 .control-icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   flex-shrink: 0;
 }
 
@@ -76,10 +76,8 @@
 .filter-dropdown-wrapper {
   position: absolute;
   top: calc(100% + 12px);
-  left: 0;
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  left: 50%;
+  transform: translateX(-50%);
   z-index: 1000;
 }
 
@@ -130,6 +128,8 @@
   top: calc(100% + 12px);
   left: 50%;
   transform: translateX(-50%);
+  animation: sortDropdownFadeIn 0.15s ease-out;
+  z-index: 1000;
 }
 
 .sort-dropdown::before {
@@ -166,6 +166,17 @@
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes sortDropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
   }
 }
 
@@ -243,7 +254,9 @@
 
 /* Submenu appears to the right */
 .dropdown-submenu {
-  position: relative;
+  position: absolute;
+  left: calc(100% + 8px);
+  top: var(--submenu-offset, 0px);
   min-width: 100px;
   max-width: 140px;
   background-color: var(--tg-theme-secondary-bg-color, #1a1a1a);
@@ -252,7 +265,6 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
   animation: submenuFadeIn 0.15s ease-out;
   overflow: visible;
-  margin-top: var(--submenu-offset, 0px);
 }
 
 /* Left-pointing arrow on submenu */
@@ -387,14 +399,14 @@
 /* Small phones */
 @media (max-width: 360px) {
   .control-button {
-    height: 40px;
-    font-size: 0.85rem;
-    border-radius: 10px;
+    height: 32px;
+    font-size: 0.8rem;
+    border-radius: 8px;
   }
   
   .control-icon {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
   }
   
   .dropdown {

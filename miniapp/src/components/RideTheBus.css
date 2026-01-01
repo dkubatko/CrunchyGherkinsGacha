@@ -674,3 +674,19 @@
   font-weight: 600;
   color: white;
 }
+
+/* Mobile device detection - disable sticky hover states on touch devices */
+@media (pointer: coarse) and (hover: none) {
+  .rtb-bet-option:hover:not(:disabled):not(.selected) {
+    border-color: rgba(255, 255, 255, 0.15);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+    transform: none;
+  }
+  
+  .rtb-bet-option.selected:hover:not(:disabled) {
+    border-color: var(--tg-theme-button-color, #5288c1);
+    background: linear-gradient(180deg, rgba(82, 136, 193, 0.3) 0%, rgba(82, 136, 193, 0.15) 100%);
+    box-shadow: 0 0 12px rgba(82, 136, 193, 0.3);
+    transform: none;
+  }
+}
