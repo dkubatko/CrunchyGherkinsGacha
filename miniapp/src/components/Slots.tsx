@@ -99,9 +99,9 @@ const formatTimeUntilRefresh = (nextRefreshTime: string | null | undefined): str
     const remainingMinutes = diffMinutes % 60;
 
     if (diffHours > 0) {
-      return `Next refresh in ${diffHours}h ${remainingMinutes}m!`;
+      return `Next spin refresh in ${diffHours}h ${remainingMinutes}m!`;
     } else {
-      return `Next refresh in ${diffMinutes}m!`;
+      return `Next spin refresh in ${diffMinutes}m!`;
     }
   } catch {
     return 'Spins refresh daily!';
@@ -1029,12 +1029,18 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [results, reelStates, symbols.length]);
 
   if (!imagesReady) {
-    return <AppLoading />;
+    return <AppLoading title="🎰 Slots" />;
   }
 
   return (
     <div className="slots-container">
-      <h1>🎰 Slots</h1>
+      <div className="slots-header">
+        <h1>🎰 Slots</h1>
+        <div className="slots-spins-display">
+          <span className="slots-spins-coin" aria-hidden="true" />
+          <span className="slots-spins-count">{userSpins.count}</span>
+        </div>
+      </div>
 
       <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
         <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>
@@ -1145,30 +1151,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 </span>
               </button>
 
-              <div className="spins-container">
-                {userSpins.error ? (
-                  <div className="spins-display error">
-                    <div className="spins-icon">⚠️</div>
-                    <div className="spins-text">
-                      <span className="spins-count">?</span>
-                      <span className="spins-label">Error loading spins</span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="spins-display">
-                    <div className="spins-text">
-                      <div className="spins-count-row">
-                        <div className="spins-coin" aria-hidden="true" />
-                        <span className="spins-count">{userSpins.count}</span>
-                      </div>
-                      <span className="spins-label">Spins Available</span>
-                    </div>
-                  </div>
-                )}
-                {userSpins.count === 0 && !userSpins.error && (
-                  <div className="spins-refresh-hint">{formatTimeUntilRefresh(userSpins.nextRefreshTime)}</div>
-                )}
-              </div>
+              {userSpins.count === 0 && !userSpins.error && (
+                <div className="spins-refresh-hint">{formatTimeUntilRefresh(userSpins.nextRefreshTime)}</div>
+              )}
             </>
           )}
         </div>

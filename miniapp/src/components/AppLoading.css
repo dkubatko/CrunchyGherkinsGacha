@@ -7,15 +7,34 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 2vh;
+  padding: 0.5rem 0.25rem;
   background: var(--tg-theme-bg-color, #0e1116);
   color: var(--tg-theme-text-color, #ffffff);
-  font-size: clamp(2rem, 4vw, 2.4rem);
-  font-weight: 600;
-  text-align: center;
   z-index: 1000;
+  box-sizing: border-box;
 }
 
 .app-loading-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0.35rem 0;
+  min-height: 2rem;
+  font-size: 1.5rem;
+  font-weight: bold;
+  line-height: 1.1;
+  text-align: center;
   pointer-events: none;
+}
+
+/* Mobile styles for loading text */
+@media (max-width: 480px) {
+  .app-loading-backdrop {
+    padding: 0.5rem 0.15rem;
+  }
+  
+  .app-loading-text {
+    margin: 0.35rem 0;
+    font-size: 1.5rem;
+  }
 }

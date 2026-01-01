@@ -397,7 +397,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
 
   // Loading state
   if (loading || gameState === 'loading') {
-    return <AppLoading />;
+    return <AppLoading title="💣 Minesweeper" />;
   }
 
   // Error state

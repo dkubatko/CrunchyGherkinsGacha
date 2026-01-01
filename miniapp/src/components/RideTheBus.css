@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 16px;
+  padding: 0.5rem 0.25rem;
   gap: 10px;
   min-height: 100vh;
   background: var(--tg-theme-bg-color, #1a1a1a);
@@ -17,12 +17,16 @@
   align-items: center;
   justify-content: center;
   width: 100%;
+  max-width: 360px;
   position: relative;
+  margin: 0.35rem auto;
+  min-height: 2rem;
 }
 
 .rtb-header h1 {
   margin: 0;
   font-size: 1.5rem;
+  line-height: 1.1;
   text-align: center;
 }
 
@@ -34,14 +38,14 @@
 .rtb-spins-display {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   background: rgba(255, 255, 255, 0.1);
-  padding: 6px 12px;
-  border-radius: 16px;
+  padding: 8px 10px;
+  border-radius: 18px;
 }
 
 .rtb-spins-count {
-  font-size: 0.95rem;
+  font-size: 1.05rem;
   font-weight: 600;
   line-height: 1;
 }
@@ -97,8 +101,8 @@
 
 /* Header coin size */
 .rtb-spins-display .rtb-coin {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
 }
 
 /* Inline coin for text - same style, scales with font */
