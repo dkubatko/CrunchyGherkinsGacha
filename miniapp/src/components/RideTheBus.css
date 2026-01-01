@@ -247,6 +247,11 @@
   aspect-ratio: 5 / 7;
   /* No overflow: hidden to allow 3D flip transform */
   /* No border-radius here - applied to card faces instead */
+  
+  /* GPU acceleration for smoother animations on mobile */
+  transform: translateZ(0);
+  will-change: transform, opacity;
+  -webkit-transform: translateZ(0);
 }
 
 /* ============================================
