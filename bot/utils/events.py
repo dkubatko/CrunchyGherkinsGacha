@@ -165,6 +165,7 @@ class RtbOutcome(str, Enum):
     STARTED = "STARTED"
     WON = "WON"
     LOST = "LOST"
+    CASHED_OUT = "CASHED_OUT"
     ERROR = "ERROR"
 
 
