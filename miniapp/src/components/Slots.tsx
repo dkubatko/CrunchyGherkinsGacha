@@ -550,6 +550,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       if (!isAutospinningRef.current) {
         TelegramUtils.showAlert('No spins available! Spins refresh daily.');
       }
+      // Return false without error - autospin loop will handle showing summary
       return false;
     }
 
@@ -566,7 +567,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
       if (!consumeResult.success) {
         const message = consumeResult.message || 'Failed to consume spin';
-        TelegramUtils.showAlert(message);
+        if (!isAutospinningRef.current) {
+          TelegramUtils.showAlert(message);
+        }
         setSpinning(false);
         setReelStates([...INITIAL_REEL_STATES]);
         // Update spin count from server response without refetching
