@@ -172,7 +172,6 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
       field,
       direction
     });
-    setSortOpen(false);
   };
 
   return (

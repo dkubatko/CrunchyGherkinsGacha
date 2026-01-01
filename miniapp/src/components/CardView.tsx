@@ -120,9 +120,11 @@ const CardView = ({
         ) : (
           <>
         <div className="title-container">
-          {view === 'current' && currentView.cards.length > 0 && !currentView.isGridView && (
+          {view === 'current' && currentView.cards.length > 0 && (
             <div className="card-position-indicator">
-              <span className="position-current">{currentIndex + 1}</span>
+              <span className="position-current">
+                {currentView.isGridView ? currentView.filteredCards.length : currentIndex + 1}
+              </span>
               <span className="position-separator"> / </span>
               <span className="position-total">{currentView.cards.length}</span>
             </div>
@@ -138,6 +140,13 @@ const CardView = ({
             >
               {currentView.isGridView ? 'Grid' : 'Gallery'}
             </button>
+          )}
+          {view === 'all' && allView.baseCards.length > 0 && !allView.loading && !allView.error && (
+            <div className="card-position-indicator">
+              <span className="position-current">{allView.displayedCards.length}</span>
+              <span className="position-separator"> / </span>
+              <span className="position-total">{allView.baseCards.length}</span>
+            </div>
           )}
           <h1 className="app-title">
             {view === 'all'
