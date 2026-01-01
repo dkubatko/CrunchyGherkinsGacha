@@ -178,11 +178,14 @@ REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
     "<b>{lock_icon}[{card_id}] {card_title}</b>\n"
-    "Rarity: <b>{rarity}</b>\n\n"
+    "Rarity: <b>{rarity}</b>\n"
+    "Set: <b>{set_name}</b>\n\n"
     "<i>Showing {current_index}/{total_cards} owned by @{username}</i>"
 )
 
-CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
+CARD_CAPTION_BASE = (
+    "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>\nSet: <b>{set_name}</b>"
+)
 CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
 CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
 CARD_STATUS_LOCKED = "\n\n<i>Locked from re-rolling</i>"
@@ -333,7 +336,8 @@ SLOTS_VICTORY_PENDING_MESSAGE = (
 SLOTS_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\n"
     "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>"
+    "Rarity: <b>{rarity}</b>\n"
+    "Set: <b>{set_name}</b>"
 )
 
 SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed. Please try again later."
@@ -343,7 +347,8 @@ MEGASPIN_VICTORY_PENDING_MESSAGE = "@{username} used a <b>megaspin</b> and won a
 MEGASPIN_VICTORY_RESULT_MESSAGE = (
     "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\n"
     "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>"
+    "Rarity: <b>{rarity}</b>\n"
+    "Set: <b>{set_name}</b>"
 )
 
 MEGASPIN_VICTORY_FAILURE_MESSAGE = "@{username} used a <b>megaspin</b> and won a {rarity} {display_name}!\n\nCard generation failed. Please try again later."
@@ -366,7 +371,8 @@ MINESWEEPER_VICTORY_PENDING_MESSAGE = (
 MINESWEEPER_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in Minesweeper!\n\n"
     "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>"
+    "Rarity: <b>{rarity}</b>\n"
+    "Set: <b>{set_name}</b>"
 )
 
 MINESWEEPER_VICTORY_FAILURE_MESSAGE = (

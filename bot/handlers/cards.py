@@ -1793,6 +1793,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                     card_id=card.id,
                     card_title=html.escape(card.title()),
                     rarity=card.rarity,
+                    set_name=(card.set_name or "").title(),
                 )
                 + CARD_STATUS_CLAIMED.format(username=user.username)
                 + f"\n\nBurned cards:\n\n<b>{burned_block}</b>"
@@ -2148,6 +2149,7 @@ async def handle_recycle_callback(
             card_id=new_card_id,
             card_title=generated_card.card_title,
             rarity=generated_card.rarity,
+            set_name=(generated_card.set_name or "").title(),
         )
         final_caption += RECYCLE_RESULT_APPENDIX.format(
             burned_block=burned_block,

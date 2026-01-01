@@ -58,6 +58,7 @@ class GeneratedCard:
     source_type: str
     source_id: int
     set_id: Optional[int] = None
+    set_name: str = ""
 
 
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
@@ -284,6 +285,7 @@ def _create_generated_card(
         source_type=profile.source_type,
         source_id=profile.source_id,
         set_id=modifier_info.set_id,
+        set_name=modifier_info.set_name,
     )
 
 
@@ -606,6 +608,7 @@ def generate_unique_card(
                 source_type=profile.source_type,
                 source_id=profile.source_id,
                 set_id=None,  # Unique cards don't belong to a set usually, or we can assign one if needed
+                set_name="",
             )
         except Exception as e:
             logger.error(f"Error generating unique card (attempt {attempt}/{total_attempts}): {e}")
