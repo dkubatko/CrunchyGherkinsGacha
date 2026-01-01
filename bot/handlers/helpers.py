@@ -7,6 +7,7 @@ This module contains utility functions used across different handler modules.
 import asyncio
 import datetime
 import logging
+from datetime import timezone
 
 from utils.services import card_service, roll_service
 
@@ -23,13 +24,13 @@ def log_card_generation(generated_card, context="card generation"):
 
 def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
-    Uses the same timezone as the database (system local time).
+    Uses UTC for consistent timezone handling.
     """
     last_roll_time = roll_service.get_last_roll_time(user_id, chat_id)
     if last_roll_time is None:
         return 0, 0  # Can roll immediately if never rolled before
 
-    now = datetime.datetime.now()
+    now = datetime.datetime.now(timezone.utc)
     next_roll_time = last_roll_time + datetime.timedelta(hours=24)
     time_diff = next_roll_time - now
 
