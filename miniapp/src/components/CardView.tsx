@@ -204,7 +204,7 @@ const CardView = ({
 
         {view === 'all' && (
           allView.loading ? (
-            <AppLoading />
+            <AppLoading title="🃏 Cards" />
           ) : allView.error ? (
             <div className="error-container">
               <h2>{isTradeView ? 'Error loading trade options' : 'Error loading cards'}</h2>
