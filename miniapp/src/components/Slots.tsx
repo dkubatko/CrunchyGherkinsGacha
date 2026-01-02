@@ -177,8 +177,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
   
-  // Autospin feature - fixed speed multiplier (0.75x of old quick spin = 1.5x normal speed)
-  const AUTOSPIN_SPEED_MULTIPLIER = 1.5;
+  // Speed multipliers for spin animations
+  const REGULAR_SPEED_MULTIPLIER = 1.5;
+  const AUTOSPIN_SPEED_MULTIPLIER = 2;
+  const getSpeedMultiplier = useCallback(() => 
+    isAutospinningRef.current ? AUTOSPIN_SPEED_MULTIPLIER : REGULAR_SPEED_MULTIPLIER
+  , []);
   const [isAutospinMode, setIsAutospinMode] = useState(false);
   const [isAutospinning, setIsAutospinning] = useState(false);
   const [isAutospinStopping, setIsAutospinStopping] = useState(false);
@@ -228,14 +232,14 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             setRarityWheelState({
-              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS / AUTOSPIN_SPEED_MULTIPLIER,
+              rarityWheelDuration: RARITY_WHEEL_BASE_DURATION_MS / getSpeedMultiplier(),
               rarityWheelTransform: final,
               rarityWheelSpinning: true,
             });
           });
         });
 
-        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS / AUTOSPIN_SPEED_MULTIPLIER;
+        const settleDelay = RARITY_WHEEL_BASE_DURATION_MS / getSpeedMultiplier();
         const timeout = setTimeout(() => {
           TelegramUtils.triggerHapticImpact('heavy');
           setRarityWheelState({
@@ -250,7 +254,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         setRarityWheelTimeout(timeout);
       });
     },
-    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout, AUTOSPIN_SPEED_MULTIPLIER]
+    [clearRarityWheelTimeout, setRarityWheelState, setRarityWheelTimeout, getSpeedMultiplier]
   );
 
   useEffect(() => {
@@ -617,8 +621,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       );
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
+      const speedMultiplier = getSpeedMultiplier();
       const durations = normalizedResults.map(
-        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / AUTOSPIN_SPEED_MULTIPLIER
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / speedMultiplier
       );
 
       setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
@@ -713,7 +718,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     finalizeSpin,
     setSpinning,
     resetRarityWheel,
-    AUTOSPIN_SPEED_MULTIPLIER
+    getSpeedMultiplier
   ]);
 
   const handleSpinButtonMouseDown = useCallback(() => {
@@ -938,8 +943,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       );
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
+      const megaspinSpeedMultiplier = getSpeedMultiplier();
       const durations = normalizedResults.map(
-        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / AUTOSPIN_SPEED_MULTIPLIER
+        (_, index) => (SLOT_BASE_SPIN_DURATION_MS + index * SLOT_SPIN_DURATION_STAGGER_MS) / megaspinSpeedMultiplier
       );
 
       setStripDurations(Array(SLOT_REEL_COUNT).fill(0));
@@ -1007,7 +1013,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     finalizeSpin,
     setSpinning,
     resetRarityWheel,
-    AUTOSPIN_SPEED_MULTIPLIER
+    getSpeedMultiplier
   ]);
 
   useEffect(() => {
