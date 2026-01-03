@@ -328,14 +328,16 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
   }, [userId, game, initData]);
 
   const handleNewGame = useCallback(async () => {
+    // Set phase first to hide multiplier before clearing game state
+    setPhase('betting');
     setGame(null);
-    setLoading(false);
+    setLoading(true);
     // Reset card identity system for new game
     setCardIdentities([]);
     setInitializedCardIds(new Set());
     
     if (!userId) {
-      setPhase('betting');
+      setLoading(false);
       return;
     }
     
@@ -359,6 +361,8 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     } catch (err) {
       console.error('Failed to check for new game:', err);
       setPhase('betting');
+    } finally {
+      setLoading(false);
     }
   }, [userId, chatId, initData]);
 
@@ -648,7 +652,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
           onClick={handleStartGame}
           disabled={loading || spinsBalance < betAmount || isOnCooldown}
         >
-          {loading ? 'Starting...' : isOnCooldown ? `Next game in ${cooldownRemaining}` : 'PLAY'}
+          {loading ? 'Loading...' : isOnCooldown ? (cooldownRemaining ? `Next game in ${cooldownRemaining}` : 'Loading...') : 'PLAY'}
         </button>
       </div>
     );
