@@ -312,12 +312,14 @@ async def handle_reroll(
         # Save the file_id returned by Telegram for future use
         await save_card_file_id_from_message(message, new_card_id)
 
-        # If original card was claimed, give the claimer a claim point back
+        # If original card was claimed, refund the claim cost based on the card's rarity
         if original_owner_id is not None and original_claim_chat_id is not None:
+            refund_amount = get_claim_cost(active_card.rarity)
             await asyncio.to_thread(
                 claim_service.increment_claim_balance,
                 original_owner_id,
                 original_claim_chat_id,
+                refund_amount,
             )
 
         # Log successful reroll
