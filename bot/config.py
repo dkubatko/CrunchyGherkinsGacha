@@ -12,7 +12,7 @@ import sys
 
 from dotenv import load_dotenv
 
-from utils import database, decorators, gemini, minesweeper
+from utils import database, decorators, gemini, minesweeper, rtb
 from utils.logging_utils import configure_logging
 
 # Load environment variables
@@ -53,6 +53,7 @@ def initialize_bot_utilities():
     database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS, DB_BUSY_TIMEOUT_MS)
     decorators.set_admin_username(ADMIN_USERNAME)
     minesweeper.set_debug_mode(DEBUG_MODE)
+    rtb.set_debug_mode(DEBUG_MODE)
 
     # Initialize achievement system
     from utils.achievements import init_achievements, ensure_achievements_registered

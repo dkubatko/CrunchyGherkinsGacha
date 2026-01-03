@@ -120,8 +120,11 @@ from utils.services.rtb_service import (
     cash_out as rtb_cash_out,
     check_availability as rtb_check_availability,
     get_active_game as rtb_get_active_game,
+    get_existing_game as rtb_get_existing_game,
     get_game_by_id as rtb_get_game_by_id,
+    get_cooldown_end_time as rtb_get_cooldown_end_time,
     process_guess as rtb_process_guess,
+    set_debug_mode as rtb_set_debug_mode,
 )
 
 from utils.services import event_service
@@ -235,8 +238,11 @@ __all__ = [
     "rtb_create_game",
     "rtb_cash_out",
     "rtb_get_active_game",
+    "rtb_get_existing_game",
     "rtb_get_game_by_id",
+    "rtb_get_cooldown_end_time",
     "rtb_process_guess",
+    "rtb_set_debug_mode",
     "RTB_CARDS_PER_GAME",
     "RTB_MIN_BET",
     "RTB_MAX_BET",

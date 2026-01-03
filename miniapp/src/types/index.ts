@@ -138,6 +138,7 @@ export interface RTBGameResponse {
   started_timestamp: string;
   last_updated_timestamp: string;
   spins_balance: number | null;
+  cooldown_ends_at: string | null;  // ISO timestamp when cooldown ends (for won/cashed_out)
 }
 
 export interface RTBGuessResponse {

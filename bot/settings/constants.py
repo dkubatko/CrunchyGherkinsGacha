@@ -33,6 +33,9 @@ RTB_CARDS_PER_GAME = config.get("RTB_CARDS_PER_GAME", 5)
 RTB_NUM_CARDS_TO_UNLOCK = config.get("RTB_NUM_CARDS_TO_UNLOCK", 100)
 _rtb_mult = config.get("RTB_MULTIPLIER_PROGRESSION", {"1": 1, "2": 2, "3": 3, "4": 5, "5": 10})
 RTB_MULTIPLIER_PROGRESSION = {int(k): v for k, v in _rtb_mult.items()}
+# Cooldown in seconds after winning or cashing out (30 min production, 1 min debug)
+RTB_COOLDOWN_SECONDS = config.get("RTB_COOLDOWN_SECONDS", 30 * 60)
+RTB_DEBUG_COOLDOWN_SECONDS = config.get("RTB_DEBUG_COOLDOWN_SECONDS", 60)
 
 # Rarity order derived from RARITIES keys (ordered in config.json)
 RARITY_ORDER = list(RARITIES.keys())
