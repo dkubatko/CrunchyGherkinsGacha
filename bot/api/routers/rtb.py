@@ -21,8 +21,9 @@ from api.schemas import (
 from utils.services import (
     rtb_create_game,
     rtb_cash_out,
-    rtb_get_active_game,
+    rtb_get_existing_game,
     rtb_get_game_by_id,
+    rtb_get_cooldown_end_time,
     rtb_process_guess,
     RTB_MIN_BET,
     RTB_MAX_BET,
@@ -69,6 +70,11 @@ def _build_game_response(
             cards.append(RTBCardInfo(card_id=card_id, rarity="???", title="???", image_b64=None))
 
     next_pos = game.current_position + 1
+
+    # Calculate cooldown end time for won/cashed_out games
+    cooldown_end = rtb_get_cooldown_end_time(game)
+    cooldown_ends_at = format_timestamp(cooldown_end) if cooldown_end else None
+
     return RTBGameResponse(
         game_id=game.id,
         status=game.status,
@@ -81,6 +87,7 @@ def _build_game_response(
         started_timestamp=format_timestamp(game.started_timestamp),
         last_updated_timestamp=format_timestamp(game.last_updated_timestamp),
         spins_balance=spins_balance,
+        cooldown_ends_at=cooldown_ends_at,
     )
 
 
@@ -107,10 +114,14 @@ async def get_rtb_game(
     chat_id: str = Query(...),
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get the current active RTB game for a user in a chat."""
+    """Get the current RTB game for a user in a chat.
+
+    Returns active games or completed games still on cooldown (won/cashed_out).
+    Lost games are not returned as they have no cooldown.
+    """
     chat_id = await _verify_user_in_chat(user_id, chat_id, validated_user)
 
-    game = await asyncio.to_thread(rtb_get_active_game, user_id, chat_id)
+    game = await asyncio.to_thread(rtb_get_existing_game, user_id, chat_id)
     if not game:
         return None
 

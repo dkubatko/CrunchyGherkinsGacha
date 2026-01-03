@@ -44,6 +44,10 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
   const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null);
   const initializedRef = useRef(false);
   
+  // Cooldown state - stores the end time for won/cashed_out games
+  const [cooldownEndsAt, setCooldownEndsAt] = useState<Date | null>(null);
+  const [cooldownRemaining, setCooldownRemaining] = useState<string | null>(null);
+  
   // Animation state for card flip/move sequence
   const [animationPhase, setAnimationPhase] = useState<AnimationPhase>('idle');
   const [pendingResult, setPendingResult] = useState<PendingGuessResult | null>(null);
@@ -99,6 +103,18 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         if (existingGame) {
           setGame(existingGame);
           setSpinsBalance(existingGame.spins_balance ?? 0);
+          
+          // Check for cooldown (won/cashed_out games with cooldown_ends_at)
+          if (existingGame.cooldown_ends_at) {
+            const cooldownEnd = new Date(existingGame.cooldown_ends_at);
+            if (cooldownEnd > new Date()) {
+              setCooldownEndsAt(cooldownEnd);
+              // Go to betting phase with cooldown active
+              setPhase('betting');
+              return;
+            }
+          }
+          
           if (existingGame.status === 'active') {
             setPhase('playing');
           } else {
@@ -120,8 +136,49 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     initialize();
   }, [userId, chatId, initData]);
 
+  // Update cooldown countdown timer
+  useEffect(() => {
+    if (!cooldownEndsAt) {
+      setCooldownRemaining(null);
+      return;
+    }
+
+    const updateCooldown = () => {
+      const now = new Date();
+      const diffMs = cooldownEndsAt.getTime() - now.getTime();
+
+      if (diffMs <= 0) {
+        // Cooldown expired
+        setCooldownEndsAt(null);
+        setCooldownRemaining(null);
+        return;
+      }
+
+      const minutes = Math.floor(diffMs / 1000 / 60);
+
+      if (minutes >= 1) {
+        setCooldownRemaining(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`);
+      } else {
+        setCooldownRemaining('<1 minute');
+      }
+    };
+
+    // Update immediately
+    updateCooldown();
+
+    // Then update every minute (60 seconds)
+    const interval = setInterval(updateCooldown, 60000);
+    return () => clearInterval(interval);
+  }, [cooldownEndsAt]);
+
   const handleStartGame = useCallback(async () => {
     if (!userId || !config) return;
+
+    // Check if cooldown is still active
+    if (cooldownEndsAt && cooldownEndsAt > new Date()) {
+      TelegramUtils.triggerHapticNotification('error');
+      return;
+    }
 
     if (spinsBalance < betAmount) {
       TelegramUtils.triggerHapticNotification('error');
@@ -135,13 +192,15 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
       setSpinsBalance(newGame.spins_balance ?? spinsBalance - betAmount);
       setPhase('playing');
       TelegramUtils.triggerHapticNotification('success');
+      // Clear any previous cooldown
+      setCooldownEndsAt(null);
     } catch (err) {
       console.error('Failed to start game:', err);
       TelegramUtils.triggerHapticNotification('error');
     } finally {
       setLoading(false);
     }
-  }, [userId, chatId, betAmount, spinsBalance, config, initData]);
+  }, [userId, chatId, betAmount, spinsBalance, config, initData, cooldownEndsAt]);
 
   const handleGuess = useCallback(async (guess: 'higher' | 'lower' | 'equal') => {
     if (!userId || !game || animationPhase !== 'idle') return;
@@ -268,19 +327,38 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     }
   }, [userId, game, initData]);
 
-  const handleNewGame = useCallback(() => {
+  const handleNewGame = useCallback(async () => {
     setGame(null);
-    setPhase('betting');
     setLoading(false);
     // Reset card identity system for new game
     setCardIdentities([]);
     setInitializedCardIds(new Set());
-    initializedRef.current = false;
-    // Refetch spins balance
-    if (userId) {
-      ApiService.getUserSpins(userId, chatId, initData)
-        .then(data => setSpinsBalance(data.spins))
-        .catch(console.error);
+    
+    if (!userId) {
+      setPhase('betting');
+      return;
+    }
+    
+    try {
+      // Check if there's a cooldown by fetching existing game
+      const [existingGame, spinsData] = await Promise.all([
+        ApiService.getRTBGame(userId, chatId, initData),
+        ApiService.getUserSpins(userId, chatId, initData)
+      ]);
+      
+      setSpinsBalance(spinsData.spins);
+      
+      if (existingGame?.cooldown_ends_at) {
+        const cooldownEnd = new Date(existingGame.cooldown_ends_at);
+        if (cooldownEnd > new Date()) {
+          setCooldownEndsAt(cooldownEnd);
+        }
+      }
+      
+      setPhase('betting');
+    } catch (err) {
+      console.error('Failed to check for new game:', err);
+      setPhase('betting');
     }
   }, [userId, chatId, initData]);
 
@@ -543,6 +621,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     if (!config) return null;
 
     const betOptions = [10, 20, 30];
+    const isOnCooldown = !!(cooldownEndsAt && cooldownEndsAt > new Date());
 
     return (
       <div className="rtb-betting-container">
@@ -552,12 +631,12 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
               key={amount}
               className={`rtb-bet-option ${betAmount === amount ? 'selected' : ''}`}
               onClick={() => {
-                if (amount <= spinsBalance) {
+                if (amount <= spinsBalance && !isOnCooldown) {
                   setBetAmount(amount);
                   TelegramUtils.triggerHapticSelection();
                 }
               }}
-              disabled={amount > spinsBalance}
+              disabled={amount > spinsBalance || isOnCooldown}
             >
               <span className="rtb-coin-inline"></span> {amount}
             </button>
@@ -567,9 +646,9 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         <button
           className="rtb-start-button"
           onClick={handleStartGame}
-          disabled={loading || spinsBalance < betAmount}
+          disabled={loading || spinsBalance < betAmount || isOnCooldown}
         >
-          {loading ? 'Starting...' : 'PLAY'}
+          {loading ? 'Starting...' : isOnCooldown ? `Next game in ${cooldownRemaining}` : 'PLAY'}
         </button>
       </div>
     );
