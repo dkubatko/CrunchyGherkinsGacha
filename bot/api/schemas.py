@@ -338,6 +338,7 @@ class RTBGameResponse(BaseModel):
     started_timestamp: str
     last_updated_timestamp: str
     spins_balance: Optional[int] = None  # User's current spin balance
+    cooldown_ends_at: Optional[str] = None  # ISO timestamp when cooldown ends (for won/cashed_out)
 
 
 class RTBGuessRequest(BaseModel):

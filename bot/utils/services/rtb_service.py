@@ -8,6 +8,10 @@ Game Rules:
 - Win: correctly guess all 4 comparisons
 - Lose: incorrect guess loses the bet
 - Cash out: take current winnings at any point after first correct guess
+
+Cooldown:
+- After winning or cashing out, user must wait 30 minutes (1 minute in debug mode)
+- After losing, user can play again immediately
 """
 
 from __future__ import annotations
@@ -15,7 +19,8 @@ from __future__ import annotations
 import json
 import logging
 import random
-from datetime import datetime, timezone
+import sys
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
 from utils.models import RideTheBusGameModel
@@ -29,13 +34,125 @@ from settings.constants import (
     RTB_CARDS_PER_GAME,
     RTB_NUM_CARDS_TO_UNLOCK,
     RTB_MULTIPLIER_PROGRESSION,
+    RTB_COOLDOWN_SECONDS,
+    RTB_DEBUG_COOLDOWN_SECONDS,
 )
 
 logger = logging.getLogger(__name__)
 
+# Debug mode flag - similar to minesweeper
+DEBUG_MODE = "--debug" in sys.argv
+
+
+def set_debug_mode(debug: bool) -> None:
+    """Set debug mode for RTB module.
+
+    Args:
+        debug: Whether debug mode is enabled
+    """
+    global DEBUG_MODE
+    DEBUG_MODE = debug
+
+
+def _get_cooldown_seconds() -> int:
+    """Get the cooldown duration based on current mode."""
+    return RTB_DEBUG_COOLDOWN_SECONDS if DEBUG_MODE else RTB_COOLDOWN_SECONDS
+
+
+def get_cooldown_end_time(game: RideTheBusGame) -> Optional[datetime]:
+    """Calculate when the cooldown ends for a completed game.
+
+    Returns None if:
+    - Game is still active
+    - Game was lost (no cooldown for losses)
+    - Cooldown has already passed
+    """
+    if game.status == "active" or game.status == "lost":
+        return None
+
+    cooldown_seconds = _get_cooldown_seconds()
+    cooldown_end = game.last_updated_timestamp + timedelta(seconds=cooldown_seconds)
+
+    if datetime.now(timezone.utc) >= cooldown_end:
+        return None
+
+    return cooldown_end
+
+
+def get_existing_game(user_id: int, chat_id: str) -> Optional[RideTheBusGame]:
+    """Get an existing RTB game for a user in a chat.
+
+    Returns:
+    - Active game (always returned)
+    - Completed game (won/cashed_out) if still in cooldown period
+    - None if no game exists or cooldown has expired
+
+    Lost games don't have cooldown and are never returned.
+
+    Args:
+        user_id: Telegram user ID
+        chat_id: Chat ID where the game is played
+
+    Returns:
+        RideTheBusGame object or None if no game exists or cooldown expired
+    """
+    with get_session() as session:
+        game_orm = (
+            session.query(RideTheBusGameModel)
+            .filter(
+                RideTheBusGameModel.user_id == user_id,
+                RideTheBusGameModel.chat_id == chat_id,
+            )
+            .order_by(RideTheBusGameModel.started_timestamp.desc())
+            .first()
+        )
+
+        if not game_orm:
+            return None
+
+        game = RideTheBusGame.from_orm(game_orm)
+
+        # Active games are always returned
+        if game.status == "active":
+            logger.info(
+                f"Found existing active RTB game {game.id} for user {user_id} in chat {chat_id}"
+            )
+            return game
+
+        # Lost games have no cooldown - user can play again immediately
+        if game.status == "lost":
+            logger.info(f"Last RTB game {game.id} for user {user_id} was lost, no cooldown")
+            return None
+
+        # Won/cashed_out games have cooldown
+        cooldown_end = get_cooldown_end_time(game)
+        if cooldown_end:
+            remaining = (cooldown_end - datetime.now(timezone.utc)).total_seconds()
+            if DEBUG_MODE:
+                logger.info(
+                    f"RTB game {game.id} for user {user_id} in chat {chat_id} "
+                    f"is on cooldown ({remaining:.0f}s remaining)"
+                )
+            else:
+                logger.info(
+                    f"RTB game {game.id} for user {user_id} in chat {chat_id} "
+                    f"is on cooldown ({remaining / 60:.1f}min remaining)"
+                )
+            return game
+
+        # Cooldown has passed
+        logger.info(
+            f"Last RTB game {game.id} for user {user_id} in chat {chat_id} cooldown has passed"
+        )
+        return None
+
 
 def get_active_game(user_id: int, chat_id: str) -> Optional[RideTheBusGame]:
-    """Get an active RTB game for a user in a chat."""
+    """Get an active RTB game for a user in a chat.
+
+    DEPRECATED: Use get_existing_game instead to properly handle cooldowns.
+    This function only returns active games, not games in cooldown.
+    """
     with get_session() as session:
         game_orm = (
             session.query(RideTheBusGameModel)
@@ -95,8 +212,20 @@ def create_game(
     if not (RTB_MIN_BET <= bet_amount <= RTB_MAX_BET):
         return None, f"Bet must be between {RTB_MIN_BET} and {RTB_MAX_BET} spins"
 
-    if get_active_game(user_id, chat_id):
-        return None, "You already have an active game. Finish it first!"
+    # Check for active game or cooldown
+    existing_game = get_existing_game(user_id, chat_id)
+    if existing_game:
+        if existing_game.status == "active":
+            return None, "You already have an active game. Finish it first!"
+        else:
+            # Game is on cooldown (won or cashed_out)
+            cooldown_end = get_cooldown_end_time(existing_game)
+            if cooldown_end:
+                remaining = (cooldown_end - datetime.now(timezone.utc)).total_seconds()
+                if remaining > 60:
+                    return None, f"Please wait {int(remaining // 60)} minutes before playing again"
+                else:
+                    return None, f"Please wait {int(remaining)} seconds before playing again"
 
     # Select random cards from chat
     all_cards = card_service.get_all_cards(chat_id=chat_id)

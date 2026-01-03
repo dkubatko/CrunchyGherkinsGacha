@@ -17,7 +17,7 @@ load_dotenv()
 # Add project root to sys.path to allow importing from bot
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from utils import database, gemini, minesweeper
+from utils import database, gemini, minesweeper, rtb
 from utils.logging_utils import configure_logging
 from settings.constants import RARITIES
 
@@ -51,6 +51,7 @@ DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
 # Initialize utilities with configuration
 database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS, DB_BUSY_TIMEOUT_MS)
 minesweeper.set_debug_mode(DEBUG_MODE)
+rtb.set_debug_mode(DEBUG_MODE)
 
 # Gemini utility for image generation
 gemini_util = gemini.GeminiUtil(GOOGLE_API_KEY, IMAGE_GEN_MODEL)
