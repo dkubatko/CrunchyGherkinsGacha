@@ -13,6 +13,7 @@ rarities:
   - Ocean
   - Penguin
   - Pigeon
+  - Seal
   - Turtle
   - Whale
 - name: Rare
@@ -21,6 +22,7 @@ rarities:
   - Everest
   - Fuji
   - Glacier
+  - Walrus
   - Yosemite
 - name: Epic
   modifiers:

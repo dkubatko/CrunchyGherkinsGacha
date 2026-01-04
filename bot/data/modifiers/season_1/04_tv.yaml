@@ -5,23 +5,25 @@ rarities:
 - name: Common
   modifiers:
   - Sitcom
+  - Wednesday
 - name: Rare
   modifiers:
   - Batman
   - Breaking Bad
   - Deadpool
   - Godzilla
+  - Homelander
   - Iron Man
   - Jedi
   - Joker
   - Sith
   - Spider-Man
-  - Thanos
 - name: Epic
   modifiers:
   - Godfather
   - Hogwarts
   - Terminator
+  - Thanos
   - Xenomorph
 - name: Legendary
   modifiers:

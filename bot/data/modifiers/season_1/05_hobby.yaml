@@ -5,6 +5,7 @@ rarities:
 - name: Common
   modifiers:
   - Blogger
+  - Clown
   - Coding
   - Disco
   - Fitness
