@@ -17,6 +17,7 @@ rarities:
   - Gnome
   - Vampire
   - Witch
+  - Леший
 - name: Epic
   modifiers:
   - Diablo

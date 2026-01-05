@@ -19,6 +19,7 @@ rarities:
   - Боярин
   - Казак
   - Крестьянин
+  - Султан
 - name: Epic
   modifiers:
   - Emperor
