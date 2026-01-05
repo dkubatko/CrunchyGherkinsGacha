@@ -29,7 +29,7 @@
     },
     "Rare": {
       "spin_reward": 25,
-      "roll_weight": 30,
+      "roll_weight": 35,
       "slots_weight": 30,
       "claim_cost": 2,
       "recycle_cost": 3,
@@ -40,7 +40,7 @@
     },
     "Epic": {
       "spin_reward": 60,
-      "roll_weight": 25,
+      "roll_weight": 24,
       "slots_weight": 12,
       "claim_cost": 3,
       "recycle_cost": 3,
@@ -51,7 +51,7 @@
     },
     "Legendary": {
       "spin_reward": 200,
-      "roll_weight": 10,
+      "roll_weight": 6,
       "slots_weight": 3,
       "claim_cost": 5,
       "recycle_cost": 4,
