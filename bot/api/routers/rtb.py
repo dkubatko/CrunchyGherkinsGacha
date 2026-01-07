@@ -149,9 +149,10 @@ async def start_rtb_game(
             detail=f"Not enough spins. You have {current_spins}, need {request.bet_amount}",
         )
 
-    if not await asyncio.to_thread(
+    new_balance = await asyncio.to_thread(
         spin_service.decrement_user_spins, request.user_id, chat_id, request.bet_amount
-    ):
+    )
+    if new_balance is None:
         raise HTTPException(status_code=400, detail="Failed to deduct spins")
 
     # Create game
@@ -159,6 +160,9 @@ async def start_rtb_game(
         rtb_create_game, request.user_id, chat_id, request.bet_amount
     )
     if error or not game:
+        logger.warning(
+            f"RTB start failed for user {request.user_id}: {error or 'No game returned'}"
+        )
         await asyncio.to_thread(
             spin_service.increment_user_spins, request.user_id, chat_id, request.bet_amount
         )
