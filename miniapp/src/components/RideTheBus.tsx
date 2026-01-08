@@ -154,12 +154,16 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         return;
       }
 
-      const minutes = Math.floor(diffMs / 1000 / 60);
+      const totalMinutes = Math.floor(diffMs / 1000 / 60);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
 
-      if (minutes >= 1) {
-        setCooldownRemaining(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`);
+      if (hours >= 1) {
+        setCooldownRemaining(`${hours}h ${minutes}m`);
+      } else if (minutes >= 1) {
+        setCooldownRemaining(`${minutes}m`);
       } else {
-        setCooldownRemaining('<1 minute');
+        setCooldownRemaining('<1m');
       }
     };
 
