@@ -148,10 +148,10 @@ async def roll(
             user_id=user.user_id,
             chat_id=chat_id_str,
             card_id=card_id,
+            card_name=f"{generated_card.modifier} {generated_card.base_name}",
             rarity=generated_card.rarity,
             source_type=generated_card.source_type,
             source_id=generated_card.source_id,
-            claim_reward=claim_reward,
         )
 
     except rolling.NoEligibleUserError:
@@ -329,6 +329,7 @@ async def handle_reroll(
             user_id=user.user_id,
             chat_id=chat_id_for_roll,
             card_id=new_card_id,
+            card_name=f"{generated_card.modifier} {generated_card.base_name}",
             old_card_id=active_card.id,
             old_rarity=original_card.rarity,
             new_rarity=generated_card.rarity,
