@@ -8,6 +8,7 @@ rarities:
   - Wednesday
 - name: Rare
   modifiers:
+  - '7'
   - Batman
   - Breaking Bad
   - Deadpool
@@ -16,6 +17,7 @@ rarities:
   - Iron Man
   - Jedi
   - Joker
+  - Neo
   - Sith
   - Spider-Man
 - name: Epic

@@ -1,0 +1,30 @@
+id: 19
+set: horror
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Ghost
+  - Ghoul
+  - Undead
+  - Vampire
+  - Werewolf
+  - Zombie
+- name: Rare
+  modifiers:
+  - Babadook
+  - Dracula
+  - Frankenstein
+  - Liminal
+  - Nosferatu
+  - Pinhead
+  - Possessed
+- name: Epic
+  modifiers:
+  - Chucky
+  - Pennywise
+  - Упырь
+- name: Legendary
+  modifiers:
+  - Cthulhu
+  - Баба Яга

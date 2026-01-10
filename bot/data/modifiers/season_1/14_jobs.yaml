@@ -15,7 +15,6 @@ rarities:
 - name: Rare
   modifiers:
   - Astronaut
-  - Ballerina
   - Janitor
   - Taxi Driver
 - name: Epic
