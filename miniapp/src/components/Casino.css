@@ -1,3 +1,13 @@
+.casino-catalog-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.5rem 0.25rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
 .casino-games-grid {
   display: grid;
   grid-template-columns: repeat(2, 1fr);

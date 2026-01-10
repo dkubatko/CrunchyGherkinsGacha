@@ -1,12 +1,14 @@
 import './AppLoading.css';
+import CasinoHeader from './CasinoHeader';
 
 interface AppLoadingProps {
   title?: string;
+  spinsCount?: number;
 }
 
-const AppLoading: React.FC<AppLoadingProps> = ({ title }) => (
+const AppLoading: React.FC<AppLoadingProps> = ({ title, spinsCount }) => (
   <div className="app-loading-backdrop">
-    <span className="app-loading-text">{title || 'Loading...'}</span>
+    <CasinoHeader title={title || 'Loading...'} spinsCount={spinsCount} />
   </div>
 );
 
