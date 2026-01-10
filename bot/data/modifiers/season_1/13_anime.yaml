@@ -4,6 +4,7 @@ source: roll
 rarities:
 - name: Common
   modifiers:
+  - Chibi
   - Gundam
   - Neko
   - Ninja
