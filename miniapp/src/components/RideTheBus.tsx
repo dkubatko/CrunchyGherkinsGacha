@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { ApiService } from '../services/api';
 import { TelegramUtils } from '../utils/telegram';
 import AppLoading from './AppLoading';
+import CasinoHeader from './CasinoHeader';
 import RTBCard from './RTBCard';
 import { 
   cardContainerVariants, 
@@ -20,6 +21,8 @@ import './RideTheBus.css';
 interface RideTheBusProps {
   chatId: string;
   initData: string;
+  initialSpins?: number;
+  onSpinsUpdate?: (count: number) => void;
 }
 
 type GamePhase = 'loading' | 'betting' | 'playing' | 'finished';
@@ -33,12 +36,12 @@ interface PendingGuessResult {
   correct: boolean;
 }
 
-const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
+const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins, onSpinsUpdate }) => {
   const [phase, setPhase] = useState<GamePhase>('loading');
   const [game, setGame] = useState<RTBGameResponse | null>(null);
   const [config, setConfig] = useState<RTBConfigResponse | null>(null);
   const [betAmount, setBetAmount] = useState<number>(10);
-  const [spinsBalance, setSpinsBalance] = useState<number>(0);
+  const [spinsBalance, setSpinsBalance] = useState<number>(initialSpins ?? 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedCardIndex, setSelectedCardIndex] = useState<number | null>(null);
@@ -103,6 +106,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         if (existingGame) {
           setGame(existingGame);
           setSpinsBalance(existingGame.spins_balance ?? 0);
+          onSpinsUpdate?.(existingGame.spins_balance ?? 0);
           
           // Check for cooldown (won/cashed_out games with cooldown_ends_at)
           if (existingGame.cooldown_ends_at) {
@@ -124,6 +128,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
           // Fetch spins balance
           const spinsData = await ApiService.getUserSpins(userId, chatId, initData);
           setSpinsBalance(spinsData.spins);
+          onSpinsUpdate?.(spinsData.spins);
           setPhase('betting');
         }
       } catch (err) {
@@ -134,7 +139,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     };
 
     initialize();
-  }, [userId, chatId, initData]);
+  }, [userId, chatId, initData, onSpinsUpdate]);
 
   // Update cooldown countdown timer
   useEffect(() => {
@@ -193,7 +198,9 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     try {
       const newGame = await ApiService.startRTBGame(userId, chatId, betAmount, initData);
       setGame(newGame);
-      setSpinsBalance(newGame.spins_balance ?? spinsBalance - betAmount);
+      const newBalance = newGame.spins_balance ?? spinsBalance - betAmount;
+      setSpinsBalance(newBalance);
+      onSpinsUpdate?.(newBalance);
       setPhase('playing');
       TelegramUtils.triggerHapticNotification('success');
       // Clear any previous cooldown
@@ -204,7 +211,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, chatId, betAmount, spinsBalance, config, initData, cooldownEndsAt]);
+  }, [userId, chatId, betAmount, spinsBalance, config, initData, cooldownEndsAt, onSpinsUpdate]);
 
   const handleGuess = useCallback(async (guess: 'higher' | 'lower' | 'equal') => {
     if (!userId || !game || animationPhase !== 'idle') return;
@@ -259,7 +266,9 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
       // This prevents the card from appearing in the left stack
       setTimeout(() => {
         setGame(pendingResult.game);
-        setSpinsBalance(pendingResult.game.spins_balance ?? spinsBalance);
+        const newBalance = pendingResult.game.spins_balance ?? spinsBalance;
+        setSpinsBalance(newBalance);
+        onSpinsUpdate?.(newBalance);
         setPhase('finished');
         
         // Reset animation state
@@ -269,7 +278,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         setLoading(false);
       }, 500); // Brief delay to let user see the revealed card
     }
-  }, [pendingResult, spinsBalance, animationPhase]);
+  }, [pendingResult, spinsBalance, animationPhase, onSpinsUpdate]);
 
   // Called when the layout/move animation completes (only fires on correct guess)
   const handleMoveComplete = useCallback(() => {
@@ -293,7 +302,9 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     
     // NOW apply game state - after animation is complete
     setGame(pendingResult.game);
-    setSpinsBalance(pendingResult.game.spins_balance ?? spinsBalance);
+    const newBalance = pendingResult.game.spins_balance ?? spinsBalance;
+    setSpinsBalance(newBalance);
+    onSpinsUpdate?.(newBalance);
     
     // Check for game over
     if (gameOver) {
@@ -308,7 +319,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     setPendingResult(null);
     setFlippingCardData(null);
     setLoading(false);
-  }, [pendingResult, animationPhase, flippingCardData, cardIdentities, spinsBalance]);
+  }, [pendingResult, animationPhase, flippingCardData, cardIdentities, spinsBalance, onSpinsUpdate]);
 
   const handleCashOut = useCallback(async () => {
     if (!userId || !game) return;
@@ -319,6 +330,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     try {
       const result = await ApiService.cashOutRTB(userId, game.game_id, initData);
       setSpinsBalance(result.new_spin_total);
+      onSpinsUpdate?.(result.new_spin_total);
       // Use the game from the response which has the updated status
       setGame(result.game);
       setPhase('finished');
@@ -329,7 +341,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, game, initData]);
+  }, [userId, game, initData, onSpinsUpdate]);
 
   const handleNewGame = useCallback(async () => {
     // Set phase first to hide multiplier before clearing game state
@@ -353,6 +365,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
       ]);
       
       setSpinsBalance(spinsData.spins);
+      onSpinsUpdate?.(spinsData.spins);
       
       if (existingGame?.cooldown_ends_at) {
         const cooldownEnd = new Date(existingGame.cooldown_ends_at);
@@ -368,10 +381,10 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
     } finally {
       setLoading(false);
     }
-  }, [userId, chatId, initData]);
+  }, [userId, chatId, initData, onSpinsUpdate]);
 
   if (phase === 'loading') {
-    return <AppLoading title="🚌 Ride the Bus" />;
+    return <AppLoading title="🚌 Ride the Bus" spinsCount={spinsBalance} />;
   }
 
   if (error && !game) {
@@ -729,13 +742,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData }) => {
         }
       }}
     >
-      <div className="rtb-header">
-        <h1>🚌 Ride the Bus</h1>
-        <div className="rtb-spins-display">
-          <span className="rtb-coin"></span>
-          <span className="rtb-spins-count">{spinsBalance}</span>
-        </div>
-      </div>
+      <CasinoHeader title="🚌 Ride the Bus" spinsCount={spinsBalance} />
 
       {renderCards()}
       {(phase === 'playing' || phase === 'finished') && renderMultiplier()}

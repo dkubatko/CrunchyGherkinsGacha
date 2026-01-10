@@ -4,6 +4,7 @@ import { TelegramUtils } from '../utils/telegram';
 import AllCards from './AllCards';
 import CardModal from './CardModal';
 import AppLoading from './AppLoading';
+import CasinoHeader from './CasinoHeader';
 import ActionPanel from './ActionPanel';
 import { useModal, useOrientation } from '../hooks';
 import { getIconObjectUrl } from '../lib/iconUrlCache';
@@ -404,7 +405,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
   if (error) {
     return (
       <div className="minesweeper-container">
-        <h1>Error</h1>
+        <CasinoHeader title="Error" />
         <p>{error}</p>
       </div>
     );
@@ -414,7 +415,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
   if (gameState === 'selecting' && cards.length === 0) {
     return (
       <div className="minesweeper-container">
-        <h1>💣 Minesweeper</h1>
+        <CasinoHeader title="💣 Minesweeper" />
         <p>You don't have any cards to bet.</p>
       </div>
     );
@@ -425,7 +426,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
     return (
       <>
         <div className={`minesweeper-card-selection ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
-          <h1>💣 Minesweeper</h1>
+          <CasinoHeader title="💣 Minesweeper" />
           <p className="minesweeper-subtitle">Select a card to bet</p>
 
           <AllCards
@@ -469,7 +470,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
 
   return (
     <div className="minesweeper-container">
-      <h1>💣 Minesweeper</h1>
+      <CasinoHeader title="💣 Minesweeper" />
       {gameData && (
         <p 
           className="minesweeper-bet-info"

@@ -7,16 +7,6 @@
   box-sizing: border-box;
 }
 
-.minesweeper-container > h1 {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0.35rem 0;
-  min-height: 2rem;
-  font-size: 1.5rem;
-  line-height: 1.1;
-}
-
 .minesweeper-bet-info {
   font-size: 16px;
   color: #3498db;
@@ -42,18 +32,6 @@
 
 .minesweeper-card-selection.with-action-panel {
   padding-bottom: 100px;
-}
-
-.minesweeper-card-selection > h1 {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin: 0.35rem 0;
-  padding: 0 20px;
-  flex-shrink: 0;
-  min-height: 2rem;
-  font-size: 1.5rem;
-  line-height: 1.1;
 }
 
 .minesweeper-card-selection > .minesweeper-subtitle {
