@@ -389,7 +389,9 @@ MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
 
 RTB_RESULT_MESSAGE = "@{username} {action} <b>{amount} spins ({multiplier}x)</b> in Ride the Bus!"
 
-ACHIEVEMENT_NOTIFICATION_MESSAGE = "@{username} received <b>{achievement_name}</b> achievement!"
+ACHIEVEMENT_NOTIFICATION_MESSAGE = (
+    "@{username} received <b>{achievement_name}</b> achievement:\n\n<i>{achievement_desc}</i>"
+)
 
 LOCK_USAGE_MESSAGE = (
     "Usage: /lock <card_id>.\n\n"
