@@ -1,0 +1,35 @@
+id: 20
+set: music
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Classical
+  - DJ
+  - Drummer
+  - Guitarist
+  - Jazz
+  - Meloman
+  - Pianist
+  - Violinist
+  - Флейтист
+- name: Rare
+  modifiers:
+  - Ballerina
+  - Harper
+  - Metallica
+  - Osu!
+  - Punk Rock
+  - Rockstar
+  - Tecktonik
+  - Баянист
+  - Дирижёр
+- name: Epic
+  modifiers:
+  - AC/DC
+  - Daft Punk
+  - KISS
+  - Mozart
+  - Opera Singer
+- name: Legendary
+  modifiers: []
