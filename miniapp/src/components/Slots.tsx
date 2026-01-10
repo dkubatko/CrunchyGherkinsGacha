@@ -7,6 +7,7 @@ import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRari
 import type { RarityName } from '../utils/rarityStyles';
 import type { SlotSymbolInfo } from '../types';
 import AppLoading from './AppLoading';
+import CasinoHeader from './CasinoHeader';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
@@ -1035,18 +1036,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [results, reelStates, symbols.length]);
 
   if (!imagesReady) {
-    return <AppLoading title="🎰 Slots" />;
+    return <AppLoading title="🎰 Slots" spinsCount={userSpins.count} />;
   }
 
   return (
     <div className="slots-container">
-      <div className="slots-header">
-        <h1>🎰 Slots</h1>
-        <div className="slots-spins-display">
-          <span className="slots-spins-coin" aria-hidden="true" />
-          <span className="slots-spins-count">{userSpins.count}</span>
-        </div>
-      </div>
+      <CasinoHeader title="🎰 Slots" spinsCount={userSpins.count} />
 
       <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
         <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>

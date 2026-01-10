@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './Casino.css';
+import CasinoHeader from './CasinoHeader';
 import Slots from './Slots';
 import Minesweeper from './Minesweeper';
 import RideTheBus from './RideTheBus';
@@ -180,18 +181,17 @@ export default function Casino({
       <RideTheBus
         chatId={chatId}
         initData={initData}
+        initialSpins={slotsSpins.count}
+        onSpinsUpdate={(count) => updateSpins(count)}
       />
     );
   }
 
   // Catalog view
   return (
-    <div className="app-container">
-      <div className="app-content">
-        <div className="title-container">
-          <h1 className="app-title">🎰 Casino</h1>
-        </div>
-        <div className="casino-games-grid">
+    <div className="casino-catalog-container">
+      <CasinoHeader title="🎰 Casino" spinsCount={slotsSpins.count} />
+      <div className="casino-games-grid">
           <div 
             className="casino-game-card"
             onClick={() => handleGameSelect('slots')}
@@ -254,7 +254,6 @@ export default function Casino({
             </div>
           </div>
         </div>
-      </div>
 
       {/* Info Popup */}
       {showInfo && (

@@ -981,7 +981,11 @@ function App() {
 
   // Loading state
   if (loading || (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0))) {
-    return <AppLoading title="🎰 Casino" />;
+    return (
+      <div className="app-container">
+        <AppLoading title="🎰 Casino" spinsCount={slotsSpins.count} />
+      </div>
+    );
   }
 
   // Error state
