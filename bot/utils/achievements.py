@@ -30,6 +30,7 @@ from utils.events import (
     MinesweeperOutcome,
     BurnOutcome,
     RollOutcome,
+    RtbOutcome,
 )
 from utils.services import achievement_service, event_service
 from utils.schemas import Event, UserAchievement
@@ -357,6 +358,159 @@ class HighRollerAchievement(BaseAchievement):
         return False
 
 
+class ChooChooBusAchievement(BaseAchievement):
+    """Achievement for winning a 10x bet in Ride the Bus."""
+
+    REQUIRED_MULTIPLIER = 10
+
+    @property
+    def id(self) -> int:
+        return 9
+
+    @property
+    def name(self) -> str:
+        return "Choo-choo bus"
+
+    @property
+    def description(self) -> str:
+        return f"Win a {self.REQUIRED_MULTIPLIER}x bet in Ride the Bus"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user won with a 10x multiplier in Ride the Bus."""
+        # Only check RTB wins
+        if event.event_type != EventType.RTB.value or event.outcome != RtbOutcome.WON.value:
+            return False
+
+        # Check multiplier from event payload
+        if event.payload and event.payload.get("multiplier") >= self.REQUIRED_MULTIPLIER:
+            return True
+
+        return False
+
+
+class BussyAchievement(BaseAchievement):
+    """Achievement for cashing out a 2x in Ride the Bus."""
+
+    REQUIRED_MULTIPLIER = 2
+
+    @property
+    def id(self) -> int:
+        return 10
+
+    @property
+    def name(self) -> str:
+        return "Bussy"
+
+    @property
+    def description(self) -> str:
+        return f"Cash out a {self.REQUIRED_MULTIPLIER}x in Ride the Bus"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user cashed out with a 2x multiplier in Ride the Bus."""
+        # Only check RTB cash outs
+        if event.event_type != EventType.RTB.value or event.outcome != RtbOutcome.CASHED_OUT.value:
+            return False
+
+        # Check multiplier from event payload
+        if event.payload and event.payload.get("multiplier") == self.REQUIRED_MULTIPLIER:
+            return True
+
+        return False
+
+
+class AddictAchievement(BaseAchievement):
+    """Achievement for losing 5 Ride the Bus games in a row within an hour."""
+
+    REQUIRED_LOSSES = 5
+    TIME_WINDOW_SECONDS = 3600  # 1 hour
+
+    @property
+    def id(self) -> int:
+        return 11
+
+    @property
+    def name(self) -> str:
+        return "Addict"
+
+    @property
+    def description(self) -> str:
+        return f"Lose {self.REQUIRED_LOSSES} Ride the Bus games in a row"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user has lost 5 RTB games in a row within an hour."""
+        from datetime import datetime, timedelta, timezone
+
+        # Only check on RTB losses
+        if event.event_type != EventType.RTB.value or event.outcome != RtbOutcome.LOST.value:
+            return False
+
+        # Get recent RTB game-ending events for this user
+        ending_outcomes = [RtbOutcome.WON.value, RtbOutcome.LOST.value, RtbOutcome.CASHED_OUT.value]
+        game_endings = event_service.get_events_by_user(
+            user_id=user_id,
+            event_types=[EventType.RTB],
+            outcomes=ending_outcomes,
+            limit=self.REQUIRED_LOSSES,
+        )
+
+        # Check if we have 5 events and all are losses
+        if len(game_endings) < self.REQUIRED_LOSSES:
+            return False
+
+        if not all(e.outcome == RtbOutcome.LOST.value for e in game_endings):
+            return False
+
+        # Check all losses are within the time window
+        now = datetime.now(timezone.utc)
+        oldest_event = game_endings[-1]
+        time_diff = now - oldest_event.timestamp.replace(tzinfo=timezone.utc)
+
+        return time_diff.total_seconds() <= self.TIME_WINDOW_SECONDS
+
+
+class UnluckyAchievement(BaseAchievement):
+    """Achievement for getting no cards in 100 spins."""
+
+    REQUIRED_LOSSES = 100
+
+    @property
+    def id(self) -> int:
+        return 12
+
+    @property
+    def name(self) -> str:
+        return "Unlucky"
+
+    @property
+    def description(self) -> str:
+        return f"Get no cards in {self.REQUIRED_LOSSES} spins"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user has lost 100 spins in a row (no card wins)."""
+        # Only check on spin losses
+        if event.event_type != EventType.SPIN.value or event.outcome != SpinOutcome.LOSS.value:
+            return False
+
+        # Get recent spin events (only actual spins, not errors)
+        actual_outcomes = [
+            SpinOutcome.CARD_WIN.value,
+            SpinOutcome.CLAIM_WIN.value,
+            SpinOutcome.LOSS.value,
+        ]
+        recent_spins = event_service.get_events_by_user(
+            user_id=user_id,
+            event_types=[EventType.SPIN],
+            outcomes=actual_outcomes,
+            limit=self.REQUIRED_LOSSES,
+        )
+
+        # Check if we have 100 spins and none are card wins
+        if len(recent_spins) < self.REQUIRED_LOSSES:
+            return False
+
+        return all(e.outcome != SpinOutcome.CARD_WIN.value for e in recent_spins)
+
+
 # ============================================================================
 # Achievement Mappings
 # ============================================================================
@@ -366,6 +520,7 @@ class HighRollerAchievement(BaseAchievement):
 SPIN_ACHIEVEMENTS: List[BaseAchievement] = [
     SpinnerAchievement(),
     CollectorAchievement(),
+    UnluckyAchievement(),
 ]
 
 CLAIM_ACHIEVEMENTS: List[BaseAchievement] = [
@@ -395,6 +550,12 @@ ROLL_ACHIEVEMENTS: List[BaseAchievement] = [
     HighRollerAchievement(),
 ]
 
+RTB_ACHIEVEMENTS: List[BaseAchievement] = [
+    ChooChooBusAchievement(),
+    BussyAchievement(),
+    AddictAchievement(),
+]
+
 # Master mapping from EventType to achievement instances
 EVENT_ACHIEVEMENTS: Dict[EventType, List[BaseAchievement]] = {
     EventType.SPIN: SPIN_ACHIEVEMENTS,
@@ -404,6 +565,7 @@ EVENT_ACHIEVEMENTS: Dict[EventType, List[BaseAchievement]] = {
     EventType.CREATE: CREATE_ACHIEVEMENTS,
     EventType.BURN: BURN_ACHIEVEMENTS,
     EventType.ROLL: ROLL_ACHIEVEMENTS,
+    EventType.RTB: RTB_ACHIEVEMENTS,
 }
 
 
