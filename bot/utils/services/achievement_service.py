@@ -301,13 +301,13 @@ def get_user_achievements(user_id: int) -> List[UserAchievement]:
         user_id: The user's ID.
 
     Returns:
-        List of UserAchievement schemas with achievement details.
+        List of UserAchievement schemas with achievement details, ordered by unlock time (oldest first).
     """
     with get_session() as session:
         user_achievements = (
             session.query(UserAchievementModel)
             .filter(UserAchievementModel.user_id == user_id)
-            .order_by(UserAchievementModel.unlocked_at.desc())
+            .order_by(UserAchievementModel.unlocked_at.asc())
             .all()
         )
         return [UserAchievement.from_orm(ua) for ua in user_achievements]
