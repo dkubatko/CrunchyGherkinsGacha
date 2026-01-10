@@ -200,6 +200,7 @@ def log(
 def get_events_by_user(
     user_id: int,
     event_types: Optional[List[EventType]] = None,
+    outcomes: Optional[List[str]] = None,
     limit: int = 100,
 ) -> List[Event]:
     """
@@ -208,6 +209,7 @@ def get_events_by_user(
     Args:
         user_id: The user ID to filter by.
         event_types: Optional list of event types to filter by.
+        outcomes: Optional list of outcome strings to filter by.
         limit: Maximum number of events to return.
 
     Returns:
@@ -219,6 +221,9 @@ def get_events_by_user(
         if event_types:
             type_values = [et.value for et in event_types]
             query = query.filter(EventModel.event_type.in_(type_values))
+
+        if outcomes:
+            query = query.filter(EventModel.outcome.in_(outcomes))
 
         query = query.order_by(EventModel.timestamp.desc()).limit(limit)
 

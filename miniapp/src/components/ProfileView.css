@@ -230,11 +230,11 @@
 }
 
 .achievements-grid {
-  display: flex;
-  gap: 1rem;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.75rem 0.5rem;
   width: 100%;
-  flex-wrap: wrap;
-  justify-content: flex-start;
+  justify-items: center;
   background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
   border-radius: 12px;
   padding: 1rem;
