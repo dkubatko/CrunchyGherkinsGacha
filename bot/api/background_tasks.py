@@ -665,10 +665,12 @@ async def send_achievement_notification(
         # Build notification message
         achievement = user_achievement.achievement
         achievement_name = achievement.name if achievement else "Unknown Achievement"
+        achievement_desc = achievement.description if achievement else ""
 
         message = ACHIEVEMENT_NOTIFICATION_MESSAGE.format(
             username=username,
             achievement_name=achievement_name,
+            achievement_desc=achievement_desc,
         )
 
         send_params = {
