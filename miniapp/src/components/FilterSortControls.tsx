@@ -41,6 +41,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   const sortRef = useRef<HTMLDivElement>(null);
   const dropdownContentRef = useRef<HTMLDivElement>(null);
   const categoryItemRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const hasScrolledToActiveRef = useRef<string | null>(null);
 
   // Get unique owners from cards for the filter dropdown
   const uniqueOwners = Array.from(new Set(
@@ -80,6 +81,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
       if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
         setFilterOpen(false);
         setExpandedFilter(null);
+        hasScrolledToActiveRef.current = null;
       }
       if (sortRef.current && !sortRef.current.contains(event.target as Node)) {
         setSortOpen(false);
@@ -112,7 +114,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
 
   // Callback ref to scroll to active item immediately when submenu mounts
   const submenuContentRef = (node: HTMLDivElement | null) => {
-    if (node) {
+    if (node && expandedFilter && hasScrolledToActiveRef.current !== expandedFilter) {
       const activeItem = node.querySelector('.dropdown-subitem.active') as HTMLElement;
       if (activeItem) {
         // Set scroll position synchronously before paint
@@ -122,6 +124,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
         const scrollTop = itemOffsetTop - (containerHeight / 2) + (itemHeight / 2);
         node.scrollTop = Math.max(0, scrollTop);
       }
+      hasScrolledToActiveRef.current = expandedFilter;
     }
   };
 
@@ -132,18 +135,22 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     setFilterOpen(!filterOpen);
     setSortOpen(false);
     setExpandedFilter(null);
+    hasScrolledToActiveRef.current = null;
   };
 
   const handleSortToggle = () => {
     setSortOpen(!sortOpen);
     setFilterOpen(false);
     setExpandedFilter(null);
+    hasScrolledToActiveRef.current = null;
   };
 
   const handleFilterOptionClick = (type: 'owner' | 'rarity' | 'locked' | 'characterName' | 'setName') => {
     if (expandedFilter === type) {
       setExpandedFilter(null);
+      hasScrolledToActiveRef.current = null;
     } else {
+      hasScrolledToActiveRef.current = null;
       setExpandedFilter(type);
     }
   };
@@ -165,6 +172,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     });
     setFilterOpen(false);
     setExpandedFilter(null);
+    hasScrolledToActiveRef.current = null;
   };
 
   const handleSortSelect = (field: 'rarity' | 'id' | 'name', direction: 'asc' | 'desc') => {

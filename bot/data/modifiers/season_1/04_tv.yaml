@@ -8,7 +8,7 @@ rarities:
   - Wednesday
 - name: Rare
   modifiers:
-  - '7'
+  - '007'
   - Batman
   - Breaking Bad
   - Deadpool
