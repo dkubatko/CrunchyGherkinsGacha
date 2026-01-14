@@ -1773,8 +1773,11 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 user_id=user_id,
                 chat_id=chat_id_str,
                 card_id=card_id,
-                modifier=session["modifier"],
-                cards_burned=len(cards_to_burn),
+                modifier=generated_card.modifier,
+                source_name=generated_card.base_name,
+                source_type=generated_card.source_type,
+                source_id=generated_card.source_id,
+                cards_burned=[c.id for c in cards_to_burn],
             )
 
             # Send result
@@ -2140,7 +2143,11 @@ async def handle_recycle_callback(
             card_id=new_card_id,
             source_rarity=rarity_name,
             new_rarity=upgrade_rarity,
-            cards_burned=len(cards_to_burn),
+            modifier=generated_card.modifier,
+            source_name=generated_card.base_name,
+            source_type=generated_card.source_type,
+            source_id=generated_card.source_id,
+            cards_burned=card_ids_to_delete,
         )
 
         burned_block = "\n".join([f"<s>🔥{card_title}🔥</s>" for card_title in card_titles])

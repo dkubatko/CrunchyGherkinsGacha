@@ -587,17 +587,7 @@ async def minesweeper_update(
             claim_points_earned = len(
                 set(updated_game.revealed_cells) & set(updated_game.claim_point_positions)
             )
-            # Log win event
-            event_service.log(
-                EventType.MINESWEEPER,
-                MinesweeperOutcome.WON,
-                user_id=request.user_id,
-                chat_id=game.chat_id,
-                card_id=game.bet_card_id,
-                game_id=request.game_id,
-                cells_revealed=len(revealed_cells),
-                claim_points_earned=claim_points_earned,
-            )
+            # Win event is logged in process_minesweeper_victory_background after card generation
             # Victory: generate new card for the player
             asyncio.create_task(
                 process_minesweeper_victory_background(
@@ -609,6 +599,10 @@ async def minesweeper_update(
                     source_id=game.source_id,
                     display_name=source_display_name or "Unknown",
                     gemini_util_instance=gemini_util,
+                    game_id=request.game_id,
+                    cells_revealed=len(revealed_cells),
+                    claim_points_earned=claim_points_earned,
+                    bet_card_id=game.bet_card_id,
                 )
             )
         elif updated_game.status == "lost":
