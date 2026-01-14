@@ -176,6 +176,7 @@ async def start_rtb_game(
         chat_id=chat_id,
         game_id=game.id,
         bet_amount=request.bet_amount,
+        current_position=game.current_position,
     )
 
     return _build_game_response(game, await _get_spins_balance(request.user_id, chat_id))
@@ -242,6 +243,7 @@ async def make_rtb_guess(
             bet_amount=updated_game.bet_amount,
             payout=payout,
             multiplier=updated_game.current_multiplier,
+            current_position=updated_game.current_position,
         )
         # Send win notification
         username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
@@ -269,6 +271,7 @@ async def make_rtb_guess(
             bet_amount=updated_game.bet_amount,
             guess=guess,
             actual=actual,
+            current_position=updated_game.current_position,
         )
         # Send loss notification
         username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
@@ -333,6 +336,7 @@ async def cash_out_rtb_game(
         bet_amount=updated_game.bet_amount,
         payout=payout,
         multiplier=updated_game.current_multiplier,
+        current_position=updated_game.current_position,
     )
 
     # Send cashout notification
