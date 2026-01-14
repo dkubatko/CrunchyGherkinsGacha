@@ -418,6 +418,34 @@ class BussyAchievement(BaseAchievement):
         return False
 
 
+class GreedyAchievement(BaseAchievement):
+    """Achievement for losing on the last card in Ride the Bus."""
+
+    LAST_CARD_POSITION = 4  # Position when guessing the 5th card
+
+    @property
+    def id(self) -> int:
+        return 13
+
+    @property
+    def name(self) -> str:
+        return "Greedy"
+
+    @property
+    def description(self) -> str:
+        return "Lose on the last card in Ride the Bus"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user lost on the last card in Ride the Bus."""
+        if event.event_type != EventType.RTB.value or event.outcome != RtbOutcome.LOST.value:
+            return False
+
+        if event.payload and event.payload.get("current_position") == self.LAST_CARD_POSITION:
+            return True
+
+        return False
+
+
 class AddictAchievement(BaseAchievement):
     """Achievement for losing 5 Ride the Bus games in a row within an hour."""
 
@@ -553,6 +581,7 @@ ROLL_ACHIEVEMENTS: List[BaseAchievement] = [
 RTB_ACHIEVEMENTS: List[BaseAchievement] = [
     ChooChooBusAchievement(),
     BussyAchievement(),
+    GreedyAchievement(),
     AddictAchievement(),
 ]
 
