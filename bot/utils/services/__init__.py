@@ -129,6 +129,8 @@ from utils.services.rtb_service import (
 
 from utils.services import event_service
 
+from utils.services import modifier_count_service
+
 from utils.services.achievement_service import (
     get_achievement_by_name,
     get_achievement_by_id,
@@ -250,6 +252,8 @@ __all__ = [
     "RARITY_ORDER",
     # Event service
     "event_service",
+    # Modifier count service
+    "modifier_count_service",
     # Achievement service
     "get_achievement_by_name",
     "get_achievement_by_id",

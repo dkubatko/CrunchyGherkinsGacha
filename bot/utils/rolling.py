@@ -5,7 +5,13 @@ from dataclasses import dataclass
 from typing import Dict, Optional
 
 from settings.constants import RARITIES, UNIQUE_ADDENDUM
-from utils.services import card_service, character_service, user_service, set_service, event_service
+from utils.services import (
+    card_service,
+    character_service,
+    user_service,
+    set_service,
+    modifier_count_service,
+)
 from utils.schemas import Card, Character, User
 from utils.gemini import GeminiUtil
 from utils.modifiers import load_modifiers_with_sets, ModifierWithSet, get_modifier_info
@@ -196,12 +202,13 @@ def _choose_modifier_for_rarity(
         return chosen, 1.0
 
     # Get modifier usage counts for this chat from events (all cards ever rolled)
-    modifier_counts = event_service.get_modifier_counts_from_events(chat_id)
+    modifier_counts = modifier_count_service.get_counts(chat_id)
 
     # Get unique modifiers to exclude
     unique_modifiers = set(card_service.get_unique_modifiers(chat_id))
 
-    # Calculate weights: 1.0 for new modifiers, 1/N for existing ones
+    # Calculate weights: 1/(1+count) so new modifiers (count=0) get weight 1.0,
+    # and existing ones get progressively lower weights as count increases
     weights = []
     valid_modifiers = []
 
@@ -211,10 +218,7 @@ def _choose_modifier_for_rarity(
 
         valid_modifiers.append(mod_with_set)
         count = modifier_counts.get(mod_with_set.modifier, 0)
-        if count == 0:
-            weights.append(1.0)
-        else:
-            weights.append(1.0 / count)
+        weights.append(1.0 / (1 + count))
 
     if not valid_modifiers:
         # Fallback if all modifiers are excluded
