@@ -384,6 +384,19 @@ class UserAchievementModel(Base):
     )
 
 
+class ModifierCountModel(Base):
+    """Tracks modifier frequency per chat per season for efficient lookup."""
+
+    __tablename__ = "modifier_counts"
+
+    chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    season_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    modifier: Mapped[str] = mapped_column(Text, primary_key=True)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    __table_args__ = (Index("idx_modifier_counts_chat_season", "chat_id", "season_id"),)
+
+
 # Configure SQLite-specific settings via events
 @event.listens_for(Base.metadata, "after_create")
 def set_sqlite_pragma(target, connection, **kw):
