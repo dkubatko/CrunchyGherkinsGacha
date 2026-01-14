@@ -39,7 +39,8 @@ from settings.constants import (
     get_spin_reward,
 )
 from utils import rolling
-from utils.services import card_service, spin_service, thread_service
+from utils.events import EventType, SpinOutcome, MegaspinOutcome, MinesweeperOutcome
+from utils.services import card_service, event_service, spin_service, thread_service
 
 logger = logging.getLogger(__name__)
 
@@ -147,6 +148,34 @@ async def process_slots_victory_background(
 
             # Mark that card was successfully generated and assigned
             card_generated_and_assigned = True
+
+            # Log spin/megaspin card win event after successful card generation
+            if is_megaspin:
+                event_service.log(
+                    EventType.MEGASPIN,
+                    MegaspinOutcome.SUCCESS,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    card_id=card_id,
+                    rarity=normalized_rarity,
+                    modifier=generated_card.modifier,
+                    source_name=generated_card.base_name,
+                    source_type=source_type,
+                    source_id=source_id,
+                )
+            else:
+                event_service.log(
+                    EventType.SPIN,
+                    SpinOutcome.CARD_WIN,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    card_id=card_id,
+                    rarity=normalized_rarity,
+                    modifier=generated_card.modifier,
+                    source_name=generated_card.base_name,
+                    source_type=source_type,
+                    source_id=source_id,
+                )
 
             # Create final caption and keyboard (use megaspin variant if applicable)
             result_message_template = (
@@ -389,6 +418,10 @@ async def process_minesweeper_victory_background(
     source_id: int,
     display_name: str,
     gemini_util_instance,
+    game_id: int,
+    cells_revealed: int,
+    claim_points_earned: int,
+    bet_card_id: int,
 ):
     """Process minesweeper victory in background after responding to client."""
     bot = None
@@ -441,6 +474,24 @@ async def process_minesweeper_victory_background(
             )
 
             await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
+
+            # Log minesweeper win event after successful card generation
+            event_service.log(
+                EventType.MINESWEEPER,
+                MinesweeperOutcome.WON,
+                user_id=user_id,
+                chat_id=chat_id,
+                card_id=card_id,
+                game_id=game_id,
+                cells_revealed=cells_revealed,
+                claim_points_earned=claim_points_earned,
+                bet_card_id=bet_card_id,
+                modifier=generated_card.modifier,
+                source_name=generated_card.base_name,
+                source_type=source_type,
+                source_id=source_id,
+                rarity=rarity,
+            )
 
             # Create final caption and keyboard
             final_caption = MINESWEEPER_VICTORY_RESULT_MESSAGE.format(

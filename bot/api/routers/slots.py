@@ -302,17 +302,10 @@ async def verify_slot_spin(
             f"winning_symbol={winning_symbol}, slot_results={[f'{s.type}:{s.id}' for s in slot_results]}"
         )
 
-        # Log spin event
+        # Log spin event (card wins are logged after successful generation in background task)
         if is_card_win and rarity:
-            event_service.log(
-                EventType.SPIN,
-                SpinOutcome.CARD_WIN,
-                user_id=request.user_id,
-                chat_id=request.chat_id,
-                rarity=rarity,
-                source_type=winning_symbol.type if winning_symbol else None,
-                source_id=winning_symbol.id if winning_symbol else None,
-            )
+            # Card win events are logged in process_slots_victory_background after card generation
+            pass
         elif winning_symbol and winning_symbol.type == "claim":
             event_service.log(
                 EventType.SPIN,
@@ -379,16 +372,7 @@ async def verify_megaspin(
             f"rarity={rarity}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
         )
 
-        # Log megaspin event
-        event_service.log(
-            EventType.MEGASPIN,
-            MegaspinOutcome.SUCCESS,
-            user_id=request.user_id,
-            chat_id=request.chat_id,
-            rarity=rarity,
-            source_type=winning_symbol.type,
-            source_id=winning_symbol.id,
-        )
+        # Megaspin success event is logged in process_slots_victory_background after card generation
 
         return SlotVerifyResponse(is_win=True, slot_results=slot_results, rarity=rarity)
 
