@@ -36,6 +36,8 @@ import threading
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from sqlalchemy import func, literal_column
+
 from utils.events import EventType, validate_outcome
 from utils.models import EventModel
 from utils.schemas import Event
@@ -311,3 +313,68 @@ def count_events(
             query = query.filter(EventModel.outcome == outcome.value)
 
         return query.count()
+
+
+def get_modifier_counts_from_events(chat_id: str) -> Dict[str, int]:
+    """
+    Get the count of each modifier used in card creation events for a specific chat.
+
+    This queries all successful card creation events (ROLL, REROLL, RECYCLE, CREATE,
+    SPIN card wins, MEGASPIN, MINESWEEPER wins) and extracts the modifier from the
+    payload JSON to count occurrences.
+
+    TODO: This query scans all events for the chat and extracts JSON for each row,
+    which becomes expensive as the events table grows. Consider maintaining a
+    separate modifier_frequency table (chat_id, modifier, count) that gets updated
+    incrementally when card creation events are logged, rather than recomputing
+    from scratch on every card roll. Add a service listening to card creation events,
+    and updating counts accordingly.
+
+    Args:
+        chat_id: The chat ID to get modifier counts for.
+
+    Returns:
+        A dictionary mapping modifier strings to their occurrence count.
+    """
+    # Define the event type + outcome combinations that represent card creation
+    card_creation_events = [
+        ("ROLL", "SUCCESS"),
+        ("REROLL", "SUCCESS"),
+        ("RECYCLE", "SUCCESS"),
+        ("CREATE", "SUCCESS"),
+        ("SPIN", "CARD_WIN"),
+        ("MEGASPIN", "SUCCESS"),
+        ("MINESWEEPER", "WON"),
+    ]
+
+    with get_session() as session:
+        # Build OR conditions for each event type + outcome pair
+        from sqlalchemy import or_, and_
+
+        conditions = [
+            and_(
+                EventModel.event_type == event_type,
+                EventModel.outcome == outcome,
+            )
+            for event_type, outcome in card_creation_events
+        ]
+
+        # Query events and extract modifier from JSON payload using SQLite json_extract
+        # The modifier is stored in the payload JSON as $.modifier
+        modifier_col = func.json_extract(EventModel.payload, "$.modifier")
+
+        results = (
+            session.query(
+                modifier_col.label("modifier"),
+                func.count().label("count"),
+            )
+            .filter(
+                EventModel.chat_id == str(chat_id),
+                or_(*conditions),
+                modifier_col.isnot(None),
+            )
+            .group_by(modifier_col)
+            .all()
+        )
+
+        return {row.modifier: row.count for row in results if row.modifier is not None}
