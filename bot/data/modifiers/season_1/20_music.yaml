@@ -11,6 +11,7 @@ rarities:
   - Jazz
   - Meloman
   - Pianist
+  - Vinyl
   - Violinist
   - Флейтист
 - name: Rare
@@ -22,6 +23,7 @@ rarities:
   - Punk Rock
   - Rockstar
   - Tecktonik
+  - Virtuoso
   - Баянист
   - Дирижёр
 - name: Epic

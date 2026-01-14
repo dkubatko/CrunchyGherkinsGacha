@@ -9,6 +9,7 @@ rarities:
   - Coffee
   - Croissant
   - Gummy
+  - Ice Cream
   - Mushroom
   - Pizza
   - Steak
@@ -31,4 +32,5 @@ rarities:
   - Pelmeni
   - Хачапури
 - name: Legendary
-  modifiers: []
+  modifiers:
+  - Michelin Star
