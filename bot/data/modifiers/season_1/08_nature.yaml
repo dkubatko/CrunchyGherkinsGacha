@@ -4,6 +4,7 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Coral
   - Desert
   - Floral
   - Forest
@@ -15,6 +16,7 @@ rarities:
   - Pigeon
   - Seal
   - Turtle
+  - Typhoon
   - Whale
 - name: Rare
   modifiers:
@@ -26,8 +28,10 @@ rarities:
   - Yosemite
 - name: Epic
   modifiers:
+  - Cataclysmic
   - Stargazing
   - Volcano
 - name: Legendary
   modifiers:
+  - Apex
   - Aurora

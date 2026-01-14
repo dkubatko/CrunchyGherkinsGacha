@@ -12,9 +12,11 @@ rarities:
   - Plumber
   - Police
   - Potter
+  - Школьник
 - name: Rare
   modifiers:
   - Astronaut
+  - Chef
   - Janitor
   - Taxi Driver
 - name: Epic

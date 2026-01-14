@@ -16,6 +16,7 @@ rarities:
   - Dracula
   - Frankenstein
   - Liminal
+  - Nightmare
   - Nosferatu
   - Pinhead
   - Possessed
@@ -23,6 +24,7 @@ rarities:
   modifiers:
   - Chucky
   - Pennywise
+  - Slenderman
   - Упырь
 - name: Legendary
   modifiers:

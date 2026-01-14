@@ -10,6 +10,7 @@ rarities:
   - Asian
   - European
   - Nordic
+  - Sahara
   - Swiss
   - Texan
 - name: Rare
@@ -27,4 +28,6 @@ rarities:
   - Korean
   - Russian
 - name: Legendary
-  modifiers: []
+  modifiers:
+  - Atlantis
+  - Utopia

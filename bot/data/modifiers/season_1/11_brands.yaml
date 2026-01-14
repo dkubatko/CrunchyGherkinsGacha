@@ -22,17 +22,18 @@ rarities:
   - Hubba Bubba
   - Jollibee
   - Labubu
+  - LEGO
   - Malrboro
+  - McDonald's
   - NASA
   - Ozon
   - Starbucks
   - TikTok
+  - Wildberries
 - name: Epic
   modifiers:
-  - LEGO
   - Love Is
-  - McDonald's
-  - Wildberries
+  - Monopoly
   - Yandex
 - name: Legendary
   modifiers: []

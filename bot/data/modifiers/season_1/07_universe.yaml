@@ -10,7 +10,6 @@ rarities:
   modifiers:
   - Alien
   - Cosmos
-  - Galaxy
   - Singularity
   - Supernova
 - name: Epic
@@ -18,6 +17,7 @@ rarities:
   - Big Bang
   - Black Hole
   - Dark Matter
+  - Galaxy
   - Multiverse
 - name: Legendary
   modifiers:
