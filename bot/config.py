@@ -61,6 +61,11 @@ def initialize_bot_utilities():
     init_achievements()
     ensure_achievements_registered()
 
+    # Initialize modifier count listener
+    from utils.modifiers import init_modifier_count_listener
+
+    init_modifier_count_listener()
+
     logger.info("Bot utilities initialized")
 
 
