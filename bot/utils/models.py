@@ -117,6 +117,7 @@ class CardImageModel(Base):
     )
     image_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     image_thumb_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image_updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationship back to card
     card: Mapped["CardModel"] = relationship("CardModel", back_populates="image")

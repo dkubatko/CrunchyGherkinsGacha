@@ -98,6 +98,7 @@ def add_card(
                 card_id=card.id,
                 image_b64=image_b64,
                 image_thumb_b64=image_thumb_b64,
+                image_updated_at=now,
             )
             session.add(card_image)
 
@@ -174,9 +175,13 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
         if username:
             owner_conditions.append(func.lower(CardModel.owner) == func.lower(username))
 
-        query = session.query(CardModel).filter(
-            or_(*owner_conditions),
-            CardModel.season_id == CURRENT_SEASON,
+        query = (
+            session.query(CardModel)
+            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .filter(
+                or_(*owner_conditions),
+                CardModel.season_id == CURRENT_SEASON,
+            )
         )
 
         if chat_id is not None:
@@ -237,10 +242,14 @@ def get_user_cards_by_rarity(
         return []
 
     with get_session() as session:
-        query = session.query(CardModel).filter(
-            or_(*owner_conditions),
-            CardModel.rarity == rarity,
-            CardModel.season_id == CURRENT_SEASON,
+        query = (
+            session.query(CardModel)
+            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .filter(
+                or_(*owner_conditions),
+                CardModel.rarity == rarity,
+                CardModel.season_id == CURRENT_SEASON,
+            )
         )
 
         if chat_id is not None:
@@ -263,9 +272,13 @@ def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
     Only returns cards from the current season.
     """
     with get_session() as session:
-        query = session.query(CardModel).filter(
-            CardModel.owner.isnot(None),
-            CardModel.season_id == CURRENT_SEASON,
+        query = (
+            session.query(CardModel)
+            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .filter(
+                CardModel.owner.isnot(None),
+                CardModel.season_id == CURRENT_SEASON,
+            )
         )
 
         if chat_id is not None:
@@ -290,7 +303,7 @@ def get_card(card_id: int) -> Optional[CardWithImage]:
     with get_session() as session:
         card_orm = (
             session.query(CardModel)
-            .options(joinedload(CardModel.image))
+            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
             .filter(
                 CardModel.id == card_id,
                 CardModel.season_id == CURRENT_SEASON,
@@ -580,17 +593,20 @@ def update_card_image(card_id: int, image_b64: str) -> bool:
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for refreshed card %s: %s", card_id, exc)
 
+    now = datetime.datetime.now().isoformat()
     with get_session(commit=True) as session:
         # Update or create card_images record
         card_image = session.query(CardImageModel).filter(CardImageModel.card_id == card_id).first()
         if card_image:
             card_image.image_b64 = image_b64
             card_image.image_thumb_b64 = image_thumb_b64
+            card_image.image_updated_at = now
         else:
             card_image = CardImageModel(
                 card_id=card_id,
                 image_b64=image_b64,
                 image_thumb_b64=image_thumb_b64,
+                image_updated_at=now,
             )
             session.add(card_image)
 

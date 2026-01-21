@@ -980,7 +980,17 @@ function App() {
   });
 
   // Loading state
-  if (loading || (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0))) {
+  if (loading) {
+    // Initial app loading - generic loading screen without spin count
+    return (
+      <div className="app-container">
+        <AppLoading title="Loading..." />
+      </div>
+    );
+  }
+  
+  // Casino-specific loading (after initial load)
+  if (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0)) {
     return (
       <div className="app-container">
         <AppLoading title="🎰 Casino" spinsCount={slotsSpins.count} />

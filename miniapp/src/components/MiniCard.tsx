@@ -13,10 +13,14 @@ interface MiniCardProps {
 }
 
 const MiniCard: React.FC<MiniCardProps> = ({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
-  // Check if we have cached data immediately to set initial state
-  const cachedImage = imageCache.has(card.id, 'thumb') ? imageCache.get(card.id, 'thumb') : null;
+  // Check if we have cached data immediately to set initial state (with timestamp validation)
+  const imageUpdatedAt = card.image_updated_at ?? null;
+  const cachedImage = imageCache.isValidCached(card.id, 'thumb', imageUpdatedAt) 
+    ? imageCache.get(card.id, 'thumb') 
+    : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
   const hasNotifiedVisible = useRef(false);
+  const hasTriedPersistent = useRef(false);
 
   // Use react-intersection-observer for reliable visibility detection
   // Don't skip even if we have an image - we need to track visibility for the parent
@@ -25,6 +29,20 @@ const MiniCard: React.FC<MiniCardProps> = ({ card, onClick, isLoading = false, h
     rootMargin: '600px', // Increased prefetch distance for mobile scrolling
     triggerOnce: false,
   });
+
+  // Try to load from persistent cache when becoming visible
+  useEffect(() => {
+    if (imageB64 || hasTriedPersistent.current || !inView) return;
+    
+    hasTriedPersistent.current = true;
+    
+    // Async load from persistent cache
+    imageCache.getAsync(card.id, 'thumb', imageUpdatedAt).then((cached) => {
+      if (cached) {
+        setImageB64(cached);
+      }
+    });
+  }, [card.id, imageB64, inView, imageUpdatedAt]);
 
   // Notify parent when visibility changes
   useEffect(() => {
@@ -132,6 +150,7 @@ MiniCard.displayName = 'MiniCard';
 const arePropsEqual = (prevProps: MiniCardProps, nextProps: MiniCardProps) => {
   return (
     prevProps.card.id === nextProps.card.id &&
+    prevProps.card.image_updated_at === nextProps.card.image_updated_at &&
     prevProps.isLoading === nextProps.isLoading &&
     prevProps.hasFailed === nextProps.hasFailed &&
     prevProps.onClick === nextProps.onClick &&
