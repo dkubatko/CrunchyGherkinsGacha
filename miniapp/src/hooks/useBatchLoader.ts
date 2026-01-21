@@ -92,6 +92,17 @@ export const useBatchLoader = (
   // Timer for the processing loop
   const processTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Create a map of cardId -> image_updated_at for quick lookup
+  const cardTimestampsRef = useRef(new Map<number, string | null>());
+  
+  // Update timestamps map when cards change
+  useEffect(() => {
+    cardTimestampsRef.current.clear();
+    for (const card of cards) {
+      cardTimestampsRef.current.set(card.id, card.image_updated_at ?? null);
+    }
+  }, [cards]);
+
   // Create stable card IDs string for effect dependencies
   const cardIdsString = useMemo(() => cards.map(c => c.id).join(','), [cards]);
 
@@ -119,7 +130,9 @@ export const useBatchLoader = (
 
         const imageResponses: CardImageResponse[] = await response.json();
         imageResponses.forEach(r => {
-          imageCache.set(r.card_id, r.image_b64, 'thumb');
+          // Store with the server timestamp for future validation
+          const imageUpdatedAt = cardTimestampsRef.current.get(r.card_id) ?? null;
+          imageCache.set(r.card_id, r.image_b64, 'thumb', imageUpdatedAt);
         });
 
         const loadedIds = imageResponses.map(r => r.card_id);
@@ -133,12 +146,15 @@ export const useBatchLoader = (
     [apiBaseUrl, initData]
   );
 
-  // Get cards that need loading: visible, not cached, not currently loading, not failed
+  // Get cards that need loading: visible, not validly cached, not currently loading, not failed
   const getCardsToLoad = useCallback((): number[] => {
     const result: number[] = [];
     for (const cardId of visibleCardsRef.current) {
+      const imageUpdatedAt = cardTimestampsRef.current.get(cardId) ?? null;
+      
+      // Use isValidCached to check both memory and persistent cache with timestamp validation
       if (
-        !imageCache.has(cardId, 'thumb') &&
+        !imageCache.isValidCached(cardId, 'thumb', imageUpdatedAt) &&
         !loadingCardsRef.current.has(cardId) &&
         !state.failedCards.has(cardId)
       ) {
@@ -208,8 +224,9 @@ export const useBatchLoader = (
     if (isVisible) {
       if (!visibleCardsRef.current.has(cardId)) {
         visibleCardsRef.current.add(cardId);
-        // Only schedule if this card needs loading
-        if (!imageCache.has(cardId, 'thumb') && !loadingCardsRef.current.has(cardId)) {
+        // Only schedule if this card needs loading (check with timestamp validation)
+        const imageUpdatedAt = cardTimestampsRef.current.get(cardId) ?? null;
+        if (!imageCache.isValidCached(cardId, 'thumb', imageUpdatedAt) && !loadingCardsRef.current.has(cardId)) {
           scheduleProcessing();
         }
       }
