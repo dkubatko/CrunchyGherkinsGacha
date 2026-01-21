@@ -12,7 +12,7 @@ import logging
 from typing import Dict, List, Optional
 
 from sqlalchemy import case, func, or_
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, contains_eager, load_only
 
 from settings.constants import CURRENT_SEASON
 from utils.image import ImageUtil
@@ -177,7 +177,10 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
 
         query = (
             session.query(CardModel)
-            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .options(
+                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                joinedload(CardModel.card_set),
+            )
             .filter(
                 or_(*owner_conditions),
                 CardModel.season_id == CURRENT_SEASON,
@@ -244,7 +247,10 @@ def get_user_cards_by_rarity(
     with get_session() as session:
         query = (
             session.query(CardModel)
-            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .options(
+                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                joinedload(CardModel.card_set),
+            )
             .filter(
                 or_(*owner_conditions),
                 CardModel.rarity == rarity,
@@ -274,7 +280,10 @@ def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
     with get_session() as session:
         query = (
             session.query(CardModel)
-            .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .options(
+                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                joinedload(CardModel.card_set),
+            )
             .filter(
                 CardModel.owner.isnot(None),
                 CardModel.season_id == CURRENT_SEASON,
