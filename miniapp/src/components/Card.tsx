@@ -26,6 +26,7 @@ interface CardProps {
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
   set_name?: string | null;
+  image_updated_at?: string | null;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -46,7 +47,8 @@ const Card: React.FC<CardProps> = ({
   onCardOpen,
   triggerBurn = false,
   onBurnComplete,
-  set_name
+  set_name,
+  image_updated_at
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -66,10 +68,23 @@ const Card: React.FC<CardProps> = ({
     const fetchImage = async () => {
       if (!id || !initData) return;
 
-      if (imageCache.has(id, 'full')) {
-        setImageB64(imageCache.get(id, 'full')!);
-        setLoadingImage(false);
-        return;
+      // Check if we have a valid cached version (validates against server timestamp)
+      if (imageCache.isValidCached(id, 'full', image_updated_at ?? null)) {
+        // Try to get from memory first (fast path)
+        const memCached = imageCache.get(id, 'full');
+        if (memCached) {
+          setImageB64(memCached);
+          setLoadingImage(false);
+          return;
+        }
+        
+        // Try async path (IndexedDB)
+        const persistedCached = await imageCache.getAsync(id, 'full', image_updated_at ?? null);
+        if (persistedCached) {
+          setImageB64(persistedCached);
+          setLoadingImage(false);
+          return;
+        }
       }
 
       setLoadingImage(true);
@@ -89,7 +104,8 @@ const Card: React.FC<CardProps> = ({
             }
 
             const imageData = await response.json();
-            imageCache.set(id, imageData, 'full');
+            // Store with timestamp for future validation
+            imageCache.set(id, imageData, 'full', image_updated_at ?? null);
             return imageData;
           })()
             .finally(() => {
@@ -109,7 +125,7 @@ const Card: React.FC<CardProps> = ({
     };
 
     fetchImage();
-  }, [id, initData]);
+  }, [id, initData, image_updated_at]);
 
   const imageUrl = imageB64 ? `data:image/png;base64,${imageB64}` : '';
 

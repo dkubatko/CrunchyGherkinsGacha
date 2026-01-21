@@ -57,6 +57,7 @@ class Card(BaseModel):
     set_id: Optional[int] = None
     season_id: int = 0
     set_name: Optional[str] = None
+    image_updated_at: Optional[str] = None
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
@@ -86,6 +87,7 @@ class Card(BaseModel):
     def from_orm(cls, card_orm) -> "Card":
         """Convert a CardModel ORM object to a Card schema."""
         set_name = card_orm.card_set.name if card_orm.card_set else None
+        image_updated_at = card_orm.image.image_updated_at if card_orm.image else None
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -102,6 +104,7 @@ class Card(BaseModel):
             set_id=card_orm.set_id,
             season_id=card_orm.season_id,
             set_name=set_name,
+            image_updated_at=image_updated_at,
         )
 
 
@@ -123,6 +126,7 @@ class CardWithImage(Card):
         if image_b64 is None:
             image_b64 = ""
         set_name = card_orm.card_set.name if card_orm.card_set else None
+        image_updated_at = card_orm.image.image_updated_at if card_orm.image else None
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -140,6 +144,7 @@ class CardWithImage(Card):
             season_id=card_orm.season_id,
             set_name=set_name,
             image_b64=image_b64,
+            image_updated_at=image_updated_at,
         )
 
 
