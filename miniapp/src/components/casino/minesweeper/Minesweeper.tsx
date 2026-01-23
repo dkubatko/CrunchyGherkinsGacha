@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { ApiService } from '../services/api';
-import { TelegramUtils } from '../utils/telegram';
-import AllCards from './AllCards';
-import CardModal from './CardModal';
-import AppLoading from './AppLoading';
-import CasinoHeader from './CasinoHeader';
-import ActionPanel from './ActionPanel';
-import { useModal, useOrientation } from '../hooks';
-import { getIconObjectUrl } from '../lib/iconUrlCache';
-import { getRarityGradient } from '../utils/rarityStyles';
-import type { CardData } from '../types';
-import type { ActionButton } from './ActionPanel';
+import { ApiService } from '../../../services/api';
+import { TelegramUtils } from '../../../utils/telegram';
+import AllCards from '../../cards/AllCards';
+import CardModal from '../../cards/CardModal';
+import AppLoading from '../../common/AppLoading';
+import CasinoHeader from '../CasinoHeader';
+import ActionPanel from '../../common/ActionPanel';
+import { useModal, useOrientation } from '../../../hooks';
+import { getIconObjectUrl } from '../../../lib/iconUrlCache';
+import { getRarityGradient } from '../../../utils/rarityStyles';
+import type { CardData } from '../../../types';
+import type { ActionButton } from '../../common/ActionPanel';
 import './Minesweeper.css';
 
 interface MinesweeperProps {
