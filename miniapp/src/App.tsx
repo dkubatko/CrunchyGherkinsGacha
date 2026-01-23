@@ -3,7 +3,7 @@ import './App.css';
 
 // Components
 import { SingleCardView, CardModal, CardView } from './components/cards';
-import { ActionPanel, AppLoading } from './components/common';
+import { ActionPanel, Title, SpinsBadge } from './components/common';
 import { BurnConfirmDialog, LockConfirmDialog } from './components/dialogs';
 import { Casino } from './components/casino';
 import type { FilterOptions, SortOptions } from './components/cards';
@@ -980,7 +980,7 @@ function App() {
     // Initial app loading - generic loading screen without spin count
     return (
       <div className="app-container">
-        <AppLoading title="Loading..." />
+        <Title title="Loading..." loading fullscreen />
       </div>
     );
   }
@@ -989,7 +989,7 @@ function App() {
   if (userData?.casinoView && (slotsLoading || slotsSymbols.length === 0)) {
     return (
       <div className="app-container">
-        <AppLoading title="🎰 Casino" spinsCount={slotsSpins.count} />
+        <Title title="🎰 Casino" rightContent={<SpinsBadge count={slotsSpins.count} />} fullscreen />
       </div>
     );
   }

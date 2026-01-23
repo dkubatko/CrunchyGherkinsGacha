@@ -1,5 +1,4 @@
 export { default as Casino } from './Casino';
-export { default as CasinoHeader } from './CasinoHeader';
 
 // Re-export from sub-modules
 export * from './slots';
