@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import Card from './Card';
-import { ApiService } from '../../services/api';
-import { imageCache } from '../../lib/imageCache';
-import type { OrientationData, CardData } from '../../types';
+import { ApiService } from '@/services/api';
+import { imageCache } from '@/lib/imageCache';
+import type { OrientationData, CardData } from '@/types';
 
 interface SingleCardViewProps {
   cardId: number;
