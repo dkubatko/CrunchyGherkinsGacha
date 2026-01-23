@@ -26,11 +26,9 @@ interface AnimatedImageProps {
 
 // Performance constants
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
-const toDegrees = (value: number) => (value * 180) / Math.PI;
 const createZeroTilt = (): TiltValues => ({ x: 0, y: 0 });
-const TILT_LIMIT_DEGREES = 18;
-const TILT_SENSITIVITY = 0.26;
-const SMOOTHING_THRESHOLD = 0.005;
+const TILT_LIMIT_DEGREES = 15;
+const RAD_TO_DEG = 180 / Math.PI; // Telegram DeviceOrientation returns radians
 
 // Performance detection
 const detectDevicePerformance = (): 'high' | 'medium' | 'low' => {
@@ -54,32 +52,21 @@ const DEVICE_PERFORMANCE = detectDevicePerformance();
 const ANIMATION_FPS = DEVICE_PERFORMANCE === 'high' ? 60 : DEVICE_PERFORMANCE === 'medium' ? 60 : 30;
 const FRAME_INTERVAL = 1000 / ANIMATION_FPS;
 
-const wrapAngleDelta = (angle: number) => {
-  if (!Number.isFinite(angle)) {
-    return 0;
-  }
-
-  const TWO_PI = Math.PI * 2;
-  const wrapped = ((angle + Math.PI) % TWO_PI + TWO_PI) % TWO_PI - Math.PI;
-  return Number.isFinite(wrapped) ? wrapped : 0;
-};
-
-const normalizeAngleDelta = (current: number, reference: number) => {
-  if (!Number.isFinite(current) || !Number.isFinite(reference)) {
-    return 0;
-  }
-
-  return wrapAngleDelta(current - reference);
+// Normalize angle to -180 to 180 range
+const normalizeAngle = (angle: number): number => {
+  while (angle > 180) angle -= 360;
+  while (angle < -180) angle += 360;
+  return angle;
 };
 
 const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey, triggerBurn = false, onBurnComplete }) => {
-  const [referenceOrientation, setReferenceOrientation] = useState<OrientationData | null>(null);
   const [animationState, setAnimationState] = useState({ tick: 0, smoothedTilt: createZeroTilt() });
   const [burnProgress, setBurnProgress] = useState<number>(0);
   const [isBurning, setIsBurning] = useState(false);
+  const [referenceOrientation, setReferenceOrientation] = useState<{ beta: number; gamma: number } | null>(null);
 
   const tiltTargetRef = useRef<TiltValues>(createZeroTilt());
-  const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.25 : 0.15);
+  const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.15 : 0.12);
   const lastFrameTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | undefined>(undefined);
   const burnStartTimeRef = useRef<number | null>(null);
@@ -93,16 +80,19 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     setAnimationState(prev => ({ ...prev, smoothedTilt: resetTilt }));
   }, [tiltKey]);
 
-  // Set reference on first non-zero orientation reading
+  // Capture reference orientation on first valid reading
   useEffect(() => {
-    if (!referenceOrientation && orientation.isStarted &&
-        (orientation.alpha !== 0 || orientation.beta !== 0 || orientation.gamma !== 0)) {
-      setReferenceOrientation(orientation);
+    if (!referenceOrientation && orientation.isStarted && 
+        (orientation.beta !== 0 || orientation.gamma !== 0)) {
+      setReferenceOrientation({
+        beta: orientation.beta,
+        gamma: orientation.gamma
+      });
     }
   }, [orientation, referenceOrientation]);
 
   useEffect(() => {
-    const performanceFactor = DEVICE_PERFORMANCE === 'high' ? 0.25 : DEVICE_PERFORMANCE === 'medium' ? 0.2 : 0.15;
+    const performanceFactor = DEVICE_PERFORMANCE === 'high' ? 0.15 : DEVICE_PERFORMANCE === 'medium' ? 0.12 : 0.1;
     smoothingFactorRef.current = effectsEnabled ? performanceFactor : 0.1;
     if (!effectsEnabled) {
       tiltTargetRef.current = createZeroTilt();
@@ -113,18 +103,42 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   useEffect(() => {
     if (triggerBurn && !isBurning) {
       setIsBurning(true);
-      burnStartTimeRef.current = null; // Will be set on first frame
+      burnStartTimeRef.current = null;
       setBurnProgress(0);
-      // Reset tilt to center the card
       tiltTargetRef.current = createZeroTilt();
       setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
     }
   }, [triggerBurn, isBurning]);
 
-  // Consolidated animation loop (includes burn animation)
+  // Calculate target tilt from device orientation
+  useEffect(() => {
+    if (!effectsEnabled || !orientation.isStarted || !referenceOrientation || isBurning) {
+      tiltTargetRef.current = createZeroTilt();
+      return;
+    }
+
+    // Calculate delta from reference position
+    // Beta: front-to-back tilt (-180 to 180), positive = device tilted forward
+    // Gamma: left-to-right tilt (-90 to 90), positive = device tilted right
+    // Telegram returns values in RADIANS, so convert to degrees first
+    const deltaBeta = normalizeAngle((orientation.beta - referenceOrientation.beta) * RAD_TO_DEG);
+    const deltaGamma = normalizeAngle((orientation.gamma - referenceOrientation.gamma) * RAD_TO_DEG);
+
+    // Map orientation to card tilt:
+    // - Tilting device forward/back (beta) -> card tilts on X axis (pitch)
+    // - Tilting device left/right (gamma) -> card tilts on Y axis (roll)
+    // After converting from radians, values are in actual degrees
+    // Slightly dampen for smoother feel (0.75x means 20° device tilt = 15° card tilt)
+    const TILT_SENSITIVITY = 0.75;
+    const tiltX = clamp(deltaBeta * TILT_SENSITIVITY, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES);
+    const tiltY = clamp(deltaGamma * TILT_SENSITIVITY, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES);
+
+    tiltTargetRef.current = { x: tiltX, y: tiltY };
+  }, [orientation, referenceOrientation, effectsEnabled, isBurning]);
+
+  // Consolidated animation loop
   useEffect(() => {
     const animate = (currentTime: number) => {
-      // Throttle animation based on device performance
       if (currentTime - lastFrameTimeRef.current < FRAME_INTERVAL) {
         animationFrameRef.current = requestAnimationFrame(animate);
         return;
@@ -144,7 +158,6 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
         setBurnProgress(progress);
         
         if (progress >= 1) {
-          // Animation complete - reset
           setIsBurning(false);
           setBurnProgress(0);
           burnStartTimeRef.current = null;
@@ -162,22 +175,15 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
         const nextX = prevTilt.x + (target.x - prevTilt.x) * factor;
         const nextY = prevTilt.y + (target.y - prevTilt.y) * factor;
 
-        // Early return if no significant change
-        if (Math.abs(nextX - prevTilt.x) < SMOOTHING_THRESHOLD && Math.abs(nextY - prevTilt.y) < SMOOTHING_THRESHOLD) {
-          if (Math.abs(target.x) < SMOOTHING_THRESHOLD && Math.abs(target.y) < SMOOTHING_THRESHOLD) {
-            return prevState.smoothedTilt.x === 0 && prevState.smoothedTilt.y === 0 
-              ? prevState 
-              : { ...prevState, smoothedTilt: createZeroTilt() };
-          }
+        // Skip update if change is negligible
+        const threshold = 0.01;
+        if (Math.abs(nextX - prevTilt.x) < threshold && Math.abs(nextY - prevTilt.y) < threshold) {
           return prevState;
         }
 
         return {
           tick: prevState.tick + 1,
-          smoothedTilt: {
-            x: Math.abs(nextX) < SMOOTHING_THRESHOLD ? 0 : nextX,
-            y: Math.abs(nextY) < SMOOTHING_THRESHOLD ? 0 : nextY
-          }
+          smoothedTilt: { x: nextX, y: nextY }
         };
       });
 
@@ -192,40 +198,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     };
   }, [isBurning, onBurnComplete]);
 
-  const orientationDelta = useMemo(() => {
-    if (!referenceOrientation || !orientation.isStarted) {
-      return null;
-    }
-
-    return {
-      beta: normalizeAngleDelta(orientation.beta, referenceOrientation.beta),
-      gamma: normalizeAngleDelta(orientation.gamma, referenceOrientation.gamma)
-    };
-  }, [orientation, referenceOrientation]);
-
-  const targetTiltAngles = useMemo(() => {
-    if (!orientationDelta) {
-      return null;
-    }
-
-    const tiltX = clamp(toDegrees(orientationDelta.beta) * TILT_SENSITIVITY, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES);
-    const tiltY = clamp(toDegrees(orientationDelta.gamma) * TILT_SENSITIVITY, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES);
-
-    return {
-      x: tiltX,
-      y: tiltY
-    };
-  }, [orientationDelta]);
-
-  useEffect(() => {
-    if (!effectsEnabled) {
-      return;
-    }
-
-    tiltTargetRef.current = targetTiltAngles ?? createZeroTilt();
-  }, [effectsEnabled, targetTiltAngles]);
-
-  const hasLiveTilt = effectsEnabled && !!targetTiltAngles;
+  const hasLiveTilt = effectsEnabled && orientation.isStarted && !!referenceOrientation;
   const tiltForEffects = hasLiveTilt ? animationState.smoothedTilt : null;
 
   const manualTiltAngles = useMemo(() => {
@@ -233,9 +206,12 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       return null;
     }
 
+    // Map smoothed tilt values to react-parallax-tilt angles
+    // X: forward/back device tilt -> card pitch (rotate around horizontal axis)
+    // Y: left/right device tilt -> card roll (rotate around vertical axis)
     return {
-      x: clamp(-tiltForEffects.x, -15, 15),
-      y: clamp(tiltForEffects.y, -15, 15)
+      x: clamp(tiltForEffects.x, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES),
+      y: clamp(-tiltForEffects.y, -TILT_LIMIT_DEGREES, TILT_LIMIT_DEGREES)
     };
   }, [tiltForEffects]);
 
@@ -265,21 +241,21 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       };
     }
 
-    const offsetX = clamp(-tiltForEffects.y * 1.15, -18, 18);
-    const offsetY = clamp(17 + tiltForEffects.x * -1.05, 6, 24);
+    // Shadow moves opposite to the tilt direction (light source from above)
+    const offsetX = clamp(tiltForEffects.y * 1.2, -20, 20);
+    const offsetY = clamp(14 - tiltForEffects.x * 0.8, 4, 24);
     const blur = clamp(
-      baseBlur + Math.abs(tiltForEffects.x) * 0.75 + Math.abs(tiltForEffects.y) * 0.55,
-      12,
-      28
+      baseBlur + Math.abs(tiltForEffects.x) * 0.5 + Math.abs(tiltForEffects.y) * 0.5,
+      14,
+      26
     );
     const spread = clamp(
-      baseSpread + Math.abs(tiltForEffects.y) * 0.1 + Math.abs(tiltForEffects.x) * 0.05,
+      baseSpread + (Math.abs(tiltForEffects.y) + Math.abs(tiltForEffects.x)) * 0.03,
       0,
-      1
+      2
     );
-    const magnitudeBoost = (Math.abs(tiltForEffects.x) + Math.abs(tiltForEffects.y)) * 0.018;
-    const directionalBoost = clamp((-offsetX / 18) * 0.16, -0.16, 0.16);
-    const alpha = clamp(baseAlpha + magnitudeBoost + directionalBoost, 0.4, 0.85);
+    const tiltMagnitude = Math.sqrt(tiltForEffects.x ** 2 + tiltForEffects.y ** 2);
+    const alpha = clamp(baseAlpha + tiltMagnitude * 0.015, 0.4, 0.75);
 
     return { offsetX, offsetY, blur, spread, alpha };
   }, [animationState.tick, effectsEnabled, tiltForEffects]);
@@ -342,12 +318,25 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     };
   }, [effectsEnabled, tiltForEffects, animationState.tick, rarity]);
 
+  // Reset reference orientation on tap - makes current position the new "flat" view
+  const handleTap = () => {
+    if (orientation.isStarted) {
+      setReferenceOrientation({
+        beta: orientation.beta,
+        gamma: orientation.gamma
+      });
+      // Reset smoothed tilt to zero for immediate flat appearance
+      tiltTargetRef.current = createZeroTilt();
+      setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
+    }
+  };
+
   return (
     <Tilt
       className="card-image-container"
       tiltEnable={effectsEnabled && !isBurning}
-      tiltAngleXManual={isBurning ? 0 : (manualTiltAngles ? manualTiltAngles.x : null)}
-      tiltAngleYManual={isBurning ? 0 : (manualTiltAngles ? manualTiltAngles.y : null)}
+      tiltAngleXManual={isBurning ? 0 : manualTiltAngles?.x}
+      tiltAngleYManual={isBurning ? 0 : manualTiltAngles?.y}
       tiltMaxAngleX={15}
       tiltMaxAngleY={15}
       perspective={1000}
@@ -356,6 +345,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       gyroscope={false}
       glareEnable={false}
       style={tiltContainerStyle}
+      onEnter={handleTap}
     >
       <div
         className="card-shadow"

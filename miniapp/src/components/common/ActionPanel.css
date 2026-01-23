@@ -1,12 +1,10 @@
 .action-panel {
-  --panel-bottom-padding: 20px; /* Apply mobile padding to both PC and mobile */
-  
   width: 100%;
   background: var(--tg-theme-secondary-bg-color, var(--tg-theme-bg-color, #ffffff));
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   flex-shrink: 0; /* Don't shrink when space is limited */
-  padding-bottom: var(--panel-bottom-padding);
+  padding-bottom: var(--action-panel-bottom-padding);
   z-index: 1001; /* Above modal backdrop (z-index: 1000) */
   position: fixed;
   bottom: 0;
@@ -16,7 +14,7 @@
 .action-panel-content {
   display: flex;
   gap: 8px;
-  padding: 10px 12px;
+  padding: var(--action-panel-content-padding) 12px;
   padding-bottom: 0;
   max-width: 100%;
   justify-content: center;
@@ -24,7 +22,7 @@
   /* Ensure content is visible */
   opacity: 1;
   visibility: visible;
-  min-height: 52px;
+  min-height: var(--action-panel-button-height);
 }
 
 .action-button {
@@ -141,10 +139,6 @@
 
 /* Mobile device detection - using pointer and hover capabilities */
 @media (pointer: coarse) and (hover: none) {
-  .action-panel {
-    --panel-bottom-padding: 20px;
-  }
-  
   .action-panel-content {
     padding: 10px 16px;
     padding-bottom: 10px;
@@ -157,15 +151,15 @@
   }
 }
 
-/* Safe area adjustments - uses the responsive --panel-bottom-padding value */
+/* Safe area adjustments - uses the responsive --action-panel-bottom-padding value */
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .action-panel {
-    padding-bottom: calc(var(--panel-bottom-padding) + env(safe-area-inset-bottom));
+    padding-bottom: calc(var(--action-panel-bottom-padding) + env(safe-area-inset-bottom));
   }
 }
 
 @supports (padding-bottom: constant(safe-area-inset-bottom)) {
   .action-panel {
-    padding-bottom: calc(var(--panel-bottom-padding) + constant(safe-area-inset-bottom));
+    padding-bottom: calc(var(--action-panel-bottom-padding) + constant(safe-area-inset-bottom));
   }
 }

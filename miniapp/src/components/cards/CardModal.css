@@ -1,0 +1,235 @@
+/* Card Modal Styles */
+
+:root {
+  /* Card image padding - change this value to adjust padding for both image and shine */
+  --card-image-padding: 0.25rem;
+  
+  /* Modal card size - controls both card image and shadow size */
+  --modal-card-size: 98%;
+  /* Modal card vertical offset - positive values shift the card down toward the name */
+  --modal-card-offset: 0%;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  padding-top: clamp(0.5rem, 2vh, 1.5rem);
+  backdrop-filter: blur(4px);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+.modal-overlay.with-action-panel {
+  /* Action panel height = panel-bottom-padding (20px) + content padding (10px) + button (52px) */
+  padding-bottom: calc(var(--action-panel-height, 82px));
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    backdrop-filter: blur(0px);
+  }
+  to {
+    opacity: 1;
+    backdrop-filter: blur(4px);
+  }
+}
+
+.modal-content {
+  position: relative;
+  width: 90vw;
+  max-width: 420px;
+  height: calc(100% - 1rem);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: clamp(0.5rem, 1.5vw, 0.75rem);
+  animation: modalSlideIn 0.3s ease-out;
+  border-radius: 32px;
+  background: linear-gradient(145deg, rgba(28, 28, 32, 0.94), rgba(20, 20, 24, 0.9));
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+@keyframes modalSlideIn {
+  from {
+    transform: scale(0.8) translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.modal-close {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background-color: rgba(0, 0, 0, 0.55);
+  border: none;
+  color: rgba(255, 255, 255, 0.9);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1001;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+.modal-close-icon {
+  position: relative;
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.modal-close-icon::before,
+.modal-close-icon::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 2px;
+  background-color: currentColor;
+  border-radius: 999px;
+  transform-origin: center;
+}
+
+.modal-close-icon::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.modal-close-icon::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+.modal-close:hover {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  transform: scale(1.1) rotate(90deg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.modal-close:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.6);
+  outline-offset: 4px;
+}
+
+.modal-close:active {
+  transform: scale(0.95) rotate(90deg);
+}
+
+.modal-card-shell {
+  width: 100%;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  border-radius: 25px;
+  overflow: hidden;
+  isolation: isolate;
+  background: rgba(18, 18, 22, 0.6);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  clip-path: inset(0 round 25px);
+}
+
+.modal-card-shell .card {
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  max-height: none;
+  padding: clamp(0.5rem, 1vw, 0.75rem);
+  background: rgba(40, 40, 42, 0.95);
+  clip-path: inset(0 round 25px);
+}
+
+.modal-card-shell .card-image-container {
+  flex: 1;
+  max-height: none;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: visible;
+}
+
+.modal-card-shell .card-shadow {
+  /* Match the card-image-content positioning exactly */
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) translateY(var(--modal-card-offset));
+  width: auto;
+  height: var(--modal-card-size);
+  aspect-ratio: 5 / 7;
+  max-width: var(--modal-card-size);
+  border-radius: 25px;
+  pointer-events: none;
+  /* Dynamic box-shadow is applied via inline styles */
+}
+
+.modal-card-shell .card-image-content {
+  /* Use 5:7 aspect ratio to match card images exactly */
+  position: relative;
+  aspect-ratio: 5 / 7;
+  height: var(--modal-card-size);
+  width: auto;
+  max-width: var(--modal-card-size);
+  max-height: var(--modal-card-size);
+  border-radius: 25px;
+  overflow: hidden;
+  transform: translateY(var(--modal-card-offset));
+}
+
+.modal-card-shell .card img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 25px;
+}
+
+.modal-card-shell .card-shine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: 25px;
+  overflow: hidden;
+}
+
+/* Card ID plaque - larger in modal view on mobile to match lock icon size */
+@media (max-width: 480px) {
+  .modal-card-shell .card-id {
+    font-size: 0.8rem;
+    padding: 3px 8px;
+    border-radius: 8px;
+  }
+}

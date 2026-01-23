@@ -1,9 +1,8 @@
-import Card from './Card';
 import AllCards from './AllCards';
 import FilterSortControls from './FilterSortControls';
-import { Title, PositionIndicator, ViewToggleButton } from '@/components/common';
+import { Title } from '@/components/common';
 import { ProfileView } from '@/components/profile';
-import type { CardData, View, OrientationData, ProfileState } from '@/types';
+import type { CardData, View, ProfileState } from '@/types';
 import type { FilterOptions, SortOptions } from './FilterSortControls';
 
 interface TabsProps {
@@ -15,24 +14,14 @@ interface TabsProps {
 interface CurrentViewProps {
   cards: CardData[];
   filteredCards: CardData[];
-  isGridView: boolean;
-  isActionPanelVisible: boolean;
-  shareEnabled: boolean;
-  orientation: OrientationData;
-  orientationKey: number;
   initData: string | null;
-  onGridToggle: () => void;
-  onCardOpen: (card: Pick<CardData, 'id' | 'chat_id'>) => void;
   onOpenModal: (card: CardData) => void;
-  onShare?: (cardId: number) => Promise<void> | void;
   currentGridFilterOptions: FilterOptions;
   currentGridSortOptions: SortOptions;
   onCurrentGridFilterChange: (filters: FilterOptions) => void;
   onCurrentGridSortChange: (sort: SortOptions) => void;
   collectionOwnerLabel: string;
   isOwnCollection: boolean;
-  triggerBurn?: boolean;
-  onBurnComplete?: () => void;
   isBurning?: boolean;
 }
 
@@ -57,7 +46,6 @@ interface CardViewProps {
   isTradeView: boolean;
   tradeCardName: string | null;
   collectionOwnerLabel: string;
-  currentIndex: number;
   tabs: TabsProps;
   currentView: CurrentViewProps;
   allView: AllViewProps;
@@ -71,14 +59,11 @@ const CardView = ({
   isTradeView,
   tradeCardName,
   collectionOwnerLabel,
-  currentIndex,
   tabs,
   currentView,
   allView,
   profileView
 }: CardViewProps) => {
-  const currentCard = currentView.cards[currentIndex];
-
   return (
     <>
       <div className="tabs">
@@ -125,78 +110,36 @@ const CardView = ({
               ? `Trade for ${tradeCardName}`
               : 'All cards'
             : `${collectionOwnerLabel}'s collection`}
-          leftContent={
-            <>
-              {view === 'current' && currentView.cards.length > 0 && (
-                <PositionIndicator
-                  current={currentView.isGridView ? currentView.filteredCards.length : currentIndex + 1}
-                  total={currentView.cards.length}
-                />
-              )}
-              {view === 'all' && allView.baseCards.length > 0 && !allView.loading && !allView.error && (
-                <PositionIndicator
-                  current={allView.displayedCards.length}
-                  total={allView.baseCards.length}
-                />
-              )}
-            </>
-          }
-          rightContent={
-            view === 'current' && currentView.cards.length > 0 ? (
-              <ViewToggleButton
-                isGridView={currentView.isGridView}
-                onClick={currentView.onGridToggle}
-                disabled={currentView.isBurning}
-              />
-            ) : undefined
-          }
         />
 
         {view === 'current' && (
           currentView.cards.length > 0 ? (
-            currentView.isGridView ? (
-              <>
-                <FilterSortControls
-                  cards={currentView.cards}
-                  filterOptions={currentView.currentGridFilterOptions}
-                  sortOptions={currentView.currentGridSortOptions}
-                  onFilterChange={currentView.onCurrentGridFilterChange}
-                  onSortChange={currentView.onCurrentGridSortChange}
-                  showOwnerFilter={false}
+            <>
+              <FilterSortControls
+                cards={currentView.cards}
+                filterOptions={currentView.currentGridFilterOptions}
+                sortOptions={currentView.currentGridSortOptions}
+                onFilterChange={currentView.onCurrentGridFilterChange}
+                onSortChange={currentView.onCurrentGridSortChange}
+                showOwnerFilter={false}
+                counter={{
+                  current: currentView.filteredCards.length,
+                  total: currentView.cards.length
+                }}
+              />
+              {currentView.filteredCards.length === 0 ? (
+                <div className="no-cards-container">
+                  <h2>No cards match your filter</h2>
+                  <p>Try selecting a different rarity or clearing the filter.</p>
+                </div>
+              ) : (
+                <AllCards
+                  cards={currentView.filteredCards}
+                  onCardClick={currentView.onOpenModal}
+                  initData={currentView.initData}
                 />
-                {currentView.filteredCards.length === 0 ? (
-                  <div className="no-cards-container">
-                    <h2>No cards match your filter</h2>
-                    <p>Try selecting a different rarity or clearing the filter.</p>
-                  </div>
-                ) : (
-                  <AllCards
-                    cards={currentView.filteredCards}
-                    onCardClick={currentView.onOpenModal}
-                    initData={currentView.initData}
-                  />
-                )}
-              </>
-            ) : (
-              <div className={`card-container ${currentView.isActionPanelVisible ? 'with-action-panel' : ''}`}>
-                {currentCard ? (
-                  <Card
-                    {...currentCard}
-                    orientation={currentView.orientation}
-                    tiltKey={currentView.orientationKey}
-                    initData={currentView.initData}
-                    shiny={true}
-                    onShare={currentView.shareEnabled ? currentView.onShare : undefined}
-                    showShareButton={currentView.shareEnabled}
-                    onCardOpen={currentView.onCardOpen}
-                    triggerBurn={currentView.triggerBurn}
-                    onBurnComplete={currentView.onBurnComplete}
-                  />
-                ) : (
-                  <p>No card selected.</p>
-                )}
-              </div>
-            )
+              )}
+            </>
           ) : (
             <p>
               {currentView.isOwnCollection
@@ -232,6 +175,10 @@ const CardView = ({
                 sortOptions={allView.sortOptions}
                 onFilterChange={allView.onFilterChange}
                 onSortChange={allView.onSortChange}
+                counter={{
+                  current: allView.displayedCards.length,
+                  total: allView.baseCards.length
+                }}
               />
               {allView.displayedCards.length === 0 ? (
                 <div className="no-cards-container">

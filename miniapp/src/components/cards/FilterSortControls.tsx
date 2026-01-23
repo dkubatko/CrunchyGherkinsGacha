@@ -23,6 +23,10 @@ interface FilterSortControlsProps {
   onFilterChange: (filters: FilterOptions) => void;
   onSortChange: (sort: SortOptions) => void;
   showOwnerFilter?: boolean; // Optional prop to show/hide owner filter
+  counter?: {
+    current: number | string;
+    total: number | string;
+  };
 }
 
 const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
@@ -32,6 +36,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   onFilterChange,
   onSortChange,
   showOwnerFilter = true, // Default to true to maintain existing behavior
+  counter,
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
@@ -483,6 +488,15 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
           )}
         </div>
       </div>
+
+      {/* Counter */}
+      {counter && (
+        <div className="filter-sort-counter">
+          <span className="filter-sort-counter-current">{counter.current}</span>
+          <span className="filter-sort-counter-separator"> / </span>
+          <span className="filter-sort-counter-total">{counter.total}</span>
+        </div>
+      )}
     </div>
   );
 });

@@ -1,6 +1,7 @@
 import React from 'react';
 import type { CardData, OrientationData } from '@/types';
 import Card from './Card';
+import './CardModal.css';
 
 interface CardModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface CardModalProps {
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
   isBurning?: boolean;
+  isActionPanelVisible?: boolean;
 }
 
 const CardModal: React.FC<CardModalProps> = ({
@@ -27,12 +29,13 @@ const CardModal: React.FC<CardModalProps> = ({
   onCardOpen,
   triggerBurn,
   onBurnComplete,
-  isBurning = false
+  isBurning = false,
+  isActionPanelVisible = false
 }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         {!isBurning && (
           <button

@@ -66,7 +66,6 @@ function App() {
   const [view, setView] = useState<View>('current');
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [isTradeGridActive, setIsTradeGridActive] = useState(false);
-  const [isGridView, setIsGridView] = useState(false);
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockingCard, setLockingCard] = useState(false);
@@ -621,10 +620,7 @@ function App() {
     setView('profile');
   }, []);
 
-  const handleGridToggle = useCallback(() => {
-    setIsGridView(!isGridView);
-    // Don't reset filters - preserve them when switching between grid/gallery
-  }, [isGridView]);  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
+  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
     setFilterOptions(newFilters);
   }, []);
 
@@ -905,8 +901,8 @@ function App() {
     const shouldDisableActions = burningCard || isBurningInProgress;
 
     // Show Lock button in current view for own collection when chat_id is available
-    if (userData?.isOwnCollection && initData && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
-      const currentCard = modalCard || cards[currentIndex];
+    if (userData?.isOwnCollection && initData && cards.length > 0 && view === 'current' && !selectedCardForTrade && modalCard) {
+      const currentCard = modalCard;
       if (currentCard?.chat_id) {
         const isLocked = currentCard.locked || false;
         buttons.push({
@@ -927,8 +923,8 @@ function App() {
     }
 
     // Show Trade button in current view for own collection (only if trading is enabled)
-    // Allow in gallery view always, or in grid view when a modal card is open
-    if (userData?.isOwnCollection && userData.enableTrade && cards.length > 0 && view === 'current' && !selectedCardForTrade && (!isGridView || modalCard)) {
+    // Only show when a modal card is open
+    if (userData?.isOwnCollection && userData.enableTrade && cards.length > 0 && view === 'current' && !selectedCardForTrade && modalCard) {
       buttons.push({
         id: 'trade',
         text: 'Trade',
@@ -1067,7 +1063,6 @@ function App() {
           isTradeView={isTradeView}
           tradeCardName={tradeCardName}
           collectionOwnerLabel={collectionOwnerLabel}
-          currentIndex={currentIndex}
           tabs={{
             onCurrentTabClick: handleCurrentTabClick,
             onAllTabClick: handleAllTabClick,
@@ -1077,24 +1072,14 @@ function App() {
           currentView={{
             cards,
             filteredCards: filteredCurrentCards,
-            isGridView,
-            isActionPanelVisible,
-            shareEnabled,
-            orientation,
-            orientationKey,
             initData,
-            onGridToggle: handleGridToggle,
-            onCardOpen: handleCardOpen,
             onOpenModal: openModal,
-            onShare: shareEnabled ? handleShareCard : undefined,
             currentGridFilterOptions,
             currentGridSortOptions,
             onCurrentGridFilterChange: handleCurrentGridFilterChange,
             onCurrentGridSortChange: handleCurrentGridSortChange,
             collectionOwnerLabel,
             isOwnCollection: Boolean(userData?.isOwnCollection),
-            triggerBurn,
-            onBurnComplete: handleBurnComplete,
             isBurning: isBurningInProgress
           }}
           allView={{
@@ -1126,6 +1111,7 @@ function App() {
           triggerBurn={triggerBurn}
           onBurnComplete={handleBurnComplete}
           isBurning={isBurningInProgress}
+          isActionPanelVisible={isActionPanelVisible}
         />
       )}
 
