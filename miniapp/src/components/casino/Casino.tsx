@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import './Casino.css';
-import CasinoHeader from './CasinoHeader';
+import { Title, SpinsBadge } from '@/components/common';
 import Slots from './slots/Slots';
 import Minesweeper from './minesweeper/Minesweeper';
 import RideTheBus from './rtb/RideTheBus';
@@ -190,7 +190,7 @@ export default function Casino({
   // Catalog view
   return (
     <div className="casino-catalog-container">
-      <CasinoHeader title="🎰 Casino" spinsCount={slotsSpins.count} />
+      <Title title="🎰 Casino" rightContent={<SpinsBadge count={slotsSpins.count} />} />
       <div className="casino-games-grid">
           <div 
             className="casino-game-card"

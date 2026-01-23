@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
-import { AppLoading } from '@/components/common';
-import { CasinoHeader } from '@/components/casino';
+import { Title, SpinsBadge } from '@/components/common';
 import RTBCard from './RTBCard';
 import { 
   cardContainerVariants, 
@@ -384,7 +383,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
   }, [userId, chatId, initData, onSpinsUpdate]);
 
   if (phase === 'loading') {
-    return <AppLoading title="🚌 Ride the Bus" spinsCount={spinsBalance} />;
+    return <Title title="🚌 Ride the Bus" rightContent={<SpinsBadge count={spinsBalance} />} fullscreen />;
   }
 
   if (error && !game) {
@@ -742,7 +741,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
         }
       }}
     >
-      <CasinoHeader title="🚌 Ride the Bus" spinsCount={spinsBalance} />
+      <Title title="🚌 Ride the Bus" rightContent={<SpinsBadge count={spinsBalance} />} />
 
       {renderCards()}
       {(phase === 'playing' || phase === 'finished') && renderMultiplier()}

@@ -6,8 +6,7 @@ import { getIconObjectUrl } from '@/lib/iconUrlCache';
 import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '@/utils/rarityStyles';
 import type { RarityName } from '@/utils/rarityStyles';
 import type { SlotSymbolInfo } from '@/types';
-import { AppLoading } from '@/components/common';
-import { CasinoHeader } from '@/components/casino';
+import { Title, SpinsBadge } from '@/components/common';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
@@ -1036,12 +1035,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [results, reelStates, symbols.length]);
 
   if (!imagesReady) {
-    return <AppLoading title="🎰 Slots" spinsCount={userSpins.count} />;
+    return <Title title="🎰 Slots" rightContent={<SpinsBadge count={userSpins.count} />} fullscreen />;
   }
 
   return (
     <div className="slots-container">
-      <CasinoHeader title="🎰 Slots" spinsCount={userSpins.count} />
+      <Title title="🎰 Slots" rightContent={<SpinsBadge count={userSpins.count} />} />
 
       <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
         <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>
