@@ -442,6 +442,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
             orientationKey={orientationKey}
             initData={initData}
             onClose={closeModal}
+            isActionPanelVisible={isActionPanelVisible}
           />
         )}
 

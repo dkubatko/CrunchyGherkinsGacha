@@ -3,6 +3,7 @@ import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import { imageCache } from '@/lib/imageCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
 import type { OrientationData, CardData } from '@/types';
+import './Card.css';
 
 const inFlightFullImageRequests = new Map<number, Promise<string>>();
 
@@ -171,9 +172,22 @@ const Card: React.FC<CardProps> = ({
       {locked ? (
         <div 
           className={`card-lock-indicator ${lockExpanded ? 'expanded' : ''}`}
-          onClick={() => setLockExpanded(!lockExpanded)}
-          onMouseEnter={() => setLockExpanded(true)}
-          onMouseLeave={() => setLockExpanded(false)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setLockExpanded(!lockExpanded);
+          }}
+          onMouseEnter={() => {
+            // Only use hover on non-touch devices
+            if (window.matchMedia('(hover: hover)').matches) {
+              setLockExpanded(true);
+            }
+          }}
+          onMouseLeave={() => {
+            // Only use hover on non-touch devices
+            if (window.matchMedia('(hover: hover)').matches) {
+              setLockExpanded(false);
+            }
+          }}
         >
           <svg
             className="lock-icon"
