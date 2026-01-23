@@ -2,8 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 import { AllCards, CardModal } from '@/components/cards';
-import { AppLoading, ActionPanel } from '@/components/common';
-import { CasinoHeader } from '@/components/casino';
+import { Title, ActionPanel } from '@/components/common';
 import { useModal, useOrientation } from '@/hooks';
 import { getIconObjectUrl } from '@/lib/iconUrlCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
@@ -396,14 +395,14 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
 
   // Loading state
   if (loading || gameState === 'loading') {
-    return <AppLoading title="💣 Minesweeper" />;
+    return <Title title="💣 Minesweeper" fullscreen />;
   }
 
   // Error state
   if (error) {
     return (
       <div className="minesweeper-container">
-        <CasinoHeader title="Error" />
+        <Title title="Error" />
         <p>{error}</p>
       </div>
     );
@@ -413,7 +412,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
   if (gameState === 'selecting' && cards.length === 0) {
     return (
       <div className="minesweeper-container">
-        <CasinoHeader title="💣 Minesweeper" />
+        <Title title="💣 Minesweeper" />
         <p>You don't have any cards to bet.</p>
       </div>
     );
@@ -424,7 +423,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
     return (
       <>
         <div className={`minesweeper-card-selection ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
-          <CasinoHeader title="💣 Minesweeper" />
+          <Title title="💣 Minesweeper" />
           <p className="minesweeper-subtitle">Select a card to bet</p>
 
           <AllCards
@@ -468,7 +467,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
 
   return (
     <div className="minesweeper-container">
-      <CasinoHeader title="💣 Minesweeper" />
+      <Title title="💣 Minesweeper" />
       {gameData && (
         <p 
           className="minesweeper-bet-info"

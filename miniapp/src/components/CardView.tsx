@@ -1,9 +1,9 @@
 import Card from './Card';
 import AllCards from './AllCards';
 import FilterSortControls from './FilterSortControls';
-import { Title, PositionIndicator, ViewToggleButton } from '@/components/common';
-import { ProfileView } from '@/components/profile';
-import type { CardData, View, OrientationData, ProfileState } from '@/types';
+import ProfileView from './ProfileView';
+import { Title, PositionIndicator, ViewToggleButton } from './common';
+import type { CardData, View, OrientationData, ProfileState } from '../types';
 import type { FilterOptions, SortOptions } from './FilterSortControls';
 
 interface TabsProps {
@@ -125,13 +125,20 @@ const CardView = ({
               ? `Trade for ${tradeCardName}`
               : 'All cards'
             : `${collectionOwnerLabel}'s collection`}
-          leftContent={
+          rightContent={
             <>
               {view === 'current' && currentView.cards.length > 0 && (
-                <PositionIndicator
-                  current={currentView.isGridView ? currentView.filteredCards.length : currentIndex + 1}
-                  total={currentView.cards.length}
-                />
+                <>
+                  <PositionIndicator
+                    current={currentView.isGridView ? currentView.filteredCards.length : currentIndex + 1}
+                    total={currentView.cards.length}
+                  />
+                  <ViewToggleButton
+                    isGridView={currentView.isGridView}
+                    onClick={currentView.onGridToggle}
+                    disabled={currentView.isBurning}
+                  />
+                </>
               )}
               {view === 'all' && allView.baseCards.length > 0 && !allView.loading && !allView.error && (
                 <PositionIndicator
@@ -140,15 +147,6 @@ const CardView = ({
                 />
               )}
             </>
-          }
-          rightContent={
-            view === 'current' && currentView.cards.length > 0 ? (
-              <ViewToggleButton
-                isGridView={currentView.isGridView}
-                onClick={currentView.onGridToggle}
-                disabled={currentView.isBurning}
-              />
-            ) : undefined
           }
         />
 
