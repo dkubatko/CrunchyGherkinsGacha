@@ -1,4 +1,4 @@
-import ConfirmDialog from '../common/ConfirmDialog';
+import { ConfirmDialog } from '@/components/common';
 import './BurnConfirmDialog.css';
 
 interface BurnConfirmDialogProps {

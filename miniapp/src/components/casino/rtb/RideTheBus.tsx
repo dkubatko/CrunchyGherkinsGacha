@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ApiService } from '../../../services/api';
-import { TelegramUtils } from '../../../utils/telegram';
-import AppLoading from '../../common/AppLoading';
-import CasinoHeader from '../CasinoHeader';
+import { ApiService } from '@/services/api';
+import { TelegramUtils } from '@/utils/telegram';
+import { AppLoading } from '@/components/common';
+import { CasinoHeader } from '@/components/casino';
 import RTBCard from './RTBCard';
 import { 
   cardContainerVariants, 
@@ -14,8 +14,8 @@ import {
   getCardKey,
   splitByStack,
   type RTBCardIdentity,
-} from '../../../utils/rtbAnimations';
-import type { RTBGameResponse, RTBConfigResponse, RTBCardInfo } from '../../../types';
+} from '@/utils/rtbAnimations';
+import type { RTBGameResponse, RTBConfigResponse, RTBCardInfo } from '@/types';
 import './RideTheBus.css';
 
 interface RideTheBusProps {

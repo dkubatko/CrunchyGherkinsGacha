@@ -1,5 +1,5 @@
-import type { CardData, ClaimBalanceState } from '../../types';
-import ConfirmDialog from '../common/ConfirmDialog';
+import type { CardData, ClaimBalanceState } from '@/types';
+import { ConfirmDialog } from '@/components/common';
 
 interface LockConfirmDialogProps {
   isOpen: boolean;
