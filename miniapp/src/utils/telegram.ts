@@ -334,6 +334,8 @@ export class TelegramUtils {
   static startOrientationTracking(callback: (data: OrientationData) => void) {
     if (!WebApp.DeviceOrientation) return () => { };
 
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
     const updateOrientation = () => {
       callback({
         alpha: WebApp.DeviceOrientation.alpha || 0,
@@ -350,8 +352,8 @@ export class TelegramUtils {
     }, (started) => {
       if (started) {
         updateOrientation();
-        const interval = setInterval(updateOrientation, 100);
-        return () => clearInterval(interval);
+        // Start polling for orientation updates
+        intervalId = setInterval(updateOrientation, 100);
       }
     });
 
@@ -359,6 +361,9 @@ export class TelegramUtils {
     updateOrientation();
 
     return () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
       WebApp.DeviceOrientation.stop();
     };
   }

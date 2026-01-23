@@ -1,0 +1,538 @@
+/* Card Component Styles */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: #333;
+  border-radius: 25px;
+  padding: 1rem;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  width: 95vw;
+  max-width: 500px;
+  margin-bottom: 1rem;
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.card-image-container {
+  position: relative;
+  max-width: 100%;
+  max-height: 85%;
+  height: auto;
+  width: auto;
+  flex: 1;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  padding: var(--card-image-padding);
+  box-sizing: border-box;
+}
+
+.card-image-content {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border-radius: 25px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  isolation: isolate;
+  clip-path: inset(0 round 25px);
+}
+
+.card img {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  width: auto;
+  object-fit: contain;
+  border-radius: 25px;
+  display: block;
+  position: relative;
+  z-index: 1;
+}
+
+.card-shadow {
+  position: absolute;
+  top: var(--card-image-padding);
+  left: var(--card-image-padding);
+  right: var(--card-image-padding);
+  bottom: var(--card-image-padding);
+  border-radius: 32px;
+  pointer-events: none;
+  z-index: 0;
+  transition: box-shadow 0.12s ease-out;
+}
+
+.card-image-content::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 30px;
+  background: rgba(0, 0, 0, 0.08);
+  opacity: 0.25;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  transition: opacity 0.18s ease-out;
+}
+
+/* Hide the overlay when card is burning */
+.card-image-content.burning::before {
+  opacity: 0;
+  display: none;
+}
+
+.card-shine {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 1;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.card h3 {
+  margin-top: 0.5rem;
+  font-size: 1.2rem;
+  color: #fff;
+}
+
+.card-info {
+  margin: 0;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.card-name-container {
+  --card-share-size: 1.75rem;
+  --card-share-gap: 0.35rem;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: var(--card-share-size) auto var(--card-share-size);
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--card-share-gap);
+  margin: 0 auto 0.2rem;
+  min-height: var(--card-share-size);
+  max-width: 95%;
+  width: max-content;
+}
+
+.card-name-container::before {
+  content: '';
+}
+
+.card .card-name {
+  grid-column: 2;
+  font-size: 1.4rem !important;
+  font-weight: bold;
+  margin: 0;
+  line-height: 1.1;
+  text-align: center;
+  display: block;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.card-rarity {
+  font-size: 0.9rem;
+  color: #ccc;
+  margin: 0 0 0.2rem 0;
+  text-transform: capitalize;
+}
+
+.card-owner {
+  font-size: 0.75rem;
+  color: #ccc;
+  margin: 0.2rem 0 0 0;
+  font-weight: 400;
+}
+
+.card-owner-username {
+  color: #4A90E2;
+  font-weight: 500;
+}
+
+.card-id {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 10;
+}
+
+.card-set {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(128, 128, 128, 0.4);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  margin: 0 0 0.2rem 0;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.card-share-button-inline {
+  grid-column: 3;
+  justify-self: start;
+  width: var(--card-share-size);
+  height: var(--card-share-size);
+  min-width: var(--card-share-size);
+  min-height: var(--card-share-size);
+  border-radius: 50%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: transform 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transform: scale(1);
+}
+
+.card-share-button-inline:hover:not(:disabled) {
+  transform: scale(1.1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.card-share-button-inline:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.card-share-button-inline:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Lock indicator styles */
+.card-lock-indicator {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  height: 2.5rem;
+  min-width: 2.5rem;
+  border-radius: 1.25rem;
+  border: none;
+  outline: none;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(6px);
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: min-width 0.2s ease, padding-right 0.2s ease;
+  overflow: hidden;
+}
+
+.card-lock-indicator.expanded {
+  padding-right: 0.7rem;
+}
+
+.lock-icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 4px rgba(255, 215, 0, 0.6));
+  transform-origin: 50% 20%;
+  animation: lockShake 6s ease-in-out infinite;
+}
+
+.lock-id {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  opacity: 0;
+  max-width: 0;
+  overflow: hidden;
+  transition: opacity 0.2s ease, max-width 0.2s ease, margin-left 0.2s ease;
+  margin-left: 0;
+}
+
+.card-lock-indicator.expanded .lock-id {
+  opacity: 1;
+  max-width: 4rem;
+  margin-left: 0.4rem;
+}
+
+@keyframes lockShake {
+  0%, 100% {
+    transform: rotate(0deg);
+  }
+  2% {
+    transform: rotate(-6deg);
+  }
+  4% {
+    transform: rotate(6deg);
+  }
+  6% {
+    transform: rotate(-5deg);
+  }
+  8% {
+    transform: rotate(4deg);
+  }
+  10% {
+    transform: rotate(-2deg);
+  }
+  12% {
+    transform: rotate(0deg);
+  }
+}
+
+/* Share dialog styles */
+.share-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.share-dialog {
+  background: rgba(28, 28, 30, 0.92);
+  backdrop-filter: blur(30px);
+  padding: 0.7rem 1rem;
+  border-radius: 1.25rem;
+  box-shadow: 
+    0 16px 40px rgba(0, 0, 0, 0.5),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.12);
+  text-align: center;
+  min-width: 270px;
+  max-width: 300px;
+  animation: slideUp 0.2s ease-out;
+}
+
+.share-dialog p {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.95);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.lock-dialog-subtitle {
+  margin: 1.2rem;
+  font-size: 0.9rem !important;
+  opacity: 0.8;
+}
+
+.lock-dialog-balance {
+  margin: 1.2rem;
+  font-size: 0.85rem !important;
+  opacity: 0.7;
+}
+
+.share-dialog-buttons {
+  margin: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.share-confirm-btn, .share-cancel-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.8rem 1.35rem;
+  border: none;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(10px);
+  flex: 1 1 0;
+  min-width: 118px;
+  text-align: center;
+  white-space: nowrap;
+  letter-spacing: -0.005em;
+}
+
+.share-confirm-btn {
+  background: rgba(0, 122, 255, 0.95);
+  color: white;
+  border: 0.5px solid rgba(0, 122, 255, 0.4);
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2);
+}
+
+.share-confirm-btn:hover {
+  background: rgba(0, 122, 255, 1);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 14px rgba(0, 122, 255, 0.35);
+}
+
+.share-confirm-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 122, 255, 0.25);
+}
+
+.share-cancel-btn {
+  background: rgba(72, 72, 74, 0.85);
+  color: rgba(255, 255, 255, 0.85);
+  border: 0.5px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.share-cancel-btn:hover {
+  background: rgba(90, 90, 92, 0.9);
+  transform: translateY(-0.5px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.share-cancel-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.share-spinner {
+  width: 1rem;
+  height: 1rem;
+  border: 2px solid transparent;
+  border-top: 2px solid rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Single card container styles */
+.single-card-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 3vh, 2rem);
+  box-sizing: border-box;
+}
+
+.single-card-container .card {
+  flex: 0 1 auto;
+  width: min(420px, 90vw);
+  max-height: min(82vh, 620px);
+  padding: clamp(0.85rem, 1.25vw + 0.5rem, 1.4rem);
+  overflow: hidden;
+}
+
+.single-card-container .card-image-container {
+  max-height: clamp(260px, 55vh, 480px);
+}
+
+/* Mobile-specific card styles */
+@media (max-width: 480px) {
+  .card {
+    padding: 0.5rem;
+    width: calc(100vw - 0.5rem);
+    max-height: calc(100vh - 5rem);
+  }
+
+  .card-name-container {
+    --card-share-size: 1.5rem;
+    --card-share-gap: 0.25rem;
+  }
+
+  .card-share-button-inline {
+    width: var(--card-share-size);
+    height: var(--card-share-size);
+    min-width: var(--card-share-size);
+    min-height: var(--card-share-size);
+  }
+
+  .share-icon-inline {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .share-spinner-inline {
+    width: 1rem;
+    height: 1rem;
+  }
+  
+  .card h3 {
+    font-size: 1rem;
+    margin-top: 0.5rem;
+  }
+
+  .single-card-container {
+    height: 100vh;
+    padding: 0.75rem 0.4rem 1.1rem;
+  }
+
+  .single-card-container .card {
+    width: calc(100vw - 0.8rem);
+    max-height: min(90vh, 520px);
+    padding: clamp(0.65rem, 3vw, 1rem);
+  }
+
+  .single-card-container .card-image-container {
+    max-height: clamp(220px, 60vh, 420px);
+  }
+
+  .card-lock-indicator {
+    top: 6px;
+    left: 6px;
+    height: 2.2rem;
+    min-width: 2.2rem;
+    border-radius: 1.1rem;
+  }
+
+  .lock-icon {
+    width: 1.2rem;
+    height: 1.2rem;
+  }
+
+  .lock-id {
+    font-size: 0.8rem;
+  }
+}
