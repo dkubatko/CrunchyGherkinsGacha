@@ -1,6 +1,7 @@
 id: 18
 set: Christmas
 source: roll
+active: false
 rarities:
 - name: Common
   modifiers:

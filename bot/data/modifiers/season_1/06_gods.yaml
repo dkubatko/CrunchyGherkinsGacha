@@ -19,6 +19,7 @@ rarities:
   - Shinigami
   - Shiva
   - Thor
+  - Zeus
 - name: Legendary
   modifiers:
   - Amaterasu
@@ -26,4 +27,3 @@ rarities:
   - God
   - Moon God
   - Sun God
-  - Zeus

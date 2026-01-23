@@ -20,6 +20,8 @@ rarities:
   - Whale
 - name: Rare
   modifiers:
+  - Baobab
+  - Butterfly
   - Dinosaur
   - Everest
   - Fuji
@@ -28,10 +30,10 @@ rarities:
   - Yosemite
 - name: Epic
   modifiers:
+  - Apex Predator
   - Cataclysmic
   - Stargazing
   - Volcano
 - name: Legendary
   modifiers:
-  - Apex
   - Aurora

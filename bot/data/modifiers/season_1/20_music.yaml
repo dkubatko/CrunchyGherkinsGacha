@@ -5,6 +5,7 @@ rarities:
 - name: Common
   modifiers:
   - Classical
+  - Disco
   - DJ
   - Drummer
   - Guitarist

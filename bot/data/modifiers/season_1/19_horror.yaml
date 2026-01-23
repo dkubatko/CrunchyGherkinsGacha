@@ -6,6 +6,7 @@ rarities:
   modifiers:
   - Ghost
   - Ghoul
+  - Haunted
   - Undead
   - Vampire
   - Werewolf
@@ -20,13 +21,13 @@ rarities:
   - Nosferatu
   - Pinhead
   - Possessed
+  - Упырь
 - name: Epic
   modifiers:
   - Chucky
+  - Cthulhu
   - Pennywise
   - Slenderman
-  - Упырь
 - name: Legendary
   modifiers:
-  - Cthulhu
   - Баба Яга
