@@ -20,7 +20,6 @@ rarities:
   - Indian
   - Japanese
   - Kazakh
-  - Scandinavian
 - name: Epic
   modifiers:
   - Armenian
@@ -30,4 +29,3 @@ rarities:
 - name: Legendary
   modifiers:
   - Atlantis
-  - Utopia
