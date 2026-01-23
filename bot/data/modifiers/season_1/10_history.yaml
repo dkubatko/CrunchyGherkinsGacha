@@ -17,6 +17,7 @@ rarities:
   - Excalibur
   - Gladiator
   - King
+  - Pharaoh
   - Queen
   - Renaissance
   - Trojan
@@ -28,8 +29,8 @@ rarities:
   modifiers:
   - Emperor
   - Exorcist
-  - Pharaoh
   - Spartan
+  - Time Traveler
   - Царь
 - name: Legendary
   modifiers:

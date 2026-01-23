@@ -6,30 +6,34 @@ rarities:
   modifiers:
   - Archer
   - Blogger
-  - Clown
   - Coding
-  - Disco
+  - Crochet
   - Fitness
   - Gaming
   - Gardening
-  - Gym
-  - Hiking
+  - Groomer
   - Musician
+  - Pilates
   - Poet
   - Reading
+  - Rock Climbing
   - Skiing
   - Snowboarding
   - Streamer
 - name: Rare
   modifiers:
-  - Crochet
-  - Pilates
+  - 3D Printing
+  - Barber
+  - Clown
+  - Gym Bro
+  - Polyglot
   - Quilting
-  - Rock Climbing
+  - Skydiver
   - Workaholic
 - name: Epic
   modifiers:
-  - Polyglot
+  - Card Collector
+  - Hobby Horsing
 - name: Legendary
   modifiers:
   - Hookah

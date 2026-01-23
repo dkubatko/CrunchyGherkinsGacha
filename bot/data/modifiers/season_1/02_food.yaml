@@ -11,6 +11,7 @@ rarities:
   - Gummy
   - Ice Cream
   - Mushroom
+  - Pancake
   - Pizza
   - Steak
   - Sushi
@@ -19,6 +20,7 @@ rarities:
   modifiers:
   - Boba
   - Döner
+  - Egg
   - Falafel
   - Fried Chicken
   - Kimchi
@@ -29,7 +31,7 @@ rarities:
   modifiers:
   - Borscht
   - Bánh Mì
-  - Pelmeni
+  - Пельмень
   - Хачапури
 - name: Legendary
   modifiers:

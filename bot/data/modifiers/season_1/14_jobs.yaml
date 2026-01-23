@@ -4,6 +4,7 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Astronomer
   - Cashier
   - Contractor
   - Farmer
@@ -17,11 +18,11 @@ rarities:
   modifiers:
   - Astronaut
   - Chef
+  - Coal Miner
   - Janitor
   - Taxi Driver
 - name: Epic
   modifiers:
-  - Coal Miner
   - Coroner
   - Dog Trainer
   - Mafia
