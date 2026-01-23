@@ -1,5 +1,5 @@
 import './AppLoading.css';
-import CasinoHeader from './CasinoHeader';
+import CasinoHeader from '../casino/CasinoHeader';
 
 interface AppLoadingProps {
   title?: string;

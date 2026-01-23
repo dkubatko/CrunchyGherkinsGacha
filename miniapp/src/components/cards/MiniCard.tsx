@@ -1,7 +1,7 @@
 import React, { useState, useEffect, memo, useRef } from 'react';
 import { useInView } from 'react-intersection-observer';
-import { imageCache } from '../lib/imageCache';
-import type { CardData } from '../types';
+import { imageCache } from '../../lib/imageCache';
+import type { CardData } from '../../types';
 
 interface MiniCardProps {
   card: CardData;

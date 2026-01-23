@@ -20,8 +20,8 @@ import {
   getRightStackPosition,
   getLeftStackAbsolutePosition,
   getRightStackAbsolutePosition,
-} from '../utils/rtbAnimations';
-import type { RTBCardInfo } from '../types';
+} from '../../../utils/rtbAnimations';
+import type { RTBCardInfo } from '../../../types';
 
 // =============================================================================
 // TYPES

@@ -1,9 +1,9 @@
 import Card from './Card';
 import AllCards from './AllCards';
 import FilterSortControls from './FilterSortControls';
-import AppLoading from './AppLoading';
-import ProfileView from './ProfileView';
-import type { CardData, View, OrientationData, ProfileState } from '../types';
+import AppLoading from '../common/AppLoading';
+import ProfileView from '../profile/ProfileView';
+import type { CardData, View, OrientationData, ProfileState } from '../../types';
 import type { FilterOptions, SortOptions } from './FilterSortControls';
 
 interface TabsProps {

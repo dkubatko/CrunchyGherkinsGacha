@@ -1,8 +1,8 @@
 import React, { memo, useCallback } from 'react';
 import MiniCard from './MiniCard';
 import './AllCards.css';
-import type { CardData } from '../types';
-import { useBatchLoader } from '../hooks';
+import type { CardData } from '../../types';
+import { useBatchLoader } from '../../hooks';
 
 interface AllCardsProps {
   cards: CardData[];

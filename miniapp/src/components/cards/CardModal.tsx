@@ -1,5 +1,5 @@
 import React from 'react';
-import type { CardData, OrientationData } from '../types';
+import type { CardData, OrientationData } from '../../types';
 import Card from './Card';
 
 interface CardModalProps {

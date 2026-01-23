@@ -1,7 +1,7 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import './FilterSortControls.css';
-import type { CardData } from '../types';
-import { RARITY_SEQUENCE } from '../utils/rarityStyles';
+import type { CardData } from '../../types';
+import { RARITY_SEQUENCE } from '../../utils/rarityStyles';
 
 export interface FilterOptions {
   owner: string;

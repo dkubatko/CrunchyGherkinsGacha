@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import type { UserProfile, CardData } from '../types';
+import type { UserProfile, CardData } from '../../types';
 import Achievement from './Achievement';
 import './ProfileView.css';
 
