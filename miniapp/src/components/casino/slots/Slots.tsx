@@ -1,19 +1,19 @@
 import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
-import { TelegramUtils } from '../utils/telegram';
-import { ApiService } from '../services/api';
-import { useSlotsStore } from '../stores/useSlotsStore';
-import { getIconObjectUrl } from '../lib/iconUrlCache';
-import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../utils/rarityStyles';
-import type { RarityName } from '../utils/rarityStyles';
-import type { SlotSymbolInfo } from '../types';
-import AppLoading from './AppLoading';
-import CasinoHeader from './CasinoHeader';
+import { TelegramUtils } from '../../../utils/telegram';
+import { ApiService } from '../../../services/api';
+import { useSlotsStore } from '../../../stores/useSlotsStore';
+import { getIconObjectUrl } from '../../../lib/iconUrlCache';
+import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '../../../utils/rarityStyles';
+import type { RarityName } from '../../../utils/rarityStyles';
+import type { SlotSymbolInfo } from '../../../types';
+import AppLoading from '../../common/AppLoading';
+import CasinoHeader from '../CasinoHeader';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
   RARITY_WHEEL_BASE_DURATION_MS,
   RARITY_WHEEL_TIMING_FUNCTION,
-} from '../utils/rarityWheel';
+} from '../../../utils/rarityWheel';
 import {
   SLOT_REEL_COUNT,
   SLOT_BASE_SPIN_DURATION_MS,
@@ -22,7 +22,7 @@ import {
   computeSlotSpinTransforms,
   computeSlotStaticTransform,
   computeTotalSlotSymbols,
-} from '../utils/slotWheel';
+} from '../../../utils/slotWheel';
 import './SlotMachine.css';
 
 interface UserSpinsData {

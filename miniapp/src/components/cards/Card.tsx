@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import AnimatedImage from './AnimatedImage';
-import { imageCache } from '../lib/imageCache';
-import { getRarityGradient } from '../utils/rarityStyles';
-import type { OrientationData, CardData } from '../types';
-import ConfirmDialog from './ConfirmDialog';
+import AnimatedImage from '../common/AnimatedImage';
+import { imageCache } from '../../lib/imageCache';
+import { getRarityGradient } from '../../utils/rarityStyles';
+import type { OrientationData, CardData } from '../../types';
+import ConfirmDialog from '../common/ConfirmDialog';
 
 const inFlightFullImageRequests = new Map<number, Promise<string>>();
 

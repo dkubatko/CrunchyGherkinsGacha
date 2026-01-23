@@ -2,16 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import './App.css';
 
 // Components
-import SingleCardView from './components/SingleCardView';
-import CardModal from './components/CardModal';
-import ActionPanel from './components/ActionPanel';
-import BurnConfirmDialog from './components/BurnConfirmDialog';
-import CardView from './components/CardView';
-import LockConfirmDialog from './components/LockConfirmDialog';
-import Casino from './components/Casino';
-import AppLoading from './components/AppLoading';
-import type { FilterOptions, SortOptions } from './components/FilterSortControls';
-import type { ActionButton } from './components/ActionPanel';
+import { SingleCardView, CardModal, CardView } from './components/cards';
+import { ActionPanel, AppLoading } from './components/common';
+import { BurnConfirmDialog, LockConfirmDialog } from './components/dialogs';
+import { Casino } from './components/casino';
+import type { FilterOptions, SortOptions } from './components/cards';
+import type { ActionButton } from './components/common';
 
 // Hooks
 import {
