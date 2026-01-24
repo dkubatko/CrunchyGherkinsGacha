@@ -73,25 +73,16 @@ const Card: React.FC<CardProps> = ({
     const fetchImage = async () => {
       if (!id || !initData) return;
 
-      // Check if we have a valid cached version (validates against server timestamp)
-      if (imageCache.isValidCached(id, 'full', image_updated_at ?? null)) {
-        // Try to get from memory first (fast path)
-        const memCached = imageCache.get(id, 'full');
-        if (memCached) {
-          setImageB64(memCached);
-          setLoadingImage(false);
-          return;
-        }
-        
-        // Try async path (IndexedDB)
-        const persistedCached = await imageCache.getAsync(id, 'full', image_updated_at ?? null);
-        if (persistedCached) {
-          setImageB64(persistedCached);
-          setLoadingImage(false);
-          return;
-        }
+      // Try to get from cache first (memory, then IndexedDB)
+      // getAsync handles all validation and cache promotion
+      const cached = await imageCache.getAsync(id, 'full', image_updated_at ?? null);
+      if (cached) {
+        setImageB64(cached);
+        setLoadingImage(false);
+        return;
       }
 
+      // Not in cache, fetch from server
       setLoadingImage(true);
       try {
         let imageRequest = inFlightFullImageRequests.get(id);
