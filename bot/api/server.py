@@ -12,11 +12,14 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 
 from api.config import DEBUG_MODE
+from api.limiter import limiter
 from api.routers import (
     cards_router,
     chat_router,
+    downloads_router,
     minesweeper_router,
     rtb_router,
     slots_router,
@@ -32,6 +35,19 @@ app = FastAPI(
     description="API for the Telegram Mini App",
     version="1.0.0",
 )
+
+# Register limiter with app state for access in routers
+app.state.limiter = limiter
+
+
+# Rate limit exceeded handler
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceeded errors."""
+    return JSONResponse(
+        status_code=429,
+        content={"detail": f"Rate limit exceeded: {exc.detail}"},
+    )
 
 
 @app.exception_handler(Exception)
@@ -66,6 +82,7 @@ app.add_middleware(
 
 # Include all routers
 app.include_router(cards_router)
+app.include_router(downloads_router)
 app.include_router(trade_router)
 app.include_router(user_router)
 app.include_router(slots_router)

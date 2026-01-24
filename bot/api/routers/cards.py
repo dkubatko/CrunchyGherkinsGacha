@@ -14,7 +14,7 @@ import logging
 import urllib.parse
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from telegram.constants import ParseMode
 
 from api.background_tasks import process_burn_notification
@@ -48,7 +48,11 @@ from utils.services import (
     thread_service,
     user_service,
 )
+from utils.download_token import validate_download_token
 from utils.events import EventType, BurnOutcome, LockOutcome
+
+# Import limiter for rate limiting
+from api.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -505,6 +509,44 @@ async def get_card_image_route(
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
     return image_b64
+
+
+@router.get("/view/{card_id}.png")
+@limiter.limit("5/minute")
+async def view_card_image_route(
+    request: Request,
+    card_id: int,
+    token: Optional[str] = Query(None, description="Short-lived download token"),
+):
+    """View the card image directly as PNG.
+
+    This endpoint serves the raw image for viewing/saving in external browsers.
+    Requires a short-lived signed token obtained from POST /downloads/token/card/{card_id}.
+    Rate limited to 5 requests per minute.
+    """
+    import base64
+    from fastapi.responses import Response
+
+    # Validate token
+    if not token:
+        raise HTTPException(status_code=401, detail="Download token required")
+
+    if not validate_download_token(token, card_id, TELEGRAM_TOKEN):
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    image_b64 = await asyncio.to_thread(card_service.get_card_image, card_id)
+    if not image_b64:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    image_bytes = base64.b64decode(image_b64)
+
+    return Response(
+        content=image_bytes,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.post("/images", response_model=List[CardImageResponse])

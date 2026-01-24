@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import WebApp from '@twa-dev/sdk';
 import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import { imageCache } from '@/lib/imageCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
+import { useLongPress } from '@/hooks';
+import { ApiService } from '@/services/api';
 import type { OrientationData, CardData } from '@/types';
 import './Card.css';
 
@@ -27,6 +30,7 @@ interface CardProps {
   onBurnComplete?: () => void;
   set_name?: string | null;
   image_updated_at?: string | null;
+  enableDownload?: boolean;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -48,7 +52,8 @@ const Card: React.FC<CardProps> = ({
   triggerBurn = false,
   onBurnComplete,
   set_name,
-  image_updated_at
+  image_updated_at,
+  enableDownload = false
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -159,6 +164,32 @@ const Card: React.FC<CardProps> = ({
     setShowShareDialog(false);
   };
 
+  // Handle long-press download for modal view
+  const handleDownload = useCallback(async () => {
+    if (!enableDownload || !initData) return;
+    
+    // Trigger haptic feedback
+    WebApp.HapticFeedback.notificationOccurred('success');
+    
+    try {
+      // Get a short-lived download token from the API
+      const token = await ApiService.getDownloadToken(id, initData);
+      const imageUrl = ApiService.getCardViewUrl(id, token);
+      
+      // Open in external browser where user can long-press to save
+      WebApp.openLink(imageUrl);
+    } catch (error) {
+      console.error('Failed to get download token:', error);
+      WebApp.HapticFeedback.notificationOccurred('error');
+    }
+  }, [enableDownload, initData, id]);
+
+  // Long press handlers for download
+  const longPressHandlers = useLongPress({
+    onLongPress: handleDownload,
+    delay: 500
+  });
+
   return (
     <div className="card" onClick={handleCardClick}>
       <ConfirmDialog
@@ -208,16 +239,21 @@ const Card: React.FC<CardProps> = ({
         </div>
       ) : (
         shiny ? (
-          <AnimatedImage 
-            imageUrl={imageUrl}
-            alt={`${modifier} ${base_name}`}
-            rarity={rarity}
-            orientation={orientation}
-            effectsEnabled={effectsEnabled}
-            tiltKey={tiltKey}
-            triggerBurn={triggerBurn}
-            onBurnComplete={onBurnComplete}
-          />
+          <div 
+            className="card-image-wrapper"
+            {...(enableDownload ? longPressHandlers : {})}
+          >
+            <AnimatedImage 
+              imageUrl={imageUrl}
+              alt={`${modifier} ${base_name}`}
+              rarity={rarity}
+              orientation={orientation}
+              effectsEnabled={effectsEnabled}
+              tiltKey={tiltKey}
+              triggerBurn={triggerBurn}
+              onBurnComplete={onBurnComplete}
+            />
+          </div>
         ) : (
           <div className="card-image-container">
             <img 
