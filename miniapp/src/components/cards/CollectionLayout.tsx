@@ -1,4 +1,4 @@
-import AllCards from './AllCards';
+import CardGrid from './CardGrid';
 import FilterSortControls from './FilterSortControls';
 import { Title } from '@/components/common';
 import { ProfileView } from '@/components/profile';
@@ -39,7 +39,7 @@ interface AllViewProps {
   onOpenModal: (card: CardData) => void;
 }
 
-interface CardViewProps {
+interface CollectionLayoutProps {
   view: View;
   hasChatScope: boolean;
   isTradeGridActive: boolean;
@@ -52,7 +52,7 @@ interface CardViewProps {
   profileView: ProfileState;
 }
 
-const CardView = ({
+const CollectionLayout = ({
   view,
   hasChatScope,
   isTradeGridActive,
@@ -63,7 +63,7 @@ const CardView = ({
   currentView,
   allView,
   profileView
-}: CardViewProps) => {
+}: CollectionLayoutProps) => {
   return (
     <>
       <div className="tabs">
@@ -133,7 +133,7 @@ const CardView = ({
                   <p>Try selecting a different rarity or clearing the filter.</p>
                 </div>
               ) : (
-                <AllCards
+                <CardGrid
                   cards={currentView.filteredCards}
                   onCardClick={currentView.onOpenModal}
                   initData={currentView.initData}
@@ -186,7 +186,7 @@ const CardView = ({
                   <p>Try adjusting your filter settings to see more cards.</p>
                 </div>
               ) : (
-                <AllCards
+                <CardGrid
                   cards={allView.displayedCards}
                   onCardClick={allView.onOpenModal}
                   initData={allView.initData}
@@ -202,4 +202,4 @@ const CardView = ({
   );
 };
 
-export default CardView;
+export default CollectionLayout;
