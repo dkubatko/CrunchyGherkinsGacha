@@ -146,18 +146,11 @@ export const useBatchLoader = (
     [apiBaseUrl, initData]
   );
 
-  // Get cards that need loading: visible, not validly cached, not currently loading, not failed
+  // Get visible cards not yet in memory cache
   const getCardsToLoad = useCallback((): number[] => {
     const result: number[] = [];
     for (const cardId of visibleCardsRef.current) {
-      const imageUpdatedAt = cardTimestampsRef.current.get(cardId) ?? null;
-      
-      // Use isValidCached to check both memory and persistent cache with timestamp validation
-      if (
-        !imageCache.isValidCached(cardId, 'thumb', imageUpdatedAt) &&
-        !loadingCardsRef.current.has(cardId) &&
-        !state.failedCards.has(cardId)
-      ) {
+      if (!imageCache.has(cardId, 'thumb') && !loadingCardsRef.current.has(cardId) && !state.failedCards.has(cardId)) {
         result.push(cardId);
       }
     }
@@ -219,14 +212,12 @@ export const useBatchLoader = (
     }, DEBOUNCE_MS);
   }, [processQueue]);
 
-  // Simple visibility callback - just updates the set and schedules processing
+  // Called by MiniCard after it confirms cache miss
   const setCardVisible = useCallback((cardId: number, isVisible: boolean) => {
     if (isVisible) {
       if (!visibleCardsRef.current.has(cardId)) {
         visibleCardsRef.current.add(cardId);
-        // Only schedule if this card needs loading (check with timestamp validation)
-        const imageUpdatedAt = cardTimestampsRef.current.get(cardId) ?? null;
-        if (!imageCache.isValidCached(cardId, 'thumb', imageUpdatedAt) && !loadingCardsRef.current.has(cardId)) {
+        if (!imageCache.has(cardId, 'thumb') && !loadingCardsRef.current.has(cardId)) {
           scheduleProcessing();
         }
       }

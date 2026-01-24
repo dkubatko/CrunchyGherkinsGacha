@@ -13,75 +13,69 @@ interface MiniCardProps {
 }
 
 const MiniCard: React.FC<MiniCardProps> = ({ card, onClick, isLoading = false, hasFailed = false, setCardVisible }) => {
-  // Check if we have cached data immediately to set initial state (with timestamp validation)
   const imageUpdatedAt = card.image_updated_at ?? null;
-  const cachedImage = imageCache.isValidCached(card.id, 'thumb', imageUpdatedAt) 
-    ? imageCache.get(card.id, 'thumb') 
-    : null;
+  const cachedImage = imageCache.has(card.id, 'thumb') ? imageCache.get(card.id, 'thumb') : null;
   const [imageB64, setImageB64] = useState<string | null>(cachedImage);
-  const hasNotifiedVisible = useRef(false);
-  const hasTriedPersistent = useRef(false);
+  const [loadState, setLoadState] = useState<'idle' | 'loading-cache' | 'waiting-server' | 'done'>(
+    cachedImage ? 'done' : 'idle'
+  );
+  const isMounted = useRef(true);
 
-  // Use react-intersection-observer for reliable visibility detection
-  // Don't skip even if we have an image - we need to track visibility for the parent
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
+
   const { ref, inView } = useInView({
     threshold: 0,
-    rootMargin: '600px', // Increased prefetch distance for mobile scrolling
+    rootMargin: '600px',
     triggerOnce: false,
   });
 
-  // Try to load from persistent cache when becoming visible
+  // When visible and idle: try cache → if miss, request from server
   useEffect(() => {
-    if (imageB64 || hasTriedPersistent.current || !inView) return;
+    if (imageB64 || loadState !== 'idle' || !inView) return;
     
-    hasTriedPersistent.current = true;
-    
-    // Async load from persistent cache
-    imageCache.getAsync(card.id, 'thumb', imageUpdatedAt).then((cached) => {
-      if (cached) {
-        setImageB64(cached);
+    const loadImage = async () => {
+      setLoadState('loading-cache');
+      try {
+        const cached = await imageCache.getAsync(card.id, 'thumb', imageUpdatedAt);
+        if (!isMounted.current) return;
+        if (cached) {
+          setImageB64(cached);
+          setLoadState('done');
+          return;
+        }
+      } catch {
+        if (!isMounted.current) return;
       }
-    });
-  }, [card.id, imageB64, inView, imageUpdatedAt]);
+      setLoadState('waiting-server');
+    };
+    void loadImage();
+  }, [card.id, imageB64, inView, imageUpdatedAt, loadState]);
 
-  // Notify parent when visibility changes
+  // Notify batch loader only when server fetch needed
   useEffect(() => {
-    // Only notify if we don't have the image yet
-    if (!imageB64) {
+    if (loadState === 'waiting-server') {
       setCardVisible(card.id, inView);
-      if (inView) {
-        hasNotifiedVisible.current = true;
-      }
+    } else if (loadState === 'done' || loadState === 'loading-cache') {
+      setCardVisible(card.id, false);
     }
-  }, [card.id, inView, imageB64, setCardVisible]);
+  }, [card.id, inView, loadState, setCardVisible]);
 
-  // Check cache periodically while loading or visible without image
+  // Check cache when batch loader finishes (isLoading: true → false triggers re-run)
   useEffect(() => {
-    if (imageB64) return;
+    if (imageB64 || loadState !== 'waiting-server') return;
     
-    // Check immediately
     const cached = imageCache.get(card.id, 'thumb');
     if (cached) {
       setImageB64(cached);
-      return;
+      setLoadState('done');
     }
-
-    // Poll the cache while we're loading or visible
-    if (isLoading || inView) {
-      const interval = setInterval(() => {
-        const cached = imageCache.get(card.id, 'thumb');
-        if (cached) {
-          setImageB64(cached);
-          clearInterval(interval);
-        }
-      }, 32); // Poll every ~2 frames for snappy updates
-
-      return () => clearInterval(interval);
-    }
-  }, [card.id, isLoading, imageB64, inView]);
+  }, [card.id, isLoading, imageB64, loadState]);
 
   const showImage = imageB64 && !hasFailed;
-  const showLoading = !imageB64 && isLoading && !hasFailed;
+  const showLoading = !imageB64 && (isLoading || loadState === 'loading-cache') && !hasFailed;
   const showError = hasFailed;
 
   return (

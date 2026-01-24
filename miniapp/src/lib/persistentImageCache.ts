@@ -142,6 +142,7 @@ class PersistentImageCache {
 
   /**
    * Check if a cached image is valid (not stale) compared to server timestamp.
+   * Synchronous check against memory index - may return false if index not built yet.
    */
   isValid(cardId: number, variant: ImageVariant, serverImageUpdatedAt: string | null): boolean {
     const key: CacheKey = `${variant}:${cardId}`;
@@ -166,16 +167,18 @@ class PersistentImageCache {
   }
 
   /**
-   * Check if cache has an entry (may be stale).
+   * Async version that waits for DB to be ready before checking validity.
+   * Use this when you need a definitive answer about cache validity.
    */
-  has(cardId: number, variant: ImageVariant): boolean {
-    const key: CacheKey = `${variant}:${cardId}`;
-    return this.memoryIndex.has(key);
+  async isValidAsync(cardId: number, variant: ImageVariant, serverImageUpdatedAt: string | null): Promise<boolean> {
+    await this.dbReady;
+    return this.isValid(cardId, variant, serverImageUpdatedAt);
   }
 
   /**
    * Get a cached image. Returns null if not found or unavailable.
    * Updates lastAccessedAt for LRU tracking.
+   * Awaits DB ready before accessing.
    */
   async get(cardId: number, variant: ImageVariant): Promise<string | null> {
     await this.dbReady;
@@ -393,110 +396,6 @@ class PersistentImageCache {
         resolve();
       }
     });
-  }
-
-  /**
-   * Delete a specific entry from cache.
-   */
-  async delete(cardId: number, variant: ImageVariant): Promise<void> {
-    await this.dbReady;
-    
-    if (!this.db || !this.isAvailable) {
-      return;
-    }
-
-    const key: CacheKey = `${variant}:${cardId}`;
-    const entry = this.memoryIndex.get(key);
-
-    return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.delete([variant, cardId]);
-
-        request.onsuccess = () => {
-          if (entry) {
-            this.totalSize -= entry.size;
-          }
-          this.memoryIndex.delete(key);
-          resolve();
-        };
-
-        request.onerror = () => {
-          resolve();
-        };
-      } catch {
-        resolve();
-      }
-    });
-  }
-
-  /**
-   * Clear all cached images.
-   */
-  async clear(): Promise<void> {
-    await this.dbReady;
-    
-    if (!this.db || !this.isAvailable) {
-      return;
-    }
-
-    return new Promise((resolve) => {
-      try {
-        const transaction = this.db!.transaction(STORE_NAME, 'readwrite');
-        const store = transaction.objectStore(STORE_NAME);
-        const request = store.clear();
-
-        request.onsuccess = () => {
-          this.memoryIndex.clear();
-          this.totalSize = 0;
-          resolve();
-        };
-
-        request.onerror = () => {
-          resolve();
-        };
-      } catch {
-        resolve();
-      }
-    });
-  }
-
-  /**
-   * Get cache statistics for debugging.
-   */
-  getStats(): { totalSize: number; entryCount: number; thumbCount: number; fullCount: number } {
-    let thumbCount = 0;
-    let fullCount = 0;
-    
-    for (const [key] of this.memoryIndex.entries()) {
-      if (key.startsWith('thumb:')) {
-        thumbCount++;
-      } else {
-        fullCount++;
-      }
-    }
-
-    return {
-      totalSize: this.totalSize,
-      entryCount: this.memoryIndex.size,
-      thumbCount,
-      fullCount,
-    };
-  }
-
-  /**
-   * Wait for the cache to be ready.
-   */
-  async ready(): Promise<boolean> {
-    return this.dbReady;
-  }
-
-  /**
-   * Check if IndexedDB is available and working.
-   */
-  isDBAvailable(): boolean {
-    return this.isAvailable && this.db !== null;
   }
 }
 
