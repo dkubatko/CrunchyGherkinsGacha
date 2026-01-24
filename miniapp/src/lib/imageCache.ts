@@ -1,4 +1,6 @@
 // src/lib/imageCache.ts
+// Hybrid cache: in-memory (fast) + IndexedDB (persistent)
+// Use getAsync() for full cache check, get() for memory-only
 
 import { persistentImageCache, type ImageVariant } from './persistentImageCache';
 
@@ -8,13 +10,6 @@ interface CacheEntry {
   imageUpdatedAt: string | null;
 }
 
-/**
- * Hybrid image cache with in-memory fast path and IndexedDB persistence.
- * 
- * - In-memory for instant access during session
- * - IndexedDB for persistence across sessions
- * - Timestamp validation via image_updated_at
- */
 class ImageCache {
   private cache: Map<string, CacheEntry> = new Map();
   private readonly CACHE_DURATION = 30 * 60 * 1000; // 30 minutes for in-memory TTL
@@ -26,9 +21,7 @@ class ImageCache {
     return `${variant}:${cardId}`;
   }
 
-  /**
-   * Store image in both in-memory and persistent cache.
-   */
+  /** Store in memory + async persist to IndexedDB */
   set(cardId: number, data: string, variant: ImageVariant = 'full', imageUpdatedAt: string | null = null): void {
     const key = this.getKey(cardId, variant);
     this.cache.set(key, {
@@ -43,10 +36,7 @@ class ImageCache {
     });
   }
 
-  /**
-   * Get image from in-memory cache only (synchronous, fast path).
-   * Use getAsync for persistent cache fallback.
-   */
+  /** Get from memory only (sync). Use getAsync() for full check. */
   get(cardId: number, variant: ImageVariant = 'full'): string | null {
     const key = this.getKey(cardId, variant);
     const entry = this.cache.get(key);
@@ -63,10 +53,7 @@ class ImageCache {
     return entry.data;
   }
 
-  /**
-   * Get image from cache, checking persistent storage if not in memory.
-   * Also validates against server timestamp if provided.
-   */
+  /** Primary cache check: memory → IndexedDB. Validates timestamp, promotes to memory. */
   async getAsync(
     cardId: number, 
     variant: ImageVariant = 'full',
@@ -98,13 +85,15 @@ class ImageCache {
       return pending;
     }
 
-    // Slow path: check persistent cache
+    // Slow path: check persistent cache (awaits DB ready)
     const loadPromise = (async () => {
       try {
         // Validate against server timestamp before loading from persistent
-        if (serverImageUpdatedAt && !persistentImageCache.isValid(cardId, variant, serverImageUpdatedAt)) {
-          // Persistent cache is stale
-          return null;
+        if (serverImageUpdatedAt) {
+          const isValid = await persistentImageCache.isValidAsync(cardId, variant, serverImageUpdatedAt);
+          if (!isValid) {
+            return null;
+          }
         }
 
         const data = await persistentImageCache.get(cardId, variant);
@@ -113,7 +102,7 @@ class ImageCache {
           this.cache.set(key, {
             data,
             timestamp: Date.now(),
-            imageUpdatedAt: serverImageUpdatedAt,  // Use server timestamp since we validated
+            imageUpdatedAt: serverImageUpdatedAt,
           });
         }
         return data;
@@ -126,9 +115,7 @@ class ImageCache {
     return loadPromise;
   }
 
-  /**
-   * Check if image is in in-memory cache (synchronous).
-   */
+  /** Check memory cache only (sync) */
   has(cardId: number, variant: ImageVariant = 'full'): boolean {
     const key = this.getKey(cardId, variant);
     const entry = this.cache.get(key);
@@ -145,53 +132,6 @@ class ImageCache {
     return true;
   }
 
-  /**
-   * Check if image exists in either memory or persistent cache.
-   * Does NOT validate timestamp - use isValidCached for that.
-   */
-  hasAny(cardId: number, variant: ImageVariant = 'full'): boolean {
-    if (this.has(cardId, variant)) {
-      return true;
-    }
-    return persistentImageCache.has(cardId, variant);
-  }
-
-  /**
-   * Check if a valid (non-stale) cached version exists.
-   */
-  isValidCached(cardId: number, variant: ImageVariant, serverImageUpdatedAt: string | null): boolean {
-    const key = this.getKey(cardId, variant);
-    
-    // Check in-memory first
-    const memEntry = this.cache.get(key);
-    if (memEntry) {
-      const isExpired = Date.now() - memEntry.timestamp > this.CACHE_DURATION;
-      if (!isExpired) {
-        if (!serverImageUpdatedAt) return true;
-        if (!memEntry.imageUpdatedAt) return false;
-        return new Date(memEntry.imageUpdatedAt) >= new Date(serverImageUpdatedAt);
-      }
-    }
-
-    // Check persistent cache
-    return persistentImageCache.isValid(cardId, variant, serverImageUpdatedAt);
-  }
-
-  clear(): void {
-    this.cache.clear();
-    // Note: intentionally not clearing persistent cache on clear()
-    // Use clearAll() to also clear persistent storage
-  }
-
-  async clearAll(): Promise<void> {
-    this.cache.clear();
-    await persistentImageCache.clear();
-  }
-
-  size(): number {
-    return this.cache.size;
-  }
-
   // Clean up expired entries from in-memory cache
   cleanup(): void {
     const now = Date.now();
@@ -201,29 +141,6 @@ class ImageCache {
         this.cache.delete(key);
       }
     }
-  }
-
-  /**
-   * Get cache statistics for debugging.
-   */
-  getStats(): { memorySize: number; persistentStats: ReturnType<typeof persistentImageCache.getStats> } {
-    return {
-      memorySize: this.cache.size,
-      persistentStats: persistentImageCache.getStats(),
-    };
-  }
-
-  /**
-   * Preload images from persistent cache into memory.
-   * Useful for hydrating cache on app start.
-   */
-  async preloadFromPersistent(cardIds: number[], variant: ImageVariant = 'thumb'): Promise<void> {
-    const loadPromises = cardIds.map(async (cardId) => {
-      if (!this.has(cardId, variant)) {
-        await this.getAsync(cardId, variant);
-      }
-    });
-    await Promise.all(loadPromises);
   }
 }
 
