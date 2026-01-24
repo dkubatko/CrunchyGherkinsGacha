@@ -4,6 +4,7 @@ import { TelegramUtils } from '../utils/telegram';
 export type AppRoute = 
   | { type: 'loading' }
   | { type: 'error'; message: string }
+  | { type: 'landing' }
   | { type: 'casino'; currentUserId: number; chatId: string; initData: string }
   | { type: 'singleCard'; currentUserId: number; cardId: number; initData: string }
   | { type: 'collection'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string };
@@ -28,17 +29,29 @@ export const useAppRouter = (): UseAppRouterResult => {
 
     const initialize = () => {
       try {
-        // Initialize user data from Telegram
-        const userData = TelegramUtils.initializeUser();
-        if (!userData) {
-          setRoute({ type: 'error', message: 'Failed to initialize user data' });
+        // Check if this is a direct web access to root path (no Telegram context)
+        const initData = TelegramUtils.getInitData();
+        const isRootPath = window.location.pathname === '/' && 
+                          !window.location.search && 
+                          !window.location.hash;
+        
+        if (!initData && isRootPath) {
+          // No Telegram context and on root path - show landing page
+          setRoute({ type: 'landing' });
+          return;
+        }
+        
+        if (!initData) {
+          // No Telegram context but not on root - redirect to landing page
+          window.location.href = '/';
           return;
         }
 
-        // Get init data for API calls
-        const initData = TelegramUtils.getInitData();
-        if (!initData) {
-          setRoute({ type: 'error', message: 'No Telegram init data found' });
+        // Initialize user data from Telegram
+        const userData = TelegramUtils.initializeUser();
+        if (!userData) {
+          // Has init data but failed to parse user - show error
+          setRoute({ type: 'error', message: 'Failed to initialize user data' });
           return;
         }
 

@@ -5,7 +5,7 @@ import './App.css';
 import { useAppRouter } from './hooks';
 
 // Pages
-import { CasinoPage, SingleCardPage, CollectionPage } from './pages';
+import { CasinoPage, SingleCardPage, CollectionPage, LandingPage } from './pages';
 
 // Components
 import { Title } from './components/common';
@@ -41,6 +41,9 @@ function App() {
 
   // Route to appropriate page
   switch (route.type) {
+    case 'landing':
+      return <LandingPage />;
+
     case 'casino':
       return (
         <CasinoPage
