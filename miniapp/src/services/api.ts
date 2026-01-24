@@ -76,28 +76,6 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchCardImagesBatch(cardIds: number[], initData: string): Promise<Record<number, string>> {
-    if (cardIds.length === 0) {
-      return {};
-    }
-
-    const response = await fetch(`${API_BASE_URL}/cards/images`, {
-      method: 'POST',
-      headers: this.getHeaders(initData),
-      body: JSON.stringify({ card_ids: cardIds })
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to fetch card images batch');
-    }
-
-    const payload: Array<{ card_id: number; image_b64: string }> = await response.json();
-    return payload.reduce<Record<number, string>>((acc, item) => {
-      acc[item.card_id] = item.image_b64;
-      return acc;
-    }, {});
-  }
-
   static async fetchTradeOptions(cardId: number, initData: string): Promise<CardData[]> {
     const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(String(cardId))}/options`;
 
