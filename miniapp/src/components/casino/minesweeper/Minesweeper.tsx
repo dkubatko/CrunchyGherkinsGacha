@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
-import { AllCards, CardModal } from '@/components/cards';
+import { CardGrid, CardModal } from '@/components/cards';
 import { Title, ActionPanel } from '@/components/common';
 import { useModal, useOrientation } from '@/hooks';
 import { getIconObjectUrl } from '@/lib/iconUrlCache';
@@ -426,7 +426,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
           <Title title="💣 Minesweeper" />
           <p className="minesweeper-subtitle">Select a card to bet</p>
 
-          <AllCards
+          <CardGrid
             cards={cards}
             onCardClick={openModal}
             initData={initData}

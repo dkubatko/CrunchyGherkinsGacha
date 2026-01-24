@@ -2,10 +2,10 @@ import React, { memo, useCallback, useRef, useEffect } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import MiniCard from './MiniCard';
 import { useVirtualizedImages } from '@/hooks';
-import './AllCards.css';
+import './CardGrid.css';
 import type { CardData } from '@/types';
 
-interface AllCardsProps {
+interface CardGridProps {
   cards: CardData[];
   onCardClick: (card: CardData) => void;
   initData: string | null;
@@ -15,7 +15,7 @@ const COLUMNS = 3;
 const GAP = 10;
 const PADDING = 10;
 
-const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }) => {
+const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { getImage, isLoading, hasFailed, setVisibleRange } = useVirtualizedImages(cards, initData);
 
@@ -33,10 +33,11 @@ const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }
   const virtualRows = virtualizer.getVirtualItems();
 
   // Notify image loader of visible range
+  // Include cards in deps so images reload when filter/sort changes the card list
   useEffect(() => {
     if (virtualRows.length === 0) return;
     setVisibleRange(virtualRows[0].index, virtualRows[virtualRows.length - 1].index, COLUMNS);
-  }, [virtualRows, setVisibleRange]);
+  }, [virtualRows, setVisibleRange, cards]);
 
   const handleCardClick = useCallback((card: CardData) => onCardClick(card), [onCardClick]);
 
@@ -70,5 +71,5 @@ const AllCards: React.FC<AllCardsProps> = memo(({ cards, onCardClick, initData }
   );
 });
 
-AllCards.displayName = 'AllCards';
-export default AllCards;
+CardGrid.displayName = 'CardGrid';
+export default CardGrid;
