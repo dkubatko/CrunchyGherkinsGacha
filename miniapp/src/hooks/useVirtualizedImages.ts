@@ -91,6 +91,9 @@ export function useVirtualizedImages(
       toCheckDb.push(id);
     }
 
+    // Mark as loading BEFORE async work to prevent race conditions
+    toCheckDb.forEach(id => loadingRef.current.add(id));
+
     if (fromMemory.length > 0) {
       setImages(prev => {
         const next = new Map(prev);
@@ -103,18 +106,16 @@ export function useVirtualizedImages(
       // Parallel IndexedDB lookups
       Promise.all(
         toCheckDb.map(async (id) => {
-          if (imagesRef.current.has(id) || loadingRef.current.has(id)) return null;
-
           const timestamp = cardMap.get(id)?.image_updated_at ?? null;
           const data = await persistentImageCache.get(id, 'thumb', timestamp);
 
           if (data) {
             memoryImageCache.set(id, 'thumb', data, timestamp);
             imagesRef.current.set(id, data);
+            loadingRef.current.delete(id); // Found in DB, no longer loading
             return [id, data] as [number, string];
           } else {
-            loadingRef.current.add(id);
-            return id; // Return ID to fetch
+            return id; // Return ID to fetch from server (already in loadingRef)
           }
         })
       ).then((results) => {
