@@ -3,6 +3,11 @@
 
 set -e
 
+# macOS fork safety workaround - must be set BEFORE Python starts
+# This prevents crashes when gunicorn workers fork with SSL/httpx initialized
+# See: https://github.com/python/cpython/issues/77906
+export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES
+
 # Determine if debug mode and set environment
 if [[ "$*" == *"--debug"* ]]; then
     export DEBUG_MODE=1
