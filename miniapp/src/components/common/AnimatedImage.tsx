@@ -64,6 +64,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   const [burnProgress, setBurnProgress] = useState<number>(0);
   const [isBurning, setIsBurning] = useState(false);
   const [referenceOrientation, setReferenceOrientation] = useState<{ beta: number; gamma: number } | null>(null);
+  const [isShineDisabledForReset, setIsShineDisabledForReset] = useState(false);
 
   const tiltTargetRef = useRef<TiltValues>(createZeroTilt());
   const smoothingFactorRef = useRef(DEVICE_PERFORMANCE === 'high' ? 0.15 : 0.12);
@@ -270,7 +271,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
 
   // Memoized shine calculations for better performance
   const shineMetrics = useMemo(() => {
-    if (!effectsEnabled) {
+    if (!effectsEnabled || isShineDisabledForReset) {
       return { pos: 50, angle: 115, intensity: 0, width: 0 };
     }
     
@@ -316,18 +317,30 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       intensity,
       width: 55 + Math.abs(drive) * 25
     };
-  }, [effectsEnabled, tiltForEffects, animationState.tick, rarity]);
+  }, [effectsEnabled, tiltForEffects, animationState.tick, rarity, isShineDisabledForReset]);
 
   // Reset reference orientation on tap - makes current position the new "flat" view
+  // First disables shine, then resets tilt after a brief delay
   const handleTap = () => {
     if (orientation.isStarted) {
-      setReferenceOrientation({
-        beta: orientation.beta,
-        gamma: orientation.gamma
-      });
-      // Reset smoothed tilt to zero for immediate flat appearance
-      tiltTargetRef.current = createZeroTilt();
-      setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
+      // First disable shine
+      setIsShineDisabledForReset(true);
+      
+      // Wait for shine to visually disappear, then reset tilt
+      setTimeout(() => {
+        setReferenceOrientation({
+          beta: orientation.beta,
+          gamma: orientation.gamma
+        });
+        // Reset smoothed tilt to zero for immediate flat appearance
+        tiltTargetRef.current = createZeroTilt();
+        setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
+        
+        // Re-enable shine after tilt has settled
+        setTimeout(() => {
+          setIsShineDisabledForReset(false);
+        }, 100);
+      }, 100);
     }
   };
 
