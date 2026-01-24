@@ -37,16 +37,22 @@ export function useVirtualizedImages(
     failedRef.current.clear();
   }, [cards]);
 
-  // Fetch a batch of card images from server
+  // Store refs for stable callback identity
+  const initDataRef = useRef(initData);
+  const cardMapRef = useRef(cardMap);
+  initDataRef.current = initData;
+  cardMapRef.current = cardMap;
+
+  // Fetch a batch of card images from server - stable identity via refs
   const fetchBatch = useCallback(async (ids: number[]) => {
-    if (!initData || ids.length === 0) return;
+    if (!initDataRef.current || ids.length === 0) return;
 
     try {
-      const result = await fetchCardImages(ids, initData);
+      const result = await fetchCardImages(ids, initDataRef.current);
       const newImages: Array<[number, string]> = [];
 
       result.loaded.forEach((data, cardId) => {
-        const timestamp = cardMap.get(cardId)?.image_updated_at ?? null;
+        const timestamp = cardMapRef.current.get(cardId)?.image_updated_at ?? null;
         memoryImageCache.set(cardId, 'thumb', data, timestamp);
         persistentImageCache.set(cardId, 'thumb', data, timestamp).catch(() => {});
         imagesRef.current.set(cardId, data);
@@ -65,13 +71,18 @@ export function useVirtualizedImages(
     } finally {
       ids.forEach(id => loadingRef.current.delete(id));
     }
-  }, [initData, cardMap]);
+  }, []); // Empty deps - uses refs for values
 
-  // Load images for visible range
+  // Store cardIds in ref for stable setVisibleRange
+  const cardIdsRef = useRef(cardIds);
+  cardIdsRef.current = cardIds;
+
+  // Load images for visible range - stable identity via refs
   const setVisibleRange = useCallback((startRow: number, endRow: number, columns: number) => {
+    const ids = cardIdsRef.current;
     const startIdx = Math.max(0, (startRow - OVERSCAN_ROWS) * columns);
-    const endIdx = Math.min(cardIds.length, (endRow + OVERSCAN_ROWS + 1) * columns);
-    const visibleIds = cardIds.slice(startIdx, endIdx);
+    const endIdx = Math.min(ids.length, (endRow + OVERSCAN_ROWS + 1) * columns);
+    const visibleIds = ids.slice(startIdx, endIdx);
 
     const fromMemory: Array<[number, string]> = [];
     const toCheckDb: number[] = [];
@@ -106,7 +117,7 @@ export function useVirtualizedImages(
       // Parallel IndexedDB lookups
       Promise.all(
         toCheckDb.map(async (id) => {
-          const timestamp = cardMap.get(id)?.image_updated_at ?? null;
+          const timestamp = cardMapRef.current.get(id)?.image_updated_at ?? null;
           const data = await persistentImageCache.get(id, 'thumb', timestamp);
 
           if (data) {
@@ -142,7 +153,7 @@ export function useVirtualizedImages(
         }
       });
     }
-  }, [cardIds, cardMap, fetchBatch]);
+  }, [fetchBatch]); // Only depends on stable fetchBatch
 
   return {
     getImage: useCallback((id: number) => images.get(id) ?? null, [images]),
