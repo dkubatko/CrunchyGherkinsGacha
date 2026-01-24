@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import './App.css';
 
 // Components
@@ -428,7 +428,10 @@ function App() {
     return sorted;
   };
 
-  const filteredCurrentCards = applyCurrentGridFiltersAndSorting(cards);
+  const filteredCurrentCards = useMemo(
+    () => applyCurrentGridFiltersAndSorting(cards),
+    [cards, currentGridFilterOptions, currentGridSortOptions]
+  );
 
   const shareEnabled = Boolean(initData && userData);
   
