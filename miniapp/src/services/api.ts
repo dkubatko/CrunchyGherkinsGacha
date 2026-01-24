@@ -239,6 +239,32 @@ export class ApiService {
     return response.json();
   }
 
+  /**
+   * Get a short-lived download token for a card image.
+   * The token is valid for 5 minutes and can be reused within that window.
+   */
+  static async getDownloadToken(cardId: number, initData: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/downloads/token/card/${cardId}`, {
+      method: 'POST',
+      headers: this.getHeaders(initData)
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to get download token');
+    }
+    
+    const data = await response.json();
+    return data.token;
+  }
+
+  /**
+   * Get the URL for viewing/downloading a card image.
+   * Requires a token from getDownloadToken().
+   */
+  static getCardViewUrl(cardId: number, token: string): string {
+    return `${API_BASE_URL}/cards/view/${cardId}.png?token=${encodeURIComponent(token)}`;
+  }
+
   static async fetchCardConfig(initData: string): Promise<CardConfigResponse> {
     const response = await fetch(`${API_BASE_URL}/cards/config`, {
       headers: this.getHeaders(initData)

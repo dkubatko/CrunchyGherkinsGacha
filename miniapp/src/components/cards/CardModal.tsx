@@ -16,6 +16,7 @@ interface CardModalProps {
   onBurnComplete?: () => void;
   isBurning?: boolean;
   isActionPanelVisible?: boolean;
+  enableDownload?: boolean;
 }
 
 const CardModal: React.FC<CardModalProps> = ({
@@ -30,7 +31,8 @@ const CardModal: React.FC<CardModalProps> = ({
   triggerBurn,
   onBurnComplete,
   isBurning = false,
-  isActionPanelVisible = false
+  isActionPanelVisible = false,
+  enableDownload = true
 }) => {
   if (!isOpen) return null;
 
@@ -61,6 +63,7 @@ const CardModal: React.FC<CardModalProps> = ({
             onCardOpen={onCardOpen}
             triggerBurn={triggerBurn}
             onBurnComplete={onBurnComplete}
+            enableDownload={enableDownload}
           />
         </div>
       </div>

@@ -536,3 +536,20 @@
     font-size: 0.8rem;
   }
 }
+
+/* Card image wrapper for long-press download */
+.card-image-wrapper {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
