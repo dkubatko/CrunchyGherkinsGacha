@@ -47,6 +47,12 @@ DB_POOL_SIZE = int(os.getenv("DB_CONNECTION_POOL_SIZE", "6"))
 DB_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECTION_TIMEOUT_SECONDS", "30"))
 DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
 
+# Shadow staggered usernames (users who get artificial claim delay)
+_staggered_raw = os.getenv("SHADOW_STAGGERED_USERNAMES", "")
+SHADOW_STAGGERED_USERNAMES: set[str] = {
+    u.strip().lower() for u in _staggered_raw.split(",") if u.strip()
+}
+
 
 def initialize_bot_utilities():
     """Initialize all bot utilities. Should be called once at startup."""
