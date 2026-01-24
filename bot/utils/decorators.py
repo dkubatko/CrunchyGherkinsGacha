@@ -1,14 +1,23 @@
 import asyncio
 import logging
+import os
 import sys
 from functools import wraps
 from typing import Any, Awaitable, Callable, Optional
 
+from dotenv import load_dotenv
 from telegram import Update
 from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 from utils.services import user_service
+
+# Load environment variables for shadow staggered usernames
+load_dotenv()
+_staggered_raw = os.getenv("SHADOW_STAGGERED_USERNAMES", "")
+SHADOW_STAGGERED_USERNAMES: set[str] = {
+    u.strip().lower() for u in _staggered_raw.split(",") if u.strip()
+}
 
 HandlerFunc = Callable[..., Awaitable[Any]]
 
@@ -198,6 +207,17 @@ def prevent_concurrency(
 
             resource_id = data_parts[1]
             action_key = resource_id if cross_user else f"{db_user.user_id}_{resource_id}"
+
+            # Apply artificial delay for shadow staggered users BEFORE acquiring lock
+            # This allows other users to claim during the wait period
+            if db_user.username and db_user.username.lower() in SHADOW_STAGGERED_USERNAMES:
+                logger.info(
+                    "Applying stagger delay for user %s (%s) on resource %s",
+                    db_user.username,
+                    db_user.user_id,
+                    resource_id,
+                )
+                await asyncio.sleep(1)
 
             pending_actions = context.bot_data.setdefault(bot_data_key, set())
 
