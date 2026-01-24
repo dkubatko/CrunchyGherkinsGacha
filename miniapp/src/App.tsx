@@ -352,14 +352,20 @@ function App() {
     return sorted;
   };
 
-  const baseDisplayedCards = isTradeMode && selectedCardForTrade
-    ? allCards.filter((card) =>
+  const baseDisplayedCards = useMemo(() => {
+    if (isTradeMode && selectedCardForTrade) {
+      return allCards.filter((card) =>
         card.id !== selectedCardForTrade.id &&
         (userData?.currentUserId == null || card.user_id !== userData.currentUserId)
-      )
-    : allCards;
+      );
+    }
+    return allCards;
+  }, [isTradeMode, selectedCardForTrade, allCards, userData?.currentUserId]);
 
-  const displayedCards = applyFiltersAndSorting(baseDisplayedCards);
+  const displayedCards = useMemo(
+    () => applyFiltersAndSorting(baseDisplayedCards),
+    [baseDisplayedCards, filterOptions, sortOptions]
+  );
 
   // Apply filtering and sorting for current view grid
   const applyCurrentGridFiltersAndSorting = (cards: CardData[]) => {
