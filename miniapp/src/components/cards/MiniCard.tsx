@@ -40,7 +40,7 @@ const MiniCard: React.FC<MiniCardProps> = ({ card, imageB64, isLoading, hasFaile
       {card.locked && <LockIndicator />}
       {hasImage ? (
         <>
-          <img src={`data:image/png;base64,${imageB64}`} alt={card.base_name} loading="lazy" decoding="async" />
+          <img src={`data:image/png;base64,${imageB64}`} alt={card.base_name} decoding="async" />
           {overlays}
           {cardInfo}
         </>

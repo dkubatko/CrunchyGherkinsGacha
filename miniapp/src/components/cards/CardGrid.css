@@ -3,14 +3,12 @@
   max-width: 100vw;
   box-sizing: border-box;
   -webkit-overflow-scrolling: touch;
-  transform: translateZ(0);
 }
 
 .virtualized-container {
   height: 100%;
   overflow: auto;
-  contain: strict;
-  will-change: scroll-position;
+  contain: layout style;
 }
 
 .virtualized-content {
@@ -80,8 +78,6 @@
   height: 82%;
   object-fit: cover;
   border-radius: 8px 8px 0 0;
-  /* Performance: use content-visibility for off-screen optimization */
-  content-visibility: auto;
 }
 
 .grid-card-info {
