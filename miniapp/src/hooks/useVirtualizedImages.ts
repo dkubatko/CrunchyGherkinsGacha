@@ -7,12 +7,14 @@ import type { CardData } from '../types';
 const BATCH_SIZE = 3;      // Backend limit per request
 const OVERSCAN_ROWS = 5;   // Extra rows to preload
 
+type DecodableImage = HTMLImageElement & { decode?: () => Promise<void> };
+
 const decodeImage = async (base64: string) => {
   try {
-    const img = new Image();
+    const img = new Image() as DecodableImage;
     img.src = `data:image/png;base64,${base64}`;
 
-    if ('decode' in img) {
+    if (img.decode) {
       await img.decode();
       return;
     }
