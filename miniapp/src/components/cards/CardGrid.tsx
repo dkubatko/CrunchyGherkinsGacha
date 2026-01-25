@@ -30,7 +30,15 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
   const [containerWidth, setContainerWidth] = useState(0);
   const lastWidthRef = useRef(0);
 
-  const rowCount = Math.ceil(cards.length / COLUMNS);
+  const rows = useMemo(() => {
+    const result: CardData[][] = [];
+    for (let i = 0; i < cards.length; i += COLUMNS) {
+      result.push(cards.slice(i, i + COLUMNS));
+    }
+    return result;
+  }, [cards]);
+
+  const rowCount = rows.length;
 
   // Compute a stable row height from the actual container width.
   // This keeps virtualization in sync with the CSS aspect ratio and avoids scroll jank.
@@ -46,6 +54,11 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
     overscan: 5,
     paddingStart: PADDING,
     paddingEnd: PADDING,
+    onChange: (instance) => {
+      const items = instance.getVirtualItems();
+      if (items.length === 0) return;
+      setVisibleRange(items[0].index, items[items.length - 1].index, COLUMNS);
+    },
   });
 
   const virtualRows = virtualizer.getVirtualItems();
@@ -80,13 +93,6 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
     virtualizer.measure();
   }, [rowHeight, virtualizer]);
 
-  // Notify image loader of visible range
-  // Include cards in deps so images reload when filter/sort changes the card list
-  useLayoutEffect(() => {
-    if (virtualRows.length === 0) return;
-    setVisibleRange(virtualRows[0].index, virtualRows[virtualRows.length - 1].index, COLUMNS);
-  }, [virtualRows, setVisibleRange, cards]);
-
   const handleCardClick = useCallback((card: CardData) => onCardClick(card), [onCardClick]);
 
   return (
@@ -100,7 +106,7 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
             style={{ transform: `translateY(${row.start}px)`, padding: `0 ${PADDING}px ${GAP}px` }}
           >
             <div className="virtualized-row-grid" style={{ gridTemplateColumns: `repeat(${COLUMNS}, 1fr)`, gap: GAP }}>
-              {cards.slice(row.index * COLUMNS, (row.index + 1) * COLUMNS).map((card) => (
+              {(rows[row.index] ?? []).map((card) => (
                 <MiniCard
                   key={card.id}
                   card={card}
