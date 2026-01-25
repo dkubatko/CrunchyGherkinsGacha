@@ -4,10 +4,8 @@
   /* Card image padding - change this value to adjust padding for both image and shine */
   --card-image-padding: 0.25rem;
   
-  /* Modal card size - controls both card image and shadow size */
-  --modal-card-size: 98%;
-  /* Modal card vertical offset - positive values shift the card down toward the name */
-  --modal-card-offset: 0%;
+  /* Modal card width - hard max in px to prevent oversized cards on wide screens */
+  --modal-card-max-width: min(85vw, 400px);
 }
 
 .modal-overlay {
@@ -18,16 +16,18 @@
   bottom: 0;
   background-color: rgba(0, 0, 0, 0.8);
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   z-index: 1000;
   padding: 1rem;
-  padding-top: clamp(0.5rem, 2vh, 1.5rem);
   backdrop-filter: blur(4px);
   animation: modalFadeIn 0.3s ease-out;
 }
 
 .modal-overlay.with-action-panel {
+  /* When action panel is visible, offset from top instead of centering */
+  align-items: flex-start;
+  padding-top: clamp(0.5rem, 2vh, 1.5rem);
   /* Action panel height = panel-bottom-padding (20px) + content padding (10px) + button (52px) */
   padding-bottom: calc(var(--action-panel-height, 82px));
 }
@@ -45,10 +45,9 @@
 
 .modal-content {
   position: relative;
-  width: 90vw;
-  max-width: 420px;
-  height: calc(100% - 1rem);
-  max-height: 88vh;
+  width: fit-content;
+  max-width: calc(var(--modal-card-max-width) + 1.5rem);
+  max-height: calc(100vh - 1rem);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -60,6 +59,11 @@
   box-shadow: 0 18px 38px rgba(0, 0, 0, 0.55);
   overflow: hidden;
   isolation: isolate;
+}
+
+/* When action panel is visible, constrain modal to avoid overlap */
+.modal-overlay.with-action-panel .modal-content {
+  max-height: calc(100vh - var(--action-panel-height, 82px) - 1rem);
 }
 
 @keyframes modalSlideIn {
@@ -141,69 +145,54 @@
 }
 
 .modal-card-shell {
-  width: 100%;
-  flex: 1;
-  min-height: 0;
+  width: var(--modal-card-max-width);
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   justify-content: center;
   border-radius: 25px;
   overflow: hidden;
   isolation: isolate;
   background: rgba(18, 18, 22, 0.6);
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
-  clip-path: inset(0 round 25px);
 }
 
 .modal-card-shell .card {
   width: 100%;
-  height: 100%;
   max-width: none;
-  max-height: none;
+  margin-bottom: 0;
   padding: clamp(0.5rem, 1vw, 0.75rem);
   background: rgba(40, 40, 42, 0.95);
-  clip-path: inset(0 round 25px);
+  border-radius: 25px;
 }
 
 .modal-card-shell .card-image-container {
-  flex: 1;
-  max-height: none;
-  min-height: 0;
-  height: 100%;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   overflow: visible;
+  position: relative;
 }
 
 .modal-card-shell .card-shadow {
-  /* Match the card-image-content positioning exactly */
+  /* Shadow matches card-image-content positioning */
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%) translateY(var(--modal-card-offset));
-  width: auto;
-  height: var(--modal-card-size);
+  inset: 0;
+  width: 100%;
   aspect-ratio: 5 / 7;
-  max-width: var(--modal-card-size);
   border-radius: 25px;
   pointer-events: none;
   /* Dynamic box-shadow is applied via inline styles */
 }
 
 .modal-card-shell .card-image-content {
-  /* Use 5:7 aspect ratio to match card images exactly */
+  /* Width-constrained with 5:7 aspect ratio */
   position: relative;
+  width: 100%;
   aspect-ratio: 5 / 7;
-  height: var(--modal-card-size);
-  width: auto;
-  max-width: var(--modal-card-size);
-  max-height: var(--modal-card-size);
   border-radius: 25px;
   overflow: hidden;
-  transform: translateY(var(--modal-card-offset));
 }
 
 .modal-card-shell .card img {
@@ -231,5 +220,57 @@
     font-size: 0.8rem;
     padding: 3px 8px;
     border-radius: 8px;
+  }
+}
+
+/* Reduce title size on wider screens to fit in constrained modal */
+/* @media (min-width: 481px) {
+  .modal-card-shell .card-name {
+    font-size: 1.2rem !important;
+  }
+  
+  .modal-card-shell .card-rarity {
+    font-size: 0.8rem;
+  }
+  
+  .modal-card-shell .card-set {
+    font-size: 0.65rem;
+  }
+  
+  .modal-card-shell .card-owner {
+    font-size: 0.7rem;
+  }
+  
+  .modal-card-shell .card-name-container {
+    --card-share-size: 1.25rem;
+    --card-share-gap: 0.25rem;
+  }
+  
+  .modal-card-shell .share-icon-inline {
+    width: 1rem;
+    height: 1rem;
+  }
+} */
+
+/* Responsive adjustments based on screen height */
+/* Tall screens: allow larger viewport width */
+@media (min-height: 700px) {
+  :root {
+    --modal-card-max-width: min(90vw, 350px);
+  }
+}
+
+/* Shorter screens: cap width to prevent overflow */
+@media (max-height: 699px) {
+  :root {
+    --modal-card-max-width: min(75vw, 300px);
+  }
+  
+  .modal-overlay {
+    padding: 0.5rem;
+  }
+  
+  .modal-overlay.with-action-panel {
+    padding-top: 0.5rem;
   }
 }
