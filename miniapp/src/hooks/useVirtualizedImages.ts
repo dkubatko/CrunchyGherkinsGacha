@@ -7,6 +7,25 @@ import type { CardData } from '../types';
 const BATCH_SIZE = 3;      // Backend limit per request
 const OVERSCAN_ROWS = 5;   // Extra rows to preload
 
+const decodeImage = async (base64: string) => {
+  try {
+    const img = new Image();
+    img.src = `data:image/png;base64,${base64}`;
+
+    if ('decode' in img) {
+      await img.decode();
+      return;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error('Image decode failed'));
+    });
+  } catch {
+    // Ignore decode failures; rendering will still attempt to display the image.
+  }
+};
+
 export interface UseVirtualizedImagesReturn {
   getImage: (cardId: number) => string | null;
   isLoading: (cardId: number) => boolean;
@@ -51,13 +70,14 @@ export function useVirtualizedImages(
       const result = await fetchCardImages(ids, initDataRef.current);
       const newImages: Array<[number, string]> = [];
 
-      result.loaded.forEach((data, cardId) => {
+      for (const [cardId, data] of result.loaded.entries()) {
         const timestamp = cardMapRef.current.get(cardId)?.image_updated_at ?? null;
+        await decodeImage(data);
         memoryImageCache.set(cardId, 'thumb', data, timestamp);
         persistentImageCache.set(cardId, 'thumb', data, timestamp).catch(() => {});
         imagesRef.current.set(cardId, data);
         newImages.push([cardId, data]);
-      });
+      }
 
       result.failed.forEach(id => failedRef.current.add(id));
 
@@ -96,6 +116,7 @@ export function useVirtualizedImages(
       if (cached) {
         imagesRef.current.set(id, cached);
         fromMemory.push([id, cached]);
+        decodeImage(cached).catch(() => {});
         continue;
       }
 
@@ -140,10 +161,15 @@ export function useVirtualizedImages(
         }
 
         if (dbResults.length > 0) {
-          setImages(prev => {
-            const next = new Map(prev);
-            dbResults.forEach(([id, data]) => next.set(id, data));
-            return next;
+          Promise.all(dbResults.map(async ([id, data]) => {
+            await decodeImage(data);
+            return [id, data] as [number, string];
+          })).then((decoded) => {
+            setImages(prev => {
+              const next = new Map(prev);
+              decoded.forEach(([id, data]) => next.set(id, data));
+              return next;
+            });
           });
         }
 
