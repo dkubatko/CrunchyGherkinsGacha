@@ -156,7 +156,12 @@ export function useVirtualizedImages(
   }, [fetchBatch]); // Only depends on stable fetchBatch
 
   return {
-    getImage: useCallback((id: number) => images.get(id) ?? null, [images]),
+    getImage: useCallback((id: number) => {
+      // Check memory cache first for immediate display (avoids waiting for state update)
+      const cached = memoryImageCache.get(id, 'thumb');
+      if (cached) return cached;
+      return images.get(id) ?? null;
+    }, [images]),
     isLoading: useCallback((id: number) => loadingRef.current.has(id), []),
     hasFailed: useCallback((id: number) => failedRef.current.has(id), []),
     setVisibleRange,
