@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './LandingPage.css';
 
 // Import card images
@@ -8,6 +8,7 @@ import cardEpic from '../assets/landing/card_epic.jpeg';
 import cardLegendary from '../assets/landing/card_legenedary.jpeg';
 import cardUnique from '../assets/landing/card_unique.jpeg';
 import logo from '../assets/landing/logo.png';
+import gachaIcon from '../assets/gacha.ico';
 
 // Telegram icon SVG component
 const TelegramIcon = () => (
@@ -102,6 +103,21 @@ export const LandingPage = () => {
   // Demo interaction state
   const [demoState, setDemoState] = useState<'idle' | 'rolling' | 'rolled' | 'claimed'>('idle');
   const [showRollingMessage, setShowRollingMessage] = useState(false);
+  const [rolledCard, setRolledCard] = useState(cards[0]);
+
+  // Set page title and favicon
+  useEffect(() => {
+    document.title = 'Crunchy Gherkins Gacha';
+    const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+    if (link) {
+      link.href = gachaIcon;
+    } else {
+      const newLink = document.createElement('link');
+      newLink.rel = 'icon';
+      newLink.href = gachaIcon;
+      document.head.appendChild(newLink);
+    }
+  }, []);
 
   const handleFeatureClick = (index: number) => {
     setActiveFeature(activeFeature === index ? null : index);
@@ -109,6 +125,9 @@ export const LandingPage = () => {
 
   const handleRollClick = () => {
     if (demoState !== 'idle') return;
+    // Pick a random card
+    const randomCard = cards[Math.floor(Math.random() * cards.length)];
+    setRolledCard(randomCard);
     setDemoState('rolling');
     // Stagger the rolling message appearance
     setTimeout(() => {
@@ -176,6 +195,13 @@ export const LandingPage = () => {
             
             {/* Demo Messages */}
             <div className="landing-demo-messages">
+              {/* Placeholder text - shown only in idle state */}
+              {demoState === 'idle' && (
+                <div className="landing-demo-placeholder">
+                  Press the button below to start...
+                </div>
+              )}
+
               {/* User /roll message - appears after clicking roll */}
               {demoState !== 'idle' && (
                 <div className="landing-demo-message user fade-in">
@@ -193,8 +219,8 @@ export const LandingPage = () => {
               {/* Card response - appears after rolling */}
               {(demoState === 'rolled' || demoState === 'claimed') && (
                 <div className="landing-demo-card-response fade-in">
-                  <div className="landing-demo-rolled-card">
-                    <img src={cardEpic} alt="Rolled card" />
+                  <div className="landing-demo-rolled-card" data-rarity={rolledCard.rarity}>
+                    <img src={rolledCard.src} alt="Rolled card" />
                   </div>
                   <button 
                     className={`landing-demo-claim-btn ${demoState === 'claimed' ? 'claimed' : ''}`}

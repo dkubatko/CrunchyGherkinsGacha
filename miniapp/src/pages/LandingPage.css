@@ -338,7 +338,7 @@ a.landing-cta:visited {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  height: 360px;
+  height: 370px;
   overflow-y: auto;
 }
 
@@ -369,6 +369,14 @@ a.landing-cta:visited {
   background: rgba(255, 255, 255, 0.1);
   color: var(--landing-text-primary);
   border-bottom-left-radius: 4px;
+}
+
+/* Demo placeholder text */
+.landing-demo-placeholder {
+  align-self: center;
+  color: var(--landing-text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
 }
 
 /* Roll button styles */
@@ -725,7 +733,7 @@ a.landing-cta:visited {
   }
 
   .landing-demo-messages {
-    height: 340px;
+    height: 350px;
   }
 
   .landing-demo-rolled-card {
