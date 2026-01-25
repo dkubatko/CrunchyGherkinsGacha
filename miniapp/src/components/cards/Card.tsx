@@ -226,7 +226,9 @@ const Card: React.FC<CardProps> = ({
       )}
       {loadingImage ? (
         <div className="card-image-container">
-          <div className="spinner"></div>
+          <div className="card-image-placeholder">
+            <div className="spinner"></div>
+          </div>
         </div>
       ) : (
         shiny ? (
