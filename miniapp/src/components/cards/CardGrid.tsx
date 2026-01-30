@@ -63,6 +63,15 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
 
   const virtualRows = virtualizer.getVirtualItems();
 
+  // Trigger image loading when cards change.
+  // The onChange callback alone misses the initial load after filter changes
+  // because the virtualizer may not fire onChange when the scroll position stays the same.
+  useLayoutEffect(() => {
+    const items = virtualizer.getVirtualItems();
+    if (items.length === 0) return;
+    setVisibleRange(items[0].index, items[items.length - 1].index, COLUMNS);
+  }, [cards, virtualizer, setVisibleRange]);
+
   // Measure container width synchronously on mount and on resize.
   // A correct initial width prevents one-frame mis-estimation on tab switches.
   useLayoutEffect(() => {
