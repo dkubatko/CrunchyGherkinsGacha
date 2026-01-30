@@ -23,6 +23,7 @@ from api.config import (
 from api.helpers import build_single_card_url
 from settings.constants import (
     BURN_RESULT_MESSAGE,
+    CLAIM_UNLOCK_DELAY_SECONDS,
     MEGASPIN_VICTORY_FAILURE_MESSAGE,
     MEGASPIN_VICTORY_PENDING_MESSAGE,
     MEGASPIN_VICTORY_RESULT_MESSAGE,
@@ -751,3 +752,97 @@ async def send_achievement_notification(
             exc_info=True,
         )
         return False
+
+
+async def process_claim_countdown(
+    chat_id: int,
+    message_id: int,
+    roll_id: int,
+    delay_seconds: int = CLAIM_UNLOCK_DELAY_SECONDS,
+) -> None:
+    """
+    Process the claim countdown for a newly rolled card.
+
+    Updates the message caption every second with a countdown, then reveals
+    the claim button when the countdown reaches zero.
+
+    Args:
+        chat_id: The chat where the message was sent.
+        message_id: The ID of the message to edit.
+        roll_id: The roll ID to use for generating captions/keyboards.
+        delay_seconds: Number of seconds for the countdown (default: CLAIM_UNLOCK_DELAY_SECONDS).
+    """
+    from utils.rolled_card import RolledCardManager
+
+    bot = create_bot_instance()
+
+    try:
+        # Countdown loop: update caption every second
+        for seconds_remaining in range(delay_seconds - 1, 0, -1):
+            await asyncio.sleep(1)
+
+            # Refresh manager to get current state
+            rolled_card_manager = RolledCardManager(roll_id)
+
+            # Check if card still exists and is unclaimed
+            if not rolled_card_manager.is_valid():
+                logger.debug("Claim countdown aborted: card no longer valid (roll_id=%d)", roll_id)
+                return
+
+            # If card was claimed or is being rerolled, stop countdown
+            if rolled_card_manager.is_claimed() or rolled_card_manager.is_being_rerolled():
+                logger.debug(
+                    "Claim countdown aborted: card claimed or being rerolled (roll_id=%d)", roll_id
+                )
+                return
+
+            # Update caption with remaining time
+            countdown_caption = rolled_card_manager.generate_countdown_caption(seconds_remaining)
+            try:
+                await bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    caption=countdown_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as edit_exc:
+                logger.warning(
+                    "Failed to edit countdown caption (roll_id=%d): %s", roll_id, edit_exc
+                )
+                return
+
+        # Final sleep before revealing claim button
+        await asyncio.sleep(1)
+
+        # Refresh manager for final update
+        rolled_card_manager = RolledCardManager(roll_id)
+
+        # Final validity check
+        if not rolled_card_manager.is_valid():
+            logger.debug("Claim countdown final: card no longer valid (roll_id=%d)", roll_id)
+            return
+
+        if rolled_card_manager.is_claimed() or rolled_card_manager.is_being_rerolled():
+            logger.debug(
+                "Claim countdown final: card claimed or being rerolled (roll_id=%d)", roll_id
+            )
+            return
+
+        # Generate final caption and keyboard with claim button
+        final_caption = rolled_card_manager.generate_caption()
+        final_keyboard = rolled_card_manager.generate_keyboard()
+
+        try:
+            await bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=message_id,
+                caption=final_caption,
+                reply_markup=final_keyboard,
+                parse_mode=ParseMode.HTML,
+            )
+            logger.debug("Claim countdown completed: claim button revealed (roll_id=%d)", roll_id)
+        except Exception as edit_exc:
+            logger.warning("Failed to reveal claim button (roll_id=%d): %s", roll_id, edit_exc)
+
+    except Exception as exc:
+        logger.error("Error in claim countdown task (roll_id=%d): %s", roll_id, exc)

@@ -17,6 +17,7 @@
   "RTB_MULTIPLIER_PROGRESSION": {"1": 1, "2": 2, "3": 3, "4": 5, "5": 10},
   "RTB_COOLDOWN_SECONDS": 32400,
   "RTB_DEBUG_COOLDOWN_SECONDS": 30,
+  "CLAIM_UNLOCK_DELAY_SECONDS": 5,
   "RARITIES": {
     "Common": {
       "spin_reward": 10,
