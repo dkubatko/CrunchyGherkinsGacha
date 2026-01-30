@@ -21,6 +21,7 @@ from handlers.helpers import (
 from settings.constants import (
     REACTION_IN_PROGRESS,
     CARD_CAPTION_BASE,
+    CLAIM_UNLOCK_DELAY_SECONDS,
     get_claim_cost,
 )
 from utils import rolling
@@ -35,6 +36,7 @@ from utils.schemas import User
 from utils.decorators import verify_user_in_chat, prevent_concurrency
 from utils.rolled_card import RolledCardManager
 from utils.events import EventType, RollOutcome, RerollOutcome
+from api.background_tasks import process_claim_countdown
 
 logger = logging.getLogger(__name__)
 
@@ -122,17 +124,26 @@ async def roll(
             rolled_card_service.create_rolled_card, card_id, user.user_id
         )
 
-        # Use RolledCardManager to generate caption and keyboard
+        # Use RolledCardManager to generate countdown caption (no claim button yet)
         rolled_card_manager = RolledCardManager(roll_id)
-        caption = rolled_card_manager.generate_caption()
-        reply_markup = rolled_card_manager.generate_keyboard()
+        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_DELAY_SECONDS)
 
         message = await update.message.reply_photo(
             photo=base64.b64decode(generated_card.image_b64),
             caption=caption,
-            reply_markup=reply_markup,
+            reply_markup=None,  # No buttons during countdown
             parse_mode=ParseMode.HTML,
             reply_to_message_id=update.message.message_id,
+        )
+
+        # Spawn background task to handle countdown and reveal claim button
+        asyncio.create_task(
+            process_claim_countdown(
+                chat_id=update.effective_chat.id,
+                message_id=message.message_id,
+                roll_id=roll_id,
+                delay_seconds=CLAIM_UNLOCK_DELAY_SECONDS,
+            )
         )
 
         # Save the file_id returned by Telegram for future use
@@ -296,18 +307,27 @@ async def handle_reroll(
         # Update rolled card state to point to the new card
         rolled_card_manager.mark_rerolled(new_card_id, original_card.rarity)
 
-        # Generate caption and keyboard for the new card
-        caption = rolled_card_manager.generate_caption()
-        reply_markup = rolled_card_manager.generate_keyboard()
+        # Generate countdown caption for the new card (no claim button yet)
+        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_DELAY_SECONDS)
 
-        # Update message with new image and caption
+        # Update message with new image and countdown caption (no buttons during countdown)
         message = await query.edit_message_media(
             media=InputMediaPhoto(
                 media=base64.b64decode(generated_card.image_b64),
                 caption=caption,
                 parse_mode=ParseMode.HTML,
             ),
-            reply_markup=reply_markup,
+            reply_markup=None,
+        )
+
+        # Spawn background task to handle countdown and reveal claim button
+        asyncio.create_task(
+            process_claim_countdown(
+                chat_id=query.message.chat_id,
+                message_id=query.message.message_id,
+                roll_id=roll_id,
+                delay_seconds=CLAIM_UNLOCK_DELAY_SECONDS,
+            )
         )
 
         # Save the file_id returned by Telegram for future use
