@@ -19,20 +19,21 @@ rarities:
 - name: Rare
   modifiers:
   - Boba
-  - Döner
+  - Bánh Mì
+  - Caviar
   - Egg
-  - Falafel
   - Fried Chicken
+  - Hotdog
   - Kimchi
   - Pho
   - Ramen
-  - Shawarma
+  - Wagyu
+  - Хачапури
+  - Шаурма
 - name: Epic
   modifiers:
   - Borscht
-  - Bánh Mì
   - Пельмень
-  - Хачапури
 - name: Legendary
   modifiers:
   - Michelin Star

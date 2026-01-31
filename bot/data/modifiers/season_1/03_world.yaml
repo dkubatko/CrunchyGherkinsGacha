@@ -5,27 +5,29 @@ rarities:
 - name: Common
   modifiers:
   - Alaskan
-  - American
   - Arctic
   - Asian
-  - European
+  - Mexican
   - Nordic
   - Sahara
-  - Swiss
   - Texan
 - name: Rare
   modifiers:
   - African
+  - American
   - Chinese
   - Indian
   - Japanese
   - Kazakh
+  - North Pole
 - name: Epic
   modifiers:
   - Armenian
   - Jewish
   - Korean
   - Russian
+  - Vietnamese
 - name: Legendary
   modifiers:
   - Atlantis
+  - North Korean
