@@ -1,0 +1,44 @@
+id: 22
+set: mythology
+source: roll
+rarities:
+- name: Common
+  modifiers:
+  - Faun
+  - Heracles
+  - Oracle
+  - Pegasus
+  - Satyr
+  - Siren
+- name: Rare
+  modifiers:
+  - Banshee
+  - Centaur
+  - Cyclops
+  - Excalibur
+  - Loch Ness
+  - Medusa
+  - Nymph
+  - Sphinx
+  - Unicorn
+  - Valkyrie
+  - Атлант
+  - Джин
+  - Домовой
+  - Леший
+- name: Epic
+  modifiers:
+  - Cerberus
+  - Chimera
+  - Fenrir
+  - Hydra
+  - King Midas
+  - Kraken
+  - Minotaur
+  - Phoenix
+  - Prometheus
+  - Кощей
+- name: Legendary
+  modifiers:
+  - Ragnarok
+  - Змей Горыныч

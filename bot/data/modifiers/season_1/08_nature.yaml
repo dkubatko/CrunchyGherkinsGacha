@@ -4,10 +4,13 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Baobab
   - Coral
   - Desert
+  - Eagle
   - Floral
   - Forest
+  - Glacier
   - Jungle
   - Lamb
   - Mountain
@@ -15,19 +18,19 @@ rarities:
   - Penguin
   - Pigeon
   - Seal
+  - Shark
   - Turtle
   - Typhoon
   - Whale
 - name: Rare
   modifiers:
-  - Baobab
   - Butterfly
+  - Chameleon
   - Dinosaur
   - Everest
   - Fuji
-  - Glacier
+  - Snake
   - Walrus
-  - Yosemite
 - name: Epic
   modifiers:
   - Apex Predator

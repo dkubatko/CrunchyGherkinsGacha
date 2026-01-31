@@ -7,10 +7,13 @@ rarities:
   - Dealer
   - Father
   - Gambler
+  - Grumpy
   - Mother
   - Old
   - Pajamas
+  - Retired
   - Tipsy
+  - Yoga
   - Young
   - Бритый
   - Сытый
@@ -33,6 +36,7 @@ rarities:
   - Dr. Pepper
   - Gachimuchi
   - Nun
+  - Red Pill
   - Мытый
 - name: Legendary
   modifiers:

@@ -4,21 +4,24 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Based
   - Delulu
-  - Doge
   - Incel
+  - Rickroll
+  - Rizzler
   - Sigma
   - Skibidi
   - Trollface
 - name: Rare
   modifiers:
   - Absolute Unit
+  - Bonk
   - Brainrot
   - Chad
+  - Doge
   - Duck Face
   - Pepe
-  - Rickroll
-  - Rizzler
+  - Stonks
 - name: Epic
   modifiers:
   - Mewing

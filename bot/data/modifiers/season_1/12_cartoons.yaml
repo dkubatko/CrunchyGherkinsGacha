@@ -8,7 +8,6 @@ rarities:
   - Ben 10
   - Looney Tunes
   - Smurf
-  - Sonic
 - name: Rare
   modifiers:
   - CatDog
@@ -22,6 +21,7 @@ rarities:
   - Scooby Doo
   - Shrek
   - Simpson
+  - Sonic
   - South Park
   - Stuart Little
   - Teletubbie
@@ -36,8 +36,10 @@ rarities:
   - Sponge Bob
   - The Flintstone
   - W.I.T.C.H.
+  - WALL-E
   - Zootopia
   - Винни Пух
+  - Карлсон
   - Ну, Погоди!
   - Фиксик
 - name: Legendary

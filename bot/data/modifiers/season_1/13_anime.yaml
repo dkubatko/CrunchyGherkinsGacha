@@ -9,7 +9,6 @@ rarities:
   - Neko
 - name: Rare
   modifiers:
-  - 9-tailed
   - Akatsuki
   - Demon Slayer
   - Dragon Ball
@@ -20,6 +19,8 @@ rarities:
   - Pochita
   - Pokémon
   - Ryuk
+  - Tsundere
+  - Yandere
 - name: Epic
   modifiers:
   - Attack on Titan

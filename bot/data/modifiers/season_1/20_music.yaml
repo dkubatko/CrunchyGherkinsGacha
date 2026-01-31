@@ -9,22 +9,21 @@ rarities:
   - DJ
   - Drummer
   - Guitarist
+  - Harmonica
+  - Harper
   - Jazz
   - Meloman
   - Pianist
+  - Punk Rock
+  - Tecktonik
   - Vinyl
   - Violinist
   - Флейтист
 - name: Rare
   modifiers:
   - Ballerina
-  - Harper
-  - Metallica
-  - Osu!
-  - Punk Rock
+  - K-Pop
   - Rockstar
-  - Tecktonik
-  - Virtuoso
   - Баянист
   - Дирижёр
 - name: Epic
