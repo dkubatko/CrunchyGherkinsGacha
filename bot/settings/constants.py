@@ -197,11 +197,33 @@ CARD_STATUS_REROLLED = (
     "\n\n<i>Rerolled from <b>{original_rarity}</b> to <b>{downgraded_rarity}</b></i>"
 )
 CARD_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
-CARD_STATUS_CLAIM_COUNTDOWN = "\n\n<i>Claiming unlocks in {ticks}...</i>"
+CARD_STATUS_PRE_CLAIM_MESSAGES = [
+    "Materializing the card...",
+    "Glueing the paper...",
+    "Adding shine...",
+    "Sprinkling glitter...",
+    "Polishing edges...",
+    "Infusing the colors...",
+    "Consulting the oracle...",
+    "Rolling the dice...",
+    "Summoning energy...",
+    "Charging crystals...",
+    "Taunting the players...",
+    "Warming up dinner...",
+    "Getting unstuck...",
+    "Messing around...",
+    "Finding inspiration...",
+    "Doubting existence...",
+    "Almost ready...",
+    "Just a moment...",
+]
+PRE_CLAIM_ROTATION_INTERVAL = config.get(
+    "PRE_CLAIM_ROTATION_INTERVAL", 1.5
+)  # Seconds between message rotations
 
-# Claim unlock countdown configuration (tick-based)
-CLAIM_UNLOCK_TICKS = config.get("CLAIM_UNLOCK_TICKS", 3)  # Number of countdown ticks
-CLAIM_UNLOCK_TICK_SECONDS = config.get("CLAIM_UNLOCK_TICK_SECONDS", 2)  # Seconds between ticks
+# Claim unlock delay configuration (random delay in seconds)
+CLAIM_UNLOCK_DELAY_LOW = config.get("CLAIM_UNLOCK_DELAY_LOW", 3)  # Minimum delay in seconds
+CLAIM_UNLOCK_DELAY_HIGH = config.get("CLAIM_UNLOCK_DELAY_HIGH", 6)  # Maximum delay in seconds
 
 RECYCLE_ALLOWED_RARITIES = {
     "common": "Common",
