@@ -197,10 +197,11 @@ CARD_STATUS_REROLLED = (
     "\n\n<i>Rerolled from <b>{original_rarity}</b> to <b>{downgraded_rarity}</b></i>"
 )
 CARD_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
-CARD_STATUS_CLAIM_COUNTDOWN = "\n\n<i>Claiming unlocks in {seconds}...</i>"
+CARD_STATUS_CLAIM_COUNTDOWN = "\n\n<i>Claiming unlocks in {ticks}...</i>"
 
-# Claim unlock delay in seconds (grace period before claim button appears)
-CLAIM_UNLOCK_DELAY_SECONDS = config.get("CLAIM_UNLOCK_DELAY_SECONDS", 5)
+# Claim unlock countdown configuration (tick-based)
+CLAIM_UNLOCK_TICKS = config.get("CLAIM_UNLOCK_TICKS", 3)  # Number of countdown ticks
+CLAIM_UNLOCK_TICK_SECONDS = config.get("CLAIM_UNLOCK_TICK_SECONDS", 2)  # Seconds between ticks
 
 RECYCLE_ALLOWED_RARITIES = {
     "common": "Common",
