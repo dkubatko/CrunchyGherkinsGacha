@@ -23,8 +23,10 @@ from api.config import (
 from api.helpers import build_single_card_url
 from settings.constants import (
     BURN_RESULT_MESSAGE,
-    CLAIM_UNLOCK_TICK_SECONDS,
-    CLAIM_UNLOCK_TICKS,
+    CARD_STATUS_PRE_CLAIM_MESSAGES,
+    CLAIM_UNLOCK_DELAY_HIGH,
+    CLAIM_UNLOCK_DELAY_LOW,
+    PRE_CLAIM_ROTATION_INTERVAL,
     MEGASPIN_VICTORY_FAILURE_MESSAGE,
     MEGASPIN_VICTORY_PENDING_MESSAGE,
     MEGASPIN_VICTORY_RESULT_MESSAGE,
@@ -759,23 +761,24 @@ async def process_claim_countdown(
     chat_id: int,
     message_id: int,
     roll_id: int,
-    num_ticks: int = CLAIM_UNLOCK_TICKS,
-    tick_seconds: float = CLAIM_UNLOCK_TICK_SECONDS,
+    delay_low: float = CLAIM_UNLOCK_DELAY_LOW,
+    delay_high: float = CLAIM_UNLOCK_DELAY_HIGH,
 ) -> None:
     """
     Process the claim countdown for a newly rolled card.
 
-    Updates the message caption at each tick, then reveals the claim button
-    when all ticks complete. Countdown edits are best-effort (failures don't
-    abort), but the final reveal is retried.
+    Rotates through fun messages during the delay, then reveals the claim button.
+    Message rotation is best-effort; the final reveal is retried on failure.
 
     Args:
         chat_id: The chat where the message was sent.
         message_id: The ID of the message to edit.
         roll_id: The roll ID to use for generating captions/keyboards.
-        num_ticks: Number of countdown ticks before reveal (default: CLAIM_UNLOCK_TICKS).
-        tick_seconds: Seconds between each tick (default: CLAIM_UNLOCK_TICK_SECONDS).
+        delay_low: Minimum delay in seconds (default: CLAIM_UNLOCK_DELAY_LOW).
+        delay_high: Maximum delay in seconds (default: CLAIM_UNLOCK_DELAY_HIGH).
     """
+    import random
+
     from telegram.error import NetworkError, RetryAfter, TimedOut
 
     from utils.rolled_card import RolledCardManager
@@ -790,33 +793,56 @@ async def process_claim_countdown(
         return manager
 
     try:
-        # === Phase 1: Countdown updates (best-effort) ===
-        for ticks_remaining in range(num_ticks, 0, -1):
+        # === Phase 1: Rotate messages during delay ===
+        total_delay = random.uniform(delay_low, delay_high)
+        interval = PRE_CLAIM_ROTATION_INTERVAL
+
+        # Calculate iterations and leftover
+        num_iterations = int(total_delay // interval)
+        leftover = total_delay - (num_iterations * interval)
+
+        logger.info(
+            "Claim countdown started (roll_id=%d): delay=%.2fs, iterations=%d",
+            roll_id,
+            total_delay,
+            num_iterations,
+        )
+
+        # Get shuffled messages for rotation
+        messages = CARD_STATUS_PRE_CLAIM_MESSAGES.copy()
+        random.shuffle(messages)
+
+        for i in range(num_iterations):
             if get_manager_if_active() is None:
                 logger.debug("Claim countdown aborted early (roll_id=%d)", roll_id)
                 return
 
-            # Best-effort caption update — failures are fine, final reveal matters
+            # Best-effort caption update
             try:
                 manager = get_manager_if_active()
                 if manager is None:
                     return
+                message_text = messages[i % len(messages)]
                 await bot.edit_message_caption(
                     chat_id=chat_id,
                     message_id=message_id,
-                    caption=manager.generate_countdown_caption(ticks_remaining),
+                    caption=manager.generate_pre_claim_caption(message_text),
                     parse_mode=ParseMode.HTML,
                 )
-            except RetryAfter as e:
-                logger.debug("Rate limited during countdown (roll_id=%d)", roll_id)
-                await asyncio.sleep(e.retry_after)
-            except (TimedOut, NetworkError):
-                pass  # Transient — ignore
-            except Exception as exc:
-                logger.debug("Countdown edit failed (roll_id=%d): %s", roll_id, exc)
+            except (RetryAfter, TimedOut, NetworkError, Exception):
+                pass  # Best effort, ignore failures
 
-            # Wait for next tick
-            await asyncio.sleep(tick_seconds)
+            # Wait for interval, add leftover to final iteration
+            sleep_time = interval + leftover if i == num_iterations - 1 else interval
+            await asyncio.sleep(sleep_time)
+
+        # Handle case where total_delay < interval (no iterations)
+        if num_iterations == 0:
+            await asyncio.sleep(total_delay)
+
+        if get_manager_if_active() is None:
+            logger.debug("Claim countdown aborted after delay (roll_id=%d)", roll_id)
+            return
 
         # === Phase 2: Reveal claim button (critical, with retries) ===
         max_retries = 3
@@ -850,7 +876,7 @@ async def process_claim_countdown(
                 ):
                     raise RuntimeError("Keyboard not attached in response")
 
-                logger.debug("Claim button revealed (roll_id=%d)", roll_id)
+                logger.info("Claim button revealed (roll_id=%d)", roll_id)
                 return  # Success
 
             except RetryAfter as e:
