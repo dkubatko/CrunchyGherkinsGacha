@@ -6,21 +6,26 @@ rarities:
   modifiers:
   - Astronomer
   - Cashier
+  - Chef
   - Contractor
   - Farmer
+  - Firefighter
   - Fisherman
+  - Janitor
   - Model
   - Plumber
   - Police
   - Potter
+  - Surgeon
   - Школьник
 - name: Rare
   modifiers:
   - Astronaut
-  - Chef
   - Coal Miner
-  - Janitor
+  - Nurse
+  - Spy
   - Taxi Driver
+  - Yakuza
 - name: Epic
   modifiers:
   - Coroner
@@ -29,4 +34,5 @@ rarities:
   - Глиномес
 - name: Legendary
   modifiers:
+  - President
   - Stripper

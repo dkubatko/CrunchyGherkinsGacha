@@ -1,0 +1,61 @@
+id: 21
+set: games
+source: all
+rarities:
+- name: Common
+  modifiers:
+  - Arcade
+  - Fortnite
+  - Gameboy
+  - GTA
+  - Mario
+  - Osu!
+  - Pac-Man
+  - Pinball
+  - PSP
+  - Roblox
+  - Tetris
+  - Uno
+  - Wii
+- name: Rare
+  modifiers:
+  - Bioshock
+  - Creeper
+  - CS:GO
+  - Dark Souls
+  - Dota 2
+  - Fallout
+  - Hades
+  - Half-Life
+  - Metroid
+  - Minecraft
+  - Monopoly
+  - Overwatch
+  - Piglin
+  - Sim
+  - Skyrim
+  - Valorant
+  - Warcraft
+  - Witcher
+  - Zelda
+- name: Epic
+  modifiers:
+  - Borderlands
+  - Cyberpunk 2077
+  - Death Stranding
+  - Diablo
+  - DOOM
+  - Elden Ring
+  - Enderman
+  - Gul'dan
+  - Hollow Knight
+  - Illidan
+  - Kratos
+  - Red Dead
+  - Sekiro
+  - Thrall
+- name: Legendary
+  modifiers:
+  - Hearthstone
+  - Magic the Gathering
+  - The Lich King

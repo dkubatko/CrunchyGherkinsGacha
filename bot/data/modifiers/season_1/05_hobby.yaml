@@ -4,6 +4,7 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - 3D Printing
   - Archer
   - Blogger
   - Coding
@@ -15,25 +16,28 @@ rarities:
   - Musician
   - Pilates
   - Poet
+  - Quilting
   - Reading
   - Rock Climbing
   - Skiing
+  - Skydiver
   - Snowboarding
   - Streamer
 - name: Rare
   modifiers:
-  - 3D Printing
   - Barber
+  - Blacksmith
   - Clown
   - Gym Bro
   - Polyglot
-  - Quilting
-  - Skydiver
+  - Taxidermist
   - Workaholic
 - name: Epic
   modifiers:
   - Card Collector
+  - Cosplayer
   - Hobby Horsing
 - name: Legendary
   modifiers:
+  - Crossdresser
   - Hookah

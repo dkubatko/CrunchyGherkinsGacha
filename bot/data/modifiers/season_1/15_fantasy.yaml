@@ -9,21 +9,25 @@ rarities:
   - Bard
   - Paladin
   - Sorcerer
+  - Warlock
 - name: Rare
   modifiers:
   - Demon
   - Druid
   - Dwarf
+  - Elf
+  - Fairy
   - Gnome
+  - Orc
   - Succubus
   - Witch
-  - Леший
 - name: Epic
   modifiers:
-  - Diablo
   - Dragon
   - Gandalf
-  - Warcraft
+  - Goblin
+  - Lich
 - name: Legendary
   modifiers:
   - Inferno
+  - Sauron

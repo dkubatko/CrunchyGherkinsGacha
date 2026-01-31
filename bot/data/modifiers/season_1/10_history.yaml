@@ -7,28 +7,31 @@ rarities:
   - Knight
   - Mongol
   - Ninja
+  - Pirate
+  - Renaissance
   - Roman
   - Samurai
   - Slave
+  - Казак
   - Крепостной
+  - Крестьянин
   - Холоп
 - name: Rare
   modifiers:
-  - Excalibur
+  - Exorcist
   - Gladiator
   - King
+  - Napoleon
   - Pharaoh
   - Queen
-  - Renaissance
   - Trojan
   - Боярин
-  - Казак
-  - Крестьянин
   - Султан
 - name: Epic
   modifiers:
-  - Emperor
-  - Exorcist
+  - Cleopatra
+  - Genghis Khan
+  - Rasputin
   - Spartan
   - Time Traveler
   - Царь

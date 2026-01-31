@@ -4,8 +4,8 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Late Night
   - Sitcom
-  - SNL
   - Wednesday
 - name: Rare
   modifiers:
@@ -18,14 +18,16 @@ rarities:
   - Iron Man
   - Jedi
   - Joker
-  - Late Night
   - Neo
   - Sith
   - Spider-Man
+  - The Office
 - name: Epic
   modifiers:
   - Godfather
   - Hogwarts
+  - John Wick
+  - Squid Game
   - Terminator
   - Thanos
   - Vecna

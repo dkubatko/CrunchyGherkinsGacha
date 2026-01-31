@@ -7,7 +7,6 @@ rarities:
 - name: Rare
   modifiers:
   - Athena
-  - Hades
   - Loki
   - Poseidon
 - name: Epic
