@@ -13,7 +13,6 @@ from settings.constants import (
     CARD_STATUS_ATTEMPTED,
     CARD_STATUS_REROLLING,
     CARD_STATUS_REROLLED,
-    CARD_STATUS_CLAIM_COUNTDOWN,
     get_claim_cost,
 )
 from utils.services import card_service, claim_service, rolled_card_service
@@ -304,15 +303,17 @@ class RolledCardManager:
 
             return caption
 
-    def generate_countdown_caption(self, ticks: int) -> str:
-        """Generate caption with countdown suffix for claim unlock grace period.
+    def generate_pre_claim_caption(self, message: Optional[str] = None) -> str:
+        """Generate caption with preparing status for claim unlock grace period.
 
         Args:
-            ticks: Number of ticks remaining until claim unlocks.
+            message: Optional custom message to display. If None, uses first from list.
 
         Returns:
-            Caption with countdown status appended.
+            Caption with preparing status appended.
         """
+        from settings.constants import CARD_STATUS_PRE_CLAIM_MESSAGES
+
         rolled_card = self.rolled_card
         if rolled_card is None:
             return "Error: Card data not found"
@@ -337,7 +338,8 @@ class RolledCardManager:
                 downgraded_rarity=card.rarity,
             )
 
-        return base_caption + CARD_STATUS_CLAIM_COUNTDOWN.format(ticks=ticks)
+        status_message = message if message else CARD_STATUS_PRE_CLAIM_MESSAGES[0]
+        return base_caption + f"\n\n<i>{status_message}</i>"
 
     def generate_keyboard(self) -> Optional[InlineKeyboardMarkup]:
         """Generate the appropriate keyboard for this rolled card."""
