@@ -304,11 +304,11 @@ class RolledCardManager:
 
             return caption
 
-    def generate_countdown_caption(self, seconds: int) -> str:
+    def generate_countdown_caption(self, ticks: int) -> str:
         """Generate caption with countdown suffix for claim unlock grace period.
 
         Args:
-            seconds: Number of seconds remaining until claim unlocks.
+            ticks: Number of ticks remaining until claim unlocks.
 
         Returns:
             Caption with countdown status appended.
@@ -337,7 +337,7 @@ class RolledCardManager:
                 downgraded_rarity=card.rarity,
             )
 
-        return base_caption + CARD_STATUS_CLAIM_COUNTDOWN.format(seconds=seconds)
+        return base_caption + CARD_STATUS_CLAIM_COUNTDOWN.format(ticks=ticks)
 
     def generate_keyboard(self) -> Optional[InlineKeyboardMarkup]:
         """Generate the appropriate keyboard for this rolled card."""
