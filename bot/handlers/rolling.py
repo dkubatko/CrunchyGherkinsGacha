@@ -21,7 +21,7 @@ from handlers.helpers import (
 from settings.constants import (
     REACTION_IN_PROGRESS,
     CARD_CAPTION_BASE,
-    CLAIM_UNLOCK_DELAY_SECONDS,
+    CLAIM_UNLOCK_TICKS,
     get_claim_cost,
 )
 from utils import rolling
@@ -126,7 +126,7 @@ async def roll(
 
         # Use RolledCardManager to generate countdown caption (no claim button yet)
         rolled_card_manager = RolledCardManager(roll_id)
-        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_DELAY_SECONDS)
+        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_TICKS)
 
         message = await update.message.reply_photo(
             photo=base64.b64decode(generated_card.image_b64),
@@ -142,7 +142,6 @@ async def roll(
                 chat_id=update.effective_chat.id,
                 message_id=message.message_id,
                 roll_id=roll_id,
-                delay_seconds=CLAIM_UNLOCK_DELAY_SECONDS,
             )
         )
 
@@ -308,7 +307,7 @@ async def handle_reroll(
         rolled_card_manager.mark_rerolled(new_card_id, original_card.rarity)
 
         # Generate countdown caption for the new card (no claim button yet)
-        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_DELAY_SECONDS)
+        caption = rolled_card_manager.generate_countdown_caption(CLAIM_UNLOCK_TICKS)
 
         # Update message with new image and countdown caption (no buttons during countdown)
         message = await query.edit_message_media(
@@ -326,7 +325,6 @@ async def handle_reroll(
                 chat_id=query.message.chat_id,
                 message_id=query.message.message_id,
                 roll_id=roll_id,
-                delay_seconds=CLAIM_UNLOCK_DELAY_SECONDS,
             )
         )
 

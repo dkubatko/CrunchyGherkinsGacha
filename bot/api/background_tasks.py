@@ -23,7 +23,8 @@ from api.config import (
 from api.helpers import build_single_card_url
 from settings.constants import (
     BURN_RESULT_MESSAGE,
-    CLAIM_UNLOCK_DELAY_SECONDS,
+    CLAIM_UNLOCK_TICK_SECONDS,
+    CLAIM_UNLOCK_TICKS,
     MEGASPIN_VICTORY_FAILURE_MESSAGE,
     MEGASPIN_VICTORY_PENDING_MESSAGE,
     MEGASPIN_VICTORY_RESULT_MESSAGE,
@@ -758,32 +759,28 @@ async def process_claim_countdown(
     chat_id: int,
     message_id: int,
     roll_id: int,
-    delay_seconds: int = CLAIM_UNLOCK_DELAY_SECONDS,
+    num_ticks: int = CLAIM_UNLOCK_TICKS,
+    tick_seconds: float = CLAIM_UNLOCK_TICK_SECONDS,
 ) -> None:
     """
     Process the claim countdown for a newly rolled card.
 
-    Updates the message caption periodically with a countdown, then reveals
-    the claim button when the countdown reaches zero. Countdown edits are
-    best-effort (failures don't abort), but the final reveal is retried.
+    Updates the message caption at each tick, then reveals the claim button
+    when all ticks complete. Countdown edits are best-effort (failures don't
+    abort), but the final reveal is retried.
 
     Args:
         chat_id: The chat where the message was sent.
         message_id: The ID of the message to edit.
         roll_id: The roll ID to use for generating captions/keyboards.
-        delay_seconds: Number of seconds for the countdown (default: CLAIM_UNLOCK_DELAY_SECONDS).
+        num_ticks: Number of countdown ticks before reveal (default: CLAIM_UNLOCK_TICKS).
+        tick_seconds: Seconds between each tick (default: CLAIM_UNLOCK_TICK_SECONDS).
     """
     from telegram.error import NetworkError, RetryAfter, TimedOut
 
     from utils.rolled_card import RolledCardManager
 
     bot = create_bot_instance()
-    start_time = asyncio.get_event_loop().time()
-
-    def get_seconds_remaining() -> int:
-        """Calculate actual seconds remaining based on wall-clock time."""
-        elapsed = asyncio.get_event_loop().time() - start_time
-        return max(0, int(delay_seconds - elapsed))
 
     def get_manager_if_active() -> Optional[RolledCardManager]:
         """Return RolledCardManager if card is still claimable, else None."""
@@ -794,17 +791,10 @@ async def process_claim_countdown(
 
     try:
         # === Phase 1: Countdown updates (best-effort) ===
-        while (seconds_remaining := get_seconds_remaining()) > 0:
+        for ticks_remaining in range(num_ticks, 0, -1):
             if get_manager_if_active() is None:
                 logger.debug("Claim countdown aborted early (roll_id=%d)", roll_id)
                 return
-
-            await asyncio.sleep(min(1.0, seconds_remaining))
-
-            # Recalculate after sleep; skip update if countdown finished
-            seconds_remaining = get_seconds_remaining()
-            if seconds_remaining <= 0:
-                break
 
             # Best-effort caption update — failures are fine, final reveal matters
             try:
@@ -814,16 +804,19 @@ async def process_claim_countdown(
                 await bot.edit_message_caption(
                     chat_id=chat_id,
                     message_id=message_id,
-                    caption=manager.generate_countdown_caption(seconds_remaining),
+                    caption=manager.generate_countdown_caption(ticks_remaining),
                     parse_mode=ParseMode.HTML,
                 )
             except RetryAfter as e:
                 logger.debug("Rate limited during countdown (roll_id=%d)", roll_id)
-                await asyncio.sleep(min(e.retry_after, get_seconds_remaining()))
+                await asyncio.sleep(e.retry_after)
             except (TimedOut, NetworkError):
                 pass  # Transient — ignore
             except Exception as exc:
                 logger.debug("Countdown edit failed (roll_id=%d): %s", roll_id, exc)
+
+            # Wait for next tick
+            await asyncio.sleep(tick_seconds)
 
         # === Phase 2: Reveal claim button (critical, with retries) ===
         max_retries = 3
