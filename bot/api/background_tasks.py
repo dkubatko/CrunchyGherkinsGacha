@@ -763,8 +763,9 @@ async def process_claim_countdown(
     """
     Process the claim countdown for a newly rolled card.
 
-    Updates the message caption every second with a countdown, then reveals
-    the claim button when the countdown reaches zero.
+    Updates the message caption periodically with a countdown, then reveals
+    the claim button when the countdown reaches zero. Countdown edits are
+    best-effort (failures don't abort), but the final reveal is retried.
 
     Args:
         chat_id: The chat where the message was sent.
@@ -772,77 +773,129 @@ async def process_claim_countdown(
         roll_id: The roll ID to use for generating captions/keyboards.
         delay_seconds: Number of seconds for the countdown (default: CLAIM_UNLOCK_DELAY_SECONDS).
     """
+    from telegram.error import NetworkError, RetryAfter, TimedOut
+
     from utils.rolled_card import RolledCardManager
 
     bot = create_bot_instance()
+    start_time = asyncio.get_event_loop().time()
+
+    def get_seconds_remaining() -> int:
+        """Calculate actual seconds remaining based on wall-clock time."""
+        elapsed = asyncio.get_event_loop().time() - start_time
+        return max(0, int(delay_seconds - elapsed))
+
+    def get_manager_if_active() -> Optional[RolledCardManager]:
+        """Return RolledCardManager if card is still claimable, else None."""
+        manager = RolledCardManager(roll_id)
+        if not manager.is_valid() or manager.is_claimed() or manager.is_being_rerolled():
+            return None
+        return manager
 
     try:
-        # Countdown loop: update caption every second
-        for seconds_remaining in range(delay_seconds - 1, 0, -1):
-            await asyncio.sleep(1)
-
-            # Refresh manager to get current state
-            rolled_card_manager = RolledCardManager(roll_id)
-
-            # Check if card still exists and is unclaimed
-            if not rolled_card_manager.is_valid():
-                logger.debug("Claim countdown aborted: card no longer valid (roll_id=%d)", roll_id)
+        # === Phase 1: Countdown updates (best-effort) ===
+        while (seconds_remaining := get_seconds_remaining()) > 0:
+            if get_manager_if_active() is None:
+                logger.debug("Claim countdown aborted early (roll_id=%d)", roll_id)
                 return
 
-            # If card was claimed or is being rerolled, stop countdown
-            if rolled_card_manager.is_claimed() or rolled_card_manager.is_being_rerolled():
-                logger.debug(
-                    "Claim countdown aborted: card claimed or being rerolled (roll_id=%d)", roll_id
-                )
-                return
+            await asyncio.sleep(min(1.0, seconds_remaining))
 
-            # Update caption with remaining time
-            countdown_caption = rolled_card_manager.generate_countdown_caption(seconds_remaining)
+            # Recalculate after sleep; skip update if countdown finished
+            seconds_remaining = get_seconds_remaining()
+            if seconds_remaining <= 0:
+                break
+
+            # Best-effort caption update — failures are fine, final reveal matters
             try:
+                manager = get_manager_if_active()
+                if manager is None:
+                    return
                 await bot.edit_message_caption(
                     chat_id=chat_id,
                     message_id=message_id,
-                    caption=countdown_caption,
+                    caption=manager.generate_countdown_caption(seconds_remaining),
                     parse_mode=ParseMode.HTML,
                 )
-            except Exception as edit_exc:
-                logger.warning(
-                    "Failed to edit countdown caption (roll_id=%d): %s", roll_id, edit_exc
+            except RetryAfter as e:
+                logger.debug("Rate limited during countdown (roll_id=%d)", roll_id)
+                await asyncio.sleep(min(e.retry_after, get_seconds_remaining()))
+            except (TimedOut, NetworkError):
+                pass  # Transient — ignore
+            except Exception as exc:
+                logger.debug("Countdown edit failed (roll_id=%d): %s", roll_id, exc)
+
+        # === Phase 2: Reveal claim button (critical, with retries) ===
+        max_retries = 3
+        base_delay = 1.0
+
+        for attempt in range(max_retries):
+            manager = get_manager_if_active()
+            if manager is None:
+                logger.debug(
+                    "Claim countdown final: card no longer claimable (roll_id=%d)", roll_id
                 )
                 return
 
-        # Final sleep before revealing claim button
-        await asyncio.sleep(1)
+            try:
+                final_caption = manager.generate_caption()
+                final_keyboard = manager.generate_keyboard()
 
-        # Refresh manager for final update
-        rolled_card_manager = RolledCardManager(roll_id)
+                edited_message = await bot.edit_message_caption(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    caption=final_caption,
+                    reply_markup=final_keyboard,
+                    parse_mode=ParseMode.HTML,
+                )
 
-        # Final validity check
-        if not rolled_card_manager.is_valid():
-            logger.debug("Claim countdown final: card no longer valid (roll_id=%d)", roll_id)
-            return
+                # Verify keyboard was attached (Telegram echoes the edited message back)
+                if (
+                    final_keyboard is not None
+                    and edited_message
+                    and getattr(edited_message, "reply_markup", None) is None
+                ):
+                    raise RuntimeError("Keyboard not attached in response")
 
-        if rolled_card_manager.is_claimed() or rolled_card_manager.is_being_rerolled():
-            logger.debug(
-                "Claim countdown final: card claimed or being rerolled (roll_id=%d)", roll_id
-            )
-            return
+                logger.debug("Claim button revealed (roll_id=%d)", roll_id)
+                return  # Success
 
-        # Generate final caption and keyboard with claim button
-        final_caption = rolled_card_manager.generate_caption()
-        final_keyboard = rolled_card_manager.generate_keyboard()
+            except RetryAfter as e:
+                wait_time = e.retry_after
+                logger.warning(
+                    "Rate limited on reveal (roll_id=%d), attempt %d/%d, waiting %.1fs",
+                    roll_id,
+                    attempt + 1,
+                    max_retries,
+                    wait_time,
+                )
+                await asyncio.sleep(wait_time)
 
-        try:
-            await bot.edit_message_caption(
-                chat_id=chat_id,
-                message_id=message_id,
-                caption=final_caption,
-                reply_markup=final_keyboard,
-                parse_mode=ParseMode.HTML,
-            )
-            logger.debug("Claim countdown completed: claim button revealed (roll_id=%d)", roll_id)
-        except Exception as edit_exc:
-            logger.warning("Failed to reveal claim button (roll_id=%d): %s", roll_id, edit_exc)
+            except (TimedOut, NetworkError, RuntimeError) as e:
+                logger.warning(
+                    "Reveal failed (roll_id=%d), attempt %d/%d: %s",
+                    roll_id,
+                    attempt + 1,
+                    max_retries,
+                    e,
+                )
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(base_delay * (2**attempt))
+
+            except Exception as e:
+                logger.warning(
+                    "Unexpected error on reveal (roll_id=%d), attempt %d/%d: %s",
+                    roll_id,
+                    attempt + 1,
+                    max_retries,
+                    e,
+                )
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(base_delay * (2**attempt))
+
+        logger.error(
+            "Failed to reveal claim button after %d attempts (roll_id=%d)", max_retries, roll_id
+        )
 
     except Exception as exc:
-        logger.error("Error in claim countdown task (roll_id=%d): %s", roll_id, exc)
+        logger.error("Fatal error in claim countdown (roll_id=%d): %s", roll_id, exc)
