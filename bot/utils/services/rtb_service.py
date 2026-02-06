@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
@@ -176,13 +175,6 @@ def get_game_by_id(game_id: int) -> Optional[RideTheBusGame]:
         return RideTheBusGame.from_orm(game_orm) if game_orm else None
 
 
-def _select_random_cards(cards: list, count: int) -> list:
-    """Select random cards for the game."""
-    if len(cards) < count:
-        return []
-    return random.sample(cards, count)
-
-
 def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
     """Check if RTB game is available for a chat.
 
@@ -190,15 +182,15 @@ def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
     Requires at least RTB_NUM_CARDS_TO_UNLOCK cards total and at least 1 card of each
     standard rarity (Common, Rare, Epic, Legendary). Unique cards are not required.
     """
-    all_cards = card_service.get_all_cards(chat_id=chat_id)
-    total_cards = len(all_cards)
+    rarity_counts = card_service.get_chat_card_rarity_counts(chat_id)
+    total_cards = sum(rarity_counts.values())
 
     if total_cards < RTB_NUM_CARDS_TO_UNLOCK:
         return False, f"Requires {RTB_NUM_CARDS_TO_UNLOCK - total_cards} more cards"
 
     # Check that we have at least 1 card of each standard rarity (exclude Unique)
     required_rarities = set(r for r in RARITY_ORDER if r != "Unique")
-    rarities_present = set(c.rarity for c in all_cards)
+    rarities_present = set(rarity_counts.keys())
     missing_rarities = required_rarities - rarities_present
     if missing_rarities:
         missing_list = ", ".join(sorted(missing_rarities))
@@ -229,14 +221,10 @@ def create_game(
                 else:
                     return None, f"Please wait {int(remaining)} seconds before playing again"
 
-    # Select random cards from chat
-    all_cards = card_service.get_all_cards(chat_id=chat_id)
-    if len(all_cards) < RTB_CARDS_PER_GAME:
-        return None, f"Not enough cards in this chat. Need at least {RTB_CARDS_PER_GAME} cards."
-
-    selected = _select_random_cards(all_cards, RTB_CARDS_PER_GAME)
+    # Select random cards from chat (lightweight query - only fetches id, rarity, title columns)
+    selected = card_service.get_random_card_summaries(chat_id, RTB_CARDS_PER_GAME)
     if len(selected) < RTB_CARDS_PER_GAME:
-        return None, "Could not select enough cards for the game."
+        return None, f"Not enough cards in this chat. Need at least {RTB_CARDS_PER_GAME} cards."
 
     now = datetime.now(timezone.utc)
 
@@ -245,9 +233,9 @@ def create_game(
             user_id=user_id,
             chat_id=chat_id,
             bet_amount=bet_amount,
-            card_ids=json.dumps([c.id for c in selected]),
-            card_rarities=json.dumps([c.rarity for c in selected]),
-            card_titles=json.dumps([c.title() for c in selected]),
+            card_ids=json.dumps([c["id"] for c in selected]),
+            card_rarities=json.dumps([c["rarity"] for c in selected]),
+            card_titles=json.dumps([f"{c['modifier']} {c['base_name']}" for c in selected]),
             current_position=1,
             current_multiplier=1,
             status="active",

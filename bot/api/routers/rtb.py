@@ -30,7 +30,6 @@ from utils.services import (
     RTB_MULTIPLIER_PROGRESSION,
     RARITY_ORDER,
     user_service,
-    card_service,
     spin_service,
     event_service,
 )
@@ -44,7 +43,11 @@ router = APIRouter(prefix="/rtb", tags=["rtb"])
 def _build_game_response(
     game: RideTheBusGame, spins_balance: Optional[int] = None
 ) -> RTBGameResponse:
-    """Build RTBGameResponse from game state."""
+    """Build RTBGameResponse from game state.
+
+    Images are NOT included in the response to keep payloads small.
+    The frontend fetches card thumbnails individually via GET /cards/thumbnail/{card_id}.
+    """
     # Only reveal all cards if the player won (completed all cards)
     # For lost/cashed_out, only show cards up to current_position
     reveal_all = game.status == "won"
@@ -57,13 +60,12 @@ def _build_game_response(
     ):
         is_revealed = i < reveal_up_to or reveal_all
         if is_revealed:
-            image_b64 = card_service.get_card_image(card_id)
             cards.append(
                 RTBCardInfo(
                     card_id=card_id,
                     rarity=rarity,
                     title=title,
-                    image_b64=image_b64,
+                    image_b64=None,
                 )
             )
         else:

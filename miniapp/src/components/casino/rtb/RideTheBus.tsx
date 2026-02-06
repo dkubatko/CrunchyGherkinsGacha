@@ -4,6 +4,7 @@ import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 import { Title, SpinsBadge } from '@/components/common';
 import RTBCard from './RTBCard';
+import { clearThumbnailCache, prefetchThumbnail } from '@/hooks/useCardThumbnail';
 import { 
   cardContainerVariants, 
   isCardRevealed,
@@ -235,9 +236,11 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
       // Update card identity to 'animating' state (keeps same stable ID)
       if (newCard) {
         setCardIdentities(prev => updateCardIdentityOnReveal(prev, newCard.card_id, true));
+        // Pre-load thumbnail so the image is ready when the card flips
+        await prefetchThumbnail(newCard.card_id, initData).catch(() => {});
       }
       
-      // Start flip animation (effect handles timeout fallback)
+      // Start flip animation — thumbnail is already cached
       setAnimationPhase('flipping');
       
     } catch (err) {
@@ -347,9 +350,10 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
     setPhase('betting');
     setGame(null);
     setLoading(true);
-    // Reset card identity system for new game
+    // Reset card identity system and thumbnail cache for new game
     setCardIdentities([]);
     setInitializedCardIds(new Set());
+    clearThumbnailCache();
     
     if (!userId) {
       setLoading(false);
@@ -426,6 +430,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
                 <RTBCard
                   key={`betting-${index}`}
                   card={card}
+                  initData={initData}
                   cardId={`betting-${index}`}
                   variant="arc"
                   index={index}
@@ -466,6 +471,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
                   <RTBCard
                     key={`finished-${card.card_id}`}
                     card={card}
+                    initData={initData}
                     cardId={card.card_id}
                     variant="arc"
                     index={index}
@@ -532,6 +538,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
                 <RTBCard
                   key={key}
                   card={cardData}
+                  initData={initData}
                   cardId={identity.id}
                   variant="stackLeft"
                   index={stackIndex}
@@ -559,6 +566,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
                 <RTBCard
                   key={key}
                   card={placeholderCard}
+                  initData={initData}
                   cardId={identity.id}
                   variant="stackRight"
                   index={adjustedIndex}
@@ -578,6 +586,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
               <RTBCard
                 key={getCardKey(animatingCard)}
                 card={flippingCardData}
+                initData={initData}
                 cardId={animatingCard.id}
                 variant={animationPhase === 'moving' ? 'stackLeft' : 'stackRight'}
                 initialVariant={animationPhase === 'moving' ? 'stackRight' : undefined}
