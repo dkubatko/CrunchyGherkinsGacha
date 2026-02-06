@@ -2,6 +2,7 @@
   "DB_PATH": "/usr/local/gacha/database/cards.db",
   "BASE_IMAGE_PATH": "data/base_images",
   "CARD_TEMPLATES_PATH": "data/card_templates",
+  "GEMINI_TIMEOUT_SECONDS": 180,
   "CURRENT_SEASON": 1,
   "SPINS_REFRESH_HOURS": 3,
   "SPINS_PER_REFRESH": 5,

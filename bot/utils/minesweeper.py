@@ -334,6 +334,35 @@ def get_game_by_id(game_id: int) -> Optional[MinesweeperGame]:
         return _game_model_to_pydantic(game_orm)
 
 
+def expire_game_cooldown(game_id: int) -> bool:
+    """
+    Expire a game's cooldown so the user can play again immediately.
+
+    Sets the started_timestamp to more than 24 hours ago, which causes
+    get_existing_game to treat the cooldown as expired.
+
+    Args:
+        game_id: Game ID to expire
+
+    Returns:
+        True if the game was found and updated, False otherwise
+    """
+    from datetime import timedelta
+
+    with get_session(commit=True) as session:
+        game_orm = (
+            session.query(MinesweeperGameModel).filter(MinesweeperGameModel.id == game_id).first()
+        )
+        if not game_orm:
+            logger.warning(f"Cannot expire cooldown: game {game_id} not found")
+            return False
+
+        expired_timestamp = datetime.now(timezone.utc) - timedelta(days=1)
+        game_orm.started_timestamp = expired_timestamp
+        logger.info(f"Expired cooldown for game {game_id} to allow replay")
+        return True
+
+
 def reveal_cell(game_id: int, cell_index: int) -> Optional[MinesweeperGame]:
     """
     Reveal a cell in the minesweeper game and update game state.

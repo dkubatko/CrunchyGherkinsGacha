@@ -25,6 +25,7 @@ SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
 MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
 MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
+GEMINI_TIMEOUT_SECONDS = config.get("GEMINI_TIMEOUT_SECONDS", 180)
 
 # RTB (Ride the Bus) constants
 RTB_MIN_BET = config.get("RTB_MIN_BET", 10)
@@ -371,7 +372,9 @@ SLOTS_VICTORY_RESULT_MESSAGE = (
     "Set: <b>{set_name}</b>"
 )
 
-SLOTS_VICTORY_FAILURE_MESSAGE = "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed. Please try again later."
+SLOTS_VICTORY_FAILURE_MESSAGE = (
+    "@{username} won a {rarity} {display_name} in slots!\n\nCard generation failed."
+)
 
 MEGASPIN_VICTORY_PENDING_MESSAGE = "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\nGenerating card..."
 
@@ -382,12 +385,12 @@ MEGASPIN_VICTORY_RESULT_MESSAGE = (
     "Set: <b>{set_name}</b>"
 )
 
-MEGASPIN_VICTORY_FAILURE_MESSAGE = "@{username} used a <b>megaspin</b> and won a {rarity} {display_name}!\n\nCard generation failed. Please try again later."
+MEGASPIN_VICTORY_FAILURE_MESSAGE = "@{username} used a <b>megaspin</b> and won a {rarity} {display_name}!\n\nCard generation failed."
 
 SLOTS_VIEW_IN_APP_LABEL = "View in the app!"
 
 SLOTS_VICTORY_REFUND_MESSAGE = (
-    "@{username} attempted to claim a <b>{rarity} {display_name}</b>, but something broke.\n\n"
+    "Attempted to generate <b>{rarity} {display_name}</b> for @{username}, but something broke.\n\n"
     "Awarded <b>{spin_amount} spins</b> as compensation."
 )
 
@@ -407,8 +410,7 @@ MINESWEEPER_VICTORY_RESULT_MESSAGE = (
 )
 
 MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
-    "@{username} won a {rarity} {display_name} in Minesweeper!\n\n"
-    "Card generation failed. Please try again later."
+    "@{username} won a {rarity} {display_name} in Minesweeper!\n\n" "Card generation failed."
 )
 
 MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Minesweeper!"
