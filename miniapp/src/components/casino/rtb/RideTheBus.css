@@ -386,9 +386,9 @@
   gap: 6px;
   flex: 1;
   padding: 14px 20px;
-  border: 2px solid rgba(255, 255, 255, 0.15);
+  border: 2px solid var(--tg-theme-separator-color, rgba(255, 255, 255, 0.15));
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.02) 100%);
+  background: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.08));
   color: var(--tg-theme-text-color, white);
   font-size: 1.1rem;
   font-weight: 700;
@@ -397,8 +397,8 @@
 }
 
 .rtb-bet-option:hover:not(:disabled) {
-  border-color: rgba(255, 255, 255, 0.3);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.05) 100%);
+  border-color: var(--tg-theme-button-color, rgba(255, 255, 255, 0.3));
+  background: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.12));
   transform: translateY(-2px);
 }
 

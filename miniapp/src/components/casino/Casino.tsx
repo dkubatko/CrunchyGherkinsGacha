@@ -6,9 +6,9 @@ import Minesweeper from './minesweeper/Minesweeper';
 import RideTheBus from './rtb/RideTheBus';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
-import slotsCover from '@/assets/casino/slots_cover.png';
-import minesweeperCover from '@/assets/casino/minesweeper_cover.png';
-import rtbCover from '@/assets/casino/rtb_cover.png';
+import slotsCover from '@/assets/casino/slots_cover.webp';
+import minesweeperCover from '@/assets/casino/minesweeper_cover.webp';
+import rtbCover from '@/assets/casino/rtb_cover.webp';
 
 interface SlotSymbol {
   id: number;
