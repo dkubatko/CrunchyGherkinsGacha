@@ -542,6 +542,23 @@ async def process_minesweeper_victory_background(
 
         except Exception as exc:
             logger.error("Error processing minesweeper victory for user %s: %s", username, exc)
+
+            # Expire the game cooldown so the user can play again
+            try:
+                from utils import minesweeper
+
+                await asyncio.to_thread(minesweeper.expire_game_cooldown, game_id)
+                logger.info(
+                    "Expired minesweeper cooldown for game %s after card generation failure",
+                    game_id,
+                )
+            except Exception as cooldown_exc:
+                logger.error(
+                    "Failed to expire minesweeper cooldown for game %s: %s",
+                    game_id,
+                    cooldown_exc,
+                )
+
             # Update pending message with failure
             failure_caption = MINESWEEPER_VICTORY_FAILURE_MESSAGE.format(
                 username=username,

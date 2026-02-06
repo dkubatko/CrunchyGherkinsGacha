@@ -8,6 +8,7 @@ import google.generativeai as genai
 from PIL import Image
 
 from settings.constants import (
+    GEMINI_TIMEOUT_SECONDS,
     IMAGE_GENERATOR_INSTRUCTION,
     RARITIES,
     CARD_TEMPLATES_PATH,
@@ -100,6 +101,7 @@ class GeminiUtil:
             response = self.model.generate_content(
                 [prompt, template_img, img],
                 generation_config=generation_config,
+                request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
             )
 
             for part in response.candidates[0].content.parts:
@@ -148,7 +150,10 @@ class GeminiUtil:
             square_image_bytes = ImageUtil.crop_to_square(source_bytes)
             img = Image.open(BytesIO(square_image_bytes))
 
-            response = self.model.generate_content([prompt, img])
+            response = self.model.generate_content(
+                [prompt, img],
+                request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
+            )
 
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
