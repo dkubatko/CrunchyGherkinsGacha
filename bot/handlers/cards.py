@@ -63,6 +63,7 @@ from settings.constants import (
     RECYCLE_UPGRADE_MAP,
     RECYCLE_USAGE_MESSAGE,
     RECYCLE_DM_RESTRICTED_MESSAGE,
+    RECYCLE_SELECT_RARITY_MESSAGE,
     RECYCLE_CONFIRM_MESSAGE,
     RECYCLE_INSUFFICIENT_CARDS_MESSAGE,
     RECYCLE_ALREADY_RUNNING_MESSAGE,
@@ -1863,9 +1864,35 @@ async def recycle(
         return
 
     if not context.args:
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Common", callback_data=f"recycle_select_common_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Rare", callback_data=f"recycle_select_rare_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Epic", callback_data=f"recycle_select_epic_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"recycle_cancel_none_{user.user_id}"
+                    ),
+                ],
+            ]
+        )
         await message.reply_text(
-            RECYCLE_USAGE_MESSAGE,
+            RECYCLE_SELECT_RARITY_MESSAGE,
+            reply_markup=keyboard,
             reply_to_message_id=message.message_id,
+            parse_mode=ParseMode.HTML,
         )
         return
 
@@ -1955,11 +1982,6 @@ async def handle_recycle_callback(
         await query.answer(RECYCLE_NOT_YOURS_MESSAGE)
         return
 
-    rarity_name = RECYCLE_ALLOWED_RARITIES.get(rarity_key)
-    if not rarity_name:
-        await query.answer(RECYCLE_UNKNOWN_RARITY_MESSAGE, show_alert=True)
-        return
-
     if action == "cancel":
         await query.answer("Recycle cancelled.")
         try:
@@ -1969,6 +1991,65 @@ async def handle_recycle_callback(
                 await query.edit_message_text("Recycle cancelled.")
             except Exception:
                 pass
+        return
+
+    rarity_name = RECYCLE_ALLOWED_RARITIES.get(rarity_key)
+    if not rarity_name:
+        await query.answer(RECYCLE_UNKNOWN_RARITY_MESSAGE, show_alert=True)
+        return
+
+    if action == "select":
+        # User selected a rarity from the selection menu
+        # Edit the message in-place to show the confirmation prompt
+        chat = update.effective_chat
+        if not chat:
+            await query.answer()
+            return
+
+        upgrade_rarity = RECYCLE_UPGRADE_MAP[rarity_name]
+        required_cards = get_recycle_required_cards(rarity_name)
+        chat_id_str = str(chat.id)
+
+        cards = await asyncio.to_thread(
+            card_service.get_user_cards_by_rarity,
+            user.user_id,
+            user.username,
+            rarity_name,
+            chat_id_str,
+            limit=None,
+            unlocked=True,
+        )
+
+        if len(cards) < required_cards:
+            await query.answer(
+                f"You need at least {required_cards} unlocked {rarity_name.lower()} cards to recycle.",
+                show_alert=True,
+            )
+            return
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Yes!", callback_data=f"recycle_yes_{rarity_key}_{user.user_id}"
+                    ),
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"recycle_cancel_{rarity_key}_{user.user_id}"
+                    ),
+                ]
+            ]
+        )
+
+        await query.edit_message_text(
+            text=RECYCLE_CONFIRM_MESSAGE.format(
+                burn_count=required_cards,
+                rarity=rarity_name,
+                upgraded_rarity=upgrade_rarity,
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer()
         return
 
     if action != "yes":
