@@ -377,10 +377,12 @@ export function getCardVariant(
 }
 
 /**
- * Check if card is revealed (has image data)
+ * Check if card is revealed (has known rarity, i.e. not a placeholder).
+ * Note: image_b64 is no longer included in API responses; thumbnails are
+ * fetched lazily by each RTBCard via the useCardThumbnail hook.
  */
-export function isCardRevealed(card: { rarity: string; image_b64: string | null }): boolean {
-  return card.rarity !== '???' && card.image_b64 !== null;
+export function isCardRevealed(card: { rarity: string; image_b64?: string | null }): boolean {
+  return card.rarity !== '???';
 }
 
 // =============================================================================

@@ -218,6 +218,22 @@ export class ApiService {
   }
 
   /**
+   * Fetch a card's thumbnail (1/4 scale) image.
+   * Much smaller than the full image, suitable for grid/card views like RTB.
+   */
+  static async fetchCardThumbnail(cardId: number, initData: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/cards/thumbnail/${cardId}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch thumbnail');
+    }
+
+    return response.json();
+  }
+
+  /**
    * Get a short-lived download token for a card image.
    * The token is valid for 5 minutes and can be reused within that window.
    */

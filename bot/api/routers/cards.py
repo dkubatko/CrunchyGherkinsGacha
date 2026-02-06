@@ -511,6 +511,22 @@ async def get_card_image_route(
     return image_b64
 
 
+@router.get("/thumbnail/{card_id}", response_model=str)
+async def get_card_thumbnail_route(
+    card_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the thumbnail (1/4 scale) base64 encoded image for a card.
+
+    Returns a much smaller image suitable for grid/card views.
+    Generates and caches the thumbnail on first request if not yet available.
+    """
+    thumb_b64 = await asyncio.to_thread(card_service.get_card_thumbnail, card_id)
+    if not thumb_b64:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    return thumb_b64
+
+
 @router.get("/view/{card_id}.png")
 @limiter.limit("5/minute")
 async def view_card_image_route(

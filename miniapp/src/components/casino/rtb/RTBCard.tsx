@@ -21,6 +21,7 @@ import {
   getLeftStackAbsolutePosition,
   getRightStackAbsolutePosition,
 } from '@/utils/rtbAnimations';
+import { useCardThumbnail } from '@/hooks/useCardThumbnail';
 import type { RTBCardInfo } from '@/types';
 
 // =============================================================================
@@ -32,6 +33,9 @@ export type CardLayoutVariant = 'hidden' | 'arc' | 'arcSelected' | 'stackLeft' |
 export interface RTBCardProps {
   /** Card data from the API */
   card: RTBCardInfo;
+  
+  /** Telegram initData for thumbnail API auth */
+  initData: string;
   
   /** Unique identifier for layout animations */
   cardId: number | string;
@@ -102,6 +106,7 @@ export interface RTBCardProps {
 
 const RTBCard: React.FC<RTBCardProps> = ({
   card,
+  initData,
   cardId,
   variant,
   initialVariant,
@@ -131,6 +136,14 @@ const RTBCard: React.FC<RTBCardProps> = ({
       flipStartedRef.current = true;
     }
   }, [isFlipping]);
+
+  // Fetch thumbnail lazily when the card is revealed
+  // Only fetch for revealed cards with a real card_id (not placeholders)
+  const shouldFetch = (isRevealed || isFlipping) && card.rarity !== '???';
+  const { thumbnail, loading: thumbnailLoading } = useCardThumbnail(
+    shouldFetch ? card.card_id : null,
+    initData
+  );
   
   // Determine layout class based on variant
   const isArcLayout = variant === 'arc' || variant === 'arcSelected';
@@ -295,10 +308,10 @@ const RTBCard: React.FC<RTBCardProps> = ({
             transform: 'rotateY(180deg)',
           }}
         >
-          {card.image_b64 ? (
+          {thumbnail ? (
             <>
               <img
-                src={`data:image/png;base64,${card.image_b64}`}
+                src={`data:image/png;base64,${thumbnail}`}
                 alt={card.title || 'Card'}
                 className="rtb-card-image"
               />
@@ -306,8 +319,12 @@ const RTBCard: React.FC<RTBCardProps> = ({
                 {card.rarity}
               </div>
             </>
+          ) : thumbnailLoading ? (
+            <div className="rtb-card-placeholder rtb-card-placeholder-loading">
+              <div className="rtb-card-spinner" />
+            </div>
           ) : (
-            // Fallback if no image yet (shouldn't happen when revealed)
+            // Fallback if no image yet or failed to load
             <div className="rtb-card-placeholder rtb-card-placeholder-empty" />
           )}
         </div>
@@ -342,7 +359,7 @@ export default React.memo(RTBCard, (prevProps, nextProps) => {
     prevProps.zIndex === nextProps.zIndex &&
     prevProps.card.card_id === nextProps.card.card_id &&
     prevProps.card.rarity === nextProps.card.rarity &&
-    prevProps.card.image_b64 === nextProps.card.image_b64
+    prevProps.initData === nextProps.initData
   );
 });
 

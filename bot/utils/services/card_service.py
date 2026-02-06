@@ -9,7 +9,7 @@ from __future__ import annotations
 import base64
 import datetime
 import logging
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from sqlalchemy import case, func, or_
 from sqlalchemy.orm import joinedload, contains_eager, load_only
@@ -353,6 +353,54 @@ def get_card_image(card_id: int) -> str | None:
         return card_image.image_b64 if card_image else None
 
 
+def get_card_thumbnail(card_id: int) -> str | None:
+    """Get the thumbnail base64 image for a single card, generating it if missing.
+
+    Only returns images for cards in the current season.
+    Returns the 1/4-scale thumbnail (much smaller than the full image).
+
+    Args:
+        card_id: The ID of the card.
+
+    Returns:
+        Base64 encoded thumbnail string, or None if not found or wrong season.
+    """
+    with get_session(commit=True) as session:
+        # Verify card exists and is in the current season
+        card = (
+            session.query(CardModel)
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not card:
+            return None
+
+        card_image = session.query(CardImageModel).filter(CardImageModel.card_id == card_id).first()
+        if not card_image:
+            return None
+
+        # Return cached thumbnail if available
+        if card_image.image_thumb_b64:
+            return card_image.image_thumb_b64
+
+        # Generate thumbnail from full image on-the-fly
+        if not card_image.image_b64:
+            return None
+
+        try:
+            image_bytes = base64.b64decode(card_image.image_b64)
+            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
+            thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+            card_image.image_thumb_b64 = thumb_b64
+            return thumb_b64
+        except Exception as exc:
+            logger.warning("Failed to generate thumbnail for card %s: %s", card_id, exc)
+            return card_image.image_b64  # Fall back to full image
+
+
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
     """Get thumbnail base64 images for multiple cards, generating them when missing.
 
@@ -433,6 +481,79 @@ def get_total_cards_count() -> int:
             .scalar()
         )
         return count or 0
+
+
+def get_random_card_summaries(chat_id: str, count: int) -> List[Dict[str, Any]]:
+    """Get random card summaries (id, rarity, title) from a chat without loading images.
+
+    This is a lightweight query optimized for RTB game creation — it only fetches
+    the minimal columns needed (id, base_name, modifier, rarity) and avoids
+    loading image data or full ORM objects.
+
+    Args:
+        chat_id: The chat ID to select cards from.
+        count: Number of random cards to select.
+
+    Returns:
+        List of dicts with keys: id, base_name, modifier, rarity.
+        Empty list if not enough cards are available.
+    """
+    with get_session() as session:
+        rows = (
+            session.query(
+                CardModel.id,
+                CardModel.base_name,
+                CardModel.modifier,
+                CardModel.rarity,
+            )
+            .filter(
+                CardModel.owner.isnot(None),
+                CardModel.chat_id == str(chat_id),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .all()
+        )
+
+        if len(rows) < count:
+            return []
+
+        import random as _random
+
+        selected = _random.sample(rows, count)
+        return [
+            {
+                "id": row[0],
+                "base_name": row[1],
+                "modifier": row[2],
+                "rarity": row[3],
+            }
+            for row in selected
+        ]
+
+
+def get_chat_card_rarity_counts(chat_id: str) -> Dict[str, int]:
+    """Get counts of cards per rarity in a chat for the current season.
+
+    Lightweight query for checking game availability (e.g., RTB).
+
+    Args:
+        chat_id: The chat ID to check.
+
+    Returns:
+        Dictionary mapping rarity to count.
+    """
+    with get_session() as session:
+        rows = (
+            session.query(CardModel.rarity, func.count(CardModel.id))
+            .filter(
+                CardModel.owner.isnot(None),
+                CardModel.chat_id == str(chat_id),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .group_by(CardModel.rarity)
+            .all()
+        )
+        return {rarity: cnt for rarity, cnt in rows}
 
 
 def get_user_stats(username):
