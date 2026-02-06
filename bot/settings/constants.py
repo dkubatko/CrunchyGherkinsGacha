@@ -268,6 +268,7 @@ RECYCLE_USAGE_MESSAGE = (
     "3C -> 1R\n3R -> 1E\n4E -> 1L"
 )
 RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling is only available in the group chat."
+RECYCLE_SELECT_RARITY_MESSAGE = "Select <b>card rarity</b> to recycle"
 RECYCLE_CONFIRM_MESSAGE = (
     "Burn {burn_count} unlocked <b>{rarity}</b> cards to generate 1 <b>{upgraded_rarity}</b> card?"
 )
