@@ -233,14 +233,18 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
       });
       setFlippingCardData(newCard || null);
       
-      // Update card identity to 'animating' state (keeps same stable ID)
+      // Pre-load thumbnail BEFORE updating card identities,
+      // so the image is ready when the card flips
       if (newCard) {
-        setCardIdentities(prev => updateCardIdentityOnReveal(prev, newCard.card_id, true));
-        // Pre-load thumbnail so the image is ready when the card flips
         await prefetchThumbnail(newCard.card_id, initData).catch(() => {});
       }
       
-      // Start flip animation — thumbnail is already cached
+      // Update card identity to 'animating' and start flip animation
+      // in the same render batch — prevents the card from disappearing
+      // between the identity change and animation phase change
+      if (newCard) {
+        setCardIdentities(prev => updateCardIdentityOnReveal(prev, newCard.card_id, true));
+      }
       setAnimationPhase('flipping');
       
     } catch (err) {
@@ -660,12 +664,12 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
               key={amount}
               className={`rtb-bet-option ${betAmount === amount ? 'selected' : ''}`}
               onClick={() => {
-                if (amount <= spinsBalance && !isOnCooldown) {
+                if (amount <= spinsBalance && !isOnCooldown && !loading) {
                   setBetAmount(amount);
                   TelegramUtils.triggerHapticSelection();
                 }
               }}
-              disabled={amount > spinsBalance || isOnCooldown}
+              disabled={amount > spinsBalance || isOnCooldown || loading}
             >
               <span className="rtb-coin-inline"></span> {amount}
             </button>
@@ -677,7 +681,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
           onClick={handleStartGame}
           disabled={loading || spinsBalance < betAmount || isOnCooldown}
         >
-          {loading ? 'Loading...' : isOnCooldown ? (cooldownRemaining ? `Next game in ${cooldownRemaining}` : 'Loading...') : 'PLAY'}
+          {isOnCooldown && cooldownRemaining ? `Next game in ${cooldownRemaining}` : 'PLAY'}
         </button>
       </div>
     );
@@ -734,6 +738,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
         <button
           className="rtb-new-game-button"
           onClick={handleNewGame}
+          disabled={loading}
         >
           Play Again
         </button>
