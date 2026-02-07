@@ -5,6 +5,7 @@ rarities:
 - name: Common
   modifiers:
   - Baobab
+  - Bee
   - Coral
   - Desert
   - Eagle
