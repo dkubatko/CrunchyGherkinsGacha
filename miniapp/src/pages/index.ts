@@ -1,4 +1,3 @@
-export { CasinoPage } from './CasinoPage';
+export { HubPage } from './HubPage';
 export { SingleCardPage } from './SingleCardPage';
-export { CollectionPage } from './CollectionPage';
 export { LandingPage } from './LandingPage';

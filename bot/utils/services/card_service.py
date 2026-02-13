@@ -221,6 +221,44 @@ def get_user_card_count(user_id: int, chat_id: Optional[str] = None) -> int:
         return query.scalar() or 0
 
 
+def get_user_card_rarity_counts(user_id: int, chat_id: Optional[str] = None) -> Dict[str, int]:
+    """Get counts by rarity for cards owned by a user, optionally scoped to a chat.
+
+    Only counts cards from the current season.
+    """
+    # Import here to avoid circular dependency
+    from utils.services.user_service import get_username_for_user_id
+
+    username = get_username_for_user_id(user_id)
+    rarities = ["Unique", "Legendary", "Epic", "Rare", "Common"]
+
+    with get_session() as session:
+        owner_conditions = [CardModel.user_id == user_id]
+        if username:
+            owner_conditions.append(func.lower(CardModel.owner) == func.lower(username))
+
+        query = (
+            session.query(CardModel.rarity, func.count(CardModel.id))
+            .filter(
+                or_(*owner_conditions),
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .group_by(CardModel.rarity)
+        )
+
+        if chat_id is not None:
+            query = query.filter(CardModel.chat_id == str(chat_id))
+
+        rows = query.all()
+
+    rarity_counts: Dict[str, int] = {rarity: 0 for rarity in rarities}
+    for rarity, count in rows:
+        if rarity in rarity_counts:
+            rarity_counts[rarity] = count
+
+    return rarity_counts
+
+
 def get_user_cards_by_rarity(
     user_id: int,
     username: Optional[str],

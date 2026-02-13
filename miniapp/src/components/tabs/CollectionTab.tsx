@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import '@/App.css';
 
 // Components
-import { CardModal, CollectionLayout } from '@/components/cards';
+import { CardModal, CardGrid, FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
+import Loading from '@/components/common/Loading';
 import { BurnConfirmDialog, LockConfirmDialog } from '@/components/dialogs';
-import type { FilterOptions, SortOptions } from '@/components/cards';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
@@ -15,19 +14,21 @@ import {
   useModal,
   useSwipeHandlers,
   useCollectionCards,
+  useCardFiltering,
+  DEFAULT_FILTER_OPTIONS,
+  DEFAULT_SORT_OPTIONS,
 } from '@/hooks';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
-import { RARITY_SEQUENCE } from '@/utils/rarityStyles';
 
 // Services
 import { ApiService } from '@/services/api';
 
 // Types
-import type { CardData, ClaimBalanceState, View, ProfileState, UserProfile } from '@/types';
+import type { CardData, ClaimBalanceState, ProfileState, UserProfile } from '@/types';
 
-interface CollectionPageProps {
+interface CollectionTabProps {
   currentUserId: number;
   targetUserId: number;
   chatId: string | null;
@@ -36,20 +37,19 @@ interface CollectionPageProps {
   initData: string;
 }
 
-export const CollectionPage = ({
+const CollectionTab = ({
   currentUserId,
   targetUserId: initialTargetUserId,
   chatId,
   isOwnCollection: initialIsOwnCollection,
   enableTrade: initialEnableTrade,
-  initData
-}: CollectionPageProps) => {
+  initData,
+}: CollectionTabProps) => {
   // Core data hooks
   const {
     cards,
     loading,
     error,
-    targetUserId,
     isOwnCollection,
     enableTrade,
     collectionDisplayName,
@@ -64,12 +64,10 @@ export const CollectionPage = ({
 
   // Only enable orientation tracking for card tilt effects
   const { orientation, orientationKey, resetTiltReference } = useOrientation({ enabled: true });
-  
+
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [view, setView] = useState<View>('current');
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
-  const [isTradeGridActive, setIsTradeGridActive] = useState(false);
   const [showBurnDialog, setShowBurnDialog] = useState(false);
   const [showLockDialog, setShowLockDialog] = useState(false);
   const [lockingCard, setLockingCard] = useState(false);
@@ -77,7 +75,6 @@ export const CollectionPage = ({
   const [triggerBurn, setTriggerBurn] = useState(false);
   const [isBurningInProgress, setIsBurningInProgress] = useState(false);
   const [chatProfiles, setChatProfiles] = useState<Record<string, ProfileState>>({});
-  const [viewedProfile, setViewedProfile] = useState<ProfileState>({ profile: null, loading: false });
   const profileRequestsRef = useRef<Map<string, Promise<UserProfile | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
   const cardConfigLoadedRef = useRef(false);
@@ -91,49 +88,20 @@ export const CollectionPage = ({
     cardId: number;
     burnedCardIndex: number;
   } | null>(null);
+  const [isTradeView, setIsTradeView] = useState(false);
 
-  // Filter and sort state
-  const [filterOptions, setFilterOptions] = useState<FilterOptions>({
-    owner: '',
-    rarity: '',
-    locked: '',
-    characterName: '',
-    setName: ''
-  });
-  const [sortOptions, setSortOptions] = useState<SortOptions>({
-    field: 'rarity',
-    direction: 'desc'
-  });
-  
-  // Current view grid filter and sort state
-  const [currentGridFilterOptions, setCurrentGridFilterOptions] = useState<FilterOptions>({
-    owner: '',
-    rarity: '',
-    locked: '',
-    characterName: '',
-    setName: ''
-  });
-  const [currentGridSortOptions, setCurrentGridSortOptions] = useState<SortOptions>({
-    field: 'rarity',
-    direction: 'desc'
-  });
-
-  const hasChatScope = Boolean(chatId);
   const isTradeMode = Boolean(selectedCardForTrade);
-  const isTradeView = view === 'all' && isTradeMode;
   const activeTradeCardId = isTradeMode && selectedCardForTrade ? selectedCardForTrade.id : null;
   const cardsScopeChatId = isTradeMode && selectedCardForTrade?.chat_id
     ? selectedCardForTrade.chat_id
     : chatId;
-  const shouldFetchAllCards = hasChatScope || activeTradeCardId !== null;
+  const shouldFetchAllCards = activeTradeCardId !== null;
 
   const ensureUserProfile = useCallback(async (
     profileChatId: string,
     options: { force?: boolean } = {}
   ): Promise<UserProfile | null> => {
-    if (!profileChatId) {
-      return null;
-    }
+    if (!profileChatId) return null;
 
     pendingChatIdsRef.current.delete(profileChatId);
 
@@ -161,11 +129,7 @@ export const CollectionPage = ({
         const result = await ApiService.fetchUserProfile(currentUserId, profileChatId, initData);
         setChatProfiles(prev => ({
           ...prev,
-          [profileChatId]: {
-            profile: result,
-            loading: false,
-            error: undefined
-          }
+          [profileChatId]: { profile: result, loading: false, error: undefined }
         }));
         return result;
       } catch (err) {
@@ -184,56 +148,28 @@ export const CollectionPage = ({
     })();
 
     profileRequestsRef.current.set(profileChatId, fetchPromise);
-
     const resolvedProfile = await fetchPromise;
     profileRequestsRef.current.delete(profileChatId);
-
     return resolvedProfile;
   }, [chatProfiles, initData, currentUserId]);
 
   const handleCardOpen = useCallback((card: Pick<CardData, 'id' | 'chat_id'>) => {
-    if (!card.chat_id) {
-      return;
-    }
+    if (!card.chat_id) return;
     void ensureUserProfile(card.chat_id);
   }, [ensureUserProfile]);
 
   useEffect(() => {
-    if (pendingChatIdsRef.current.size === 0) {
-      return;
-    }
-
+    if (pendingChatIdsRef.current.size === 0) return;
     const queuedChatIds = Array.from(pendingChatIdsRef.current);
     pendingChatIdsRef.current.clear();
-
     queuedChatIds.forEach(queuedChatId => {
       void ensureUserProfile(queuedChatId, { force: true });
     });
   }, [ensureUserProfile]);
 
+  // Load card config on first render
   useEffect(() => {
-    if (!chatId) return;
-
-    const fetchViewedProfile = async () => {
-      setViewedProfile(prev => ({ ...prev, loading: true, error: undefined }));
-      try {
-        const userId = isOwnCollection ? currentUserId : targetUserId;
-        const result = await ApiService.fetchUserProfile(userId, chatId, initData);
-        setViewedProfile({ profile: result, loading: false, error: undefined });
-      } catch (err) {
-        setViewedProfile({ profile: null, loading: false, error: err instanceof Error ? err.message : 'Failed' });
-      }
-    };
-
-    fetchViewedProfile();
-  }, [currentUserId, targetUserId, isOwnCollection, chatId, initData]);
-
-  // Load card config when card view is first loaded
-  useEffect(() => {
-    if (cardConfigLoadedRef.current) {
-      return;
-    }
-
+    if (cardConfigLoadedRef.current) return;
     cardConfigLoadedRef.current = true;
 
     const loadCardConfig = async () => {
@@ -241,13 +177,11 @@ export const CollectionPage = ({
         const config = await ApiService.fetchCardConfig(initData);
         setBurnRewards(config.burn_rewards);
         setLockCosts(config.lock_costs);
-        console.log('Card config loaded:', config);
       } catch (err) {
         console.error('Failed to fetch card config:', err);
         cardConfigLoadedRef.current = false;
       }
     };
-
     void loadCardConfig();
   }, [initData]);
 
@@ -273,71 +207,6 @@ export const CollectionPage = ({
     ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
     : null;
 
-  // Filtering and sorting logic
-  const applyFiltersAndSorting = useCallback((cardsToFilter: CardData[]) => {
-    let filtered = cardsToFilter;
-
-    if (filterOptions.owner) {
-      filtered = filtered.filter(card => card.owner === filterOptions.owner);
-    }
-
-    if (filterOptions.rarity) {
-      filtered = filtered.filter(card => card.rarity === filterOptions.rarity);
-    }
-
-    if (filterOptions.locked) {
-      const shouldBeLocked = filterOptions.locked === 'locked';
-      filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
-    }
-
-    if (filterOptions.characterName) {
-      filtered = filtered.filter(card => card.base_name === filterOptions.characterName);
-    }
-
-    if (filterOptions.setName) {
-      filtered = filtered.filter(card => card.set_name === filterOptions.setName);
-    }
-
-    const sorted = [...filtered].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
-
-      switch (sortOptions.field) {
-        case 'rarity': {
-          const rarityArray = [...RARITY_SEQUENCE] as string[];
-          const aIndex = rarityArray.indexOf(a.rarity);
-          const bIndex = rarityArray.indexOf(b.rarity);
-          aValue = aIndex === -1 ? rarityArray.length : aIndex;
-          bValue = bIndex === -1 ? rarityArray.length : bIndex;
-          break;
-        }
-        case 'id':
-          aValue = a.id;
-          bValue = b.id;
-          break;
-        case 'name':
-          aValue = `${a.modifier} ${a.base_name}`.toLowerCase();
-          bValue = `${b.modifier} ${b.base_name}`.toLowerCase();
-          break;
-        default:
-          aValue = a.id;
-          bValue = b.id;
-      }
-
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        const comparison = aValue.localeCompare(bValue);
-        return sortOptions.direction === 'asc' ? comparison : -comparison;
-      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-        const comparison = aValue - bValue;
-        return sortOptions.direction === 'asc' ? comparison : -comparison;
-      }
-
-      return 0;
-    });
-
-    return sorted;
-  }, [filterOptions, sortOptions]);
-
   const baseDisplayedCards = useMemo(() => {
     if (isTradeMode && selectedCardForTrade) {
       return allCards.filter((card) =>
@@ -348,79 +217,13 @@ export const CollectionPage = ({
     return allCards;
   }, [isTradeMode, selectedCardForTrade, allCards, currentUserId]);
 
-  const displayedCards = useMemo(
-    () => applyFiltersAndSorting(baseDisplayedCards),
-    [baseDisplayedCards, applyFiltersAndSorting]
-  );
-
-  // Apply filtering and sorting for current view grid
-  const applyCurrentGridFiltersAndSorting = useCallback((cardsToFilter: CardData[]) => {
-    let filtered = cardsToFilter;
-
-    if (currentGridFilterOptions.rarity) {
-      filtered = filtered.filter(card => card.rarity === currentGridFilterOptions.rarity);
-    }
-
-    if (currentGridFilterOptions.locked) {
-      const shouldBeLocked = currentGridFilterOptions.locked === 'locked';
-      filtered = filtered.filter(card => Boolean(card.locked) === shouldBeLocked);
-    }
-
-    if (currentGridFilterOptions.characterName) {
-      filtered = filtered.filter(card => card.base_name === currentGridFilterOptions.characterName);
-    }
-
-    if (currentGridFilterOptions.setName) {
-      filtered = filtered.filter(card => card.set_name === currentGridFilterOptions.setName);
-    }
-
-    const sorted = [...filtered].sort((a, b) => {
-      let aValue: string | number;
-      let bValue: string | number;
-
-      switch (currentGridSortOptions.field) {
-        case 'rarity': {
-          const rarityArray = [...RARITY_SEQUENCE] as string[];
-          const aIndex = rarityArray.indexOf(a.rarity);
-          const bIndex = rarityArray.indexOf(b.rarity);
-          aValue = aIndex === -1 ? rarityArray.length : aIndex;
-          bValue = bIndex === -1 ? rarityArray.length : bIndex;
-          break;
-        }
-        case 'id':
-          aValue = a.id;
-          bValue = b.id;
-          break;
-        case 'name':
-          aValue = `${a.modifier} ${a.base_name}`.toLowerCase();
-          bValue = `${b.modifier} ${b.base_name}`.toLowerCase();
-          break;
-        default:
-          aValue = a.id;
-          bValue = b.id;
-      }
-
-      if (typeof aValue === 'string' && typeof bValue === 'string') {
-        const comparison = aValue.localeCompare(bValue);
-        return currentGridSortOptions.direction === 'asc' ? comparison : -comparison;
-      } else if (typeof aValue === 'number' && typeof bValue === 'number') {
-        const comparison = aValue - bValue;
-        return currentGridSortOptions.direction === 'asc' ? comparison : -comparison;
-      }
-
-      return 0;
-    });
-
-    return sorted;
-  }, [currentGridFilterOptions, currentGridSortOptions]);
-
-  const filteredCurrentCards = useMemo(
-    () => applyCurrentGridFiltersAndSorting(cards),
-    [cards, applyCurrentGridFiltersAndSorting]
-  );
+  const tradeFiltering = useCardFiltering(baseDisplayedCards);
+  const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: false });
+  const displayedCards = tradeFiltering.displayedCards;
+  const filteredCurrentCards = currentFiltering.displayedCards;
 
   const shareEnabled = Boolean(initData);
-  
+
   // Feature hooks
   const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
   const currentDialogCard = modalCard ?? cards[currentIndex] ?? null;
@@ -439,52 +242,39 @@ export const CollectionPage = ({
     ? `${currentDialogCard.modifier} ${currentDialogCard.base_name}`.trim()
     : null;
 
-  // Expand app on mount
-  useEffect(() => {
-    TelegramUtils.expandApp();
-  }, []);
-
   const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
-    setIsTradeGridActive(false);
     setSelectedCardForTrade(null);
+    setIsTradeView(false);
     closeModal();
-    setView('current');
     if (!options?.preserveAllFilters) {
-      setFilterOptions({ owner: '', rarity: '', locked: '', characterName: '', setName: '' });
-      setSortOptions({ field: 'rarity', direction: 'desc' });
+      tradeFiltering.setFilterOptions(DEFAULT_FILTER_OPTIONS);
+      tradeFiltering.setSortOptions(DEFAULT_SORT_OPTIONS);
     }
     TelegramUtils.hideBackButton();
-  }, [closeModal]);
+  }, [closeModal, tradeFiltering]);
 
   const switchToCurrentViewRef = useRef(switchToCurrentView);
-
   useEffect(() => {
     switchToCurrentViewRef.current = switchToCurrentView;
   }, [switchToCurrentView]);
-  
-  // Memoized callback functions
+
+  // Trade handlers
   const handleTradeClick = useCallback(() => {
     if (enableTrade) {
       const tradeCard = modalCard || cards[currentIndex];
-      
-      if (!tradeCard) {
-        return;
-      }
+      if (!tradeCard) return;
 
       if (!tradeCard.chat_id) {
         TelegramUtils.showAlert('This card cannot be traded because it is not associated with a chat yet.');
         return;
       }
 
-      if (modalCard) {
-        closeModal();
-      }
+      if (modalCard) closeModal();
 
       setSelectedCardForTrade(tradeCard);
-      setIsTradeGridActive(!hasChatScope);
-      setView('all');
+      setIsTradeView(true);
     }
-  }, [cards, currentIndex, modalCard, enableTrade, hasChatScope, closeModal]);
+  }, [cards, currentIndex, modalCard, enableTrade, closeModal]);
 
   const handleSelectClick = useCallback(() => {
     if (selectedCardForTrade && modalCard) {
@@ -493,9 +283,7 @@ export const CollectionPage = ({
           const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
           const response = await fetch(`${apiBaseUrl}/trade/${selectedCardForTrade.id}/${modalCard.id}`, {
             method: 'POST',
-            headers: {
-              'Authorization': `tma ${initData}`
-            }
+            headers: { 'Authorization': `tma ${initData}` }
           });
 
           if (response.ok) {
@@ -515,39 +303,6 @@ export const CollectionPage = ({
     }
   }, [selectedCardForTrade, modalCard, initData, switchToCurrentView]);
 
-  const handleCurrentTabClick = useCallback(() => {
-    const preserveAllFilters = !isTradeMode;
-    switchToCurrentView({ preserveAllFilters });
-  }, [isTradeMode, switchToCurrentView]);
-
-  const handleAllTabClick = useCallback(() => {
-    setIsTradeGridActive(false);
-    setSelectedCardForTrade(null);
-    setView('all');
-  }, []);
-
-  const handleProfileTabClick = useCallback(() => {
-    setIsTradeGridActive(false);
-    setSelectedCardForTrade(null);
-    setView('profile');
-  }, []);
-
-  const handleFilterChange = useCallback((newFilters: FilterOptions) => {
-    setFilterOptions(newFilters);
-  }, []);
-
-  const handleSortChange = useCallback((newSort: SortOptions) => {
-    setSortOptions(newSort);
-  }, []);
-
-  const handleCurrentGridFilterChange = useCallback((newFilters: FilterOptions) => {
-    setCurrentGridFilterOptions(newFilters);
-  }, []);
-
-  const handleCurrentGridSortChange = useCallback((newSort: SortOptions) => {
-    setCurrentGridSortOptions(newSort);
-  }, []);
-
   const handleShareCard = useCallback(async (cardId: number) => {
     try {
       await ApiService.shareCard(cardId, currentUserId, initData);
@@ -564,32 +319,27 @@ export const CollectionPage = ({
       TelegramUtils.hideBackButton();
       return;
     }
-
     const cleanup = TelegramUtils.setupBackButton(() => {
       switchToCurrentViewRef.current();
     });
-
     return cleanup;
   }, [isTradeView]);
-  
-  const handleBurnClick = () => {
+
+  // Burn handlers
+  const handleBurnClick = useCallback(() => {
     const targetCard = modalCard || cards[currentIndex];
     if (!targetCard) return;
-
     if (!targetCard.chat_id) {
       TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
       return;
     }
-
     setShowBurnDialog(true);
-  };
+  }, [modalCard, cards, currentIndex]);
 
   const handleBurnConfirm = async () => {
     if (burningCard) return;
-
     const targetCard = modalCard || cards[currentIndex];
     if (!targetCard) return;
-
     const targetChatId = targetCard.chat_id;
     if (!targetChatId) {
       TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
@@ -598,16 +348,9 @@ export const CollectionPage = ({
 
     try {
       setBurningCard(true);
-      
-      const result = await ApiService.burnCard(
-        targetCard.id,
-        currentUserId,
-        targetChatId,
-        initData
-      );
-
+      const result = await ApiService.burnCard(targetCard.id, currentUserId, targetChatId, initData);
       const cardName = `${targetCard.modifier} ${targetCard.base_name}`.trim();
-      const burnResult = {
+      burnResultRef.current = {
         rarity: targetCard.rarity,
         cardName,
         spinsAwarded: result.spins_awarded,
@@ -616,12 +359,9 @@ export const CollectionPage = ({
         burnedCardIndex: cards.findIndex((c: CardData) => c.id === targetCard.id),
       };
 
-      burnResultRef.current = burnResult;
-
       setShowBurnDialog(false);
       setTriggerBurn(true);
       setIsBurningInProgress(true);
-
     } catch (burnError) {
       console.error('Failed to burn card:', burnError);
       setShowBurnDialog(false);
@@ -637,7 +377,6 @@ export const CollectionPage = ({
 
     const burnResult = burnResultRef.current;
     if (!burnResult) return;
-
     burnResultRef.current = null;
 
     if (modalCard) {
@@ -654,55 +393,37 @@ export const CollectionPage = ({
 
     const notification = `${burnResult.rarity} ${burnResult.cardName} burned!\n\nReceived ${burnResult.spinsAwarded} spins\n\nBalance: ${burnResult.newSpinTotal}`;
     TelegramUtils.showAlert(notification);
-
     await refreshCardsData();
   };
 
-  const handleBurnCancel = () => {
-    setShowBurnDialog(false);
-  };
+  const handleBurnCancel = () => setShowBurnDialog(false);
 
-  const handleLockClick = () => {
+  // Lock handlers
+  const handleLockClick = useCallback(() => {
     const targetCard = modalCard || cards[currentIndex];
     if (!targetCard) return;
-
     if (!targetCard.chat_id) {
       TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
       return;
     }
-
     const rarityLockCost = Math.max(1, lockCosts?.[targetCard.rarity] ?? 1);
-    if (rarityLockCost > 0) {
-      void ensureUserProfile(targetCard.chat_id);
-    }
-
+    if (rarityLockCost > 0) void ensureUserProfile(targetCard.chat_id);
     setShowLockDialog(true);
-  };
+  }, [modalCard, cards, currentIndex, lockCosts, ensureUserProfile]);
 
   const updateCardLockState = (cardId: number, locked: boolean) => {
-    if (modalCard && modalCard.id === cardId) {
-      updateModalCard({ locked });
-    }
+    if (modalCard && modalCard.id === cardId) updateModalCard({ locked });
     updateCardInCollection(cardId, { locked });
     updateAllCardsCollection(cardId, { locked });
     if (selectedCardForTrade?.id === cardId) {
-      setSelectedCardForTrade((previous) =>
-        previous
-          ? {
-              ...previous,
-              locked,
-            }
-          : previous
-      );
+      setSelectedCardForTrade((prev) => prev ? { ...prev, locked } : prev);
     }
   };
 
   const handleLockConfirm = async () => {
     if (lockingCard) return;
-
     const targetCard = modalCard || cards[currentIndex];
     if (!targetCard) return;
-
     const targetChatId = targetCard.chat_id;
     if (!targetChatId) {
       TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
@@ -713,25 +434,17 @@ export const CollectionPage = ({
       setLockingCard(true);
       const isCurrentlyLocked = targetCard.locked || false;
       const result = await ApiService.lockCard(
-        targetCard.id,
-        currentUserId,
-        targetChatId,
-        !isCurrentlyLocked,
-        initData
+        targetCard.id, currentUserId, targetChatId, !isCurrentlyLocked, initData
       );
 
       setChatProfiles(prev => {
         const currentProfile = prev[targetChatId]?.profile;
         if (!currentProfile) return prev;
-        
         return {
           ...prev,
           [targetChatId]: {
             ...prev[targetChatId],
-            profile: {
-              ...currentProfile,
-              claim_balance: result.balance
-            }
+            profile: { ...currentProfile, claim_balance: result.balance }
           }
         };
       });
@@ -741,14 +454,10 @@ export const CollectionPage = ({
       updateCardLockState(targetCard.id, result.locked);
 
       if (result.lock_cost !== undefined) {
-        setLockCosts(prev => ({
-          ...(prev ?? {}),
-          [targetCard.rarity]: result.lock_cost,
-        }));
+        setLockCosts(prev => ({ ...(prev ?? {}), [targetCard.rarity]: result.lock_cost }));
       }
 
       TelegramUtils.showAlert(result.message);
-
       await refreshCardsData();
     } catch (lockError) {
       console.error('Failed to lock/unlock card:', lockError);
@@ -769,74 +478,68 @@ export const CollectionPage = ({
     }
   };
 
-  const handleLockCancel = () => {
-    setShowLockDialog(false);
-  };
+  const handleLockCancel = () => setShowLockDialog(false);
 
   // Action Panel logic
-  const getActionButtons = (): ActionButton[] => {
-    if (loading || error) {
-      return [];
-    }
-
+  const actionButtons = useMemo<ActionButton[]>(() => {
+    if (loading || error) return [];
     const buttons: ActionButton[] = [];
     const shouldDisableActions = burningCard || isBurningInProgress;
 
-    if (isOwnCollection && cards.length > 0 && view === 'current' && !selectedCardForTrade && modalCard) {
-      const currentCard = modalCard;
-      if (currentCard?.chat_id) {
-        const isLocked = currentCard.locked || false;
+    if (isOwnCollection && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
+      if (modalCard.chat_id) {
         buttons.push({
-          id: 'burn',
-          text: 'Burn',
-          onClick: handleBurnClick,
-          variant: 'burn-red',
-          disabled: shouldDisableActions
+          id: 'burn', text: 'Burn', onClick: handleBurnClick,
+          variant: 'burn-red', disabled: shouldDisableActions
         });
         buttons.push({
-          id: 'lock',
-          text: isLocked ? 'Unlock' : 'Lock',
-          onClick: handleLockClick,
-          variant: 'lock-grey',
+          id: 'lock', text: modalCard.locked ? 'Unlock' : 'Lock',
+          onClick: handleLockClick, variant: 'lock-grey',
           disabled: shouldDisableActions || lockingCard
         });
       }
     }
 
-    if (isOwnCollection && enableTrade && cards.length > 0 && view === 'current' && !selectedCardForTrade && modalCard) {
+    if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
       buttons.push({
-        id: 'trade',
-        text: 'Trade',
-        onClick: handleTradeClick,
-        variant: 'primary',
-        disabled: shouldDisableActions
+        id: 'trade', text: 'Trade', onClick: handleTradeClick,
+        variant: 'primary', disabled: shouldDisableActions
       });
-    } else if (enableTrade && selectedCardForTrade && modalCard && view === 'all' && modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
+    } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
+      modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
       buttons.push({
-        id: 'select',
-        text: 'Select',
-        onClick: handleSelectClick,
-        variant: 'primary',
-        disabled: shouldDisableActions
+        id: 'select', text: 'Select', onClick: handleSelectClick,
+        variant: 'primary', disabled: shouldDisableActions
       });
     }
 
     return buttons;
-  };
+  }, [
+    loading,
+    error,
+    burningCard,
+    isBurningInProgress,
+    isOwnCollection,
+    cards.length,
+    isTradeView,
+    selectedCardForTrade,
+    modalCard,
+    handleBurnClick,
+    handleLockClick,
+    lockingCard,
+    enableTrade,
+    handleTradeClick,
+    handleSelectClick
+  ]);
 
-  const actionButtons = getActionButtons();
   const isActionPanelVisible = actionButtons.length > 0;
 
   const collectionOwnerLabel = (() => {
-    if (collectionDisplayName && collectionDisplayName.trim().length > 0) {
-      return collectionDisplayName;
-    }
-    if (collectionUsername && collectionUsername.trim().length > 0) {
-      return `@${collectionUsername}`;
-    }
+    if (collectionDisplayName && collectionDisplayName.trim().length > 0) return collectionDisplayName;
+    if (collectionUsername && collectionUsername.trim().length > 0) return `@${collectionUsername}`;
     return 'Collection';
   })();
-  
+
   // Event handlers
   const swipeHandlers = useSwipeHandlers({
     cardsLength: cards.length,
@@ -847,16 +550,17 @@ export const CollectionPage = ({
 
   // Loading state
   if (loading) {
-    return (
-      <div className="app-container">
-        <Title title="Loading..." loading fullscreen />
-      </div>
-    );
+    return <Loading message="Loading collection..." />;
   }
 
   // Error state
   if (error) {
-    return <div className="app-container"><h1>Error: {error}</h1></div>;
+    return (
+      <div className="error-container">
+        <h2>Error</h2>
+        <p>{error}</p>
+      </div>
+    );
   }
 
   const currentDialogSpinReward = currentDialogCard && burnRewards
@@ -885,47 +589,98 @@ export const CollectionPage = ({
         onConfirm={handleLockConfirm}
         onCancel={handleLockCancel}
       />
-      <div className={`app-container ${isActionPanelVisible ? 'with-action-panel' : ''}`} {...(view === 'current' && !isBurningInProgress ? swipeHandlers : {})}>
-        <CollectionLayout
-          view={view}
-          hasChatScope={hasChatScope}
-          isTradeGridActive={isTradeGridActive}
-          isTradeView={isTradeView}
-          tradeCardName={tradeCardName}
-          collectionOwnerLabel={collectionOwnerLabel}
-          tabs={{
-            onCurrentTabClick: handleCurrentTabClick,
-            onAllTabClick: handleAllTabClick,
-            onProfileTabClick: handleProfileTabClick
-          }}
-          profileView={viewedProfile}
-          currentView={{
-            cards,
-            filteredCards: filteredCurrentCards,
-            initData,
-            onOpenModal: openModal,
-            currentGridFilterOptions,
-            currentGridSortOptions,
-            onCurrentGridFilterChange: handleCurrentGridFilterChange,
-            onCurrentGridSortChange: handleCurrentGridSortChange,
-            collectionOwnerLabel,
-            isOwnCollection,
-            isBurning: isBurningInProgress
-          }}
-          allView={{
-            baseCards: baseDisplayedCards,
-            displayedCards,
-            loading: allCardsLoading,
-            error: allCardsError ?? null,
-            onRetry: refetchAllCards,
-            filterOptions,
-            sortOptions,
-            onFilterChange: handleFilterChange,
-            onSortChange: handleSortChange,
-            initData,
-            onOpenModal: openModal
-          }}
-        />
+      <div
+        className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
+        {...(!isBurningInProgress && !isTradeView ? swipeHandlers : {})}
+      >
+        {/* Trade view: selecting a card to trade for */}
+        {isTradeView ? (
+          <div className="app-content">
+            <Title
+              title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
+            />
+            {allCardsLoading ? (
+              <Loading message="Loading trade options..." />
+            ) : allCardsError ? (
+              <div className="error-container">
+                <h2>Error loading trade options</h2>
+                <p>{allCardsError}</p>
+                <button onClick={() => { void refetchAllCards(); }}>Retry</button>
+              </div>
+            ) : baseDisplayedCards.length === 0 ? (
+              <div className="no-cards-container">
+                <h2>No trade options</h2>
+                <p>No other cards are available in this chat right now.</p>
+              </div>
+            ) : (
+              <>
+                <FilterSortControls
+                  cards={baseDisplayedCards}
+                  filterOptions={tradeFiltering.filterOptions}
+                  sortOptions={tradeFiltering.sortOptions}
+                  onFilterChange={tradeFiltering.onFilterChange}
+                  onSortChange={tradeFiltering.onSortChange}
+                  counter={{
+                    current: displayedCards.length,
+                    total: baseDisplayedCards.length
+                  }}
+                />
+                {displayedCards.length === 0 ? (
+                  <div className="no-cards-container">
+                    <h2>No cards match your filters</h2>
+                    <p>Try adjusting your filter settings to see more cards.</p>
+                  </div>
+                ) : (
+                  <CardGrid
+                    cards={displayedCards}
+                    onCardClick={openModal}
+                    initData={initData}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        ) : (
+          /* Normal collection view */
+          <div className="app-content">
+            <Title title={`${collectionOwnerLabel}'s collection`} />
+            {cards.length > 0 ? (
+              <>
+                <FilterSortControls
+                  cards={cards}
+                  filterOptions={currentFiltering.filterOptions}
+                  sortOptions={currentFiltering.sortOptions}
+                  onFilterChange={currentFiltering.onFilterChange}
+                  onSortChange={currentFiltering.onSortChange}
+                  showOwnerFilter={false}
+                  counter={{
+                    current: filteredCurrentCards.length,
+                    total: cards.length
+                  }}
+                />
+                {filteredCurrentCards.length === 0 ? (
+                  <div className="no-cards-container">
+                    <h2>No cards match your filter</h2>
+                    <p>Try selecting a different rarity or clearing the filter.</p>
+                  </div>
+                ) : (
+                  <CardGrid
+                    cards={filteredCurrentCards}
+                    onCardClick={openModal}
+                    initData={initData}
+                  />
+                )}
+              </>
+            ) : (
+              <p>
+                {isOwnCollection
+                  ? "You don't own any cards yet."
+                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
+              </p>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Card Modal */}
       {modalCard && (
@@ -950,7 +705,8 @@ export const CollectionPage = ({
         buttons={actionButtons}
         visible={isActionPanelVisible}
       />
-      </div>
     </>
   );
 };
+
+export default CollectionTab;

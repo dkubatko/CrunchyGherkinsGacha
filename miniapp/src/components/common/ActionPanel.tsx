@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import './ActionPanel.css';
 
 export interface ActionButton {
@@ -19,7 +20,7 @@ const ActionPanel: React.FC<ActionPanelProps> = ({ buttons, visible }) => {
     return null;
   }
 
-  return (
+  return createPortal(
     <div className="action-panel">
       <div className="action-panel-content">
         {buttons.map((button) => (
@@ -33,7 +34,8 @@ const ActionPanel: React.FC<ActionPanelProps> = ({ buttons, visible }) => {
           </button>
         ))}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

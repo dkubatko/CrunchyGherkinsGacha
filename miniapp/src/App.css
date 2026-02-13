@@ -12,6 +12,9 @@
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   
+  /* Shared bottom inset for nav bar and action panel */
+  --bottom-bar-padding: calc(24px + env(safe-area-inset-bottom, 0px));
+  
   /* Action panel height components - used for modal spacing */
   --action-panel-bottom-padding: 20px;
   --action-panel-content-padding: 10px;
@@ -83,6 +86,19 @@ body {
   min-height: 0; /* Important for flex child to shrink */
 }
 
+.collection-tab-content {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.collection-tab-content .app-content {
+  min-height: 0;
+}
+
 .card-container {
   position: relative;
   width: 100%;
@@ -120,16 +136,6 @@ body {
   .app-container {
     padding: 0;
     height: 100vh;
-  }
-  
-  .tabs {
-    min-height: 52px;
-  }
-  
-  .tab {
-    padding: 0.75rem 0;
-    font-size: 0.95rem;
-    min-height: 52px;
   }
   
   .app-content {
@@ -199,74 +205,4 @@ body {
 
 .no-cards-container p {
   color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
-}
-
-.tabs {
-  position: sticky;
-  top: 0;
-  z-index: 100;
-  width: 100vw;
-  display: flex;
-  margin: 0;
-  padding: 0;
-  background: linear-gradient(135deg, var(--tg-theme-bg-color, #1a1a1a) 0%, var(--tg-theme-secondary-bg-color, #2a2a2a) 100%);
-  border-bottom: 1px solid var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.1));
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  backdrop-filter: blur(20px);
-}
-
-.tab {
-  flex: 1;
-  padding: 1rem 0;
-  background: transparent;
-  border: none;
-  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
-  cursor: pointer;
-  font-size: 1rem;
-  font-weight: 500;
-  position: relative;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  text-align: center;
-  min-height: 56px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.tab.active {
-  color: var(--tg-theme-button-color, #007aff);
-  font-weight: 600;
-}
-
-.tab.active::after {
-  content: '';
-  position: absolute;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 60%;
-  height: 3px;
-  background: linear-gradient(90deg, var(--tg-theme-button-color, #007aff) 0%, var(--tg-theme-accent-text-color, #0099ff) 100%);
-  border-radius: 1.5px 1.5px 0 0;
-  animation: tabSlideIn 0.3s ease-out;
-}
-
-@keyframes tabSlideIn {
-  from {
-    width: 0%;
-    opacity: 0;
-  }
-  to {
-    width: 60%;
-    opacity: 1;
-  }
-}
-
-.tab:hover:not(.active) {
-  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
-  background: linear-gradient(135deg, transparent 0%, rgba(255, 255, 255, 0.05) 100%);
-}
-
-.tab:active {
-  transform: scale(0.98);
 }

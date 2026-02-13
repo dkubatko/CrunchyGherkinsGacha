@@ -12,3 +12,6 @@ export * from './profile';
 
 // Dialog components
 export * from './dialogs';
+
+// Tab components
+export * from './tabs';

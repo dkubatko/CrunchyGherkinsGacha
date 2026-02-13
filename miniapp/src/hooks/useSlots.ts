@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ApiService } from '../services/api';
-import { TelegramUtils } from '../utils/telegram';
 import type { MegaspinInfo } from '../types';
 
 interface SlotSymbol {
@@ -36,7 +35,7 @@ interface UseSlotsResult {
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
-export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
+export const useSlots = (chatId?: string, userId?: number, initData?: string | null): UseSlotsResult => {
   const [symbols, setSymbols] = useState<SlotSymbol[]>([]);
   const [spins, setSpins] = useState<UserSpinsData>({
     count: 0,
@@ -65,7 +64,6 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
       setSpins(prev => ({ ...prev, loading: true, error: null }));
       setMegaspin(prev => ({ ...prev, loading: true, error: null }));
 
-      const initData = TelegramUtils.getInitData();
       if (!initData) {
         throw new Error('No Telegram init data found');
       }
@@ -95,7 +93,7 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
       setSpins({ count: 0, loading: false, error: errorMessage, nextRefreshTime: null });
       setMegaspin(prev => ({ ...prev, loading: false, error: errorMessage }));
     }
-  }, [chatId, userId]);
+  }, [chatId, userId, initData]);
 
   const refetchSpins = async () => {
     await fetchSpins();
@@ -130,7 +128,6 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
         setLoading(true);
         setError(null);
 
-        const initData = TelegramUtils.getInitData();
         if (!initData) {
           throw new Error('No Telegram init data found');
         }
@@ -167,7 +164,7 @@ export const useSlots = (chatId?: string, userId?: number): UseSlotsResult => {
     };
 
     fetchSlotsData();
-  }, [chatId, userId, fetchSpins]);
+  }, [chatId, userId, initData, fetchSpins]);
 
   return {
     symbols,

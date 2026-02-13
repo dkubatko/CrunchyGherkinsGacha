@@ -1,0 +1,32 @@
+/* Hub layout: full viewport with bottom nav offset */
+.hub-container {
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+}
+
+.hub-content {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Tab panels: stacked, only active one is rendered */
+.hub-tab-panel {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* Offset bottom for the nav bar */
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+}
+
+.hub-tab-panel.active {
+  display: flex;
+}
