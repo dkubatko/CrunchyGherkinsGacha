@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import type { CardData, OrientationData } from '@/types';
 import Card from './Card';
 import './CardModal.css';
@@ -36,7 +37,7 @@ const CardModal: React.FC<CardModalProps> = ({
 }) => {
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         {!isBurning && (
@@ -67,7 +68,8 @@ const CardModal: React.FC<CardModalProps> = ({
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

@@ -1,0 +1,74 @@
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  background: linear-gradient(
+    180deg,
+    var(--tg-theme-secondary-bg-color, #1e1e1e) 0%,
+    var(--tg-theme-bg-color, #1a1a1a) 100%
+  );
+  border-top: 1px solid var(--tg-theme-section-separator-color, rgba(255, 255, 255, 0.08));
+  padding: 6px 0 var(--bottom-bar-padding);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 0 4px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.45));
+  transition: color 0.2s ease, transform 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
+}
+
+.bottom-nav-item.active {
+  color: var(--tg-theme-button-color, #007aff);
+}
+
+.bottom-nav-item.active .bottom-nav-label {
+  font-weight: 600;
+}
+
+.bottom-nav-item.disabled {
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.2));
+  cursor: default;
+  opacity: 0.4;
+}
+
+.bottom-nav-item:not(.disabled):active {
+  transform: scale(0.92);
+}
+
+.bottom-nav-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bottom-nav-icon svg {
+  width: 26px;
+  height: 26px;
+}
+
+.bottom-nav-label {
+  font-size: 0.65rem;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}

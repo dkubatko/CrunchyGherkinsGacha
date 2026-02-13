@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { TelegramUtils } from '../utils/telegram';
+import type { HubTab } from '../types';
 
 export type AppRoute = 
   | { type: 'loading' }
   | { type: 'error'; message: string }
   | { type: 'landing' }
-  | { type: 'casino'; currentUserId: number; chatId: string; initData: string }
   | { type: 'singleCard'; currentUserId: number; cardId: number; initData: string }
-  | { type: 'collection'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string };
+  | { type: 'hub'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string; initialTab: HubTab };
 
 interface UseAppRouterResult {
   route: AppRoute;
@@ -56,14 +56,7 @@ export const useAppRouter = (): UseAppRouterResult => {
         }
 
         // Route based on the parsed userData
-        if (userData.casinoView && userData.chatId) {
-          setRoute({
-            type: 'casino',
-            currentUserId: userData.currentUserId,
-            chatId: userData.chatId,
-            initData
-          });
-        } else if (userData.singleCardView && userData.singleCardId) {
+        if (userData.singleCardView && userData.singleCardId) {
           setRoute({
             type: 'singleCard',
             currentUserId: userData.currentUserId,
@@ -71,14 +64,16 @@ export const useAppRouter = (): UseAppRouterResult => {
             initData
           });
         } else {
+          const initialTab: HubTab = (userData.casinoView && userData.chatId) ? 'casino' : 'collection';
           setRoute({
-            type: 'collection',
+            type: 'hub',
             currentUserId: userData.currentUserId,
             targetUserId: userData.targetUserId,
             chatId: userData.chatId ?? null,
             isOwnCollection: userData.isOwnCollection,
             enableTrade: userData.enableTrade,
-            initData
+            initData,
+            initialTab
           });
         }
       } catch (err) {

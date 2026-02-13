@@ -9,3 +9,4 @@ export { useSwipeHandlers } from './useSwipeHandlers';
 export { useVirtualizedImages } from './useVirtualizedImages';
 export { useSlots } from './useSlots';
 export { useLongPress } from './useLongPress';
+export { useCardFiltering, DEFAULT_FILTER_OPTIONS, DEFAULT_SORT_OPTIONS } from './useCardFiltering';
