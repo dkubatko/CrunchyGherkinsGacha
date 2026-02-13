@@ -18,7 +18,7 @@ export interface OrientationData {
   isStarted: boolean;
 }
 
-export type View = 'current' | 'all' | 'slots' | 'profile';
+export type HubTab = 'profile' | 'collection' | 'casino' | 'allCards';
 
 export interface UserSummary {
   user_id: number;
@@ -63,19 +63,6 @@ export interface UserData {
   casinoView?: boolean;
 }
 
-export interface AppState {
-  cards: CardData[];
-  allCards: CardData[];
-  currentIndex: number;
-  loading: boolean;
-  error: string | null;
-  allCardsLoading: boolean;
-  allCardsError: string | null;
-  view: View;
-  showModal: boolean;
-  modalCard: CardData | null;
-}
-
 export interface SlotVerifyResponse {
   is_win: boolean;
   slot_results: SlotSymbolInfo[];
@@ -110,6 +97,7 @@ export interface UserProfile {
   claim_balance: number;
   spin_balance: number;
   card_count: number;
+  rarity_counts: Record<string, number>;
   achievements: UserAchievement[];
 }
 

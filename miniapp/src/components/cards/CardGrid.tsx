@@ -83,19 +83,32 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
       lastWidthRef.current = initialWidth;
       setContainerWidth(initialWidth);
     }
+    if (initialWidth > 0) {
+      requestAnimationFrame(() => {
+        virtualizer.measure();
+      });
+    }
 
     const observer = new ResizeObserver((entries) => {
       if (!entries[0]) return;
       const nextWidth = entries[0].contentRect.width;
-      if (nextWidth && nextWidth !== lastWidthRef.current) {
+      if (!nextWidth) return;
+
+      if (nextWidth !== lastWidthRef.current) {
         lastWidthRef.current = nextWidth;
         setContainerWidth(nextWidth);
       }
+
+      // Re-measure even when width did not change. This is important when
+      // the grid was hidden via display:none and then shown again.
+      requestAnimationFrame(() => {
+        virtualizer.measure();
+      });
     });
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [virtualizer]);
 
   // Re-measure when row height changes to keep the virtualizer aligned.
   useLayoutEffect(() => {

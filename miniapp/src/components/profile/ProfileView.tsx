@@ -1,40 +1,16 @@
-import { useState, useMemo } from 'react';
-import type { UserProfile, CardData } from '@/types';
+import { useState } from 'react';
+import type { UserProfile } from '@/types';
 import Achievement from './Achievement';
 import './ProfileView.css';
 
 interface ProfileViewProps {
   profile: UserProfile | null;
-  cards: CardData[];
   loading: boolean;
   error?: string;
 }
 
-const ProfileView = ({ profile, cards, loading, error }: ProfileViewProps) => {
+const ProfileView = ({ profile, loading, error }: ProfileViewProps) => {
   const [showRarityBreakdown, setShowRarityBreakdown] = useState(false);
-
-  const rarityCounts = useMemo(() => {
-    const counts = {
-      Unique: 0,
-      Legendary: 0,
-      Epic: 0,
-      Rare: 0,
-      Common: 0,
-    };
-
-    cards.forEach(card => {
-      const rarity = card.rarity || 'Common';
-      // Capitalize first letter to match keys
-      const normalizedRarity = rarity.charAt(0).toUpperCase() + rarity.slice(1).toLowerCase();
-      if (normalizedRarity in counts) {
-        counts[normalizedRarity as keyof typeof counts]++;
-      } else {
-        counts.Common++;
-      }
-    });
-
-    return counts;
-  }, [cards]);
 
   if (loading) {
     return <div className="profile-view loading">Loading profile...</div>;
@@ -72,7 +48,7 @@ const ProfileView = ({ profile, cards, loading, error }: ProfileViewProps) => {
           onClick={() => setShowRarityBreakdown(!showRarityBreakdown)}
         >
           <span className="stat-label">Cards</span>
-          <span className="stat-value">{cards.length}</span>
+          <span className="stat-value">{profile.card_count}</span>
         </div>
         <div className="stat-item">
           <span className="stat-label">Claims</span>
@@ -88,7 +64,7 @@ const ProfileView = ({ profile, cards, loading, error }: ProfileViewProps) => {
             {['Unique', 'Legendary', 'Epic', 'Rare', 'Common'].map(rarity => (
               <div key={rarity} className={`rarity-item ${rarity.toLowerCase()}`}>
                 <span className="rarity-label">{rarity[0]}</span>
-                <span className="rarity-count">{rarityCounts[rarity as keyof typeof rarityCounts] || 0}</span>
+                <span className="rarity-count">{profile.rarity_counts?.[rarity] ?? 0}</span>
               </div>
             ))}
           </div>

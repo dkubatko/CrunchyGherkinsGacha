@@ -18,6 +18,7 @@ from utils.services import (
     spin_service,
     user_service,
     get_user_achievements,
+    get_user_card_rarity_counts,
 )
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,9 @@ async def get_user_profile(
         # Get card count
         card_count = await asyncio.to_thread(card_service.get_user_card_count, user_id, chat_id)
 
+        # Get card rarity counts for profile stats
+        rarity_counts = await asyncio.to_thread(get_user_card_rarity_counts, user_id, chat_id)
+
         # Get user achievements
         user_achievements = await asyncio.to_thread(get_user_achievements, user_id)
         achievements_response = [
@@ -72,6 +76,7 @@ async def get_user_profile(
             claim_balance=claim_balance,
             spin_balance=spin_balance,
             card_count=card_count,
+            rarity_counts=rarity_counts,
             achievements=achievements_response,
         )
 

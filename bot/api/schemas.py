@@ -46,6 +46,7 @@ class UserProfileResponse(BaseModel):
     claim_balance: int
     spin_balance: int
     card_count: int
+    rarity_counts: Dict[str, int]
     achievements: List[UserAchievementResponse] = []
 
 

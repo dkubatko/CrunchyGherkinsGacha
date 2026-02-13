@@ -5,7 +5,7 @@ import './App.css';
 import { useAppRouter } from './hooks';
 
 // Pages
-import { CasinoPage, SingleCardPage, CollectionPage, LandingPage } from './pages';
+import { SingleCardPage, LandingPage, HubPage } from './pages';
 
 // Components
 import { Title } from './components/common';
@@ -44,12 +44,16 @@ function App() {
     case 'landing':
       return <LandingPage />;
 
-    case 'casino':
+    case 'hub':
       return (
-        <CasinoPage
+        <HubPage
           currentUserId={route.currentUserId}
+          targetUserId={route.targetUserId}
           chatId={route.chatId}
+          isOwnCollection={route.isOwnCollection}
+          enableTrade={route.enableTrade}
           initData={route.initData}
+          initialTab={route.initialTab}
         />
       );
 
@@ -57,18 +61,6 @@ function App() {
       return (
         <SingleCardPage
           cardId={route.cardId}
-          initData={route.initData}
-        />
-      );
-
-    case 'collection':
-      return (
-        <CollectionPage
-          currentUserId={route.currentUserId}
-          targetUserId={route.targetUserId}
-          chatId={route.chatId}
-          isOwnCollection={route.isOwnCollection}
-          enableTrade={route.enableTrade}
           initData={route.initData}
         />
       );
