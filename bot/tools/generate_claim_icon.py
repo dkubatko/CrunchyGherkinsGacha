@@ -9,7 +9,8 @@ import os
 import sys
 from io import BytesIO
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -48,33 +49,37 @@ Style requirements:
 """
 
 
-def generate_claim_icon(output_path: str):
+def generate_claim_icon(client, output_path: str):
     """Generate a claim icon and save it to the specified path."""
     try:
         # Configure safety settings
         safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
         ]
 
-        model = genai.GenerativeModel(os.getenv("IMAGE_GEN_MODEL"), safety_settings=safety_settings)
+        config = types.GenerateContentConfig(safety_settings=safety_settings)
 
         logger.info("Requesting claim icon generation from Gemini...")
-        response = model.generate_content([CLAIM_ICON_INSTRUCTION])
+        response = client.models.generate_content(
+            model=os.getenv("IMAGE_GEN_MODEL"),
+            contents=[CLAIM_ICON_INSTRUCTION],
+            config=config,
+        )
 
         for part in response.candidates[0].content.parts:
             if part.inline_data:
@@ -105,7 +110,7 @@ if __name__ == "__main__":
         logger.error("GOOGLE_API_KEY not found in environment variables")
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 
     # Set output path
     output_dir = os.path.join(
@@ -115,7 +120,7 @@ if __name__ == "__main__":
     output_path = os.path.join(output_dir, "claim_icon.png")
 
     logger.info("Starting claim icon generation...")
-    result = generate_claim_icon(output_path)
+    result = generate_claim_icon(client, output_path)
 
     if result:
         logger.info("✅ Claim icon generation completed successfully!")
