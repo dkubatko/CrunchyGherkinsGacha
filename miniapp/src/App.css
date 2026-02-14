@@ -113,19 +113,7 @@ body {
   min-height: 0; /* Important for flex child to shrink */
 }
 
-.spinner {
-  border: 4px solid rgba(255, 255, 255, 0.3);
-  border-radius: 50%;
-  border-top: 4px solid #fff;
-  width: 40px;
-  height: 40px;
-  animation: spin 1s linear infinite;
-}
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 .app-container.with-action-panel {
   padding-bottom: 65px; /* Height of the action panel: content padding (20px) + button (52px) + bottom padding (20px) */

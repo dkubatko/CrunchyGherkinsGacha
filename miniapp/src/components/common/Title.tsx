@@ -1,4 +1,5 @@
 import React from 'react';
+import BeatLoader from 'react-spinners/BeatLoader';
 import './Title.css';
 
 // SpinsBadge sub-component for displaying spin count with animated coin
@@ -70,7 +71,7 @@ const Title: React.FC<TitleProps> = ({ title, leftContent, rightContent, loading
       <h1 className="title-text">{title}</h1>
       <div className="title-right-content">
         {rightContent}
-        {loading && !rightContent && <div className="title-loading-indicator" />}
+        {loading && !rightContent && <BeatLoader color="var(--tg-theme-button-color, #007aff)" size={6} speedMultiplier={0.8} />}
       </div>
     </div>
   );
