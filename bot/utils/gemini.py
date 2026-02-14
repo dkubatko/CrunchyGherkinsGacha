@@ -4,7 +4,8 @@ import os
 import random
 from io import BytesIO
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from PIL import Image
 
 from settings.constants import (
@@ -28,29 +29,61 @@ class GeminiUtil:
             google_api_key: Google API key for Gemini
             image_gen_model: Model name for image generation
         """
-        genai.configure(api_key=google_api_key)
+        self.client = genai.Client(api_key=google_api_key)
+        self.model_name = image_gen_model
 
         # Configure safety settings to be least restrictive
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
+        self.safety_settings = [
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
         ]
-        self.model = genai.GenerativeModel(image_gen_model, safety_settings=safety_settings)
         logger.info(f"GeminiUtil initialized with model {image_gen_model}")
+
+    @staticmethod
+    def _prepare_image_part(
+        image_path: str | None = None,
+        image_b64: str | None = None,
+        image_bytes: bytes | None = None,
+        max_size: int = 768,
+    ) -> types.Part:
+        """
+        Load, downscale, and convert an image to a Gemini Part ready for sending.
+
+        Accepts one of image_path, image_b64, or raw image_bytes.
+        Returns a types.Part with media_resolution set to LOW.
+        """
+        if image_path:
+            img = Image.open(image_path)
+        elif image_b64:
+            img = Image.open(BytesIO(base64.b64decode(image_b64)))
+        elif image_bytes:
+            img = Image.open(BytesIO(image_bytes))
+        else:
+            raise ValueError("One of image_path, image_b64, or image_bytes must be provided.")
+
+        img.thumbnail((max_size, max_size), Image.LANCZOS)
+
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        return types.Part.from_bytes(
+            data=buf.getvalue(),
+            mime_type="image/png",
+            media_resolution=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+        )
 
     def generate_image(
         self,
@@ -89,27 +122,31 @@ class GeminiUtil:
                 f"Requesting image generation for '{base_name}' with modifier '{modifier}', rarity '{rarity}', set '{set_name or 'none'}' (temperature {temperature})"
             )
 
-            generation_config = genai.types.GenerationConfig(temperature=temperature)
-
             template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
-            template_img = Image.open(template_image_path)
-            if base_image_b64:
-                source_bytes = base64.b64decode(base_image_b64)
-                img = Image.open(BytesIO(source_bytes))
-            else:
-                img = Image.open(base_image_path)
-            response = self.model.generate_content(
-                [prompt, template_img, img],
-                generation_config=generation_config,
-                request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
+            template_part = self._prepare_image_part(image_path=template_image_path)
+            img_part = self._prepare_image_part(
+                image_path=base_image_path, image_b64=base_image_b64
+            )
+
+            config = types.GenerateContentConfig(
+                temperature=temperature,
+                safety_settings=self.safety_settings,
+                response_modalities=["IMAGE"],
+            )
+
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[prompt, template_part, img_part],
+                config=config,
             )
 
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
-                    logger.info(f"Cropping image {modifier} {base_name}")
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
-                    logger.info("Image generated and processed successfully.")
+                    logger.info(
+                        f"Image for {modifier} {base_name} generated and processed successfully."
+                    )
                     return base64.b64encode(processed_image_bytes).decode("utf-8")
             logger.warning("No image data found in response.")
             return None
@@ -148,12 +185,21 @@ class GeminiUtil:
 
             # Crop to square (1:1) aspect ratio before sending to Gemini
             square_image_bytes = ImageUtil.crop_to_square(source_bytes)
-            img = Image.open(BytesIO(square_image_bytes))
+            img_part = self._prepare_image_part(image_bytes=square_image_bytes)
 
-            response = self.model.generate_content(
-                [prompt, img],
-                request_options={"timeout": GEMINI_TIMEOUT_SECONDS},
+            config = types.GenerateContentConfig(
+                safety_settings=self.safety_settings,
+                response_modalities=["IMAGE"],
             )
+
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[prompt, img_part],
+                config=config,
+            )
+
+            if response.usage_metadata:
+                logger.info(f"Usage metadata for slot machine icon:\n{response.usage_metadata}")
 
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
