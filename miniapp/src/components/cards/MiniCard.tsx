@@ -1,4 +1,5 @@
 import React, { memo } from 'react';
+import BeatLoader from 'react-spinners/BeatLoader';
 import type { CardData } from '@/types';
 
 interface MiniCardProps {
@@ -48,7 +49,7 @@ const MiniCard: React.FC<MiniCardProps> = ({ card, imageB64, isLoading, hasFaile
         <div className="card-image-loader">
           {overlays}
           {hasFailed && <div className="grid-card-error"><div>❌</div></div>}
-          {isLoading && !hasFailed && <div className="spinner-mini"></div>}
+          {isLoading && !hasFailed && <BeatLoader color="#fff" size={6} speedMultiplier={0.8} />}
           {cardInfo}
         </div>
       )}

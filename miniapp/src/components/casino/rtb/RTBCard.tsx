@@ -12,6 +12,7 @@
 
 import React, { useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import BeatLoader from 'react-spinners/BeatLoader';
 import {
   cardLayoutVariants,
   cardFlipVariants,
@@ -321,7 +322,7 @@ const RTBCard: React.FC<RTBCardProps> = ({
             </>
           ) : thumbnailLoading ? (
             <div className="rtb-card-placeholder rtb-card-placeholder-loading">
-              <div className="rtb-card-spinner" />
+              <BeatLoader color="rgba(255, 255, 255, 0.5)" size={6} speedMultiplier={0.8} />
             </div>
           ) : (
             // Fallback if no image yet or failed to load

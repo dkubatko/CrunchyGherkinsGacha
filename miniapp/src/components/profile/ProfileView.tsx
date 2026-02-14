@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import BeatLoader from 'react-spinners/BeatLoader';
 import type { UserProfile } from '@/types';
 import Achievement from './Achievement';
 import './ProfileView.css';
@@ -13,7 +14,11 @@ const ProfileView = ({ profile, loading, error }: ProfileViewProps) => {
   const [showRarityBreakdown, setShowRarityBreakdown] = useState(false);
 
   if (loading) {
-    return <div className="profile-view loading">Loading profile...</div>;
+    return (
+      <div className="profile-view loading">
+        <BeatLoader color="var(--tg-theme-button-color, #007aff)" size={10} speedMultiplier={0.8} />
+      </div>
+    );
   }
 
   if (error) {
