@@ -226,8 +226,9 @@ class SpinsModel(Base):
 
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    count: Mapped[int] = mapped_column(Integer, nullable=False, default=10)
-    refresh_timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    login_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_bonus_date: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class MegaspinsModel(Base):

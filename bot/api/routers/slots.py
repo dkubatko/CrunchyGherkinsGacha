@@ -21,6 +21,8 @@ from api.dependencies import get_validated_user, verify_user_match
 from api.helpers import generate_slot_loss_pattern, normalize_rarity
 from api.schemas import (
     ConsumeSpinResponse,
+    DailyBonusClaimResponse,
+    DailyBonusStatusResponse,
     MegaspinInfo,
     SlotSymbolInfo,
     SlotsClaimWinRequest,
@@ -53,20 +55,13 @@ async def get_user_spins(
     chat_id: str = Query(..., description="Chat ID"),
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get the current number of spins for a user in a specific chat, with daily refresh logic."""
+    """Get the current number of spins for a user in a specific chat."""
     try:
         # Verify the authenticated user matches the requested user_id
         await verify_user_match(user_id, validated_user)
 
-        # Get spins with daily refresh logic
-        spins_count = await asyncio.to_thread(
-            spin_service.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
-        )
-
-        # Get next refresh time separately
-        next_refresh_time = await asyncio.to_thread(
-            spin_service.get_next_spin_refresh, user_id, chat_id
-        )
+        # Get current spin count (no auto-grant; daily bonus is claimed explicitly)
+        spins_count = await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
 
         # Get megaspin info
         megaspins_data = await asyncio.to_thread(spin_service.get_user_megaspins, user_id, chat_id)
@@ -80,7 +75,6 @@ async def get_user_spins(
         return SpinsResponse(
             spins=spins_count,
             success=True,
-            next_refresh_time=next_refresh_time,
             megaspin=megaspin_info,
         )
 
@@ -91,6 +85,65 @@ async def get_user_spins(
             f"Error getting spins for user {user_id} in chat {chat_id}: {e}", exc_info=True
         )
         raise HTTPException(status_code=500, detail="Failed to get spins")
+
+
+@router.get("/daily-bonus", response_model=DailyBonusStatusResponse)
+async def get_daily_bonus_status(
+    user_id: int = Query(..., description="User ID"),
+    chat_id: str = Query(..., description="Chat ID"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Check if the daily login bonus is available for a user."""
+    try:
+        await verify_user_match(user_id, validated_user)
+
+        status = await asyncio.to_thread(spin_service.get_daily_bonus_status, user_id, chat_id)
+
+        return DailyBonusStatusResponse(
+            available=status["available"],
+            current_streak=status["current_streak"],
+            spins_to_grant=status["spins_to_grant"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error checking daily bonus for user {user_id} in chat {chat_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to check daily bonus")
+
+
+@router.post("/daily-bonus/claim", response_model=DailyBonusClaimResponse)
+async def claim_daily_bonus(
+    request: SpinsRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Claim the daily login bonus for a user."""
+    try:
+        await verify_user_match(request.user_id, validated_user)
+
+        result = await asyncio.to_thread(
+            spin_service.claim_daily_bonus, request.user_id, request.chat_id
+        )
+
+        return DailyBonusClaimResponse(
+            success=result["success"],
+            spins_granted=result["spins_granted"],
+            new_streak=result["new_streak"],
+            total_spins=result["total_spins"],
+            message=result["message"],
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(
+            f"Error claiming daily bonus for user {request.user_id} in chat {request.chat_id}: {e}",
+            exc_info=True,
+        )
+        raise HTTPException(status_code=500, detail="Failed to claim daily bonus")
 
 
 @router.post("/spins", response_model=ConsumeSpinResponse)
@@ -122,7 +175,7 @@ async def consume_user_spin(
 
             # Get remaining spins after consumption
             remaining_spins = await asyncio.to_thread(
-                spin_service.get_or_update_user_spins_with_daily_refresh,
+                spin_service.get_user_spin_count,
                 request.user_id,
                 request.chat_id,
             )
@@ -136,7 +189,7 @@ async def consume_user_spin(
         else:
             # Get current spins to show in error
             current_spins = await asyncio.to_thread(
-                spin_service.get_or_update_user_spins_with_daily_refresh,
+                spin_service.get_user_spin_count,
                 request.user_id,
                 request.chat_id,
             )
