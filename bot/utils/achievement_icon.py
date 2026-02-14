@@ -46,24 +46,40 @@ def generate_achievement_icon(name: str, description: str) -> str | None:
         Base64-encoded PNG image, or None if generation failed.
     """
     try:
-        import google.generativeai as genai
+        from google import genai
+        from google.genai import types
 
-        genai.configure(api_key=GOOGLE_API_KEY)
+        client = genai.Client(api_key=GOOGLE_API_KEY)
 
         # Configure safety settings
         safety_settings = [
-            {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-            {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
         ]
-
-        model = genai.GenerativeModel(IMAGE_GEN_MODEL, safety_settings=safety_settings)
 
         prompt = ACHIEVEMENT_ICON_PROMPT.format(name=name, description=description)
         logger.info("Generating achievement icon for '%s'...", name)
 
-        response = model.generate_content([prompt])
+        config = types.GenerateContentConfig(safety_settings=safety_settings)
+        response = client.models.generate_content(
+            model=IMAGE_GEN_MODEL,
+            contents=[prompt],
+            config=config,
+        )
 
         for part in response.candidates[0].content.parts:
             if part.inline_data:

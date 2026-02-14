@@ -9,7 +9,8 @@ import os
 import sys
 from io import BytesIO
 
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from dotenv import load_dotenv
 from PIL import Image
 
@@ -50,33 +51,37 @@ Style requirements:
 """
 
 
-def generate_mine_icon(output_path: str):
+def generate_mine_icon(client, output_path: str):
     """Generate a mine/bomb icon and save it to the specified path."""
     try:
         # Configure safety settings
         safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE",
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE",
-            },
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
+            types.SafetySetting(
+                category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+                threshold=types.HarmBlockThreshold.BLOCK_NONE,
+            ),
         ]
 
-        model = genai.GenerativeModel(os.getenv("IMAGE_GEN_MODEL"), safety_settings=safety_settings)
+        config = types.GenerateContentConfig(safety_settings=safety_settings)
 
         logger.info("Requesting mine icon generation from Gemini...")
-        response = model.generate_content([MINE_ICON_INSTRUCTION])
+        response = client.models.generate_content(
+            model=os.getenv("IMAGE_GEN_MODEL"),
+            contents=[MINE_ICON_INSTRUCTION],
+            config=config,
+        )
 
         for part in response.candidates[0].content.parts:
             if part.inline_data:
@@ -106,7 +111,7 @@ if __name__ == "__main__":
         logger.error("GOOGLE_API_KEY not found in environment variables")
         sys.exit(1)
 
-    genai.configure(api_key=api_key)
+    client = genai.Client(api_key=api_key)
 
     # Set output path - save to data/minesweeper directory
     output_dir = os.path.join(
@@ -116,7 +121,7 @@ if __name__ == "__main__":
     output_path = os.path.join(output_dir, "mine_icon.png")
 
     logger.info("Starting mine icon generation...")
-    result = generate_mine_icon(output_path)
+    result = generate_mine_icon(client, output_path)
 
     if result:
         logger.info("✅ Mine icon generation completed successfully!")
