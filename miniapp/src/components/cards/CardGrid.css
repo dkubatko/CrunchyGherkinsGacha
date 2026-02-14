@@ -160,9 +160,7 @@
   background-color: var(--tg-theme-secondary-bg-color, #333);
 }
 
-.card-image-loader .spinner-mini {
-  margin-bottom: 8px;
-}
+
 
 .card-image-loader .grid-card-info {
   position: absolute;
@@ -196,19 +194,7 @@
   margin-bottom: 0.5rem;
 }
 
-.spinner-mini {
-  width: 20px;
-  height: 20px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
 
-@keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
 
 /* Responsive adjustments */
 @media (max-width: 480px) {

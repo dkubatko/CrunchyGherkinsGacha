@@ -1,4 +1,5 @@
-import React, { useMemo } from 'react';
+import React from 'react';
+import BeatLoader from 'react-spinners/BeatLoader';
 import './Loading.css';
 
 interface LoadingProps {
@@ -6,22 +7,13 @@ interface LoadingProps {
   message?: string;
 }
 
-const SPINNER_DURATION_MS = 900;
-
-const getContinuousSpinnerDelay = (): string => {
-  const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-  const offsetMs = now % SPINNER_DURATION_MS;
-  return `-${(offsetMs / 1000).toFixed(4)}s`;
-};
-
 const Loading: React.FC<LoadingProps> = ({ message = 'Loading...' }) => {
-  const animationDelay = useMemo(() => getContinuousSpinnerDelay(), []);
-
   return (
     <div className="loading-fullscreen">
-      <div
-        className="loading-spinner"
-        style={{ '--loading-spin-delay': animationDelay } as React.CSSProperties}
+      <BeatLoader
+        color="var(--tg-theme-button-color, #007aff)"
+        size={10}
+        speedMultiplier={0.5}
       />
       <p className="loading-message">{message}</p>
     </div>

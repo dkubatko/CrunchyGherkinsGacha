@@ -1,22 +1,19 @@
-import { useState, useCallback, useEffect, useRef, Suspense, lazy, useMemo } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import '@/App.css';
 import './HubPage.css';
 
 // Components
 import BottomNav from '@/components/common/BottomNav';
-import Loading from '@/components/common/Loading';
+import ProfileTab from '@/components/tabs/ProfileTab';
+import CollectionTab from '@/components/tabs/CollectionTab';
+import CasinoTab from '@/components/tabs/CasinoTab';
+import AllCardsTab from '@/components/tabs/AllCardsTab';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
 
 // Types
 import type { HubTab } from '@/types';
-
-// Lazy-loaded tab components
-const ProfileTab = lazy(() => import('@/components/tabs/ProfileTab'));
-const CollectionTab = lazy(() => import('@/components/tabs/CollectionTab'));
-const CasinoTab = lazy(() => import('@/components/tabs/CasinoTab'));
-const AllCardsTab = lazy(() => import('@/components/tabs/AllCardsTab'));
 
 interface HubPageProps {
   currentUserId: number;
@@ -76,56 +73,48 @@ export const HubPage = ({
         {/* Profile Tab */}
         {mountedTabs.has('profile') && (
           <div className={`hub-tab-panel ${activeTab === 'profile' ? 'active' : ''}`}>
-            <Suspense fallback={<Loading message="Loading profile..." />}>
-              <ProfileTab
-                currentUserId={currentUserId}
-                targetUserId={targetUserId}
-                isOwnCollection={isOwnCollection}
-                chatId={chatId}
-                initData={initData}
-              />
-            </Suspense>
+            <ProfileTab
+              currentUserId={currentUserId}
+              targetUserId={targetUserId}
+              isOwnCollection={isOwnCollection}
+              chatId={chatId}
+              initData={initData}
+            />
           </div>
         )}
 
         {/* Collection Tab */}
         {mountedTabs.has('collection') && (
           <div className={`hub-tab-panel ${activeTab === 'collection' ? 'active' : ''}`}>
-            <Suspense fallback={<Loading message="Loading collection..." />}>
-              <CollectionTab
-                currentUserId={currentUserId}
-                targetUserId={targetUserId}
-                chatId={chatId}
-                isOwnCollection={isOwnCollection}
-                enableTrade={enableTrade}
-                initData={initData}
-              />
-            </Suspense>
+            <CollectionTab
+              currentUserId={currentUserId}
+              targetUserId={targetUserId}
+              chatId={chatId}
+              isOwnCollection={isOwnCollection}
+              enableTrade={enableTrade}
+              initData={initData}
+            />
           </div>
         )}
 
         {/* Casino Tab */}
         {mountedTabs.has('casino') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'casino' ? 'active' : ''}`}>
-            <Suspense fallback={<Loading message="Loading casino..." />}>
-              <CasinoTab
-                currentUserId={currentUserId}
-                chatId={chatId}
-                initData={initData}
-              />
-            </Suspense>
+            <CasinoTab
+              currentUserId={currentUserId}
+              chatId={chatId}
+              initData={initData}
+            />
           </div>
         )}
 
         {/* All Cards Tab */}
         {mountedTabs.has('allCards') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'allCards' ? 'active' : ''}`}>
-            <Suspense fallback={<Loading message="Loading all cards..." />}>
-              <AllCardsTab
-                chatId={chatId}
-                initData={initData}
-              />
-            </Suspense>
+            <AllCardsTab
+              chatId={chatId}
+              initData={initData}
+            />
           </div>
         )}
       </div>

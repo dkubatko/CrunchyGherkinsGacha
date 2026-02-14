@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import WebApp from '@twa-dev/sdk';
+import BeatLoader from 'react-spinners/BeatLoader';
 import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import { imageCache } from '@/lib/imageCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
@@ -227,7 +228,7 @@ const Card: React.FC<CardProps> = ({
       {loadingImage ? (
         <div className="card-image-container">
           <div className="card-image-placeholder">
-            <div className="spinner"></div>
+            <BeatLoader color="#fff" size={10} speedMultiplier={0.8} />
           </div>
         </div>
       ) : (
@@ -277,7 +278,7 @@ const Card: React.FC<CardProps> = ({
               aria-label="Share card"
             >
               {sharing ? (
-                <div className="share-spinner-inline"></div>
+                <BeatLoader color="rgba(255, 255, 255, 0.8)" size={4} speedMultiplier={0.8} />
               ) : (
                 <svg 
                   className="share-icon-inline"

@@ -9,30 +9,6 @@
   gap: 1rem;
 }
 
-.loading-spinner {
-  --spinner-color: var(--tg-theme-button-color, #007aff);
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    var(--spinner-color) 110deg,
-    transparent 240deg,
-    transparent 360deg
-  );
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 0);
-  animation: loading-spin 0.9s linear infinite;
-  animation-delay: var(--loading-spin-delay, 0s);
-  will-change: transform;
-}
-
-@keyframes loading-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
 .loading-message {
   color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
   font-size: 0.9rem;
