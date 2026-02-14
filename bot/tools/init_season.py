@@ -122,20 +122,18 @@ def reset_roll_times(chat_id: str, dry_run: bool = False) -> int:
 
 
 def reset_spins(chat_id: str, dry_run: bool = False) -> int:
-    """Reset all spin refresh timestamps to season start."""
-    season_start = get_season_start_timestamp()
-
+    """Reset all spin balances and streaks for a new season."""
     with get_session(commit=not dry_run) as session:
         spins = session.query(SpinsModel).filter(SpinsModel.chat_id == str(chat_id)).all()
 
         count = 0
         for spin in spins:
             if dry_run:
-                print(
-                    f"  [DRY-RUN] Would reset spin refresh for user {spin.user_id} to {season_start}"
-                )
+                print(f"  [DRY-RUN] Would reset spins for user {spin.user_id} (count=0, streak=0)")
             else:
-                spin.refresh_timestamp = season_start
+                spin.count = 0
+                spin.login_streak = 0
+                spin.last_bonus_date = None
             count += 1
 
         return count

@@ -28,7 +28,6 @@ interface UserSpinsData {
   count: number;
   loading: boolean;
   error: string | null;
-  nextRefreshTime?: string | null;
 }
 
 interface MegaspinData {
@@ -53,7 +52,7 @@ interface SlotsProps {
   chatId: string;
   initData: string;
   refetchSpins: () => void;
-  onSpinsUpdate: (count: number, nextRefreshTime?: string | null) => void;
+  onSpinsUpdate: (count: number) => void;
   onMegaspinUpdate: (megaspinInfo: MegaspinInfo) => void;
 }
 
@@ -79,34 +78,6 @@ const INITIAL_REEL_STATES: ReelState[] = Array.from(
 );
 
 const clampAlpha = (value: number): number => Math.min(1, Math.max(0, value));
-
-const formatTimeUntilRefresh = (nextRefreshTime: string | null | undefined): string => {
-  if (!nextRefreshTime) {
-    return 'Spins refresh daily!';
-  }
-
-  try {
-    const now = new Date();
-    const refreshDate = new Date(nextRefreshTime);
-    const diffMs = refreshDate.getTime() - now.getTime();
-
-    if (diffMs <= 0) {
-      return 'Refresh available now!';
-    }
-
-    const diffMinutes = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMinutes / 60);
-    const remainingMinutes = diffMinutes % 60;
-
-    if (diffHours > 0) {
-      return `Next spin refresh in ${diffHours}h ${remainingMinutes}m!`;
-    } else {
-      return `Next spin refresh in ${diffMinutes}m!`;
-    }
-  } catch {
-    return 'Spins refresh daily!';
-  }
-};
 
 const hexToRgba = (hex: string, alpha: number): string => {
   const normalized = hex.replace('#', '');
@@ -172,7 +143,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const pendingWinRef = useRef<PendingWin | null>(null);
   const rarityWheelSymbols = useMemo(() => generateRarityWheelStrip(), []);
   const [imagesReady, setImagesReady] = useState(false);
-  const [, setRefreshTick] = useState(0);
   const [isMegaspinning, setIsMegaspinning] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const longPressTriggeredRef = useRef(false);
@@ -353,17 +323,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       clearReelTimeouts();
     };
   }, [clearReelTimeouts]);
-
-  // Update time display every minute when spins are at 0 and we have a refresh time
-  useEffect(() => {
-    if (userSpins.count === 0 && userSpins.nextRefreshTime) {
-      const interval = setInterval(() => {
-        setRefreshTick(tick => tick + 1);
-      }, 60000); // Update every minute
-
-      return () => clearInterval(interval);
-    }
-  }, [userSpins.count, userSpins.nextRefreshTime]);
 
   const stripSymbols = useMemo(() => {
     if (symbols.length === 0) {
@@ -1150,10 +1109,6 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                   MEGA SPIN
                 </span>
               </button>
-
-              {userSpins.count === 0 && !userSpins.error && (
-                <div className="spins-refresh-hint">{formatTimeUntilRefresh(userSpins.nextRefreshTime)}</div>
-              )}
             </>
           )}
         </div>

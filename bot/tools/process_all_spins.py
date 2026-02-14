@@ -360,7 +360,7 @@ async def process_all_spins(
     print(f"Found {len(eligible_sources)} eligible sources for slots")
 
     # Get current spin count
-    current_spins = spin_service.get_or_update_user_spins_with_daily_refresh(user_id, chat_id)
+    current_spins = spin_service.get_user_spin_count(user_id, chat_id)
     if current_spins <= 0:
         print(f"User '{username}' has no spins available")
         return stats

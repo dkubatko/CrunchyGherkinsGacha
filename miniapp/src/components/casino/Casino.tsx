@@ -4,6 +4,7 @@ import { Title, SpinsBadge } from '@/components/common';
 import Slots from './slots/Slots';
 import Minesweeper from './minesweeper/Minesweeper';
 import RideTheBus from './rtb/RideTheBus';
+import DailyBonusPopup from './DailyBonusPopup';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 import slotsCover from '@/assets/casino/slots_cover.webp';
@@ -21,7 +22,6 @@ interface UserSpinsData {
   count: number;
   loading: boolean;
   error: string | null;
-  nextRefreshTime?: string | null;
 }
 
 interface MegaspinData {
@@ -46,7 +46,7 @@ interface CasinoProps {
   slotsSpins: UserSpinsData;
   slotsMegaspin: MegaspinData;
   refetchSpins: () => Promise<void>;
-  updateSpins: (count: number, nextRefreshTime?: string | null) => void;
+  updateSpins: (count: number) => void;
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
@@ -64,7 +64,7 @@ const GAME_INFO: Record<'slots' | 'minesweeper' | 'ridethebus', GameInfo> = {
     description: 'Spin the reels to win cards!',
     rules: [
       'Match 3 symbols to win a card',
-      'You get 5 spins ever 3 hours',
+      'Claim your daily bonus for free spins!',
       'Burn cards to get more spins!'
     ]
   },
@@ -105,6 +105,46 @@ export default function Casino({
   const [rtbAvailable, setRtbAvailable] = useState<boolean>(true);
   const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
   const rtbCheckRef = useRef(false);
+
+  // Daily bonus state
+  const [showDailyBonus, setShowDailyBonus] = useState(false);
+  const [dailyBonusData, setDailyBonusData] = useState<{
+    available: boolean;
+    current_streak: number;
+    spins_to_grant: number;
+  } | null>(null);
+  const dailyBonusCheckRef = useRef(false);
+
+  // Check daily bonus on mount
+  useEffect(() => {
+    if (dailyBonusCheckRef.current) return;
+    dailyBonusCheckRef.current = true;
+
+    ApiService.getDailyBonusStatus(userId, chatId, initData)
+      .then((status) => {
+        setDailyBonusData(status);
+        if (status.available) {
+          setShowDailyBonus(true);
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to check daily bonus:', err);
+      });
+  }, [userId, chatId, initData]);
+
+  const handleClaimDailyBonus = async () => {
+    try {
+      const result = await ApiService.claimDailyBonus(userId, chatId, initData);
+      if (result.success) {
+        updateSpins(result.total_spins);
+        TelegramUtils.triggerHapticNotification('success');
+      }
+    } catch (err) {
+      console.error('Failed to claim daily bonus:', err);
+    } finally {
+      setShowDailyBonus(false);
+    }
+  };
 
   // Check RTB availability on mount
   useEffect(() => {
@@ -274,6 +314,16 @@ export default function Casino({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Daily Bonus Popup */}
+      {showDailyBonus && dailyBonusData && (
+        <DailyBonusPopup
+          streak={dailyBonusData.current_streak}
+          spinsToGrant={dailyBonusData.spins_to_grant}
+          onClaim={handleClaimDailyBonus}
+          onDismiss={() => setShowDailyBonus(false)}
+        />
       )}
     </div>
   );

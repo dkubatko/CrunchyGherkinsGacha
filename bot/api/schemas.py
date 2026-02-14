@@ -198,8 +198,26 @@ class SpinsResponse(BaseModel):
 
     spins: int
     success: bool = True
-    next_refresh_time: Optional[str] = None
     megaspin: Optional[MegaspinInfo] = None
+
+
+class DailyBonusStatusResponse(BaseModel):
+    """Response with daily bonus availability."""
+
+    available: bool
+    current_streak: int
+    spins_to_grant: int
+    max_display_streak: int = 7
+
+
+class DailyBonusClaimResponse(BaseModel):
+    """Response after claiming daily bonus."""
+
+    success: bool
+    spins_granted: int
+    new_streak: int
+    total_spins: int
+    message: Optional[str] = None
 
 
 class ClaimBalanceResponse(BaseModel):
