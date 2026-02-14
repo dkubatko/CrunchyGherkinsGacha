@@ -3,6 +3,10 @@
 This module provides all spin-related business logic including
 retrieving, consuming, and refreshing spin balances, as well as
 megaspin tracking and consumption.
+
+Spins are granted via a daily login bonus (claimed from the casino page).
+The bonus amount scales with a consecutive-day login streak, with the
+progression and daily reset hour configured in config.json.
 """
 
 from __future__ import annotations
@@ -14,6 +18,7 @@ import os
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from utils.events import EventType, DailyBonusOutcome
 from utils.models import MegaspinsModel, SpinsModel
 from utils.schemas import Megaspins, Spins
 from utils.session import get_session
@@ -21,6 +26,8 @@ from utils.session import get_session
 logger = logging.getLogger(__name__)
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+
+PDT_TZ = ZoneInfo("America/Los_Angeles")
 
 
 def _load_config() -> dict:
@@ -31,13 +38,41 @@ def _load_config() -> dict:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError) as e:
         logger.warning(f"Failed to load config: {e}. Using defaults.")
-        return {"SPINS_PER_DAY": 10}
+        return {}
 
 
-def _get_spins_config() -> tuple[int, int]:
-    """Get SPINS_PER_REFRESH and SPINS_REFRESH_HOURS from config. Returns (spins_per_refresh, hours_per_refresh)."""
+def _get_daily_bonus_config() -> tuple[int, list[int]]:
+    """Get daily bonus configuration. Returns (reset_hour_pdt, progression_list)."""
     config = _load_config()
-    return config.get("SPINS_PER_REFRESH", 5), config.get("SPINS_REFRESH_HOURS", 3)
+    reset_hour = config.get("DAILY_BONUS_RESET_HOUR_PDT", 6)
+    progression = config.get("DAILY_BONUS_PROGRESSION", [10, 15, 20, 25, 30, 35, 40])
+    return reset_hour, progression
+
+
+def _get_bonus_date(dt: datetime.datetime) -> datetime.date:
+    """Get the 'bonus date' for a given datetime.
+
+    The bonus day rolls over at DAILY_BONUS_RESET_HOUR_PDT.
+    E.g. if reset hour is 6 AM, then 5:59 AM on Feb 14 still counts as Feb 13's bonus day.
+    """
+    reset_hour, _ = _get_daily_bonus_config()
+    pdt_dt = dt.astimezone(PDT_TZ)
+    if pdt_dt.hour < reset_hour:
+        return (pdt_dt - datetime.timedelta(days=1)).date()
+    return pdt_dt.date()
+
+
+def _get_spins_for_streak(streak: int) -> int:
+    """Get the number of spins to grant for a given streak day (1-indexed).
+
+    Uses the progression list from config. If streak exceeds the list length,
+    the last value in the progression is used indefinitely.
+    """
+    _, progression = _get_daily_bonus_config()
+    if not progression:
+        return 10  # fallback
+    index = min(streak - 1, len(progression) - 1)
+    return progression[max(0, index)]
 
 
 def _get_spins_for_megaspin() -> int:
@@ -50,47 +85,6 @@ def _get_spins_for_megaspin() -> int:
         return 5
     config = _load_config()
     return config.get("SPINS_FOR_MEGASPIN", 100)
-
-
-def get_next_spin_refresh(user_id: int, chat_id: str) -> Optional[str]:
-    """Get the next refresh time for a user's spins. Returns ISO timestamp or None if user not found."""
-    with get_session() as session:
-        spins = (
-            session.query(SpinsModel)
-            .filter(
-                SpinsModel.user_id == user_id,
-                SpinsModel.chat_id == str(chat_id),
-            )
-            .first()
-        )
-
-    if not spins or not spins.refresh_timestamp:
-        return None
-
-    refresh_timestamp_str = spins.refresh_timestamp
-    _, hours_per_refresh = _get_spins_config()
-
-    pdt_tz = ZoneInfo("America/Los_Angeles")
-
-    try:
-        if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
-            refresh_dt_utc = datetime.datetime.fromisoformat(
-                refresh_timestamp_str.replace("Z", "+00:00")
-            )
-            refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
-        else:
-            refresh_dt_naive = datetime.datetime.fromisoformat(
-                refresh_timestamp_str.replace("Z", "")
-            )
-            refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
-
-        next_refresh = refresh_dt_pdt + datetime.timedelta(hours=hours_per_refresh)
-        return next_refresh.isoformat()
-    except (ValueError, TypeError) as e:
-        logger.warning(
-            f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
-        )
-        return None
 
 
 def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
@@ -107,9 +101,9 @@ def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:
         return Spins.from_orm(spins) if spins else None
 
 
-def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp: str) -> bool:
-    """Update or insert a spins record for a user in a specific chat."""
-    with get_session(commit=True) as session:
+def get_user_spin_count(user_id: int, chat_id: str) -> int:
+    """Get the current spin count for a user in a specific chat. Returns 0 if no record exists."""
+    with get_session() as session:
         spins = (
             session.query(SpinsModel)
             .filter(
@@ -118,19 +112,7 @@ def update_user_spins(user_id: int, chat_id: str, count: int, refresh_timestamp:
             )
             .first()
         )
-
-        if spins:
-            spins.count = count
-            spins.refresh_timestamp = refresh_timestamp
-        else:
-            spins = SpinsModel(
-                user_id=user_id,
-                chat_id=str(chat_id),
-                count=count,
-                refresh_timestamp=refresh_timestamp,
-            )
-            session.add(spins)
-        return True
+        return spins.count if spins else 0
 
 
 def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optional[int]:
@@ -150,12 +132,12 @@ def increment_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
             return spins.count
 
         # Create new record if doesn't exist
-        current_timestamp = datetime.datetime.now().isoformat()
         spins = SpinsModel(
             user_id=user_id,
             chat_id=str(chat_id),
             count=amount,
-            refresh_timestamp=current_timestamp,
+            login_streak=0,
+            last_bonus_date=None,
         )
         session.add(spins)
         return amount
@@ -183,11 +165,79 @@ def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1) -> Optiona
         return spins.count
 
 
-def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> int:
-    """Get user spins, adding SPINS_PER_REFRESH for each SPINS_REFRESH_HOURS period elapsed. Returns current spins count."""
-    pdt_tz = ZoneInfo("America/Los_Angeles")
-    current_pdt = datetime.datetime.now(pdt_tz)
-    spins_per_refresh, hours_per_refresh = _get_spins_config()
+# =============================================================================
+# DAILY BONUS FUNCTIONS
+# =============================================================================
+
+
+def get_daily_bonus_status(user_id: int, chat_id: str) -> dict:
+    """Check whether the daily bonus is available for a user.
+
+    Returns a dict with:
+        available (bool): Whether the user can claim their daily bonus right now.
+        current_streak (int): The streak value that would apply if they claim now.
+        spins_to_grant (int): How many spins they'd receive.
+    """
+    now = datetime.datetime.now(PDT_TZ)
+    today_bonus_date = _get_bonus_date(now)
+
+    with get_session() as session:
+        spins = (
+            session.query(SpinsModel)
+            .filter(
+                SpinsModel.user_id == user_id,
+                SpinsModel.chat_id == str(chat_id),
+            )
+            .first()
+        )
+
+    if not spins or not spins.last_bonus_date:
+        # Never claimed before → streak starts at 1
+        new_streak = 1
+        return {
+            "available": True,
+            "current_streak": new_streak,
+            "spins_to_grant": _get_spins_for_streak(new_streak),
+        }
+
+    last_date = datetime.date.fromisoformat(spins.last_bonus_date)
+
+    if last_date >= today_bonus_date:
+        # Already claimed today
+        next_streak = spins.login_streak + 1
+        return {
+            "available": False,
+            "current_streak": spins.login_streak,
+            "spins_to_grant": _get_spins_for_streak(next_streak),
+        }
+
+    yesterday_bonus_date = today_bonus_date - datetime.timedelta(days=1)
+    if last_date == yesterday_bonus_date:
+        # Consecutive day → increment streak
+        new_streak = spins.login_streak + 1
+    else:
+        # Streak broken → reset to 1
+        new_streak = 1
+
+    return {
+        "available": True,
+        "current_streak": new_streak,
+        "spins_to_grant": _get_spins_for_streak(new_streak),
+    }
+
+
+def claim_daily_bonus(user_id: int, chat_id: str) -> dict:
+    """Claim the daily bonus. Atomically grants spins, updates streak and last_bonus_date.
+
+    Returns a dict with:
+        success (bool): Whether the claim succeeded.
+        spins_granted (int): Number of spins granted (0 if already claimed).
+        new_streak (int): Updated streak value.
+        total_spins (int): Total spin count after grant.
+        message (str): Human-readable status message.
+    """
+    now = datetime.datetime.now(PDT_TZ)
+    today_bonus_date = _get_bonus_date(now)
 
     with get_session(commit=True) as session:
         spins = (
@@ -200,70 +250,91 @@ def get_or_update_user_spins_with_daily_refresh(user_id: int, chat_id: str) -> i
         )
 
         if not spins:
-            current_timestamp = current_pdt.isoformat()
-            new_spins = SpinsModel(
+            # First time ever — create record with streak=1
+            new_streak = 1
+            spins_to_grant = _get_spins_for_streak(new_streak)
+            spins = SpinsModel(
                 user_id=user_id,
                 chat_id=str(chat_id),
-                count=spins_per_refresh,
-                refresh_timestamp=current_timestamp,
+                count=spins_to_grant,
+                login_streak=new_streak,
+                last_bonus_date=today_bonus_date.isoformat(),
             )
-            session.add(new_spins)
-            return spins_per_refresh
-
-        current_count = spins.count
-        refresh_timestamp_str = spins.refresh_timestamp
-
-        try:
-            if refresh_timestamp_str.endswith("+00:00") or refresh_timestamp_str.endswith("Z"):
-                refresh_dt_utc = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "+00:00")
-                )
-                refresh_dt_pdt = refresh_dt_utc.astimezone(pdt_tz)
-            else:
-                refresh_dt_naive = datetime.datetime.fromisoformat(
-                    refresh_timestamp_str.replace("Z", "")
-                )
-                refresh_dt_pdt = refresh_dt_naive.replace(tzinfo=pdt_tz)
-
-            time_diff = current_pdt - refresh_dt_pdt
-            hours_elapsed = time_diff.total_seconds() / 3600
-            periods_elapsed = int(hours_elapsed // hours_per_refresh)
-
-            if periods_elapsed <= 0:
-                return current_count
-
-            spins_to_add = periods_elapsed * spins_per_refresh
-            new_count = current_count + spins_to_add
-            new_refresh_dt = refresh_dt_pdt + datetime.timedelta(
-                hours=periods_elapsed * hours_per_refresh
-            )
-            new_timestamp = new_refresh_dt.isoformat()
-
-            spins.count = new_count
-            spins.refresh_timestamp = new_timestamp
-
+            session.add(spins)
             logger.info(
-                f"Added {spins_to_add} spins to user {user_id} in chat {chat_id} ({periods_elapsed} periods of {hours_per_refresh}h elapsed)"
+                f"Daily bonus: new user {user_id} in chat {chat_id} → streak {new_streak}, +{spins_to_grant} spins"
             )
-            return new_count
-        except (ValueError, TypeError) as e:
-            logger.warning(
-                f"Invalid refresh_timestamp format for user {user_id} in chat {chat_id}: {e}"
+
+            from utils.services import event_service
+
+            event_service.log(
+                EventType.DAILY_BONUS,
+                DailyBonusOutcome.CLAIMED,
+                user_id=user_id,
+                chat_id=chat_id,
+                streak=new_streak,
+                spins_granted=spins_to_grant,
             )
-            current_timestamp = datetime.datetime.now(ZoneInfo("America/Los_Angeles")).isoformat()
-            new_count = current_count + spins_per_refresh
-            spins.count = new_count
-            spins.refresh_timestamp = current_timestamp
-            return new_count
+
+            return {
+                "success": True,
+                "spins_granted": spins_to_grant,
+                "new_streak": new_streak,
+                "total_spins": spins.count,
+                "message": f"Day {new_streak} bonus! +{spins_to_grant} spins",
+            }
+
+        # Check if already claimed today
+        if spins.last_bonus_date:
+            last_date = datetime.date.fromisoformat(spins.last_bonus_date)
+            if last_date >= today_bonus_date:
+                return {
+                    "success": False,
+                    "spins_granted": 0,
+                    "new_streak": spins.login_streak,
+                    "total_spins": spins.count,
+                    "message": "Daily bonus already claimed today",
+                }
+
+            yesterday_bonus_date = today_bonus_date - datetime.timedelta(days=1)
+            if last_date == yesterday_bonus_date:
+                new_streak = spins.login_streak + 1
+            else:
+                new_streak = 1
+        else:
+            new_streak = 1
+
+        spins_to_grant = _get_spins_for_streak(new_streak)
+        spins.count += spins_to_grant
+        spins.login_streak = new_streak
+        spins.last_bonus_date = today_bonus_date.isoformat()
+
+        logger.info(
+            f"Daily bonus: user {user_id} in chat {chat_id} → streak {new_streak}, +{spins_to_grant} spins (total: {spins.count})"
+        )
+
+        from utils.services import event_service
+
+        event_service.log(
+            EventType.DAILY_BONUS,
+            DailyBonusOutcome.CLAIMED,
+            user_id=user_id,
+            chat_id=chat_id,
+            streak=new_streak,
+            spins_granted=spins_to_grant,
+        )
+
+        return {
+            "success": True,
+            "spins_granted": spins_to_grant,
+            "new_streak": new_streak,
+            "total_spins": spins.count,
+            "message": f"Day {new_streak} bonus! +{spins_to_grant} spins",
+        }
 
 
 def consume_user_spin(user_id: int, chat_id: str) -> bool:
     """Consume one spin if available. Returns True if successful, False if no spins available."""
-    current_count = get_or_update_user_spins_with_daily_refresh(user_id, chat_id)
-
-    if current_count <= 0:
-        return False
-
     with get_session(commit=True) as session:
         spins = (
             session.query(SpinsModel)

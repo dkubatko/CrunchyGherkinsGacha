@@ -105,9 +105,7 @@ async def _verify_user_in_chat(user_id: int, chat_id: str, validated_user: Dict[
 
 
 async def _get_spins_balance(user_id: int, chat_id: str) -> int:
-    return await asyncio.to_thread(
-        spin_service.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
-    )
+    return await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
 
 
 @router.get("/game", response_model=Optional[RTBGameResponse])

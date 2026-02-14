@@ -43,6 +43,7 @@ class EventType(str, Enum):
     MEGASPIN = "MEGASPIN"
     MINESWEEPER = "MINESWEEPER"
     RTB = "RTB"
+    DAILY_BONUS = "DAILY_BONUS"
 
 
 # --- Outcome enums per event type ---
@@ -169,6 +170,12 @@ class RtbOutcome(str, Enum):
     ERROR = "ERROR"
 
 
+class DailyBonusOutcome(str, Enum):
+    """Outcomes for DAILY_BONUS events."""
+
+    CLAIMED = "CLAIMED"
+
+
 # --- Validation mapping ---
 
 VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
@@ -186,6 +193,7 @@ VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
     EventType.MEGASPIN: MegaspinOutcome,
     EventType.MINESWEEPER: MinesweeperOutcome,
     EventType.RTB: RtbOutcome,
+    EventType.DAILY_BONUS: DailyBonusOutcome,
 }
 
 

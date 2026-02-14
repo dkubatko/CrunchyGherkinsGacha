@@ -235,7 +235,8 @@ class Spins(BaseModel):
     user_id: int
     chat_id: str
     count: int
-    refresh_timestamp: str
+    login_streak: int = 0
+    last_bonus_date: Optional[str] = None
 
     @classmethod
     def from_orm(cls, spins_orm) -> "Spins":
@@ -244,7 +245,8 @@ class Spins(BaseModel):
             user_id=spins_orm.user_id,
             chat_id=spins_orm.chat_id,
             count=spins_orm.count,
-            refresh_timestamp=spins_orm.refresh_timestamp,
+            login_streak=spins_orm.login_streak,
+            last_bonus_date=spins_orm.last_bonus_date,
         )
 
 

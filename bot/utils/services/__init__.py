@@ -64,13 +64,13 @@ from utils.services.user_service import (
 )
 
 from utils.services.spin_service import (
+    claim_daily_bonus,
     consume_user_spin,
     decrement_user_spins,
-    get_next_spin_refresh,
-    get_or_update_user_spins_with_daily_refresh,
+    get_daily_bonus_status,
+    get_user_spin_count,
     get_user_spins,
     increment_user_spins,
-    update_user_spins,
 )
 
 from utils.services.claim_service import (
@@ -202,13 +202,13 @@ __all__ = [
     "upsert_user",
     "user_exists",
     # Spin service
+    "claim_daily_bonus",
     "consume_user_spin",
     "decrement_user_spins",
-    "get_next_spin_refresh",
-    "get_or_update_user_spins_with_daily_refresh",
+    "get_daily_bonus_status",
+    "get_user_spin_count",
     "get_user_spins",
     "increment_user_spins",
-    "update_user_spins",
     # Claim service
     "get_claim_balance",
     "increment_claim_balance",

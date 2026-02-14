@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import BeatLoader from 'react-spinners/BeatLoader';
 import './Title.css';
 
@@ -7,12 +7,54 @@ export interface SpinsBadgeProps {
   count: number;
 }
 
-export const SpinsBadge: React.FC<SpinsBadgeProps> = ({ count }) => (
-  <div className="title-spins-badge">
-    <span className="title-spins-coin" aria-hidden="true" />
-    <span className="title-spins-count">{count}</span>
-  </div>
-);
+export const SpinsBadge: React.FC<SpinsBadgeProps> = ({ count }) => {
+  const [display, setDisplay] = useState(count);
+  const [glowing, setGlowing] = useState(false);
+  const prevRef = useRef(count);
+  const rafRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const from = prevRef.current;
+    const to = count;
+    prevRef.current = count;
+
+    if (from === to) {
+      setDisplay(to);
+      return;
+    }
+
+    const increasing = to > from;
+    if (increasing) setGlowing(true);
+    const diff = to - from;
+    const duration = Math.min(800, Math.max(400, Math.abs(diff) * 25));
+    const start = performance.now();
+
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(elapsed / duration, 1);
+      // Ease-out quad
+      const eased = 1 - (1 - t) * (1 - t);
+      setDisplay(Math.round(from + diff * eased));
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(tick);
+      } else {
+        setGlowing(false);
+      }
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+    return () => {
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    };
+  }, [count]);
+
+  return (
+    <div className={`title-spins-badge${glowing ? ' title-spins-glow' : ''}`}>
+      <span className="title-spins-coin" aria-hidden="true" />
+      <span className="title-spins-count">{display}</span>
+    </div>
+  );
+};
 
 // PositionIndicator sub-component for displaying card position (e.g., "5 / 20")
 export interface PositionIndicatorProps {

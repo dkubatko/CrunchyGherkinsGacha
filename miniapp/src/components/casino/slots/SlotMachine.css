@@ -557,16 +557,6 @@
   font-weight: 500;
 }
 
-.spins-refresh-hint {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #888;
-  text-align: center;
-  font-style: italic;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
 .slot-controls-area {
   width: 100%;
   display: flex;

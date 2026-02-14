@@ -44,10 +44,8 @@ async def get_user_profile(
         # Get claim balance
         claim_balance = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
 
-        # Get spin balance (with refresh logic)
-        spin_balance = await asyncio.to_thread(
-            spin_service.get_or_update_user_spins_with_daily_refresh, user_id, chat_id
-        )
+        # Get spin balance (no auto-grant; daily bonus is claimed explicitly)
+        spin_balance = await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
 
         # Get card count
         card_count = await asyncio.to_thread(card_service.get_user_card_count, user_id, chat_id)

@@ -117,7 +117,7 @@ async def balance(
     point_label = "point" if balance_value == 1 else "points"
 
     spin_count = await asyncio.to_thread(
-        spin_service.get_or_update_user_spins_with_daily_refresh,
+        spin_service.get_user_spin_count,
         target_user_id,
         chat_id,
     )
@@ -686,7 +686,7 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
         balance_line = f"{balance_value} {point_label}"
 
         spin_count = await asyncio.to_thread(
-            spin_service.get_or_update_user_spins_with_daily_refresh,
+            spin_service.get_user_spin_count,
             user_id,
             chat_id,
         )
