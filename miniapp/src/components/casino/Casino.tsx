@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import './Casino.css';
-import { Title, SpinsBadge } from '@/components/common';
+import { Title, SpinsBadge, ClaimPointsBadge } from '@/components/common';
 import Slots from './slots/Slots';
 import Minesweeper from './minesweeper/Minesweeper';
 import RideTheBus from './rtb/RideTheBus';
@@ -48,6 +48,8 @@ interface CasinoProps {
   refetchSpins: () => Promise<void>;
   updateSpins: (count: number) => void;
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
+  claimPoints: number | null;
+  updateClaimPoints: (count: number) => void;
 }
 
 type GameView = 'catalog' | 'slots' | 'minesweeper' | 'ridethebus';
@@ -98,13 +100,20 @@ export default function Casino({
   slotsMegaspin,
   refetchSpins,
   updateSpins,
-  updateMegaspin
+  updateMegaspin,
+  claimPoints,
+  updateClaimPoints
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
   const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | 'ridethebus' | null>(null);
   const [rtbAvailable, setRtbAvailable] = useState<boolean>(true);
   const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
   const rtbCheckRef = useRef(false);
+
+  // Callback for Minesweeper: receives delta (increment) and converts to absolute
+  const handleClaimPointsDelta = useCallback((delta: number) => {
+    updateClaimPoints((claimPoints ?? 0) + delta);
+  }, [claimPoints, updateClaimPoints]);
 
   // Daily bonus state
   const [showDailyBonus, setShowDailyBonus] = useState(false);
@@ -203,6 +212,8 @@ export default function Casino({
         refetchSpins={refetchSpins}
         onSpinsUpdate={updateSpins}
         onMegaspinUpdate={updateMegaspin}
+        claimPoints={claimPoints ?? undefined}
+        onClaimPointsUpdate={updateClaimPoints}
       />
     );
   }
@@ -212,6 +223,7 @@ export default function Casino({
       <Minesweeper
         chatId={chatId}
         initData={initData}
+        onClaimPointsDelta={handleClaimPointsDelta}
       />
     );
   }
@@ -230,7 +242,7 @@ export default function Casino({
   // Catalog view
   return (
     <div className="casino-catalog-container">
-      <Title title="🎰 Casino" rightContent={<SpinsBadge count={slotsSpins.count} />} />
+      <Title title="🎰 Casino" leftContent={claimPoints != null ? <ClaimPointsBadge count={claimPoints} /> : undefined} rightContent={<SpinsBadge count={slotsSpins.count} />} />
       <div className="casino-games-grid">
           <div 
             className="casino-game-card"

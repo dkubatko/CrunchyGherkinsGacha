@@ -9,11 +9,14 @@ import CollectionTab from '@/components/tabs/CollectionTab';
 import CasinoTab from '@/components/tabs/CasinoTab';
 import AllCardsTab from '@/components/tabs/AllCardsTab';
 
+// Services
+import { ApiService } from '@/services/api';
+
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
 
 // Types
-import type { HubTab } from '@/types';
+import type { HubTab, UserProfile } from '@/types';
 
 interface HubPageProps {
   currentUserId: number;
@@ -38,6 +41,35 @@ export const HubPage = ({
   // Track which tabs have been visited so we can keep them mounted
   const [mountedTabs, setMountedTabs] = useState<Set<HubTab>>(new Set([initialTab]));
   const expandedRef = useRef(false);
+
+  // Shared user profile state
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | undefined>();
+  const profileFetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (profileFetchedRef.current || !chatId) {
+      setProfileLoading(false);
+      if (!chatId) setProfileError('Profile is unavailable outside a chat context.');
+      return;
+    }
+    profileFetchedRef.current = true;
+
+    const userId = isOwnCollection ? currentUserId : targetUserId;
+    ApiService.fetchUserProfile(userId, chatId, initData)
+      .then((result) => setProfile(result))
+      .catch((err) => setProfileError(err instanceof Error ? err.message : 'Failed to load profile'))
+      .finally(() => setProfileLoading(false));
+  }, [currentUserId, targetUserId, isOwnCollection, chatId, initData]);
+
+  // Claim points derived from profile, updatable in real-time by casino games
+  const [claimPointsOverride, setClaimPointsOverride] = useState<number | null>(null);
+  const claimPoints = claimPointsOverride ?? profile?.claim_balance ?? null;
+
+  const updateClaimPoints = useCallback((count: number) => {
+    setClaimPointsOverride(count);
+  }, []);
 
   // Tabs that require chat_id
   const disabledTabs = useMemo(() => {
@@ -74,11 +106,9 @@ export const HubPage = ({
         {mountedTabs.has('profile') && (
           <div className={`hub-tab-panel ${activeTab === 'profile' ? 'active' : ''}`}>
             <ProfileTab
-              currentUserId={currentUserId}
-              targetUserId={targetUserId}
-              isOwnCollection={isOwnCollection}
-              chatId={chatId}
-              initData={initData}
+              profile={profile}
+              loading={profileLoading}
+              error={profileError}
             />
           </div>
         )}
@@ -104,6 +134,8 @@ export const HubPage = ({
               currentUserId={currentUserId}
               chatId={chatId}
               initData={initData}
+              claimPoints={claimPoints}
+              updateClaimPoints={updateClaimPoints}
             />
           </div>
         )}
