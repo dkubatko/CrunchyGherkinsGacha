@@ -13,6 +13,7 @@ import './Minesweeper.css';
 interface MinesweeperProps {
   chatId: string;
   initData: string;
+  onClaimPointsDelta?: (delta: number) => void;
 }
 
 type GameState = 'loading' | 'selecting' | 'playing' | 'won' | 'lost';
@@ -65,7 +66,7 @@ const formatTimeUntilRefresh = (nextRefreshTime: string | null | undefined): str
   }
 };
 
-const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
+const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPointsDelta }) => {
   const [gameState, setGameState] = useState<GameState>('loading');
   const [gameData, setGameData] = useState<GameData | null>(null);
   const [cards, setCards] = useState<CardData[]>([]);
@@ -255,6 +256,9 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData }) => {
       // Show notification if claim point was awarded
       if (updateResult.claim_point_awarded) {
         TelegramUtils.showAlert('You received 1 claim point!');
+        if (onClaimPointsDelta) {
+          onClaimPointsDelta(1);
+        }
       }
 
       // Update game data with new revealed cells

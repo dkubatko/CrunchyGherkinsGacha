@@ -6,9 +6,11 @@ interface CasinoTabProps {
   currentUserId: number;
   chatId: string;
   initData: string;
+  claimPoints: number | null;
+  updateClaimPoints: (count: number) => void;
 }
 
-const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
+const CasinoTab = ({ currentUserId, chatId, initData, claimPoints, updateClaimPoints }: CasinoTabProps) => {
   const {
     symbols,
     spins,
@@ -20,7 +22,7 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
     updateMegaspin
   } = useSlots(chatId, currentUserId, initData);
 
-  if (loading || symbols.length === 0) {
+  if (loading || symbols.length === 0 || claimPoints === null) {
     return <Loading message="Loading casino..." />;
   }
 
@@ -44,6 +46,8 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
       refetchSpins={refetchSpins}
       updateSpins={updateSpins}
       updateMegaspin={updateMegaspin}
+      claimPoints={claimPoints}
+      updateClaimPoints={updateClaimPoints}
     />
   );
 };

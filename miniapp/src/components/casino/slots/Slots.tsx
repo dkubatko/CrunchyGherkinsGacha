@@ -6,7 +6,7 @@ import { getIconObjectUrl } from '@/lib/iconUrlCache';
 import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '@/utils/rarityStyles';
 import type { RarityName } from '@/utils/rarityStyles';
 import type { SlotSymbolInfo } from '@/types';
-import { Title, SpinsBadge } from '@/components/common';
+import { Title, SpinsBadge, ClaimPointsBadge } from '@/components/common';
 import {
   computeRarityWheelTransforms,
   generateRarityWheelStrip,
@@ -54,6 +54,8 @@ interface SlotsProps {
   refetchSpins: () => void;
   onSpinsUpdate: (count: number) => void;
   onMegaspinUpdate: (megaspinInfo: MegaspinInfo) => void;
+  claimPoints?: number;
+  onClaimPointsUpdate?: (count: number) => void;
 }
 
 interface SlotSymbol {
@@ -117,7 +119,7 @@ const buildRarityHighlightVariables = (primary: string, secondary: string): Reco
 });
 
 
-const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, refetchSpins, onSpinsUpdate, onMegaspinUpdate }) => {
+const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, refetchSpins, onSpinsUpdate, onMegaspinUpdate, claimPoints, onClaimPointsUpdate }) => {
   const symbols = useSlotsStore((state) => state.symbols);
   const setSymbols = useSlotsStore((state) => state.setSymbols);
   const results = useSlotsStore((state) => state.results);
@@ -419,6 +421,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
           
           const claimAmount = 1;
           const result = await ApiService.processClaimWin(userId, chatId, claimAmount, initData);
+          
+          // Update claim points badge in real time
+          if (onClaimPointsUpdate) {
+            onClaimPointsUpdate(result.balance);
+          }
           
           // Track claim points won during autospin
           if (currentlyAutospinning) {
@@ -994,12 +1001,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   }, [results, reelStates, symbols.length]);
 
   if (!imagesReady) {
-    return <Title title="🎰 Slots" rightContent={<SpinsBadge count={userSpins.count} />} fullscreen />;
+    return <Title title="🎰 Slots" leftContent={claimPoints != null ? <ClaimPointsBadge count={claimPoints} /> : undefined} rightContent={<SpinsBadge count={userSpins.count} />} fullscreen />;
   }
 
   return (
     <div className="slots-container">
-      <Title title="🎰 Slots" rightContent={<SpinsBadge count={userSpins.count} />} />
+      <Title title="🎰 Slots" leftContent={claimPoints != null ? <ClaimPointsBadge count={claimPoints} /> : undefined} rightContent={<SpinsBadge count={userSpins.count} />} />
 
       <div className={`slot-machine-container ${isMegaspinning ? 'slot-machine-megaspin' : ''}`}>
         <div className={`slot-reels ${isWinning ? 'slot-reels-winning' : ''} ${isMegaspinning ? 'slot-reels-megaspin' : ''}`}>
