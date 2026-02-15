@@ -31,6 +31,7 @@ from utils.events import (
     BurnOutcome,
     RollOutcome,
     RtbOutcome,
+    DailyBonusOutcome,
 )
 from utils.services import achievement_service, event_service
 from utils.schemas import Event, UserAchievement
@@ -539,6 +540,62 @@ class UnluckyAchievement(BaseAchievement):
         return all(e.outcome != SpinOutcome.CARD_WIN.value for e in recent_spins)
 
 
+class HotStreakAchievement(BaseAchievement):
+    """Achievement for logging in 7 days in a row."""
+
+    REQUIRED_STREAK = 7
+
+    @property
+    def id(self) -> int:
+        return 14
+
+    @property
+    def name(self) -> str:
+        return "Hot Streak"
+
+    @property
+    def description(self) -> str:
+        return f"Log in {self.REQUIRED_STREAK} days in a row"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user has a 7-day login streak via the event payload."""
+        if (
+            event.event_type != EventType.DAILY_BONUS.value
+            or event.outcome != DailyBonusOutcome.CLAIMED.value
+        ):
+            return False
+
+        return bool(event.payload and event.payload.get("streak", 0) >= self.REQUIRED_STREAK)
+
+
+class LoyalAchievement(BaseAchievement):
+    """Achievement for logging in 30 days in a row."""
+
+    REQUIRED_STREAK = 30
+
+    @property
+    def id(self) -> int:
+        return 15
+
+    @property
+    def name(self) -> str:
+        return "Loyal"
+
+    @property
+    def description(self) -> str:
+        return f"Log in {self.REQUIRED_STREAK} days in a row"
+
+    def check_condition(self, user_id: int, event: Event) -> bool:
+        """Check if user has a 30-day login streak via the event payload."""
+        if (
+            event.event_type != EventType.DAILY_BONUS.value
+            or event.outcome != DailyBonusOutcome.CLAIMED.value
+        ):
+            return False
+
+        return bool(event.payload and event.payload.get("streak", 0) >= self.REQUIRED_STREAK)
+
+
 # ============================================================================
 # Achievement Mappings
 # ============================================================================
@@ -585,6 +642,11 @@ RTB_ACHIEVEMENTS: List[BaseAchievement] = [
     AddictAchievement(),
 ]
 
+DAILY_BONUS_ACHIEVEMENTS: List[BaseAchievement] = [
+    HotStreakAchievement(),
+    LoyalAchievement(),
+]
+
 # Master mapping from EventType to achievement instances
 EVENT_ACHIEVEMENTS: Dict[EventType, List[BaseAchievement]] = {
     EventType.SPIN: SPIN_ACHIEVEMENTS,
@@ -595,6 +657,7 @@ EVENT_ACHIEVEMENTS: Dict[EventType, List[BaseAchievement]] = {
     EventType.BURN: BURN_ACHIEVEMENTS,
     EventType.ROLL: ROLL_ACHIEVEMENTS,
     EventType.RTB: RTB_ACHIEVEMENTS,
+    EventType.DAILY_BONUS: DAILY_BONUS_ACHIEVEMENTS,
 }
 
 
