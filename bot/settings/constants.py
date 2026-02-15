@@ -109,14 +109,14 @@ IMAGE_GENERATOR_INSTRUCTION = """
 
 **--- Guiding Principles ---**
 You must achieve the following goals:
-1.  **Thematic Transformation:** The card must be a creative visual representation reflective of its name, "{modification} {name}".
+1.  **Thematic Transformation:** The card must be a creative visual representation reflective of its name, "{modification} {name}", where {modification} is the modification tag and {name} is the character's name.
 2.  **Character Recognition:** The person or character depicted on the card must remain clearly and unmistakably recognizable from the input photo.
 
 **1. Art Style & Theme:**
 The overall style should be a high-quality, detailed digital illustration.
-   - **Literal Interpretation:** The visual theme and art style MUST be a direct and literal interpretation of the `{modification}` tag. {set_context}
+   - **Literal Interpretation:** The visual theme and art style MUST be a direct interpretation of the `{modification}` modification tag.{set_context}
    - **AVOID THEME DEFAULTS:** You are strictly forbidden from defaulting to a generic theme (for example **fantasy, magic, arcane, sci-fi, or futuristic**) unless the tag requests that theme explicitly.
-   - **Current-Day Grounding:** If `{modification}` is an abstract concept, a personality trait, or a term without an obvious visual theme, your interpretation MUST be grounded in a **contemporary, real-world, non-speculative context**.
+   - **Current-Day Grounding:** If modification tag `{modification}` is an abstract concept, a personality trait, or a term without an obvious visual theme, your interpretation MUST be grounded in a **contemporary, real-world, non-speculative context**.
 
 **2. Card Transformation & Layout:**
    - **Main Artwork:** the main area of the template should contain the character and a richly detailed, themed background. This artwork must fill the entire area within the border of the card.
@@ -164,6 +164,8 @@ UNIQUE_ADDENDUM = """
    - Ensure the character remains recognizable, but integrated into a spectacular scene or composition.
    - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
 """
+
+SET_CONTEXT = """\n   - The card is part of a themed set called "{set_name}", and the modification tag should be interpreted within the context of that general theme; set name should not influence the card directly, but rather provide the interpretive context for the modification tag."""
 
 SLOT_MACHINE_INSTRUCTION = """
 Create a casino slot machine icon featuring the person's portrait.
