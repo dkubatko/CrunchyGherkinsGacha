@@ -9,11 +9,11 @@ from google.genai import types
 from PIL import Image
 
 from settings.constants import (
-    GEMINI_TIMEOUT_SECONDS,
     IMAGE_GENERATOR_INSTRUCTION,
     RARITIES,
     CARD_TEMPLATES_PATH,
     SLOT_MACHINE_INSTRUCTION,
+    SET_CONTEXT,
 )
 from utils.image import ImageUtil
 
@@ -101,11 +101,7 @@ class GeminiUtil:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
 
             # Build conditional set context if set_name is provided
-            set_context = (
-                f'The modifier is part of a themed set called **"{set_name}"**; interpret it within that theme.'
-                if set_name
-                else ""
-            )
+            set_context = SET_CONTEXT.format(set_name=set_name) if set_name else ""
 
             prompt = IMAGE_GENERATOR_INSTRUCTION.format(
                 modification=modifier,
@@ -116,7 +112,7 @@ class GeminiUtil:
                 set_context=set_context,
             )
             if instruction_addendum:
-                prompt += "\n" + instruction_addendum
+                prompt += instruction_addendum
 
             logger.info(
                 f"Requesting image generation for '{base_name}' with modifier '{modifier}', rarity '{rarity}', set '{set_name or 'none'}' (temperature {temperature})"

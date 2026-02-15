@@ -1,0 +1,31 @@
+id: 23
+set: lunar
+source: all
+active: true
+rarities:
+- name: Common
+  modifiers:
+  - Firecracker
+  - Incense
+  - Lucky Knot
+  - Lì Xì
+  - Paper Lantern
+- name: Rare
+  modifiers:
+  - Bánh Chưng
+  - Dragon Dance
+  - Múa Lân
+  - Plum Blossom
+  - Qipao
+  - Áo Dài Tết
+- name: Epic
+  modifiers:
+  - Beast Nian
+  - Guardian Lion
+  - Jade Emperor
+  - Lantern Sky
+  - Táo Quân
+- name: Legendary
+  modifiers:
+  - Caishen
+  - Golden Dragon
