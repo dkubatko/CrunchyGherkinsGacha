@@ -7,7 +7,12 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.background_tasks import process_rtb_result_notification
-from api.dependencies import get_validated_user, verify_user_match
+from api.dependencies import (
+    get_validated_user,
+    validate_chat_exists,
+    validate_user_in_chat,
+    verify_user_match,
+)
 from api.helpers import format_timestamp
 from api.schemas import (
     RTBCardInfo,
@@ -99,8 +104,7 @@ async def _verify_user_in_chat(user_id: int, chat_id: str, validated_user: Dict[
     chat_id = str(chat_id).strip()
     if not chat_id:
         raise HTTPException(status_code=400, detail="chat_id is required")
-    if not await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user_id):
-        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+    await validate_user_in_chat(user_id, chat_id)
     return chat_id
 
 
@@ -380,6 +384,7 @@ async def get_rtb_config(
 
     # If chat_id provided, check availability
     if chat_id:
+        await validate_chat_exists(chat_id)
         is_available, reason = await asyncio.to_thread(rtb_check_availability, chat_id)
         config["available"] = is_available
         config["unavailable_reason"] = reason

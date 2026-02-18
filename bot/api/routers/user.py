@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.dependencies import get_validated_user
+from api.dependencies import get_validated_user, validate_chat_exists
 from api.schemas import UserProfileResponse, UserAchievementResponse
 from utils.services import (
     card_service,
@@ -35,6 +35,7 @@ async def get_user_profile(
     """Get the general profile information for a user."""
     try:
         # We don't enforce user_id match here because we might be viewing another user's profile
+        await validate_chat_exists(chat_id)
 
         # Get user info
         user = await asyncio.to_thread(user_service.get_user, user_id)
