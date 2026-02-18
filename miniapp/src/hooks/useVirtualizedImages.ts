@@ -73,7 +73,7 @@ export function useVirtualizedImages(
       const newImages: Array<[number, string]> = [];
 
       for (const [cardId, data] of result.loaded.entries()) {
-        const timestamp = cardMapRef.current.get(cardId)?.image_updated_at ?? null;
+        const timestamp = cardMapRef.current.get(cardId)?.updated_at ?? null;
         await decodeImage(data);
         memoryImageCache.set(cardId, 'thumb', data, timestamp);
         persistentImageCache.set(cardId, 'thumb', data, timestamp).catch(() => {});
@@ -140,7 +140,7 @@ export function useVirtualizedImages(
       // Parallel IndexedDB lookups
       Promise.all(
         toCheckDb.map(async (id) => {
-          const timestamp = cardMapRef.current.get(id)?.image_updated_at ?? null;
+          const timestamp = cardMapRef.current.get(id)?.updated_at ?? null;
           const data = await persistentImageCache.get(id, 'thumb', timestamp);
 
           if (data) {

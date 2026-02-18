@@ -30,7 +30,7 @@ interface CardProps {
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
   set_name?: string | null;
-  image_updated_at?: string | null;
+  updated_at?: string | null;
   enableDownload?: boolean;
 }
 
@@ -53,7 +53,7 @@ const Card: React.FC<CardProps> = ({
   triggerBurn = false,
   onBurnComplete,
   set_name,
-  image_updated_at,
+  updated_at,
   enableDownload = false
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
@@ -76,7 +76,7 @@ const Card: React.FC<CardProps> = ({
 
       // Try to get from cache first (memory, then IndexedDB)
       // getAsync handles all validation and cache promotion
-      const cached = await imageCache.getAsync(id, 'full', image_updated_at ?? null);
+      const cached = await imageCache.getAsync(id, 'full', updated_at ?? null);
       if (cached) {
         setImageB64(cached);
         setLoadingImage(false);
@@ -102,7 +102,7 @@ const Card: React.FC<CardProps> = ({
 
             const imageData = await response.json();
             // Store with timestamp for future validation
-            imageCache.set(id, imageData, 'full', image_updated_at ?? null);
+            imageCache.set(id, imageData, 'full', updated_at ?? null);
             return imageData;
           })()
             .finally(() => {
@@ -122,7 +122,7 @@ const Card: React.FC<CardProps> = ({
     };
 
     fetchImage();
-  }, [id, initData, image_updated_at]);
+  }, [id, initData, updated_at]);
 
   const imageUrl = imageB64 ? `data:image/png;base64,${imageB64}` : '';
 
