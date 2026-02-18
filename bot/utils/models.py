@@ -53,6 +53,7 @@ class CardModel(Base):
     source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     season_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationship to card images (one-to-one)
     image: Mapped[Optional["CardImageModel"]] = relationship(

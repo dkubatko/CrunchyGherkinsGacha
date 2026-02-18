@@ -12,7 +12,7 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from sqlalchemy import case, func, or_
-from sqlalchemy.orm import joinedload, contains_eager, load_only
+from sqlalchemy.orm import joinedload, noload
 
 from settings.constants import CURRENT_SEASON
 from utils.image import ImageUtil
@@ -84,6 +84,7 @@ def add_card(
             rarity=rarity,
             chat_id=chat_id,
             created_at=now,
+            updated_at=now,
             source_type=source_type,
             source_id=source_id,
             set_id=set_id,
@@ -153,6 +154,7 @@ def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> b
         card.owner = owner
         if user_id is not None:
             card.user_id = user_id
+        card.updated_at = datetime.datetime.now().isoformat()
         return True
 
 
@@ -178,7 +180,7 @@ def get_user_collection(user_id: int, chat_id: Optional[str] = None) -> List[Car
         query = (
             session.query(CardModel)
             .options(
-                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                noload(CardModel.image),
                 joinedload(CardModel.card_set),
             )
             .filter(
@@ -286,7 +288,7 @@ def get_user_cards_by_rarity(
         query = (
             session.query(CardModel)
             .options(
-                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                noload(CardModel.image),
                 joinedload(CardModel.card_set),
             )
             .filter(
@@ -319,7 +321,7 @@ def get_all_cards(chat_id: Optional[str] = None) -> List[Card]:
         query = (
             session.query(CardModel)
             .options(
-                joinedload(CardModel.image).load_only(CardImageModel.image_updated_at),
+                noload(CardModel.image),
                 joinedload(CardModel.card_set),
             )
             .filter(
@@ -782,6 +784,7 @@ def update_card_image(card_id: int, image_b64: str) -> bool:
         card = session.query(CardModel).filter(CardModel.id == card_id).first()
         if card:
             card.file_id = None
+            card.updated_at = now
 
     logger.info(f"Updated image for card {card_id}, cleared file_id")
     return True
@@ -810,6 +813,7 @@ def set_card_locked(card_id: int, is_locked: bool) -> bool:
             )
             return False
         card.locked = is_locked
+        card.updated_at = datetime.datetime.now().isoformat()
     logger.info(f"Set locked={is_locked} for card {card_id}: True")
     return True
 
