@@ -1,16 +1,32 @@
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Casino } from '@/components/casino';
 import Loading from '@/components/common/Loading';
 import { useSlots } from '@/hooks';
+import { ApiService } from '@/services/api';
 
 interface CasinoTabProps {
   currentUserId: number;
   chatId: string;
   initData: string;
-  claimPoints: number | null;
-  updateClaimPoints: (count: number) => void;
 }
 
-const CasinoTab = ({ currentUserId, chatId, initData, claimPoints, updateClaimPoints }: CasinoTabProps) => {
+const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
+  const [claimPoints, setClaimPoints] = useState<number | null>(null);
+  const fetchedRef = useRef(false);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+
+    ApiService.fetchUserProfile(currentUserId, chatId, initData)
+      .then((result) => setClaimPoints(result.claim_balance))
+      .catch(() => {/* badge will just show no balance */});
+  }, [currentUserId, chatId, initData]);
+
+  const updateClaimPoints = useCallback((count: number) => {
+    setClaimPoints(count);
+  }, []);
+
   const {
     symbols,
     spins,
