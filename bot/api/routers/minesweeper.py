@@ -19,7 +19,7 @@ from api.background_tasks import (
     process_minesweeper_victory_background,
 )
 from api.config import DEBUG_MODE, gemini_util
-from api.dependencies import get_validated_user, verify_user_match
+from api.dependencies import get_validated_user, validate_user_in_chat, verify_user_match
 from api.helpers import ensure_utc, format_timestamp
 from api.schemas import (
     MinesweeperStartRequest,
@@ -75,11 +75,7 @@ async def minesweeper_game(
         logger.warning("Empty chat_id provided for minesweeper game")
         raise HTTPException(status_code=400, detail="chat_id is required")
 
-    # Verify user is enrolled in the chat
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+    await validate_user_in_chat(user_id, chat_id)
 
     try:
         # Get existing game (does not create)
@@ -194,12 +190,7 @@ async def minesweeper_create(
     if not chat_id:
         logger.warning("Empty chat_id provided for minesweeper start")
         raise HTTPException(status_code=400, detail="chat_id is required")
-
-    # Verify user is enrolled in the chat
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+    await validate_user_in_chat(request.user_id, chat_id)
 
     # Verify the bet card exists and is owned by the user
     card = await asyncio.to_thread(card_service.get_card, request.bet_card_id)

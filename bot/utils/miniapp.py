@@ -24,7 +24,7 @@ def encode_single_card_token(card_id: int) -> str:
     return _encode_token(raw_token)
 
 
-def encode_casino_token(user_id: int, chat_id: str) -> str:
+def encode_casino_token(chat_id: str) -> str:
     """Encode a casino catalog payload for the mini app."""
-    raw_token = f"casino-{user_id}-{chat_id}"
+    raw_token = f"casino-{chat_id}"
     return _encode_token(raw_token)
