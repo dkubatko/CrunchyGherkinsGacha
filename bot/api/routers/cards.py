@@ -24,7 +24,12 @@ from api.config import (
     MINIAPP_URL,
     TELEGRAM_TOKEN,
 )
-from api.dependencies import get_validated_user, verify_user_match
+from api.dependencies import (
+    get_validated_user,
+    validate_chat_exists,
+    validate_user_in_chat,
+    verify_user_match,
+)
 from api.schemas import (
     BurnCardRequest,
     BurnCardResponse,
@@ -83,6 +88,8 @@ async def get_all_cards_endpoint(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get all cards that have been claimed."""
+    if chat_id:
+        await validate_chat_exists(chat_id)
     cards = await asyncio.to_thread(card_service.get_all_cards, chat_id)
     return cards
 
@@ -97,6 +104,8 @@ async def get_user_collection(
 
     This endpoint requires authentication via Authorization header with Telegram WebApp initData.
     """
+    if chat_id:
+        await validate_chat_exists(chat_id)
     cards = await asyncio.to_thread(card_service.get_user_collection, user_id, chat_id)
     user_record = await asyncio.to_thread(user_service.get_user, user_id)
     username = user_record.username if user_record else None
@@ -256,10 +265,7 @@ async def lock_card(
 
     # Verify user is enrolled in the chat
     chat_id = str(request.chat_id)
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, auth_user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+    await validate_user_in_chat(auth_user_id, chat_id)
 
     lock_cost = get_lock_cost(card.rarity)
 
@@ -411,10 +417,7 @@ async def burn_card(
 
     # Verify user is enrolled in the chat
     chat_id = str(request.chat_id)
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, auth_user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", auth_user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+    await validate_user_in_chat(auth_user_id, chat_id)
 
     # Get spin reward for the card's rarity
     spin_reward = get_spin_reward(card.rarity)

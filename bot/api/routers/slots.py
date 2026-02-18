@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.background_tasks import process_slots_victory_background
 from api.config import DEBUG_MODE, TELEGRAM_TOKEN, gemini_util
-from api.dependencies import get_validated_user, verify_user_match
+from api.dependencies import get_validated_user, validate_user_in_chat, verify_user_match
 from api.helpers import generate_slot_loss_pattern, normalize_rarity
 from api.schemas import (
     ConsumeSpinResponse,
@@ -59,6 +59,7 @@ async def get_user_spins(
     try:
         # Verify the authenticated user matches the requested user_id
         await verify_user_match(user_id, validated_user)
+        await validate_user_in_chat(user_id, chat_id)
 
         # Get current spin count (no auto-grant; daily bonus is claimed explicitly)
         spins_count = await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
@@ -96,6 +97,7 @@ async def get_daily_bonus_status(
     """Check if the daily login bonus is available for a user."""
     try:
         await verify_user_match(user_id, validated_user)
+        await validate_user_in_chat(user_id, chat_id)
 
         status = await asyncio.to_thread(spin_service.get_daily_bonus_status, user_id, chat_id)
 
@@ -123,6 +125,7 @@ async def claim_daily_bonus(
     """Claim the daily login bonus for a user."""
     try:
         await verify_user_match(request.user_id, validated_user)
+        await validate_user_in_chat(request.user_id, request.chat_id)
 
         result = await asyncio.to_thread(
             spin_service.claim_daily_bonus, request.user_id, request.chat_id
@@ -155,6 +158,7 @@ async def consume_user_spin(
     try:
         # Verify the authenticated user matches the requested user_id
         await verify_user_match(request.user_id, validated_user)
+        await validate_user_in_chat(request.user_id, request.chat_id)
 
         # Attempt to consume a spin
         success = await asyncio.to_thread(
@@ -228,6 +232,7 @@ async def consume_megaspin(
     try:
         # Verify the authenticated user matches the requested user_id
         await verify_user_match(request.user_id, validated_user)
+        await validate_user_in_chat(request.user_id, request.chat_id)
 
         # Attempt to consume the megaspin
         success = await asyncio.to_thread(
@@ -275,7 +280,7 @@ async def verify_slot_spin(
     """Verify a slot spin result using server-side randomness and logic."""
     # Verify the authenticated user matches the requested user_id
     await verify_user_match(request.user_id, validated_user)
-
+    await validate_user_in_chat(request.user_id, request.chat_id)
     # Validate input parameters
     if not request.symbols or len(request.symbols) == 0:
         raise HTTPException(status_code=400, detail="Symbols list cannot be empty")
@@ -399,6 +404,7 @@ async def verify_megaspin(
     """Verify a megaspin result - guaranteed card win."""
     # Verify the authenticated user matches the requested user_id
     await verify_user_match(request.user_id, validated_user)
+    await validate_user_in_chat(request.user_id, request.chat_id)
 
     # Validate input parameters
     if not request.symbols or len(request.symbols) == 0:
@@ -487,11 +493,8 @@ async def slots_victory(
         logger.error("Bot token not available for slots victory")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
-    # Ensure the winner is enrolled in the chat
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in chat")
+    # Validate chat exists and user is enrolled
+    await validate_user_in_chat(request.user_id, chat_id)
 
     # Get source display name for validation
     if source_type == "user":
@@ -549,11 +552,8 @@ async def slots_claim_win(
         logger.warning("Empty chat_id provided for slots claim win")
         raise HTTPException(status_code=400, detail="chat_id is required")
 
-    # Ensure the winner is enrolled in the chat
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, request.user_id)
-    if not is_member:
-        logger.warning("User %s not enrolled in chat %s", request.user_id, chat_id)
-        raise HTTPException(status_code=403, detail="User not enrolled in chat")
+    # Validate chat exists and user is enrolled
+    await validate_user_in_chat(request.user_id, chat_id)
 
     try:
         # Add claim points to the user's balance

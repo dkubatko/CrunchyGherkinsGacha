@@ -42,9 +42,9 @@ async def casino(
         await message.reply_text("/casino can only be used in group chats.")
         return
 
-    # Generate casino token with user_id and chat_id
+    # Generate casino token scoped to this chat
     chat_id = str(chat.id)
-    casino_token = encode_casino_token(user.user_id, chat_id)
+    casino_token = encode_casino_token(chat_id)
 
     # Create WebApp button
     if not MINIAPP_URL_ENV:

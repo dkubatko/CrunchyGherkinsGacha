@@ -16,6 +16,8 @@ from typing import Dict, Any, Optional
 from fastapi import Header, HTTPException
 
 from api.config import TELEGRAM_TOKEN
+from utils.models import ChatModel
+from utils.session import get_session
 
 logger = logging.getLogger(__name__)
 
@@ -158,3 +160,36 @@ async def verify_user_match(request_user_id: int, validated_user: Dict[str, Any]
         raise HTTPException(status_code=403, detail="Unauthorized request")
 
     return validated_user
+
+
+async def validate_chat_exists(chat_id: str) -> None:
+    """
+    Validate that a chat_id exists in the chats table.
+    Raises 404 if no membership rows exist for the given chat_id.
+    """
+    with get_session() as session:
+        exists = session.query(ChatModel.chat_id).filter(ChatModel.chat_id == chat_id).first()
+    if not exists:
+        logger.warning(f"Request with non-existent chat_id: {chat_id}")
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+
+async def validate_user_in_chat(user_id: int, chat_id: str) -> None:
+    """
+    Validate that a chat exists AND the user is enrolled in it.
+    Raises 404 if the chat doesn't exist, 403 if the user is not a member.
+    """
+    with get_session() as session:
+        chat_exists = session.query(ChatModel.chat_id).filter(ChatModel.chat_id == chat_id).first()
+        if not chat_exists:
+            logger.warning(f"Request with non-existent chat_id: {chat_id}")
+            raise HTTPException(status_code=404, detail="Chat not found")
+
+        membership = (
+            session.query(ChatModel)
+            .filter(ChatModel.chat_id == chat_id, ChatModel.user_id == user_id)
+            .first()
+        )
+    if not membership:
+        logger.warning(f"User {user_id} not enrolled in chat {chat_id}")
+        raise HTTPException(status_code=403, detail="User not enrolled in this chat")
