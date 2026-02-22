@@ -13,6 +13,7 @@ rarities:
   - Old
   - Pajamas
   - Retired
+  - Roulette
   - Tipsy
   - Yoga
   - Young
@@ -26,9 +27,10 @@ rarities:
   - Democrat
   - Drunk
   - Emo
+  - Nun
   - Poker
+  - Red Pill
   - Religious
-  - Roulette
   - Tarot
   - Злодей
   - Лысый
@@ -37,8 +39,6 @@ rarities:
   - Coca-Cola
   - Dr. Pepper
   - Gachimuchi
-  - Nun
-  - Red Pill
   - Мытый
 - name: Legendary
   modifiers:

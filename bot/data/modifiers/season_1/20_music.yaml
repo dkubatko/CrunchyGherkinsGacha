@@ -5,15 +5,12 @@ source: all
 rarities:
 - name: Common
   modifiers:
-  - Classical
   - Disco
   - DJ
   - Drummer
-  - Guitarist
   - Harmonica
   - Harper
   - Jazz
-  - Meloman
   - Pianist
   - Punk Rock
   - Tecktonik
@@ -24,6 +21,7 @@ rarities:
   modifiers:
   - Ballerina
   - K-Pop
+  - Opera Singer
   - Rockstar
   - Баянист
   - Дирижёр
@@ -32,7 +30,5 @@ rarities:
   - AC/DC
   - Daft Punk
   - KISS
-  - Mozart
-  - Opera Singer
 - name: Legendary
   modifiers: []

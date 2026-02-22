@@ -14,6 +14,7 @@ rarities:
   modifiers:
   - Aphrodite
   - Ares
+  - Cupid
   - Demigod
   - Odin
   - Shinigami
@@ -24,6 +25,4 @@ rarities:
   modifiers:
   - Amaterasu
   - Buddha
-  - God
-  - Moon God
-  - Sun God
+  - Tsukuyomi

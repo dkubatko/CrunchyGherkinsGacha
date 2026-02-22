@@ -8,6 +8,7 @@ rarities:
   - Chibi
   - Gundam
   - Neko
+  - Sharingan
 - name: Rare
   modifiers:
   - Akatsuki
@@ -20,7 +21,6 @@ rarities:
   - Pochita
   - Pokémon
   - Ryuk
-  - Sharingan
   - Tsundere
   - Uchiha
   - Yandere
@@ -37,5 +37,6 @@ rarities:
   - Waifu
 - name: Legendary
   modifiers:
+  - Kaiju
   - Loli
   - Super Saiyan

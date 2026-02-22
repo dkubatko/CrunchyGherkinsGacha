@@ -6,7 +6,6 @@ rarities:
 - name: Common
   modifiers:
   - Knight
-  - Mongol
   - Ninja
   - Pirate
   - Renaissance
@@ -34,7 +33,6 @@ rarities:
   - Genghis Khan
   - Rasputin
   - Spartan
-  - Time Traveler
   - Царь
 - name: Legendary
   modifiers:
