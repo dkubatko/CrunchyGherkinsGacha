@@ -42,4 +42,6 @@ rarities:
 - name: Legendary
   modifiers:
   - Ragnarok
+  - Seraphim
+  - Valhalla
   - Змей Горыныч

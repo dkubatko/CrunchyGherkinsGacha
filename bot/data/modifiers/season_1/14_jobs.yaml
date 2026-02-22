@@ -8,7 +8,6 @@ rarities:
   - Astronomer
   - Cashier
   - Chef
-  - Contractor
   - Farmer
   - Firefighter
   - Fisherman
@@ -23,17 +22,16 @@ rarities:
   modifiers:
   - Astronaut
   - Coal Miner
+  - Coroner
+  - Mafia
   - Nurse
-  - Spy
   - Taxi Driver
   - Yakuza
 - name: Epic
   modifiers:
-  - Coroner
   - Dog Trainer
-  - Mafia
+  - Gold Digger
   - Глиномес
 - name: Legendary
   modifiers:
-  - President
   - Stripper

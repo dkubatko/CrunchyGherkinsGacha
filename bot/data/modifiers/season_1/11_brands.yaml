@@ -9,19 +9,16 @@ rarities:
   - Apple
   - Funko Pop
   - Haribo
-  - Instagram
   - Nintendo
   - Nutella
   - PlayStation
   - Polaroid
   - Red Bull
   - Starbucks
-  - TikTok
 - name: Rare
   modifiers:
   - Disney
   - Duolingo
-  - Google
   - Gucci
   - Hubba Bubba
   - Jollibee
@@ -32,7 +29,6 @@ rarities:
   - McDonald's
   - NASA
   - Rolex
-  - Yandex
 - name: Epic
   modifiers:
   - Bionicle

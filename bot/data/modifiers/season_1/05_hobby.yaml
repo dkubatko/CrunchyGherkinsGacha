@@ -7,8 +7,6 @@ rarities:
   modifiers:
   - 3D Printing
   - Archer
-  - Blogger
-  - Coding
   - Crochet
   - Fitness
   - Gaming
@@ -18,26 +16,28 @@ rarities:
   - Pilates
   - Poet
   - Quilting
-  - Reading
   - Rock Climbing
   - Skiing
   - Skydiver
   - Snowboarding
-  - Streamer
 - name: Rare
   modifiers:
   - Barber
-  - Blacksmith
+  - Cheese Rolling
   - Clown
+  - Cosplayer
+  - Ghost Hunting
+  - Glassblower
   - Gym Bro
-  - Polyglot
+  - Hobby Horsing
   - Taxidermist
+  - Trainspotting
+  - Vibe Coding
   - Workaholic
 - name: Epic
   modifiers:
   - Card Collector
-  - Cosplayer
-  - Hobby Horsing
+  - Quadrober
 - name: Legendary
   modifiers:
   - Crossdresser

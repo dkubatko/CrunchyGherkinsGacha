@@ -1,6 +1,6 @@
 id: 4
 set: tv
-description: iconic characters and franchises from movies and television
+description: iconic characters, franchises and concepts from movies and tv shows
 source: all
 rarities:
 - name: Common
@@ -22,18 +22,23 @@ rarities:
   - Neo
   - Sith
   - Spider-Man
+  - Terminator
   - The Office
+  - Transformer
+  - TRON
 - name: Epic
   modifiers:
+  - Dumbledore
   - Godfather
   - Hogwarts
   - John Wick
+  - RoboCop
   - Squid Game
-  - Terminator
   - Thanos
   - Vecna
   - Xenomorph
+  - Yoda
 - name: Legendary
   modifiers:
+  - Baby Yoda
   - Voldemort
-  - Yoda
