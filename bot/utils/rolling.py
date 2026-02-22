@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Optional
 
@@ -164,19 +165,27 @@ def get_downgraded_rarity(current_rarity: str) -> str:
 def _choose_modifier_for_rarity(
     rarity: str, chat_id: Optional[str] = None, source: Optional[str] = None
 ) -> tuple[ModifierWithSet, float]:
-    """Choose a random modifier for the given rarity using weighted selection.
+    """Choose a random modifier using two-step weighted selection.
 
-    Modifiers that don't exist in the chat yet get weight 1.0, while existing modifiers
-    get weight 1/N where N is the number of times they've been used.
+    Selection is done in two stages to ensure sets are represented roughly equally
+    regardless of how many keywords each set contains:
+
+    1. **Pick a set** – each eligible set is weighted by ``1 / (1 + total_set_rolls)``
+       where *total_set_rolls* is the sum of historical roll counts for every modifier
+       in that set.  Sets that have appeared less frequently are favoured.
+    2. **Pick a modifier within the set** – each modifier is weighted by
+       ``1 / (1 + modifier_rolls)`` so that unseen keywords are favoured.
+
+    When *chat_id* is ``None`` (no history available) both steps use uniform random.
 
     Args:
-        rarity: The rarity level to choose a modifier for
-        chat_id: The chat ID to check for existing modifier usage (optional)
-        source: Filter modifiers by source ("roll" or "slots"). Sets with "all" source
-                qualify for any source. If None, no source filtering is applied.
+        rarity: The rarity level to choose a modifier for.
+        chat_id: The chat ID to check for existing modifier usage (optional).
+        source: Filter modifiers by source ("roll" or "slots").  Sets with "all"
+                source qualify for any source.  If None, no source filtering.
 
     Returns:
-        A tuple of (ModifierWithSet, weight) where weight is the selection weight used
+        A tuple of (ModifierWithSet, modifier_weight).
     """
     rarity_config = RARITIES.get(rarity)
     if not isinstance(rarity_config, dict):
@@ -196,10 +205,16 @@ def _choose_modifier_for_rarity(
                 f"No modifiers configured for rarity '{rarity}' with source '{source}'"
             )
 
-    # If no chat_id provided, use uniform random selection
+    # If no chat_id provided, use two-step uniform random (set → modifier)
     if chat_id is None:
-        chosen = random.choice(modifiers_with_sets)
+        sets_by_id: defaultdict[int, list[ModifierWithSet]] = defaultdict(list)
+        for mod in modifiers_with_sets:
+            sets_by_id[mod.set_id].append(mod)
+        chosen_set_mods = random.choice(list(sets_by_id.values()))
+        chosen = random.choice(chosen_set_mods)
         return chosen, 1.0
+
+    # ── History-aware two-step selection ──────────────────────────────────
 
     # Get modifier usage counts for this chat from events (all cards ever rolled)
     modifier_counts = modifier_count_service.get_counts(chat_id)
@@ -207,42 +222,51 @@ def _choose_modifier_for_rarity(
     # Get unique modifiers to exclude
     unique_modifiers = set(card_service.get_unique_modifiers(chat_id))
 
-    # Calculate weights: 1/(1+count) so new modifiers (count=0) get weight 1.0,
-    # and existing ones get progressively lower weights as count increases
-    weights = []
-    valid_modifiers = []
-
+    # Group eligible modifiers by set, excluding unique modifiers
+    sets_by_id: defaultdict[int, list[ModifierWithSet]] = defaultdict(list)
     for mod_with_set in modifiers_with_sets:
-        if mod_with_set.modifier in unique_modifiers:
-            continue
+        if mod_with_set.modifier not in unique_modifiers:
+            sets_by_id[mod_with_set.set_id].append(mod_with_set)
 
-        valid_modifiers.append(mod_with_set)
-        count = modifier_counts.get(mod_with_set.modifier, 0)
-        weights.append(1.0 / (1 + count))
+    if not sets_by_id:
+        # Fallback: all modifiers were excluded — ignore exclusions
+        for mod in modifiers_with_sets:
+            sets_by_id[mod.set_id].append(mod)
 
-    if not valid_modifiers:
-        # Fallback if all modifiers are excluded
-        valid_modifiers = modifiers_with_sets
-        weights = [1.0] * len(valid_modifiers)
+    # Step 1: Weight each set by inverse total historical frequency
+    set_ids = list(sets_by_id.keys())
+    set_weights = []
+    for set_id in set_ids:
+        total_count = sum(modifier_counts.get(m.modifier, 0) for m in sets_by_id[set_id])
+        set_weights.append(1.0 / (1 + total_count))
 
-    # Choose a modifier using weighted random selection
-    chosen = random.choices(valid_modifiers, weights=weights, k=1)[0]
+    chosen_set_id = random.choices(set_ids, weights=set_weights, k=1)[0]
+    chosen_set_mods = sets_by_id[chosen_set_id]
+    chosen_set_weight = set_weights[set_ids.index(chosen_set_id)]
 
-    # Get the weight of the chosen modifier for logging
-    chosen_index = valid_modifiers.index(chosen)
-    chosen_weight = weights[chosen_index]
+    # Step 2: Weight modifiers within the chosen set by inverse frequency
+    mod_weights = []
+    for mod in chosen_set_mods:
+        count = modifier_counts.get(mod.modifier, 0)
+        mod_weights.append(1.0 / (1 + count))
+
+    chosen = random.choices(chosen_set_mods, weights=mod_weights, k=1)[0]
+    chosen_mod_weight = mod_weights[chosen_set_mods.index(chosen)]
 
     logger.info(
-        "Chose modifier '%s' (set=%s, weight=%.2f) for rarity=%s, source=%s, chat=%s",
+        "Chose modifier '%s' (set='%s' [%s], set_weight=%.3f, mod_weight=%.3f) "
+        "for rarity=%s, source=%s, chat=%s",
         chosen.modifier,
+        chosen.set_name,
         chosen.set_id,
-        chosen_weight,
+        chosen_set_weight,
+        chosen_mod_weight,
         rarity,
         source or "any",
         chat_id or "none",
     )
 
-    return chosen, chosen_weight
+    return chosen, chosen_mod_weight
 
 
 def _create_generated_card(
