@@ -1,5 +1,6 @@
 id: 6
 set: gods
+description: deities, divine beings, and godly figures
 source: roll
 rarities:
 - name: Common

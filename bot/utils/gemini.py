@@ -16,6 +16,7 @@ from settings.constants import (
     SET_CONTEXT,
 )
 from utils.image import ImageUtil
+from utils.modifiers import ModifierWithSet
 
 logger = logging.getLogger(__name__)
 
@@ -94,14 +95,24 @@ class GeminiUtil:
         base_image_b64: str | None = None,
         temperature: float = 1.0,
         instruction_addendum: str = "",
-        set_name: str = "",
+        modifier_info: ModifierWithSet | None = None,
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
 
+            # Extract set context from modifier_info if available
+            set_name = modifier_info.set_name if modifier_info else ""
+            set_description = modifier_info.description if modifier_info else ""
+
             # Build conditional set context if set_name is provided
-            set_context = SET_CONTEXT.format(set_name=set_name) if set_name else ""
+            if set_name:
+                set_details = (
+                    f"'{set_name}': {set_description}" if set_description else f"'{set_name}'"
+                )
+                set_context = SET_CONTEXT.format(set_details=set_details)
+            else:
+                set_context = ""
 
             prompt = IMAGE_GENERATOR_INSTRUCTION.format(
                 modification=modifier,
