@@ -1,5 +1,6 @@
 id: 3
 set: world
+description: geographic regions, nationalities, and cultural identities
 source: all
 rarities:
 - name: Common

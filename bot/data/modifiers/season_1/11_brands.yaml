@@ -1,5 +1,6 @@
 id: 11
 set: brands
+description: well-known commercial brands, tech companies, and consumer products
 source: all
 rarities:
 - name: Common

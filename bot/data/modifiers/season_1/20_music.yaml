@@ -1,5 +1,6 @@
 id: 20
 set: music
+description: musical genres, instruments, performers, and iconic bands
 source: all
 rarities:
 - name: Common
