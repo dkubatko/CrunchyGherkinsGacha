@@ -274,7 +274,7 @@ def _create_generated_card(
         modifier_info.modifier,
         rarity,
         base_image_b64=profile.image_b64,
-        set_name=modifier_info.set_name,
+        modifier_info=modifier_info,
     )
 
     if not image_b64:
@@ -488,12 +488,22 @@ def regenerate_card_image(
     # Get the source profile using the stored source_type and source_id
     profile = get_profile_for_source(card.source_type, card.source_id)
 
-    # Get the set_name from the card's set_id
-    set_name = ""
+    # Build modifier info from the card's set for context in generation
+    regen_modifier_info: Optional[ModifierWithSet] = None
     if card.set_id is not None:
-        set_model = set_service.get_set_by_id(card.set_id)
-        if set_model:
-            set_name = set_model.name
+        # Try to look up the full modifier info from the loaded modifiers cache
+        regen_modifier_info = get_modifier_info(
+            card.modifier, card.rarity, MODIFIERS_WITH_SETS_BY_RARITY
+        )
+        if regen_modifier_info is None:
+            # Fallback: build a minimal ModifierWithSet from the DB set record
+            set_model = set_service.get_set_by_id(card.set_id)
+            if set_model:
+                regen_modifier_info = ModifierWithSet(
+                    modifier=card.modifier,
+                    set_id=card.set_id,
+                    set_name=set_model.name,
+                )
 
     # Now regenerate with the same rarity and modifier
     total_attempts = max(1, max_retries + 1)
@@ -515,7 +525,7 @@ def regenerate_card_image(
                 base_image_b64=profile.image_b64,
                 temperature=temperature,
                 instruction_addendum=instruction_addendum,
-                set_name=set_name,
+                modifier_info=regen_modifier_info,
             )
 
             if not image_b64:

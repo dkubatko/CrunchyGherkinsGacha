@@ -1,5 +1,6 @@
 id: 14
 set: jobs
+description: occupations, professions, and career-based identities
 source: all
 rarities:
 - name: Common

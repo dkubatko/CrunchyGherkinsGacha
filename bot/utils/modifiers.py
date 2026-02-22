@@ -33,12 +33,13 @@ def _get_modifiers_dir(season_id: Optional[int] = None) -> Path:
 
 
 class ModifierWithSet(NamedTuple):
-    """A modifier with its associated set ID, name, and source."""
+    """A modifier with its associated set ID, name, source, and description."""
 
     modifier: str
     set_id: int
     set_name: str = ""
     source: str = "all"
+    description: str = ""
 
 
 def load_modifiers_with_sets(
@@ -138,6 +139,9 @@ def _process_set_file(
     # Get display name from document, falling back to filename-derived name
     set_display_name = document.get("set", set_name)
 
+    # Get optional description for the set
+    set_description = document.get("description", "")
+
     if sync_db:
         _sync_set_metadata(set_id, document, set_name, season_id, source)
 
@@ -151,6 +155,7 @@ def _process_set_file(
         set_display_name=set_display_name,
         set_id=set_id,
         source=source,
+        set_description=set_description,
         entries=entries,
         original_payload=payload,
         cross_rarity_tracker=cross_rarity_tracker,
@@ -190,6 +195,7 @@ def _normalize_rarity_entries(
     set_display_name: str,
     set_id: int,
     source: str,
+    set_description: str,
     entries: list[dict[str, Any]],
     original_payload: list[dict[str, Any]],
     cross_rarity_tracker: dict[str, dict[str, str]],
@@ -223,7 +229,11 @@ def _normalize_rarity_entries(
         if normalized:
             modifiers_for_rarity.extend(
                 ModifierWithSet(
-                    modifier=modifier, set_id=set_id, set_name=set_display_name, source=source
+                    modifier=modifier,
+                    set_id=set_id,
+                    set_name=set_display_name,
+                    source=source,
+                    description=set_description,
                 )
                 for modifier in normalized
             )

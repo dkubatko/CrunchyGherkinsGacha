@@ -1,5 +1,6 @@
 id: 2
 set: food
+description: cuisines, dishes, and food culture from around the world
 source: all
 rarities:
 - name: Common

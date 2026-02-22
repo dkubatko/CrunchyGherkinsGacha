@@ -165,7 +165,7 @@ UNIQUE_ADDENDUM = """
    - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
 """
 
-SET_CONTEXT = """\n   - The card is part of a themed set called "{set_name}", and the modification tag should be interpreted within the context of that general theme; set name should not influence the card directly, but rather provide the interpretive context for the modification tag."""
+SET_CONTEXT = """\n   - The card is part of a themed set {set_details}. The modification tag should be interpreted within the context of that general theme; set should not influence the card directly, but rather provide the interpretive context for the modification tag."""
 
 SLOT_MACHINE_INSTRUCTION = """
 Create a casino slot machine icon featuring the person's portrait.
