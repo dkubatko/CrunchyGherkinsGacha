@@ -7,15 +7,17 @@ rarities:
   modifiers:
   - Aladdin
   - Ben 10
+  - Dora
+  - Ice Age
   - Looney Tunes
   - Smurf
 - name: Rare
   modifiers:
+  - Bakugan
   - CatDog
-  - Dora
   - Futurama
   - Griffin
-  - Ice Age
+  - Mickey
   - Morty
   - Ninja Turtle
   - Rick
@@ -26,24 +28,24 @@ rarities:
   - South Park
   - Stuart Little
   - Teletubbie
+  - The Flintstone
+  - W.I.T.C.H.
   - Wasowski
   - Буратино
   - Лунтик
   - Масяня
+  - Фиксик
   - Шапокляк
 - name: Epic
   modifiers:
   - Monsters Inc.
   - Sponge Bob
-  - The Flintstone
-  - W.I.T.C.H.
   - WALL-E
   - Zootopia
   - Винни Пух
   - Карлсон
   - Ну, Погоди!
-  - Фиксик
-- name: Legendary
-  modifiers:
   - Смешарик
   - Чебурашка
+- name: Legendary
+  modifiers: []

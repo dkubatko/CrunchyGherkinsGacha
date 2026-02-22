@@ -28,13 +28,16 @@ rarities:
   - Fallout
   - Hades
   - Half-Life
+  - Hollow Knight
   - Metroid
   - Minecraft
   - Monopoly
   - Overwatch
   - Piglin
+  - Sekiro
   - Sim
   - Skyrim
+  - Spore
   - Valorant
   - Warcraft
   - Witcher
@@ -50,11 +53,10 @@ rarities:
   - Elden Ring
   - Enderman
   - Gul'dan
-  - Hollow Knight
   - Illidan
   - Kratos
   - Red Dead
-  - Sekiro
+  - Warhammer 40k
 - name: Legendary
   modifiers:
   - Hearthstone

@@ -5,38 +5,42 @@ source: all
 rarities:
 - name: Common
   modifiers:
+  - Ant
   - Baobab
   - Bee
+  - Butterfly
+  - Cloud
   - Coral
-  - Desert
   - Eagle
   - Floral
-  - Forest
-  - Glacier
   - Jungle
-  - Lamb
-  - Mountain
-  - Ocean
-  - Penguin
-  - Pigeon
+  - Monkey
+  - Parrot
   - Seal
-  - Shark
+  - Snake
   - Turtle
   - Typhoon
   - Whale
+  - Снежный
 - name: Rare
   modifiers:
-  - Butterfly
-  - Chameleon
   - Dinosaur
-  - Everest
   - Fuji
-  - Snake
+  - Lamb
+  - Octopus
+  - Penguin
+  - Pigeon
+  - Pufferfish
+  - Shark
+  - Snail
   - Walrus
 - name: Epic
   modifiers:
   - Apex Predator
+  - Axolotl
+  - Blobfish
   - Cataclysmic
+  - Orangutan
   - Stargazing
   - Volcano
 - name: Legendary
