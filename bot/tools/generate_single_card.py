@@ -41,7 +41,7 @@ from utils.session import get_session
 from utils.models import CharacterModel, UserModel
 from sqlalchemy import func
 from utils.gemini import GeminiUtil
-from utils.modifiers import ModifierWithSet
+from utils.schemas import Modifier
 from settings.constants import RARITIES
 
 load_dotenv()
@@ -240,15 +240,16 @@ def generate_single_card(
 
     # Resolve set_id from set_name if provided (before image generation so we can pass set context)
     set_id = None
-    tool_modifier_info: ModifierWithSet | None = None
+    tool_modifier_info: Modifier | None = None
     if set_name:
         set_id = set_service.get_set_id_by_name(set_name)
         if set_id is None:
             logger.warning(f"Set '{set_name}' not found in database, card will have no set")
         else:
             logger.info(f"Using set '{set_name}' (ID: {set_id})")
-            tool_modifier_info = ModifierWithSet(
-                modifier=modifier,
+            tool_modifier_info = Modifier(
+                id=0,
+                name=modifier,
                 set_id=set_id,
                 set_name=set_name,
             )

@@ -30,6 +30,7 @@ def increment_count(
     chat_id: str,
     modifier: str,
     season_id: Optional[int] = None,
+    modifier_id: Optional[int] = None,
     increment: int = 1,
 ) -> None:
     """
@@ -42,6 +43,7 @@ def increment_count(
         chat_id: The chat ID where the card was created.
         modifier: The modifier that was used.
         season_id: The season ID. Defaults to CURRENT_SEASON.
+        modifier_id: The modifier's database ID (optional, for FK linkage).
         increment: The amount to increment by. Defaults to 1.
     """
     if season_id is None:
@@ -63,21 +65,26 @@ def increment_count(
             if existing:
                 # Update existing count
                 existing.count += increment
+                # Backfill modifier_id if not already set
+                if modifier_id is not None and existing.modifier_id is None:
+                    existing.modifier_id = modifier_id
             else:
                 # Insert new record
                 new_record = ModifierCountModel(
                     chat_id=str(chat_id),
                     season_id=season_id,
                     modifier=modifier,
+                    modifier_id=modifier_id,
                     count=increment,
                 )
                 session.add(new_record)
 
         logger.debug(
-            "Incremented modifier count: chat=%s season=%s modifier=%s increment=%d",
+            "Incremented modifier count: chat=%s season=%s modifier=%s modifier_id=%s increment=%d",
             chat_id,
             season_id,
             modifier,
+            modifier_id,
             increment,
         )
     except Exception as e:

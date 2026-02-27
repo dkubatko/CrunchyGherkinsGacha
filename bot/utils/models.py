@@ -53,6 +53,9 @@ class CardModel(Base):
     source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     season_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    modifier_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("modifiers.id"), nullable=True
+    )
     updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationship to card images (one-to-one)
@@ -68,6 +71,11 @@ class CardModel(Base):
         primaryjoin="and_(CardModel.set_id == SetModel.id, CardModel.season_id == SetModel.season_id)",
     )
 
+    # Relationship to modifier
+    card_modifier: Mapped[Optional["ModifierModel"]] = relationship(
+        "ModifierModel", back_populates="cards"
+    )
+
     # Indices for performance
     __table_args__ = (
         ForeignKeyConstraint(
@@ -81,6 +89,7 @@ class CardModel(Base):
         Index("idx_cards_rarity", "rarity"),
         Index("idx_cards_season_id", "season_id"),
         Index("idx_cards_season_user", "season_id", "user_id"),
+        Index("idx_cards_modifier_id", "modifier_id"),
     )
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
@@ -262,6 +271,8 @@ class SetModel(Base):
     season_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="all")
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
 
     # Relationship to cards (uses composite FK from cards table)
     cards: Mapped[List["CardModel"]] = relationship(
@@ -269,6 +280,14 @@ class SetModel(Base):
         back_populates="card_set",
         foreign_keys="[CardModel.set_id, CardModel.season_id]",
         primaryjoin="and_(SetModel.id == CardModel.set_id, SetModel.season_id == CardModel.season_id)",
+    )
+
+    # Relationship to modifiers
+    modifiers: Mapped[List["ModifierModel"]] = relationship(
+        "ModifierModel",
+        back_populates="modifier_set",
+        foreign_keys="[ModifierModel.set_id, ModifierModel.season_id]",
+        primaryjoin="and_(SetModel.id == ModifierModel.set_id, SetModel.season_id == ModifierModel.season_id)",
     )
 
 
@@ -348,6 +367,41 @@ class EventModel(Base):
     )
 
 
+class ModifierModel(Base):
+    """Represents a modifier keyword belonging to a set."""
+
+    __tablename__ = "modifiers"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    set_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    season_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    # Relationship to set (composite FK: set_id + season_id)
+    modifier_set: Mapped[Optional["SetModel"]] = relationship(
+        "SetModel",
+        back_populates="modifiers",
+        foreign_keys="[ModifierModel.set_id, ModifierModel.season_id]",
+        primaryjoin="and_(ModifierModel.set_id == SetModel.id, ModifierModel.season_id == SetModel.season_id)",
+    )
+
+    # Relationship to cards that used this modifier
+    cards: Mapped[List["CardModel"]] = relationship("CardModel", back_populates="card_modifier")
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["set_id", "season_id"],
+            ["sets.id", "sets.season_id"],
+            name="fk_modifiers_set_season",
+        ),
+        Index("idx_modifiers_set_season", "set_id", "season_id"),
+        Index("idx_modifiers_rarity", "rarity"),
+        Index("idx_modifiers_name", "name"),
+    )
+
+
 class AchievementModel(Base):
     """Represents an achievement definition."""
 
@@ -395,9 +449,15 @@ class ModifierCountModel(Base):
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
     season_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     modifier: Mapped[str] = mapped_column(Text, primary_key=True)
+    modifier_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("modifiers.id"), nullable=True
+    )
     count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
-    __table_args__ = (Index("idx_modifier_counts_chat_season", "chat_id", "season_id"),)
+    __table_args__ = (
+        Index("idx_modifier_counts_chat_season", "chat_id", "season_id"),
+        Index("idx_modifier_counts_modifier_id", "modifier_id"),
+    )
 
 
 # Configure SQLite-specific settings via events

@@ -18,6 +18,42 @@ from pydantic import BaseModel
 # to avoid circular imports
 
 
+class Modifier(BaseModel):
+    """Modifier data transfer object.
+
+    Session-safe replacement for the old ``ModifierWithSet`` NamedTuple.
+    Carries the modifier keyword together with its parent set metadata so
+    that downstream code (rolling, image generation, event logging) never
+    needs to touch ORM objects outside a session block.
+    """
+
+    id: int
+    name: str
+    rarity: str = ""
+    set_id: int = 0
+    set_name: str = ""
+    source: str = "all"
+    description: str = ""
+
+    @classmethod
+    def from_orm(cls, modifier_orm) -> "Modifier":
+        """Convert a ``ModifierModel`` ORM object to a ``Modifier`` schema.
+
+        Expects the ``modifier_set`` relationship to be loaded (eagerly or
+        within an active session).
+        """
+        ms = modifier_orm.modifier_set
+        return cls(
+            id=modifier_orm.id,
+            name=modifier_orm.name,
+            rarity=modifier_orm.rarity,
+            set_id=modifier_orm.set_id,
+            set_name=ms.name if ms else "",
+            source=ms.source if ms else "all",
+            description=ms.description if ms else "",
+        )
+
+
 class User(BaseModel):
     """User data transfer object."""
 
