@@ -16,7 +16,7 @@ from settings.constants import (
     SET_CONTEXT,
 )
 from utils.image import ImageUtil
-from utils.modifiers import ModifierWithSet
+from utils.schemas import Modifier
 
 logger = logging.getLogger(__name__)
 
@@ -95,7 +95,7 @@ class GeminiUtil:
         base_image_b64: str | None = None,
         temperature: float = 1.0,
         instruction_addendum: str = "",
-        modifier_info: ModifierWithSet | None = None,
+        modifier_info: Modifier | None = None,
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
