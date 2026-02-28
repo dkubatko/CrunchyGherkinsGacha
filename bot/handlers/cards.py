@@ -993,6 +993,9 @@ async def _handle_refresh_confirm(
     refreshing_users: set,
 ) -> None:
     """Handle the confirmation 'yes' action to start refresh process."""
+    points_deducted = False
+    refresh_cost = 0
+    active_chat_id = None
     try:
         card = await asyncio.to_thread(card_service.get_card, card_id)
         if not card:
@@ -1019,6 +1022,7 @@ async def _handle_refresh_confirm(
         remaining_balance = await asyncio.to_thread(
             claim_service.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
         )
+        points_deducted = remaining_balance is not None
 
         if remaining_balance is None:
             await query.answer(
@@ -1112,6 +1116,15 @@ async def _handle_refresh_confirm(
 
     except Exception as exc:
         logger.exception("Unexpected error during refresh for card %s: %s", card_id, exc)
+        if points_deducted:
+            await asyncio.to_thread(
+                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+            )
+            logger.info(
+                "Refunded %d claim points to user %s after unexpected refresh error",
+                refresh_cost,
+                user.user_id,
+            )
         await query.answer("Refresh failed due to an unexpected error.", show_alert=True)
         try:
             error_card = await asyncio.to_thread(card_service.get_card, card_id)

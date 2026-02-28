@@ -239,11 +239,11 @@ def generate_single_card(
             logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
     if modifier_id is None:
         # Try across all sets by name + rarity
-        db_mod = modifier_service.get_modifier_by_name_and_rarity(modifier, rarity)
-        if db_mod is not None:
-            modifier_id = db_mod.id
+        mod_schema = modifier_service.get_modifier_by_name_and_rarity(modifier, rarity)
+        if mod_schema is not None:
+            modifier_id = mod_schema.id
             if set_id is None:
-                set_id = db_mod.set_id
+                set_id = mod_schema.set_id
             logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
 
     if set_id is not None:

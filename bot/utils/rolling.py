@@ -478,27 +478,10 @@ def regenerate_card_image(
     regen_modifier_info: Optional[Modifier] = None
     if card.set_id is not None:
         # Try to look up the full modifier info via the database
-        mod_model = modifier_service.get_modifier_by_name_and_rarity(
+        regen_modifier_info = modifier_service.get_modifier_by_name_and_rarity(
             card.modifier, card.rarity, season_id=card.season_id
         )
-        if mod_model and mod_model.modifier_set:
-            regen_modifier_info = Modifier(
-                id=mod_model.id,
-                name=mod_model.name,
-                rarity=mod_model.rarity,
-                set_id=mod_model.set_id,
-                set_name=mod_model.modifier_set.name,
-                source=mod_model.modifier_set.source,
-                description=mod_model.modifier_set.description,
-            )
-        elif mod_model:
-            regen_modifier_info = Modifier(
-                id=mod_model.id,
-                name=mod_model.name,
-                rarity=mod_model.rarity,
-                set_id=mod_model.set_id,
-            )
-        else:
+        if regen_modifier_info is None:
             # Fallback: build a minimal Modifier from the DB set record
             set_model = set_service.get_set_by_id(card.set_id)
             if set_model:
