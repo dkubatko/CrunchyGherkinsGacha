@@ -66,7 +66,7 @@ async def admin_verify_otp(body: AdminOTPRequest):
     if admin_row is None:
         raise HTTPException(status_code=401, detail="Invalid username")
 
-    ok = admin_auth_service.verify_otp(admin_row.id, body.code)
+    ok = admin_auth_service.consume_otp(admin_row.id, body.code)
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid or expired OTP")
 
