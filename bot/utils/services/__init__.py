@@ -137,6 +137,8 @@ from utils.services import modifier_count_service
 
 from utils.services import modifier_service
 
+from utils.services import admin_auth_service
+
 from utils.services.achievement_service import (
     get_achievement_by_name,
     get_achievement_by_id,
@@ -266,6 +268,8 @@ __all__ = [
     "modifier_count_service",
     # Modifier service
     "modifier_service",
+    # Admin auth service
+    "admin_auth_service",
     # Achievement service
     "get_achievement_by_name",
     "get_achievement_by_id",

@@ -6,6 +6,7 @@ import { useAppRouter } from './hooks';
 
 // Pages
 import { SingleCardPage, LandingPage, HubPage } from './pages';
+import { AdminApp } from './pages/admin';
 
 // Components
 import { Title } from './components/common';
@@ -43,6 +44,9 @@ function App() {
   switch (route.type) {
     case 'landing':
       return <LandingPage />;
+
+    case 'admin':
+      return <AdminApp />;
 
     case 'hub':
       return (
