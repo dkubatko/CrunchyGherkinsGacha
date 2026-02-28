@@ -3,6 +3,9 @@
 Provides credential verification, Telegram OTP generation/validation,
 and JWT session token management for the admin dashboard.
 
+OTP codes are stored in the ``admin_users`` database table so that all
+gunicorn workers share the same state.
+
 Usage::
 
     from utils.services import admin_auth_service
@@ -12,7 +15,7 @@ Usage::
         otp = admin_auth_service.generate_otp(user.id)
         # send otp to user.telegram_user_id via Telegram bot
         ...
-        if admin_auth_service.verify_otp(user.id, submitted_code):
+        if admin_auth_service.consume_otp(user.id, submitted_code):
             token = admin_auth_service.create_jwt(user.id, user.username)
 """
 
@@ -22,7 +25,6 @@ import datetime
 import logging
 import os
 import secrets
-import threading
 import time
 from typing import Any, Dict, Optional
 
@@ -41,10 +43,6 @@ _JWT_ALGORITHM = "HS256"
 _JWT_EXPIRY_HOURS = 24
 _OTP_LENGTH = 6
 _OTP_TTL_SECONDS = 5 * 60  # 5 minutes
-
-# ── In-memory OTP store (admin_user_id → (code, expiry_ts)) ─────────────────
-_otp_store: Dict[int, tuple[str, float]] = {}
-_otp_lock = threading.Lock()
 
 
 # ── Credential helpers ───────────────────────────────────────────────────────
@@ -100,15 +98,21 @@ def get_admin_by_username(username: str) -> Optional[AdminUserModel]:
 
 
 def generate_otp(admin_user_id: int) -> str:
-    """Generate a 6-digit OTP for *admin_user_id* and store it with a TTL.
+    """Generate a 6-digit OTP for *admin_user_id* and persist it to the DB.
 
-    Any previous OTP for the same user is overwritten.
+    Any previous OTP for the same user is overwritten.  Storing the OTP in
+    the database (instead of in-memory) ensures all gunicorn workers share
+    the same state.
     """
     code = "".join(secrets.choice("0123456789") for _ in range(_OTP_LENGTH))
     expiry = time.time() + _OTP_TTL_SECONDS
 
-    with _otp_lock:
-        _otp_store[admin_user_id] = (code, expiry)
+    with get_session() as session:
+        admin = session.query(AdminUserModel).filter(AdminUserModel.id == admin_user_id).first()
+        if admin is not None:
+            admin.otp_code = code
+            admin.otp_expires_at = expiry
+            session.commit()
 
     logger.info(
         "OTP generated for admin_user_id=%s (expires in %ss)", admin_user_id, _OTP_TTL_SECONDS
@@ -116,24 +120,30 @@ def generate_otp(admin_user_id: int) -> str:
     return code
 
 
-def verify_otp(admin_user_id: int, code: str) -> bool:
+def consume_otp(admin_user_id: int, code: str) -> bool:
     """Validate and consume a previously generated OTP.
 
     Returns ``True`` if *code* matches and has not expired.  The OTP is
-    always consumed (deleted) regardless of outcome to prevent replay.
+    always consumed (cleared) regardless of outcome to prevent replay.
     """
-    with _otp_lock:
-        entry = _otp_store.pop(admin_user_id, None)
+    with get_session() as session:
+        admin = session.query(AdminUserModel).filter(AdminUserModel.id == admin_user_id).first()
 
-    if entry is None:
-        logger.warning(
-            "OTP verification failed for admin_user_id=%s: no OTP pending", admin_user_id
-        )
-        return False
+        if admin is None or admin.otp_code is None:
+            logger.warning(
+                "OTP verification failed for admin_user_id=%s: no OTP pending", admin_user_id
+            )
+            return False
 
-    stored_code, expiry = entry
+        stored_code = admin.otp_code
+        expiry = admin.otp_expires_at
 
-    if time.time() > expiry:
+        # Always consume the OTP to prevent replay
+        admin.otp_code = None
+        admin.otp_expires_at = None
+        session.commit()
+
+    if expiry is not None and time.time() > expiry:
         logger.warning("OTP verification failed for admin_user_id=%s: expired", admin_user_id)
         return False
 
