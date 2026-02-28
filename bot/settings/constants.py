@@ -311,7 +311,7 @@ BURN_SUCCESS_MESSAGE = (
     "New spin balance: <b>{new_spin_total}</b>."
 )
 
-CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;.\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards."
+CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;\n[optional description]\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards.\n\nYou can add a description (up to 300 characters) on a new line to guide the art."
 CREATE_DM_RESTRICTED_MESSAGE = "Creating unique cards is only available in the group chat."
 CREATE_CONFIRM_MESSAGE = "Burn {cost} unlocked <b>Legendary</b> cards to create <b>Unique</b> card <b>{modifier} {name}</b>?"
 CREATE_WARNING_EXISTING_MODIFIER = (
