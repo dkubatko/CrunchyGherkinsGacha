@@ -580,9 +580,15 @@ def generate_unique_card(
     gemini_util: GeminiUtil,
     instruction_addendum: str,
     max_retries: int = 0,
+    description: str = "",
 ) -> GeneratedCard:
     """Generate a Unique card with a specific modifier and profile."""
     rarity = "Unique"
+
+    # Append user-provided description to the addendum if present
+    full_addendum = instruction_addendum
+    if description:
+        full_addendum += f"\n   - **Additional description:** User provided the following additional context for the card generation: {description}"
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
@@ -594,7 +600,7 @@ def generate_unique_card(
                 modifier,
                 rarity,
                 base_image_b64=profile.image_b64,
-                instruction_addendum=instruction_addendum,
+                instruction_addendum=full_addendum,
             )
 
             if not image_b64:

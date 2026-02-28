@@ -1577,18 +1577,40 @@ async def create_unique_card(
         return
 
     # Parse arguments: Modifier Name (Name is always the last word)
-    full_text = " ".join(context.args)
+    # Also parse optional description after a newline
+    raw_text = message.text or ""
+    lines = raw_text.split("\n", 1)
+    description = lines[1].strip() if len(lines) > 1 else ""
+
+    if len(description) > 300:
+        await message.reply_text(
+            "Description is too long. Please keep it under 300 characters.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Use only the first line (command + modifier + name) for argument parsing
+    first_line_args = lines[0].split()[1:]  # skip the /create command itself
+    if len(first_line_args) < 2:
+        cost = rolling.RARITIES["Unique"]["recycle_cost"]
+        await message.reply_text(
+            CREATE_USAGE_MESSAGE.format(cost=cost),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
     chat_id_str = str(chat.id)
 
-    name = context.args[-1]
-    modifier_raw = " ".join(context.args[:-1])
+    name = first_line_args[-1]
+    modifier_raw = " ".join(first_line_args[:-1])
     modifier = (
         modifier_raw[0].upper() + modifier_raw[1:] if modifier_raw else ""
     )  # Capitalize first letter
 
-    if len(modifier) > 15:
+    if len(modifier) > 20:
         await message.reply_text(
-            "Modifier is too long. Please keep it under 15 characters.",
+            "Modifier is too long. Please keep it under 20 characters.",
             reply_to_message_id=message.message_id,
         )
         return
@@ -1653,6 +1675,7 @@ async def create_unique_card(
         "modifier": modifier,
         "profile": profile,
         "cost": cost,
+        "description": description,
         "timestamp": datetime.datetime.now().isoformat(),
     }
 
@@ -1724,6 +1747,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
         # Start generation in background
         modifier = session["modifier"]
         profile = session["profile"]
+        description = session.get("description", "")
 
         generation_task = asyncio.create_task(
             asyncio.to_thread(
@@ -1732,6 +1756,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 profile,
                 gemini_util,
                 UNIQUE_ADDENDUM,
+                description=description,
             )
         )
 
