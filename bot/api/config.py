@@ -43,6 +43,9 @@ else:
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
 
+# Admin dashboard secret for JWT signing
+SERVER_SECRET = os.getenv("SERVER_SECRET", "")
+
 # Database configuration
 DB_POOL_SIZE = int(os.getenv("DB_CONNECTION_POOL_SIZE", "6"))
 DB_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECTION_TIMEOUT_SECONDS", "30"))

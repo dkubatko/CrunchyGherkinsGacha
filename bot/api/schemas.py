@@ -392,3 +392,115 @@ class RTBCashOutResponse(BaseModel):
     new_spin_total: int
     message: str
     game: RTBGameResponse
+
+
+# =============================================================================
+# ADMIN SCHEMAS
+# =============================================================================
+
+
+class AdminLoginRequest(BaseModel):
+    """Credentials for admin dashboard login (step 1 of 2FA)."""
+
+    username: str
+    password: str
+
+
+class AdminOTPRequest(BaseModel):
+    """OTP verification for admin dashboard login (step 2 of 2FA)."""
+
+    username: str
+    code: str
+
+
+class AdminTokenResponse(BaseModel):
+    """JWT token returned after successful 2FA."""
+
+    token: str
+
+
+class AdminMeResponse(BaseModel):
+    """Current admin session info."""
+
+    admin_id: int
+    username: str
+
+
+class AdminSetResponse(BaseModel):
+    """Set data returned by admin endpoints."""
+
+    id: int
+    season_id: int
+    name: str
+    source: str
+    description: str
+    active: bool
+    modifier_count: int = 0
+
+
+class AdminSetCreateRequest(BaseModel):
+    """Request body to create a new set within a season."""
+
+    name: str
+    source: str = "all"
+    description: str = ""
+    active: bool = True
+
+
+class AdminSetUpdateRequest(BaseModel):
+    """Request body to update an existing set. Only provided fields are applied."""
+
+    name: Optional[str] = None
+    source: Optional[str] = None
+    description: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class AdminModifierResponse(BaseModel):
+    """Modifier data returned by admin endpoints."""
+
+    id: int
+    name: str
+    rarity: str
+    set_id: int
+    season_id: int
+    created_at: str
+    card_count: int = 0
+
+
+class AdminModifierCreateRequest(BaseModel):
+    """Request body to create a single modifier."""
+
+    set_id: int
+    season_id: int
+    name: str
+    rarity: str
+
+
+class AdminModifierUpdateRequest(BaseModel):
+    """Request body to update an existing modifier. Only provided fields are applied."""
+
+    name: Optional[str] = None
+    rarity: Optional[str] = None
+    set_id: Optional[int] = None
+
+
+class AdminBulkModifierItem(BaseModel):
+    """A single item in a bulk modifier upsert."""
+
+    set_id: int
+    name: str
+    rarity: str
+
+
+class AdminBulkModifierRequest(BaseModel):
+    """Request body for bulk modifier upsert."""
+
+    season_id: int
+    modifiers: List[AdminBulkModifierItem]
+
+
+class AdminBulkModifierResponse(BaseModel):
+    """Response from bulk modifier upsert."""
+
+    upserted: int

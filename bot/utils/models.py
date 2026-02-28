@@ -460,6 +460,24 @@ class ModifierCountModel(Base):
     )
 
 
+class AdminUserModel(Base):
+    """Admin user for the modifier management dashboard.
+
+    Stores credentials for the standalone admin dashboard.  Authentication
+    uses bcrypt-hashed passwords with a Telegram-delivered OTP as 2FA.
+    """
+
+    __tablename__ = "admin_users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    telegram_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+
+    __table_args__ = (Index("idx_admin_users_username", "username"),)
+
+
 # Configure SQLite-specific settings via events
 @event.listens_for(Base.metadata, "after_create")
 def set_sqlite_pragma(target, connection, **kw):

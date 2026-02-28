@@ -12,6 +12,9 @@ from api.routers.rtb import router as rtb_router
 from api.routers.slots import router as slots_router
 from api.routers.trade import router as trade_router
 from api.routers.user import router as user_router
+from api.routers.admin_auth import router as admin_auth_router
+from api.routers.admin_sets import router as admin_sets_router
+from api.routers.admin_modifiers import router as admin_modifiers_router
 
 __all__ = [
     "cards_router",
@@ -22,4 +25,7 @@ __all__ = [
     "slots_router",
     "trade_router",
     "user_router",
+    "admin_auth_router",
+    "admin_sets_router",
+    "admin_modifiers_router",
 ]

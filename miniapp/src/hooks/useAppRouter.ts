@@ -6,6 +6,7 @@ export type AppRoute =
   | { type: 'loading' }
   | { type: 'error'; message: string }
   | { type: 'landing' }
+  | { type: 'admin' }
   | { type: 'singleCard'; currentUserId: number; cardId: number; initData: string }
   | { type: 'hub'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string; initialTab: HubTab };
 
@@ -29,6 +30,12 @@ export const useAppRouter = (): UseAppRouterResult => {
 
     const initialize = () => {
       try {
+        // Check if this is the admin dashboard route
+        if (window.location.pathname.startsWith('/admin')) {
+          setRoute({ type: 'admin' });
+          return;
+        }
+
         // Check if this is a direct web access to root path (no Telegram context)
         const initData = TelegramUtils.getInitData();
         const isRootPath = window.location.pathname === '/' && 
