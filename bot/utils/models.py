@@ -474,6 +474,8 @@ class AdminUserModel(Base):
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
     telegram_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
     created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    otp_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    otp_expires_at: Mapped[Optional[float]] = mapped_column(nullable=True)
 
     __table_args__ = (Index("idx_admin_users_username", "username"),)
 
