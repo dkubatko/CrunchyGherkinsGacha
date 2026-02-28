@@ -1,23 +1,23 @@
 """
 Tool to generate a single card with specified parameters.
 
-Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>] [--modifiers-file <filename>] [--set <set_name>]
+Usage: python tools/generate_single_card.py <character_name> <modifier> <rarity> [--assign <username>] [--set <set_name>]
 
 Example: python tools/generate_single_card.py Daniel Test Epic
 Example: python tools/generate_single_card.py Daniel Golden random --assign dkubatko
-Example: python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
-Example: python tools/generate_single_card.py Daniel random random --modifiers-file anime
+Example: python tools/generate_single_card.py Daniel random Epic --set Classic
+Example: python tools/generate_single_card.py Daniel random random --set Anime
 Example: python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
-Example: python tools/generate_single_card.py Daniel "Fire Mage" Epic --set Fantasy
 
 This will:
 1. Look up the character by name in the database
-2. Generate a card using the specified modifier and rarity (or random values)
+2. Generate a card using the specified modifier and rarity (or random values from DB)
 3. Add the card to the database (optionally with a set assignment)
 4. Save the generated card image to data/output/
 5. Optionally assign the card to a user if --assign is specified
 
 Note: Use quotes around names/modifiers with spaces. Both modifier and rarity can be set to "random".
+When modifier is "random", --set is required to pick a random modifier from that set in the database.
 """
 
 import argparse
@@ -27,15 +27,13 @@ import os
 import random
 import sys
 from datetime import datetime
-from pathlib import Path
 
-import yaml
 from dotenv import load_dotenv
 
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.services import card_service, set_service, user_service
+from utils.services import card_service, modifier_service, set_service, user_service
 from utils.schemas import Character, User
 from utils.session import get_session
 from utils.models import CharacterModel, UserModel
@@ -56,53 +54,37 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
 
 
-def load_random_modifier_from_file(filename: str, rarity: str = None) -> str:
+def load_random_modifier_from_set(set_name: str, rarity: str = None):
     """
-    Load a random modifier from a modifiers YAML file.
+    Load a random modifier from a set in the database.
 
     Args:
-        filename: Name of the modifiers file (e.g., 'christmas', 'anime')
+        set_name: Name of the set (e.g., 'Classic', 'Anime')
         rarity: Optional rarity to filter modifiers by. If None, picks from all rarities.
 
     Returns:
-        A random modifier string
+        A tuple of (modifier_name, set_id, modifier_db_id) or raises if not found.
     """
-    # Construct path to modifiers file
-    modifiers_dir = Path(__file__).resolve().parents[1] / "data" / "modifiers"
-    file_path = modifiers_dir / f"{filename}.yaml"
+    set_id = set_service.get_set_id_by_name(set_name)
+    if set_id is None:
+        raise ValueError(f"Set '{set_name}' not found in database")
 
-    if not file_path.exists():
-        raise FileNotFoundError(f"Modifiers file not found: {file_path}")
+    mods = modifier_service.get_modifiers_by_set(set_id)
 
-    # Load YAML file
-    with open(file_path, "r", encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    if rarity:
+        mods = [m for m in mods if m.rarity == rarity]
 
-    if not isinstance(data, dict) or "rarities" not in data:
-        raise ValueError(f"Invalid modifiers file format: {file_path}")
-
-    # Collect modifiers
-    all_modifiers = []
-    for rarity_entry in data["rarities"]:
-        rarity_name = rarity_entry.get("name", "")
-        modifiers = rarity_entry.get("modifiers", [])
-
-        # Filter by rarity if specified
-        if rarity is None or rarity_name == rarity:
-            all_modifiers.extend(modifiers)
-
-    if not all_modifiers:
+    if not mods:
         raise ValueError(
-            f"No modifiers found in {filename}.yaml" + (f" for rarity {rarity}" if rarity else "")
+            f"No modifiers found in set '{set_name}'" + (f" for rarity {rarity}" if rarity else "")
         )
 
-    # Pick a random modifier
-    chosen = random.choice(all_modifiers)
+    chosen = random.choice(mods)
     logger.info(
-        f"Randomly selected modifier '{chosen}' from {filename}.yaml"
+        f"Randomly selected modifier '{chosen.name}' from set '{set_name}'"
         + (f" (rarity: {rarity})" if rarity else "")
     )
-    return chosen
+    return chosen.name, set_id, chosen.id
 
 
 def find_character_by_name(character_name: str):
@@ -140,7 +122,6 @@ def generate_single_card(
     rarity: str,
     output_dir: str,
     assign_username: str = None,
-    modifiers_file: str = None,
     set_name: str = None,
 ):
     """
@@ -148,12 +129,11 @@ def generate_single_card(
 
     Args:
         source_name: Name of the character or user to use as base
-        modifier: The modifier to apply (e.g., "Test", "Golden", etc.) or "random" to pick from file
+        modifier: The modifier to apply (e.g., "Test", "Golden", etc.) or "random" to pick from set
         rarity: The rarity tier (Common, Rare, Epic, Legendary, Unique) or "random" to pick randomly
         output_dir: Directory to save the output image
         assign_username: Optional username to assign the card to
-        modifiers_file: Optional modifiers file to load random modifier from (e.g., 'christmas', 'anime')
-        set_name: Optional set name to assign the card to (e.g., 'Fantasy', 'Anime')
+        set_name: Optional set name — required when modifier is "random"
 
     Returns:
         Tuple of (output_path, card_id) or (None, None) on failure
@@ -163,15 +143,19 @@ def generate_single_card(
         rarity = random.choice(list(RARITIES.keys()))
         logger.info(f"Randomly selected rarity: {rarity}")
 
-    # Handle random modifier selection from file
-    if modifiers_file or modifier.lower() == "random":
-        if not modifiers_file:
-            logger.error("Must specify --modifiers-file when using 'random' as modifier")
+    # Handle random modifier selection from set in DB
+    resolved_set_id = None
+    resolved_modifier_id = None
+    if modifier.lower() == "random":
+        if not set_name:
+            logger.error("Must specify --set when using 'random' as modifier")
             return None, None
         try:
-            modifier = load_random_modifier_from_file(modifiers_file, rarity)
+            modifier, resolved_set_id, resolved_modifier_id = load_random_modifier_from_set(
+                set_name, rarity
+            )
         except Exception as e:
-            logger.error(f"Failed to load random modifier from {modifiers_file}: {e}")
+            logger.error(f"Failed to load random modifier from set '{set_name}': {e}")
             return None, None
 
     # Validate rarity
@@ -239,20 +223,37 @@ def generate_single_card(
             logger.info("User has no existing cards, using source chat_id")
 
     # Resolve set_id from set_name if provided (before image generation so we can pass set context)
-    set_id = None
+    set_id = resolved_set_id
+    modifier_id = resolved_modifier_id
     tool_modifier_info: Modifier | None = None
-    if set_name:
+    if set_name and set_id is None:
         set_id = set_service.get_set_id_by_name(set_name)
         if set_id is None:
             logger.warning(f"Set '{set_name}' not found in database, card will have no set")
-        else:
-            logger.info(f"Using set '{set_name}' (ID: {set_id})")
-            tool_modifier_info = Modifier(
-                id=0,
-                name=modifier,
-                set_id=set_id,
-                set_name=set_name,
-            )
+
+    # Try to resolve modifier_id from DB if not already known
+    if modifier_id is None and set_id is not None:
+        db_mod = modifier_service.get_modifier_by_name_and_set(modifier, set_id)
+        if db_mod is not None:
+            modifier_id = db_mod.id
+            logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
+    if modifier_id is None:
+        # Try across all sets by name + rarity
+        db_mod = modifier_service.get_modifier_by_name_and_rarity(modifier, rarity)
+        if db_mod is not None:
+            modifier_id = db_mod.id
+            if set_id is None:
+                set_id = db_mod.set_id
+            logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
+
+    if set_id is not None:
+        logger.info(f"Using set '{set_name}' (ID: {set_id})")
+        tool_modifier_info = Modifier(
+            id=modifier_id or 0,
+            name=modifier,
+            set_id=set_id,
+            set_name=set_name,
+        )
 
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
@@ -283,6 +284,7 @@ def generate_single_card(
             source_type=source_type,
             source_id=source_id,
             set_id=set_id,
+            modifier_id=modifier_id,
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 
@@ -328,39 +330,32 @@ def main():
 Examples:
   python tools/generate_single_card.py Daniel Test Epic
   python tools/generate_single_card.py Daniel Golden random --assign dkubatko
-  python tools/generate_single_card.py Daniel random Epic --modifiers-file christmas
-  python tools/generate_single_card.py Daniel random random --modifiers-file anime
+  python tools/generate_single_card.py Daniel random Epic --set Classic
+  python tools/generate_single_card.py Daniel random random --set Anime
   python tools/generate_single_card.py "John Doe" "Ice Dragon" Legendary
-  python tools/generate_single_card.py Daniel "Fire Mage" Epic --set Fantasy
 
 Available rarities: {', '.join(RARITIES.keys())}
 
 Use quotes around names/modifiers only if they contain spaces.
-When using --modifiers-file, set modifier to "random" to pick a random modifier from that file.
+When using --set with modifier "random", a random modifier will be picked from that set in the DB.
 The random modifier will be filtered by the specified rarity (unless rarity is also "random").
 Set rarity to "random" to pick a random rarity tier.
-Use --set to assign the card to a specific set (the set must exist in the database).
         """,
     )
 
     parser.add_argument("character_name", help="Name of the character or user to use as base")
     parser.add_argument(
         "modifier",
-        help="The modifier to apply (e.g., 'Test', 'Golden') or 'random' with --modifiers-file",
+        help="The modifier to apply (e.g., 'Test', 'Golden') or 'random' with --set",
     )
     parser.add_argument(
         "rarity", help="The rarity tier (Common, Rare, Epic, Legendary, Unique) or 'random'"
     )
     parser.add_argument("--assign", dest="assign_username", help="Username to assign the card to")
     parser.add_argument(
-        "--modifiers-file",
-        dest="modifiers_file",
-        help="Modifiers file to pick random modifier from (e.g., 'christmas', 'anime')",
-    )
-    parser.add_argument(
         "--set",
         dest="set_name",
-        help="Set name to assign the card to (e.g., 'Fantasy', 'Anime')",
+        help="Set name to assign the card to and/or pick random modifier from (e.g., 'Classic', 'Anime')",
     )
 
     args = parser.parse_args()
@@ -376,7 +371,6 @@ Use --set to assign the card to a specific set (the set must exist in the databa
         args.rarity,
         output_dir,
         args.assign_username,
-        args.modifiers_file,
         args.set_name,
     )
 
