@@ -5,6 +5,12 @@ CRUD operations for modifiers, querying modifiers by rarity (replacing the
 old YAML-based ``load_modifiers_with_sets``), and extended set management
 with ``description`` and ``active`` fields.
 
+.. todo::
+    Refactor all functions that return ``ModifierModel`` ORM instances to
+    return ``Modifier`` Pydantic schemas instead (convert inside the session
+    block). This prevents ``DetachedInstanceError`` and keeps the service
+    boundary clean. ``get_modifier_by_name_and_rarity`` already does this.
+
 Usage:
     from utils.services import modifier_service
 
@@ -162,7 +168,7 @@ def get_modifier_by_name_and_rarity(
     name: str,
     rarity: str,
     season_id: Optional[int] = None,
-) -> Optional[ModifierModel]:
+) -> Optional[Modifier]:
     """Lookup a modifier by keyword and rarity across all sets in a season.
 
     Useful for resolving a modifier when the set is not known (e.g. from a
@@ -172,13 +178,17 @@ def get_modifier_by_name_and_rarity(
         name: The modifier keyword (case-sensitive).
         rarity: The rarity level.
         season_id: Season to query. Defaults to ``CURRENT_SEASON``.
+
+    Returns:
+        A ``Modifier`` Pydantic schema with set metadata, or ``None``.
     """
     if season_id is None:
         season_id = CURRENT_SEASON
 
     with get_session() as session:
-        return (
+        mod = (
             session.query(ModifierModel)
+            .options(joinedload(ModifierModel.modifier_set))
             .filter(
                 ModifierModel.name == name,
                 ModifierModel.rarity == rarity,
@@ -186,6 +196,7 @@ def get_modifier_by_name_and_rarity(
             )
             .first()
         )
+        return Modifier.from_orm(mod) if mod else None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
