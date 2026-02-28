@@ -18,6 +18,7 @@ from fastapi import Header, HTTPException
 from api.config import TELEGRAM_TOKEN
 from utils.models import ChatModel
 from utils.session import get_session
+from utils.services import admin_auth_service
 
 logger = logging.getLogger(__name__)
 
@@ -193,3 +194,32 @@ async def validate_user_in_chat(user_id: int, chat_id: str) -> None:
     if not membership:
         logger.warning(f"User {user_id} not enrolled in chat {chat_id}")
         raise HTTPException(status_code=403, detail="User not enrolled in this chat")
+
+
+# ── Admin dashboard auth ─────────────────────────────────────────────────────
+
+
+async def get_admin_user(
+    authorization: Optional[str] = Header(None, alias="Authorization"),
+) -> Dict[str, Any]:
+    """FastAPI dependency that validates an admin JWT from ``Authorization: Bearer <token>``.
+
+    Returns the decoded JWT payload (contains ``sub``, ``username``, ``iat``, ``exp``).
+    Raises 401 if the header is missing, malformed, or the token is invalid/expired.
+    """
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Authorization header required")
+
+    # Accept "Bearer <token>" format
+    if authorization.startswith("Bearer "):
+        token = authorization[7:]
+    else:
+        raise HTTPException(
+            status_code=401, detail="Invalid authorization format — expected 'Bearer <token>'"
+        )
+
+    payload = admin_auth_service.decode_jwt(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid or expired admin token")
+
+    return payload
