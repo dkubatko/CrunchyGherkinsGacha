@@ -45,6 +45,7 @@ def add_card(
     set_id: Optional[int] = None,
     season_id: Optional[int] = None,
     modifier_id: Optional[int] = None,
+    description: Optional[str] = None,
 ) -> int:
     """Add a new card to the database.
 
@@ -59,6 +60,7 @@ def add_card(
         set_id: Optional set ID for the modifier set.
         season_id: The season this card belongs to. Defaults to CURRENT_SEASON.
         modifier_id: Optional modifier database ID.
+        description: Optional user-provided description for unique cards.
 
     Returns:
         int: The card ID of the newly created card
@@ -92,6 +94,7 @@ def add_card(
             set_id=set_id,
             season_id=season_id,
             modifier_id=modifier_id,
+            description=description,
         )
         session.add(card)
         session.flush()  # Get the card ID
@@ -133,6 +136,7 @@ def add_card_from_generated(generated_card, chat_id: Optional[str]) -> int:
         source_id=generated_card.source_id,
         set_id=generated_card.set_id,
         modifier_id=getattr(generated_card, "modifier_id", None),
+        description=getattr(generated_card, "description", None),
     )
 
 
