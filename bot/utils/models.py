@@ -57,6 +57,7 @@ class CardModel(Base):
         Integer, ForeignKey("modifiers.id"), nullable=True
     )
     updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationship to card images (one-to-one)
     image: Mapped[Optional["CardImageModel"]] = relationship(

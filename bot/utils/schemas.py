@@ -94,6 +94,7 @@ class Card(BaseModel):
     season_id: int = 0
     set_name: Optional[str] = None
     updated_at: Optional[str] = None
+    description: Optional[str] = None
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
@@ -140,6 +141,7 @@ class Card(BaseModel):
             season_id=card_orm.season_id,
             set_name=set_name,
             updated_at=card_orm.updated_at,
+            description=getattr(card_orm, "description", None),
         )
 
 
@@ -179,6 +181,7 @@ class CardWithImage(Card):
             set_name=set_name,
             image_b64=image_b64,
             updated_at=card_orm.updated_at,
+            description=getattr(card_orm, "description", None),
         )
 
 

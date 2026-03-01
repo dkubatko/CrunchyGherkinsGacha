@@ -56,6 +56,7 @@ class GeneratedCard:
     set_id: Optional[int] = None
     set_name: str = ""
     modifier_id: Optional[int] = None
+    description: Optional[str] = None
 
 
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
@@ -504,6 +505,10 @@ def regenerate_card_image(
             # Add UNIQUE_ADDENDUM for Unique rarity cards
             instruction_addendum = UNIQUE_ADDENDUM if card.rarity == "Unique" else ""
 
+            # Append stored description for Unique cards
+            if card.rarity == "Unique" and card.description:
+                instruction_addendum += f"   - **Additional description:** User provided the following additional context for the card generation: {card.description}"
+
             # Use the existing modifier, rarity and name
             image_b64 = gemini_util.generate_image(
                 card.base_name,
@@ -588,7 +593,7 @@ def generate_unique_card(
     # Append user-provided description to the addendum if present
     full_addendum = instruction_addendum
     if description:
-        full_addendum += f"\n   - **Additional description:** User provided the following additional context for the card generation: {description}"
+        full_addendum += f"   - **Additional description:** User provided the following additional context for the card generation: {description}"
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None
@@ -616,6 +621,7 @@ def generate_unique_card(
                 source_id=profile.source_id,
                 set_id=None,  # Unique cards don't belong to a set usually, or we can assign one if needed
                 set_name="",
+                description=description or None,
             )
         except Exception as e:
             logger.error(f"Error generating unique card (attempt {attempt}/{total_attempts}): {e}")
