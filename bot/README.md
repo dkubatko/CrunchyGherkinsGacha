@@ -9,7 +9,45 @@ Backend services for the Crunchy Gherkins gacha experience. The Telegram bot han
 - **SQLite + Alembic** — A lightweight relational store managed through Alembic migrations at `bot/alembic`; migrations run automatically during bot startup.
 - **Mini-app** — A Vite/React front-end embedded in Telegram via `WebAppInfo`, launched with bot-issued `tg1_...` tokens that scope users to their collections, single cards, or slots.
 
-## Core gameplay loop
+## Environment setup
+
+### Bot (`bot/`)
+
+Copy `bot/.env.example` to `bot/.env` and fill in the values.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `TELEGRAM_AUTH_TOKEN` | **yes** | Production Telegram bot token |
+| `DEBUG_TELEGRAM_AUTH_TOKEN` | for debug | Test bot token (used with `--debug`) |
+| `GOOGLE_API_KEY` | **yes** | Google Gemini API key for image generation |
+| `IMAGE_GEN_MODEL` | **yes** | Gemini model name (e.g. `gemini-2.0-flash-exp`) |
+| `SERVER_SECRET` | **yes** | Secret key for signing admin dashboard JWTs |
+| `BOT_ADMIN` | **yes** | Telegram username of the production admin |
+| `DEBUG_BOT_ADMIN` | for debug | Telegram username of the debug admin |
+| `MINIAPP_URL` | **yes** | Production mini-app URL |
+| `DEBUG_MINIAPP_URL` | for debug | Dev mini-app URL (e.g. `http://localhost:5173`) |
+| `DB_PATH` | no | SQLite database path. Default: `bot/data/cards.db` |
+| `CURRENT_SEASON` | no | Active game season (integer). Default: `0` |
+| `DB_CONNECTION_POOL_SIZE` | no | Connection pool size. Default: `6` |
+| `DB_CONNECTION_TIMEOUT_SECONDS` | no | Connection timeout. Default: `30` |
+| `DB_BUSY_TIMEOUT_MS` | no | SQLite busy timeout. Default: `5000` |
+| `SHADOW_STAGGERED_USERNAMES` | no | Comma-separated usernames for artificial claim delay |
+| `DEBUG_MODE` | no | Set `1` to force debug mode without `--debug` flag |
+| `NO_GENERATION` | no | Set `1` (with debug) to skip image generation |
+
+### Mini-app (`miniapp/`)
+
+Copy `miniapp/.env.example` to `miniapp/.env.production`.
+
+| Variable | Required | Description |
+| --- | --- | --- |
+| `VITE_API_BASE_URL` | **yes** | Base URL of the FastAPI backend (e.g. `https://api.example.com`) |
+
+Vite loads `.env.production` automatically during `vite build`.
+
+### Game constants (`bot/config.json`)
+
+Tunable gameplay values (rarity weights, casino odds, cooldowns, daily bonus progression) live in `config.json` and are safe to commit. They are loaded once at startup — restart to pick up changes.
 
 ### Registration, profiles, and enrollment
 
