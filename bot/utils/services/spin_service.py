@@ -12,12 +12,15 @@ progression and daily reset hour configured in config.json.
 from __future__ import annotations
 
 import datetime
-import json
 import logging
-import os
 from typing import Optional
 from zoneinfo import ZoneInfo
 
+from settings.constants import (
+    DAILY_BONUS_PROGRESSION,
+    DAILY_BONUS_RESET_HOUR_PDT,
+    SPINS_FOR_MEGASPIN,
+)
 from utils.events import EventType, DailyBonusOutcome
 from utils.models import MegaspinsModel, SpinsModel
 from utils.schemas import Megaspins, Spins
@@ -25,28 +28,7 @@ from utils.session import get_session
 
 logger = logging.getLogger(__name__)
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-
 PDT_TZ = ZoneInfo("America/Los_Angeles")
-
-
-def _load_config() -> dict:
-    """Load configuration from config.json."""
-    config_path = os.path.join(PROJECT_ROOT, "config.json")
-    try:
-        with open(config_path, "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError) as e:
-        logger.warning(f"Failed to load config: {e}. Using defaults.")
-        return {}
-
-
-def _get_daily_bonus_config() -> tuple[int, list[int]]:
-    """Get daily bonus configuration. Returns (reset_hour_pdt, progression_list)."""
-    config = _load_config()
-    reset_hour = config.get("DAILY_BONUS_RESET_HOUR_PDT", 6)
-    progression = config.get("DAILY_BONUS_PROGRESSION", [10, 15, 20, 25, 30, 35, 40])
-    return reset_hour, progression
 
 
 def _get_bonus_date(dt: datetime.datetime) -> datetime.date:
@@ -55,9 +37,8 @@ def _get_bonus_date(dt: datetime.datetime) -> datetime.date:
     The bonus day rolls over at DAILY_BONUS_RESET_HOUR_PDT.
     E.g. if reset hour is 6 AM, then 5:59 AM on Feb 14 still counts as Feb 13's bonus day.
     """
-    reset_hour, _ = _get_daily_bonus_config()
     pdt_dt = dt.astimezone(PDT_TZ)
-    if pdt_dt.hour < reset_hour:
+    if pdt_dt.hour < DAILY_BONUS_RESET_HOUR_PDT:
         return (pdt_dt - datetime.timedelta(days=1)).date()
     return pdt_dt.date()
 
@@ -68,11 +49,10 @@ def _get_spins_for_streak(streak: int) -> int:
     Uses the progression list from config. If streak exceeds the list length,
     the last value in the progression is used indefinitely.
     """
-    _, progression = _get_daily_bonus_config()
-    if not progression:
+    if not DAILY_BONUS_PROGRESSION:
         return 10  # fallback
-    index = min(streak - 1, len(progression) - 1)
-    return progression[max(0, index)]
+    index = min(streak - 1, len(DAILY_BONUS_PROGRESSION) - 1)
+    return DAILY_BONUS_PROGRESSION[max(0, index)]
 
 
 def _get_spins_for_megaspin() -> int:
@@ -83,8 +63,7 @@ def _get_spins_for_megaspin() -> int:
 
     if DEBUG_MODE:
         return 5
-    config = _load_config()
-    return config.get("SPINS_FOR_MEGASPIN", 100)
+    return SPINS_FOR_MEGASPIN
 
 
 def get_user_spins(user_id: int, chat_id: str) -> Optional[Spins]:

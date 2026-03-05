@@ -1,6 +1,10 @@
 import json
 import os
 
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # Load configuration from config.json
 _config = None
 
@@ -17,10 +21,8 @@ def load_config():
 # Load configuration
 config = load_config()
 RARITIES = config["RARITIES"]
-DB_PATH = config["DB_PATH"]
 BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
 CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
-CURRENT_SEASON = config.get("CURRENT_SEASON", 0)
 SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
 MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
@@ -37,6 +39,15 @@ RTB_MULTIPLIER_PROGRESSION = {int(k): v for k, v in _rtb_mult.items()}
 # Cooldown in seconds after winning or cashing out (30 min production, 1 min debug)
 RTB_COOLDOWN_SECONDS = config.get("RTB_COOLDOWN_SECONDS", 30 * 60)
 RTB_DEBUG_COOLDOWN_SECONDS = config.get("RTB_DEBUG_COOLDOWN_SECONDS", 30)
+
+# Daily bonus / megaspin constants (from config.json)
+DAILY_BONUS_RESET_HOUR_PDT = config.get("DAILY_BONUS_RESET_HOUR_PDT", 6)
+DAILY_BONUS_PROGRESSION = config.get("DAILY_BONUS_PROGRESSION", [10, 15, 20, 25, 30, 35, 40])
+SPINS_FOR_MEGASPIN = config.get("SPINS_FOR_MEGASPIN", 100)
+
+# Environment-sourced settings
+DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "cards.db"))
+CURRENT_SEASON = int(os.getenv("CURRENT_SEASON", "0"))
 
 # Rarity order derived from RARITIES keys (ordered in config.json)
 RARITY_ORDER = list(RARITIES.keys())

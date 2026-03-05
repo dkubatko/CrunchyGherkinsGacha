@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import datetime
 import logging
-import os
 import secrets
 import time
 from typing import Any, Dict, Optional
@@ -38,7 +37,13 @@ logger = logging.getLogger(__name__)
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-SERVER_SECRET: str = os.getenv("SERVER_SECRET", "")
+
+def _get_server_secret() -> str:
+    """Lazy accessor for SERVER_SECRET to avoid circular imports at module level."""
+    from api.config import SERVER_SECRET
+    return SERVER_SECRET
+
+
 _JWT_ALGORITHM = "HS256"
 _JWT_EXPIRY_HOURS = 24
 _OTP_LENGTH = 6
@@ -164,7 +169,8 @@ def create_jwt(admin_user_id: int, username: str) -> str:
     The token contains ``sub`` (admin user ID), ``username``, ``iat``, and
     ``exp`` claims.
     """
-    if not SERVER_SECRET:
+    secret = _get_server_secret()
+    if not secret:
         raise RuntimeError("SERVER_SECRET is not configured — cannot issue JWT")
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -174,7 +180,7 @@ def create_jwt(admin_user_id: int, username: str) -> str:
         "iat": now,
         "exp": now + datetime.timedelta(hours=_JWT_EXPIRY_HOURS),
     }
-    token = jwt.encode(payload, SERVER_SECRET, algorithm=_JWT_ALGORITHM)
+    token = jwt.encode(payload, secret, algorithm=_JWT_ALGORITHM)
     logger.info("JWT issued for admin_user_id=%s username=%s", admin_user_id, username)
     return token
 
@@ -185,12 +191,13 @@ def decode_jwt(token: str) -> Optional[Dict[str, Any]]:
     Returns the payload dict on success, or ``None`` if the token is
     invalid or expired.
     """
-    if not SERVER_SECRET:
+    secret = _get_server_secret()
+    if not secret:
         logger.error("SERVER_SECRET is not configured — cannot decode JWT")
         return None
 
     try:
-        payload = jwt.decode(token, SERVER_SECRET, algorithms=[_JWT_ALGORITHM])
+        payload = jwt.decode(token, secret, algorithms=[_JWT_ALGORITHM])
         # sub was stored as a string to satisfy RFC 7519; cast back to int
         payload["sub"] = int(payload["sub"])
         return payload

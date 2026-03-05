@@ -280,7 +280,7 @@ const CollectionTab = ({
     if (selectedCardForTrade && modalCard) {
       const executeTrade = async () => {
         try {
-          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
           const response = await fetch(`${apiBaseUrl}/trade/${selectedCardForTrade.id}/${modalCard.id}`, {
             method: 'POST',
             headers: { 'Authorization': `tma ${initData}` }

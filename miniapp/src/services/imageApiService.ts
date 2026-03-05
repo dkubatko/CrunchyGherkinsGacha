@@ -12,7 +12,7 @@ interface FetchResult {
   failed: number[];
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://api.crunchygherkins.com';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 export async function fetchCardImages(
   cardIds: number[],
