@@ -89,7 +89,7 @@ const Card: React.FC<CardProps> = ({
         let imageRequest = inFlightFullImageRequests.get(id);
         if (!imageRequest) {
           imageRequest = (async () => {
-            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+            const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
             const response = await fetch(`${apiBaseUrl}/cards/image/${id}`, {
               headers: {
                 'Authorization': `tma ${initData}`
