@@ -68,7 +68,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     user_profiles = []
     for user in eligible_users:
         display_name = (user.display_name or "").strip()
-        profile_image = (user.profile_imageb64 or "").strip()
+        profile_image = (user.profile_image_b64 or "").strip()
 
         if display_name and profile_image:
             user_profiles.append(
@@ -86,7 +86,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     character_profiles = [
         SelectedProfile(
             name=char.name,
-            image_b64=char.imageb64,
+            image_b64=char.image_b64,
             source_type="character",
             source_id=char.id,
             character=char,
@@ -110,14 +110,14 @@ def select_random_user_with_image(chat_id: str) -> Optional[User]:
         return None
 
     display_name = (user.display_name or "").strip()
-    profile_image = (user.profile_imageb64 or "").strip()
+    profile_image = (user.profile_image_b64 or "").strip()
 
     if not display_name or not profile_image:
         return None
 
     # Normalize display name before returning so downstream code can rely on trimmed value.
     user.display_name = display_name
-    user.profile_imageb64 = profile_image
+    user.profile_image_b64 = profile_image
     return user
 
 
@@ -289,7 +289,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
             raise InvalidSourceError(f"User {source_id} not found")
 
         display_name = (user.display_name or "").strip()
-        image_b64 = (user.profile_imageb64 or "").strip()
+        image_b64 = (user.profile_image_b64 or "").strip()
 
         if not display_name or not image_b64:
             raise NoEligibleUserError
@@ -308,7 +308,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
             raise InvalidSourceError(f"Character {source_id} not found")
 
         name = (character.name or "").strip()
-        image_b64 = (character.imageb64 or "").strip()
+        image_b64 = (character.image_b64 or "").strip()
 
         if not name or not image_b64:
             raise NoEligibleUserError
@@ -557,7 +557,7 @@ def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
         if char.name.strip().lower() == name_lower:
             return SelectedProfile(
                 name=char.name,
-                image_b64=char.imageb64,
+                image_b64=char.image_b64,
                 source_type="character",
                 source_id=char.id,
                 character=char,
@@ -570,7 +570,7 @@ def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
         if display_name.lower() == name_lower:
             return SelectedProfile(
                 name=display_name,
-                image_b64=user.profile_imageb64,
+                image_b64=user.profile_image_b64,
                 source_type="user",
                 source_id=user.user_id,
                 user=user,

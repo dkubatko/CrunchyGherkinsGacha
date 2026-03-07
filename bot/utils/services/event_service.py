@@ -134,14 +134,15 @@ def log(
     # Validate event_type and outcome combination
     validate_outcome(event_type, outcome)
 
-    # Serialize payload to JSON
-    payload_json: Optional[str] = None
+    # JSONB column accepts native Python dicts directly
+    payload_data: Optional[dict] = None
     if payload:
         try:
-            payload_json = json.dumps(payload, default=str)
+            # Ensure all values are JSON-serializable by round-tripping
+            payload_data = json.loads(json.dumps(payload, default=str))
         except (TypeError, ValueError) as e:
             logger.warning("Failed to serialize event payload: %s", e)
-            payload_json = json.dumps({"_serialization_error": str(e)})
+            payload_data = {"_serialization_error": str(e)}
 
     timestamp = datetime.datetime.now(datetime.timezone.utc)
 
@@ -154,7 +155,7 @@ def log(
                 chat_id=str(chat_id),
                 card_id=card_id,
                 timestamp=timestamp,
-                payload=payload_json,
+                payload=payload_data,
             )
             session.add(event_model)
             session.flush()  # Get the ID

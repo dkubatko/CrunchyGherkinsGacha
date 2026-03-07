@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 def create_rolled_card(card_id: int, original_roller_id: int) -> int:
     """Create a rolled card entry to track its state."""
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
     with get_session(commit=True) as session:
         rolled = RolledCardModel(
             original_card_id=card_id,
@@ -122,6 +122,5 @@ def is_rolled_card_reroll_expired(roll_id: int) -> bool:
         if not rolled or not rolled.created_at:
             return True
 
-        created_at = datetime.datetime.fromisoformat(rolled.created_at)
-        time_since_creation = datetime.datetime.now() - created_at
+        time_since_creation = datetime.datetime.now(datetime.timezone.utc) - rolled.created_at
         return time_since_creation.total_seconds() > 5 * 60

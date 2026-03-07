@@ -224,7 +224,7 @@ def create_modifier(
     if season_id is None:
         season_id = CURRENT_SEASON
 
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
 
     with get_session(commit=True) as session:
         modifier = ModifierModel(
@@ -333,7 +333,7 @@ def bulk_upsert_modifiers(
     if season_id is None:
         season_id = CURRENT_SEASON
 
-    now = datetime.datetime.utcnow().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
     count = 0
 
     with get_session(commit=True) as session:

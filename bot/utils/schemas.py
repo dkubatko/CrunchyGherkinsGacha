@@ -9,7 +9,6 @@ from __future__ import annotations
 import base64
 import datetime
 import html
-import json
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
@@ -60,18 +59,26 @@ class User(BaseModel):
     user_id: int
     username: str
     display_name: Optional[str]
-    profile_imageb64: Optional[str]
-    slot_iconb64: Optional[str] = None
+    profile_image_b64: Optional[str] = None
+    slot_icon_b64: Optional[str] = None
 
     @classmethod
     def from_orm(cls, user_orm) -> "User":
         """Convert a UserModel ORM object to a User schema."""
+        profile_image_b64 = (
+            base64.b64encode(user_orm.profile_image).decode("utf-8")
+            if user_orm.profile_image
+            else None
+        )
+        slot_icon_b64 = (
+            base64.b64encode(user_orm.slot_icon).decode("utf-8") if user_orm.slot_icon else None
+        )
         return cls(
             user_id=user_orm.user_id,
             username=user_orm.username,
             display_name=user_orm.display_name,
-            profile_imageb64=user_orm.profile_imageb64,
-            slot_iconb64=user_orm.slot_iconb64,
+            profile_image_b64=profile_image_b64,
+            slot_icon_b64=slot_icon_b64,
         )
 
 
@@ -133,14 +140,14 @@ class Card(BaseModel):
             user_id=card_orm.user_id,
             file_id=card_orm.file_id,
             chat_id=card_orm.chat_id,
-            created_at=card_orm.created_at,
+            created_at=card_orm.created_at.isoformat() if card_orm.created_at else None,
             locked=card_orm.locked,
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
             season_id=card_orm.season_id,
             set_name=set_name,
-            updated_at=card_orm.updated_at,
+            updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
             description=getattr(card_orm, "description", None),
         )
 
@@ -159,9 +166,8 @@ class CardWithImage(Card):
     @classmethod
     def from_orm(cls, card_orm) -> Optional["CardWithImage"]:
         """Convert a CardModel ORM object (with eager-loaded image) to a CardWithImage schema."""
-        image_b64 = card_orm.image.image_b64 if card_orm.image else None
-        if image_b64 is None:
-            image_b64 = ""
+        image_bytes = card_orm.image.image if card_orm.image else None
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else ""
         set_name = card_orm.card_set.name if card_orm.card_set else None
         return cls(
             id=card_orm.id,
@@ -172,7 +178,7 @@ class CardWithImage(Card):
             user_id=card_orm.user_id,
             file_id=card_orm.file_id,
             chat_id=card_orm.chat_id,
-            created_at=card_orm.created_at,
+            created_at=card_orm.created_at.isoformat() if card_orm.created_at else None,
             locked=card_orm.locked,
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
@@ -180,7 +186,7 @@ class CardWithImage(Card):
             season_id=card_orm.season_id,
             set_name=set_name,
             image_b64=image_b64,
-            updated_at=card_orm.updated_at,
+            updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
             description=getattr(card_orm, "description", None),
         )
 
@@ -235,7 +241,7 @@ class RolledCard(BaseModel):
             roll_id=rolled_orm.roll_id,
             original_card_id=rolled_orm.original_card_id,
             rerolled_card_id=rolled_orm.rerolled_card_id,
-            created_at=rolled_orm.created_at,
+            created_at=rolled_orm.created_at.isoformat() if rolled_orm.created_at else "",
             original_roller_id=rolled_orm.original_roller_id,
             rerolled=rolled_orm.rerolled,
             being_rerolled=rolled_orm.being_rerolled,
@@ -251,18 +257,22 @@ class Character(BaseModel):
     id: int
     chat_id: str
     name: str
-    imageb64: str
-    slot_iconb64: Optional[str] = None
+    image_b64: str
+    slot_icon_b64: Optional[str] = None
 
     @classmethod
     def from_orm(cls, char_orm) -> "Character":
         """Convert a CharacterModel ORM object to a Character schema."""
+        image_b64 = base64.b64encode(char_orm.image).decode("utf-8") if char_orm.image else ""
+        slot_icon_b64 = (
+            base64.b64encode(char_orm.slot_icon).decode("utf-8") if char_orm.slot_icon else None
+        )
         return cls(
             id=char_orm.id,
             chat_id=char_orm.chat_id,
             name=char_orm.name,
-            imageb64=char_orm.imageb64,
-            slot_iconb64=char_orm.slot_iconb64,
+            image_b64=image_b64,
+            slot_icon_b64=slot_icon_b64,
         )
 
 
@@ -283,7 +293,9 @@ class Spins(BaseModel):
             chat_id=spins_orm.chat_id,
             count=spins_orm.count,
             login_streak=spins_orm.login_streak,
-            last_bonus_date=spins_orm.last_bonus_date,
+            last_bonus_date=(
+                spins_orm.last_bonus_date.isoformat() if spins_orm.last_bonus_date else None
+            ),
         )
 
 
@@ -348,38 +360,6 @@ class MinesweeperGame(BaseModel):
     @classmethod
     def from_orm(cls, game_orm) -> "MinesweeperGame":
         """Convert a MinesweeperGameModel ORM object to a MinesweeperGame schema."""
-        # Handle JSON fields that may be strings or already parsed
-        mine_positions = game_orm.mine_positions
-        if isinstance(mine_positions, str):
-            mine_positions = json.loads(mine_positions)
-
-        claim_point_positions = game_orm.claim_point_positions
-        if isinstance(claim_point_positions, str):
-            claim_point_positions = json.loads(claim_point_positions)
-
-        revealed_cells = game_orm.revealed_cells
-        if isinstance(revealed_cells, str):
-            revealed_cells = json.loads(revealed_cells)
-
-        # Handle timestamps that may be strings or datetime objects
-        started_timestamp = game_orm.started_timestamp
-        if isinstance(started_timestamp, str):
-            started_timestamp = datetime.datetime.fromisoformat(
-                started_timestamp.replace("Z", "+00:00")
-            )
-        elif started_timestamp is not None and started_timestamp.tzinfo is None:
-            # Make naive datetime timezone-aware (assume UTC)
-            started_timestamp = started_timestamp.replace(tzinfo=datetime.timezone.utc)
-
-        last_updated_timestamp = game_orm.last_updated_timestamp
-        if isinstance(last_updated_timestamp, str):
-            last_updated_timestamp = datetime.datetime.fromisoformat(
-                last_updated_timestamp.replace("Z", "+00:00")
-            )
-        elif last_updated_timestamp is not None and last_updated_timestamp.tzinfo is None:
-            # Make naive datetime timezone-aware (assume UTC)
-            last_updated_timestamp = last_updated_timestamp.replace(tzinfo=datetime.timezone.utc)
-
         return cls(
             id=game_orm.id,
             user_id=game_orm.user_id,
@@ -387,14 +367,14 @@ class MinesweeperGame(BaseModel):
             bet_card_id=game_orm.bet_card_id,
             bet_card_title=game_orm.bet_card_title,
             bet_card_rarity=game_orm.bet_card_rarity,
-            mine_positions=mine_positions,
-            claim_point_positions=claim_point_positions,
-            revealed_cells=revealed_cells,
+            mine_positions=game_orm.mine_positions,
+            claim_point_positions=game_orm.claim_point_positions,
+            revealed_cells=game_orm.revealed_cells,
             status=game_orm.status,
             moves_count=game_orm.moves_count,
             reward_card_id=game_orm.reward_card_id,
-            started_timestamp=started_timestamp,
-            last_updated_timestamp=last_updated_timestamp,
+            started_timestamp=game_orm.started_timestamp,
+            last_updated_timestamp=game_orm.last_updated_timestamp,
             source_type=game_orm.source_type,
             source_id=game_orm.source_id,
         )
@@ -436,49 +416,19 @@ class RideTheBusGame(BaseModel):
     @classmethod
     def from_orm(cls, game_orm) -> "RideTheBusGame":
         """Convert a RideTheBusGameModel ORM object to a RideTheBusGame schema."""
-        # Handle JSON fields that may be strings or already parsed
-        card_ids = game_orm.card_ids
-        if isinstance(card_ids, str):
-            card_ids = json.loads(card_ids)
-
-        card_rarities = game_orm.card_rarities
-        if isinstance(card_rarities, str):
-            card_rarities = json.loads(card_rarities)
-
-        card_titles = game_orm.card_titles
-        if isinstance(card_titles, str):
-            card_titles = json.loads(card_titles)
-
-        # Handle timestamps that may be strings or datetime objects
-        started_timestamp = game_orm.started_timestamp
-        if isinstance(started_timestamp, str):
-            started_timestamp = datetime.datetime.fromisoformat(
-                started_timestamp.replace("Z", "+00:00")
-            )
-        elif started_timestamp is not None and started_timestamp.tzinfo is None:
-            started_timestamp = started_timestamp.replace(tzinfo=datetime.timezone.utc)
-
-        last_updated_timestamp = game_orm.last_updated_timestamp
-        if isinstance(last_updated_timestamp, str):
-            last_updated_timestamp = datetime.datetime.fromisoformat(
-                last_updated_timestamp.replace("Z", "+00:00")
-            )
-        elif last_updated_timestamp is not None and last_updated_timestamp.tzinfo is None:
-            last_updated_timestamp = last_updated_timestamp.replace(tzinfo=datetime.timezone.utc)
-
         return cls(
             id=game_orm.id,
             user_id=game_orm.user_id,
             chat_id=game_orm.chat_id,
             bet_amount=game_orm.bet_amount,
-            card_ids=card_ids,
-            card_rarities=card_rarities,
-            card_titles=card_titles,
+            card_ids=game_orm.card_ids,
+            card_rarities=game_orm.card_rarities,
+            card_titles=game_orm.card_titles,
             current_position=game_orm.current_position,
             current_multiplier=game_orm.current_multiplier,
             status=game_orm.status,
-            started_timestamp=started_timestamp,
-            last_updated_timestamp=last_updated_timestamp,
+            started_timestamp=game_orm.started_timestamp,
+            last_updated_timestamp=game_orm.last_updated_timestamp,
         )
 
 
@@ -497,18 +447,6 @@ class Event(BaseModel):
     @classmethod
     def from_orm(cls, event_orm) -> "Event":
         """Convert an EventModel ORM object to an Event schema."""
-        # Handle timestamp that may be a string or datetime
-        timestamp = event_orm.timestamp
-        if isinstance(timestamp, str):
-            timestamp = datetime.datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-        elif timestamp is not None and timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=datetime.timezone.utc)
-
-        # Parse JSON payload if it's a string
-        payload = event_orm.payload
-        if isinstance(payload, str):
-            payload = json.loads(payload) if payload else None
-
         return cls(
             id=event_orm.id,
             event_type=event_orm.event_type,
@@ -516,8 +454,8 @@ class Event(BaseModel):
             user_id=event_orm.user_id,
             chat_id=event_orm.chat_id,
             card_id=event_orm.card_id,
-            timestamp=timestamp,
-            payload=payload,
+            timestamp=event_orm.timestamp,
+            payload=event_orm.payload,
         )
 
 
@@ -532,11 +470,14 @@ class Achievement(BaseModel):
     @classmethod
     def from_orm(cls, achievement_orm) -> "Achievement":
         """Convert an AchievementModel ORM object to an Achievement schema."""
+        icon_b64 = (
+            base64.b64encode(achievement_orm.icon).decode("utf-8") if achievement_orm.icon else None
+        )
         return cls(
             id=achievement_orm.id,
             name=achievement_orm.name,
             description=achievement_orm.description,
-            icon_b64=achievement_orm.icon_b64,
+            icon_b64=icon_b64,
         )
 
 
@@ -552,13 +493,6 @@ class UserAchievement(BaseModel):
     @classmethod
     def from_orm(cls, user_achievement_orm, include_achievement: bool = True) -> "UserAchievement":
         """Convert a UserAchievementModel ORM object to a UserAchievement schema."""
-        # Handle timestamp that may be a string or datetime
-        unlocked_at = user_achievement_orm.unlocked_at
-        if isinstance(unlocked_at, str):
-            unlocked_at = datetime.datetime.fromisoformat(unlocked_at.replace("Z", "+00:00"))
-        elif unlocked_at is not None and unlocked_at.tzinfo is None:
-            unlocked_at = unlocked_at.replace(tzinfo=datetime.timezone.utc)
-
         achievement = None
         if (
             include_achievement
@@ -571,6 +505,6 @@ class UserAchievement(BaseModel):
             id=user_achievement_orm.id,
             user_id=user_achievement_orm.user_id,
             achievement_id=user_achievement_orm.achievement_id,
-            unlocked_at=unlocked_at,
+            unlocked_at=user_achievement_orm.unlocked_at,
             achievement=achievement,
         )

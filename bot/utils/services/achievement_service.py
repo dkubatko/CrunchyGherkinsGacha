@@ -95,6 +95,8 @@ def register_achievement(
     Returns:
         The created or existing Achievement schema.
     """
+    import base64
+
     with get_session(commit=True) as session:
         # Check if achievement already exists
         existing = session.query(AchievementModel).filter(AchievementModel.name == name).first()
@@ -103,10 +105,11 @@ def register_achievement(
             return Achievement.from_orm(existing)
 
         # Create new achievement
+        icon_bytes = base64.b64decode(icon_b64) if icon_b64 else None
         achievement = AchievementModel(
             name=name,
             description=description,
-            icon_b64=icon_b64,
+            icon=icon_bytes,
         )
         session.add(achievement)
         session.flush()
@@ -169,7 +172,7 @@ def sync_achievement(
             id=achievement_id,
             name=name,
             description=description,
-            icon_b64=None,
+            icon=None,
         )
         session.add(achievement)
         session.flush()
@@ -189,13 +192,15 @@ def update_achievement_icon(name: str, icon_b64: str) -> Optional[Achievement]:
     Returns:
         Updated Achievement schema if found, None otherwise.
     """
+    import base64
+
     with get_session(commit=True) as session:
         achievement = session.query(AchievementModel).filter(AchievementModel.name == name).first()
         if not achievement:
             logger.warning("Achievement '%s' not found for icon update", name)
             return None
 
-        achievement.icon_b64 = icon_b64
+        achievement.icon = base64.b64decode(icon_b64)
         session.flush()
 
         logger.info("Updated icon for achievement '%s'", name)

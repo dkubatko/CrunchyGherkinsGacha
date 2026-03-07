@@ -73,7 +73,7 @@ def main() -> None:
             user = session.query(UserModel).filter(UserModel.username == username).first()
             if user:
                 user.display_name = display_name
-                user.profile_imageb64 = image_b64
+                user.profile_image = base64.b64decode(image_b64)
                 updated += 1
 
     print(f"Updated {updated} users with display names and images.")

@@ -67,16 +67,16 @@ def add_card(
     """
     if season_id is None:
         season_id = CURRENT_SEASON
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
     if chat_id is not None:
         chat_id = str(chat_id)
 
-    image_thumb_b64: Optional[str] = None
+    image_data: Optional[bytes] = None
+    thumb_data: Optional[bytes] = None
     if image_b64:
         try:
-            image_bytes = base64.b64decode(image_b64)
-            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
-            image_thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+            image_data = base64.b64decode(image_b64)
+            thumb_data = ImageUtil.compress_to_fraction(image_data, scale_factor=1 / 4)
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for new card: %s", exc)
 
@@ -100,11 +100,11 @@ def add_card(
         session.flush()  # Get the card ID
 
         # Create associated image record if available
-        if image_b64 or image_thumb_b64:
+        if image_data or thumb_data:
             card_image = CardImageModel(
                 card_id=card.id,
-                image_b64=image_b64,
-                image_thumb_b64=image_thumb_b64,
+                image=image_data,
+                thumbnail=thumb_data,
                 image_updated_at=now,
             )
             session.add(card_image)
@@ -162,7 +162,7 @@ def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> b
         card.owner = owner
         if user_id is not None:
             card.user_id = user_id
-        card.updated_at = datetime.datetime.now().isoformat()
+        card.updated_at = datetime.datetime.now(datetime.timezone.utc)
         return True
 
 
@@ -312,7 +312,7 @@ def get_user_cards_by_rarity(
         if unlocked:
             query = query.filter(CardModel.locked == False)
 
-        query = query.order_by(func.coalesce(CardModel.created_at, ""), CardModel.id)
+        query = query.order_by(CardModel.created_at.asc().nulls_first(), CardModel.id)
 
         if limit is not None:
             query = query.limit(limit)
@@ -398,7 +398,9 @@ def get_card_image(card_id: int) -> str | None:
             return None
 
         card_image = session.query(CardImageModel).filter(CardImageModel.card_id == card_id).first()
-        return card_image.image_b64 if card_image else None
+        if not card_image or not card_image.image:
+            return None
+        return base64.b64encode(card_image.image).decode("utf-8")
 
 
 def get_card_thumbnail(card_id: int) -> str | None:
@@ -431,22 +433,20 @@ def get_card_thumbnail(card_id: int) -> str | None:
             return None
 
         # Return cached thumbnail if available
-        if card_image.image_thumb_b64:
-            return card_image.image_thumb_b64
+        if card_image.thumbnail:
+            return base64.b64encode(card_image.thumbnail).decode("utf-8")
 
         # Generate thumbnail from full image on-the-fly
-        if not card_image.image_b64:
+        if not card_image.image:
             return None
 
         try:
-            image_bytes = base64.b64decode(card_image.image_b64)
-            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
-            thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
-            card_image.image_thumb_b64 = thumb_b64
-            return thumb_b64
+            thumb_bytes = ImageUtil.compress_to_fraction(card_image.image, scale_factor=1 / 4)
+            card_image.thumbnail = thumb_bytes
+            return base64.b64encode(thumb_bytes).decode("utf-8")
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for card %s: %s", card_id, exc)
-            return card_image.image_b64  # Fall back to full image
+            return base64.b64encode(card_image.image).decode("utf-8")  # Fall back to full image
 
 
 def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
@@ -485,22 +485,20 @@ def get_card_images_batch(card_ids: List[int]) -> dict[int, str]:
         fetched: dict[int, str] = {}
         for card_image in card_images:
             cid = card_image.card_id
-            thumb = card_image.image_thumb_b64
-            full = card_image.image_b64
+            thumb = card_image.thumbnail
+            full = card_image.image
 
             if thumb:
-                fetched[cid] = thumb
+                fetched[cid] = base64.b64encode(thumb).decode("utf-8")
                 continue
 
             if not full:
                 continue
 
             try:
-                image_bytes = base64.b64decode(full)
-                thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
-                thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
-                card_image.image_thumb_b64 = thumb_b64
-                fetched[cid] = thumb_b64
+                thumb_bytes = ImageUtil.compress_to_fraction(full, scale_factor=1 / 4)
+                card_image.thumbnail = thumb_bytes
+                fetched[cid] = base64.b64encode(thumb_bytes).decode("utf-8")
             except Exception as exc:
                 logger.warning(
                     "Failed to generate thumbnail during batch fetch for card %s: %s",
@@ -762,28 +760,28 @@ def update_card_image(card_id: int, image_b64: str) -> bool:
             return False
 
     # Generate new thumbnail
-    image_thumb_b64: Optional[str] = None
+    image_data: Optional[bytes] = None
+    thumb_data: Optional[bytes] = None
     if image_b64:
         try:
-            image_bytes = base64.b64decode(image_b64)
-            thumb_bytes = ImageUtil.compress_to_fraction(image_bytes, scale_factor=1 / 4)
-            image_thumb_b64 = base64.b64encode(thumb_bytes).decode("utf-8")
+            image_data = base64.b64decode(image_b64)
+            thumb_data = ImageUtil.compress_to_fraction(image_data, scale_factor=1 / 4)
         except Exception as exc:
             logger.warning("Failed to generate thumbnail for refreshed card %s: %s", card_id, exc)
 
-    now = datetime.datetime.now().isoformat()
+    now = datetime.datetime.now(datetime.timezone.utc)
     with get_session(commit=True) as session:
         # Update or create card_images record
         card_image = session.query(CardImageModel).filter(CardImageModel.card_id == card_id).first()
         if card_image:
-            card_image.image_b64 = image_b64
-            card_image.image_thumb_b64 = image_thumb_b64
+            card_image.image = image_data
+            card_image.thumbnail = thumb_data
             card_image.image_updated_at = now
         else:
             card_image = CardImageModel(
                 card_id=card_id,
-                image_b64=image_b64,
-                image_thumb_b64=image_thumb_b64,
+                image=image_data,
+                thumbnail=thumb_data,
                 image_updated_at=now,
             )
             session.add(card_image)
@@ -821,7 +819,7 @@ def set_card_locked(card_id: int, is_locked: bool) -> bool:
             )
             return False
         card.locked = is_locked
-        card.updated_at = datetime.datetime.now().isoformat()
+        card.updated_at = datetime.datetime.now(datetime.timezone.utc)
     logger.info(f"Set locked={is_locked} for card {card_id}: True")
     return True
 

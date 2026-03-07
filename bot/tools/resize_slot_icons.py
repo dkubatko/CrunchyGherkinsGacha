@@ -70,8 +70,11 @@ def resize_user_icons(dry_run: bool = False):
 
     with get_session() as session:
         # Get all users with slot icons
-        users = session.query(UserModel).filter(UserModel.slot_iconb64.isnot(None)).all()
-        users_data = [(u.user_id, u.display_name, u.slot_iconb64) for u in users]
+        users = session.query(UserModel).filter(UserModel.slot_icon.isnot(None)).all()
+        users_data = [
+            (u.user_id, u.display_name, base64.b64encode(u.slot_icon).decode("utf-8"))
+            for u in users
+        ]
 
     print(f"Found {len(users_data)} users with slot icons")
 
@@ -91,7 +94,7 @@ def resize_user_icons(dry_run: bool = False):
             with get_session(commit=True) as session:
                 user = session.query(UserModel).filter(UserModel.user_id == user_id).first()
                 if user:
-                    user.slot_iconb64 = resized_b64
+                    user.slot_icon = base64.b64decode(resized_b64)
             print(f"  ✓ Updated user {user_id}")
         else:
             print(f"  [DRY RUN] Would update user {user_id}")
@@ -110,9 +113,11 @@ def resize_character_icons(dry_run: bool = False):
     with get_session() as session:
         # Get all characters with slot icons
         characters = (
-            session.query(CharacterModel).filter(CharacterModel.slot_iconb64.isnot(None)).all()
+            session.query(CharacterModel).filter(CharacterModel.slot_icon.isnot(None)).all()
         )
-        chars_data = [(c.id, c.name, c.slot_iconb64) for c in characters]
+        chars_data = [
+            (c.id, c.name, base64.b64encode(c.slot_icon).decode("utf-8")) for c in characters
+        ]
 
     print(f"Found {len(chars_data)} characters with slot icons")
 
@@ -132,7 +137,7 @@ def resize_character_icons(dry_run: bool = False):
             with get_session(commit=True) as session:
                 char = session.query(CharacterModel).filter(CharacterModel.id == char_id).first()
                 if char:
-                    char.slot_iconb64 = resized_b64
+                    char.slot_icon = base64.b64decode(resized_b64)
             print(f"  ✓ Updated character {char_id}")
         else:
             print(f"  [DRY RUN] Would update character {char_id}")

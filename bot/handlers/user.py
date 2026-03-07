@@ -180,13 +180,13 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Prepare media to send
         media_group = []
 
-        if user_data.profile_imageb64:
-            profile_image_data = base64.b64decode(user_data.profile_imageb64)
+        if user_data.profile_image_b64:
+            profile_image_data = base64.b64decode(user_data.profile_image_b64)
             profile_media = InputMediaPhoto(media=profile_image_data, caption="🖼️ Profile Image")
             media_group.append(profile_media)
 
-        if user_data.slot_iconb64:
-            slot_icon_data = base64.b64decode(user_data.slot_iconb64)
+        if user_data.slot_icon_b64:
+            slot_icon_data = base64.b64decode(user_data.slot_icon_b64)
             slot_media = InputMediaPhoto(media=slot_icon_data, caption="🎰 Slot Machine Icon")
             media_group.append(slot_media)
 
@@ -309,7 +309,7 @@ async def enroll(
     missing_parts = []
     if not user.display_name:
         missing_parts.append("display name")
-    if not user.profile_imageb64:
+    if not user.profile_image_b64:
         missing_parts.append("profile photo")
 
     if missing_parts:

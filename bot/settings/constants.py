@@ -46,7 +46,7 @@ DAILY_BONUS_PROGRESSION = config.get("DAILY_BONUS_PROGRESSION", [10, 15, 20, 25,
 SPINS_FOR_MEGASPIN = config.get("SPINS_FOR_MEGASPIN", 100)
 
 # Environment-sourced settings
-DB_PATH = os.getenv("DB_PATH", os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "cards.db"))
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+psycopg://localhost:5432/gacha")
 CURRENT_SEASON = int(os.getenv("CURRENT_SEASON", "0"))
 
 # Rarity order derived from RARITIES keys (ordered in config.json)

@@ -58,15 +58,17 @@ def _generate_slot_icon(image_b64: str) -> Optional[str]:
 
 def add_character(chat_id: str, name: str, imageb64: str) -> int:
     """Add a new character to the database and generate slot icon."""
-    # Generate slot machine icon
+    import base64
+
+    # Generate slot machine icon (from base64 string)
     slot_icon_b64 = _generate_slot_icon(imageb64)
 
     with get_session(commit=True) as session:
         character = CharacterModel(
             chat_id=str(chat_id),
             name=name,
-            imageb64=imageb64,
-            slot_iconb64=slot_icon_b64,
+            image=base64.b64decode(imageb64),
+            slot_icon=base64.b64decode(slot_icon_b64) if slot_icon_b64 else None,
         )
         session.add(character)
         session.flush()
@@ -96,6 +98,8 @@ def get_character_by_name(chat_id: str, name: str) -> Optional[Character]:
 
 def update_character_image(character_id: int, imageb64: str) -> bool:
     """Update a character's image and regenerate the slot icon when possible."""
+    import base64
+
     slot_icon_b64 = _generate_slot_icon(imageb64)
 
     with get_session(commit=True) as session:
@@ -103,9 +107,9 @@ def update_character_image(character_id: int, imageb64: str) -> bool:
         if not character:
             return False
 
-        character.imageb64 = imageb64
+        character.image = base64.b64decode(imageb64)
         if slot_icon_b64:
-            character.slot_iconb64 = slot_icon_b64
+            character.slot_icon = base64.b64decode(slot_icon_b64)
             logger.info("Updated character %s image and regenerated slot icon", character_id)
         else:
             logger.info(

@@ -136,10 +136,10 @@ export const useSlots = (chatId?: string, userId?: number, initData?: string | n
         
         // Convert to symbols and ensure we have at least 3 for the slot machine
         const convertedSymbols: SlotSymbol[] = symbolsData
-          .filter(item => item.slot_iconb64) // Only use items with icons
+          .filter(item => item.slot_icon_b64) // Only use items with icons
           .map(item => ({
             id: item.id,
-            iconb64: item.slot_iconb64 || undefined,
+            iconb64: item.slot_icon_b64 || undefined,
             displayName: item.display_name || `${item.type} ${item.id}`,
             type: item.type
           }));

@@ -49,10 +49,9 @@ SERVER_SECRET = os.getenv("SERVER_SECRET", "")
 # Database configuration
 DB_POOL_SIZE = int(os.getenv("DB_CONNECTION_POOL_SIZE", "6"))
 DB_TIMEOUT_SECONDS = int(os.getenv("DB_CONNECTION_TIMEOUT_SECONDS", "30"))
-DB_BUSY_TIMEOUT_MS = int(os.getenv("DB_BUSY_TIMEOUT_MS", "5000"))
 
 # Initialize utilities with configuration
-database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS, DB_BUSY_TIMEOUT_MS)
+database.initialize_database(DB_POOL_SIZE, DB_TIMEOUT_SECONDS)
 minesweeper.set_debug_mode(DEBUG_MODE)
 rtb.set_debug_mode(DEBUG_MODE)
 

@@ -14,7 +14,7 @@ import rtbCover from '@/assets/casino/rtb_cover.webp';
 interface SlotSymbol {
   id: number;
   display_name?: string | null;
-  slot_iconb64?: string | null;
+  slot_icon_b64?: string | null;
   type: 'user' | 'character' | 'claim';
 }
 

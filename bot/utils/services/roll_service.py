@@ -32,7 +32,7 @@ def get_last_roll_time(user_id: int, chat_id: str) -> Optional[datetime.datetime
             .first()
         )
         if roll and roll.last_roll_timestamp:
-            dt = datetime.datetime.fromisoformat(roll.last_roll_timestamp)
+            dt = roll.last_roll_timestamp
             # If the datetime is naive, assume it's UTC
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
@@ -52,7 +52,7 @@ def can_roll(user_id: int, chat_id: str) -> bool:
 
 def record_roll(user_id: int, chat_id: str) -> None:
     """Record a user's roll timestamp for a specific chat."""
-    now = datetime.datetime.now(timezone.utc).isoformat()
+    now = datetime.datetime.now(timezone.utc)
     with get_session(commit=True) as session:
         roll = (
             session.query(UserRollModel)

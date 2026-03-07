@@ -71,7 +71,7 @@ async def get_user_profile(
             user_id=user.user_id,
             username=user.username,
             display_name=user.display_name,
-            profile_imageb64=user.profile_imageb64,
+            profile_image_b64=user.profile_image_b64,
             claim_balance=claim_balance,
             spin_balance=spin_balance,
             card_count=card_count,

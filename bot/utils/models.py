@@ -1,7 +1,7 @@
 """SQLAlchemy ORM models for the gacha bot database.
 
 This module defines all database tables using SQLAlchemy declarative ORM.
-Each model corresponds to a table in the SQLite database.
+Each model corresponds to a table in the PostgreSQL database.
 """
 
 from __future__ import annotations
@@ -12,16 +12,18 @@ from typing import Optional, List, TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
-    Column,
+    BigInteger,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
-    Integer,
+    LargeBinary,
     String,
     Text,
-    event,
+    func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 if TYPE_CHECKING:
@@ -39,24 +41,28 @@ class CardModel(Base):
 
     __tablename__ = "cards"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     base_name: Mapped[str] = mapped_column(Text, nullable=False)
     modifier: Mapped[str] = mapped_column(Text, nullable=False)
     rarity: Mapped[str] = mapped_column(Text, nullable=False)
     owner: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    user_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     file_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     chat_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    created_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     source_type: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    set_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    season_id: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    source_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    set_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    season_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
     modifier_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("modifiers.id"), nullable=True
+        BigInteger, ForeignKey("modifiers.id"), nullable=True
     )
-    updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     # Relationship to card images (one-to-one)
@@ -124,11 +130,13 @@ class CardImageModel(Base):
     __tablename__ = "card_images"
 
     card_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True
+        BigInteger, ForeignKey("cards.id", ondelete="CASCADE"), primary_key=True
     )
-    image_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_thumb_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    image_updated_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    thumbnail: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    image_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationship back to card
     card: Mapped["CardModel"] = relationship("CardModel", back_populates="image")
@@ -141,11 +149,11 @@ class UserModel(Base):
 
     __tablename__ = "users"
 
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     display_name: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    profile_imageb64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    slot_iconb64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    profile_image: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    slot_icon: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
 
     # Relationship to chat memberships
     chat_memberships: Mapped[List["ChatModel"]] = relationship(
@@ -159,7 +167,7 @@ class ChatModel(Base):
     __tablename__ = "chats"
 
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.user_id"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.user_id"), primary_key=True)
 
     # Relationship to user
     user: Mapped["UserModel"] = relationship("UserModel", back_populates="chat_memberships")
@@ -170,9 +178,9 @@ class ClaimModel(Base):
 
     __tablename__ = "claims"
 
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    balance: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    balance: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
 
 
 class UserRollModel(Base):
@@ -180,9 +188,11 @@ class UserRollModel(Base):
 
     __tablename__ = "user_rolls"
 
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    last_roll_timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    last_roll_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
 
 class RolledCardModel(Base):
@@ -190,11 +200,11 @@ class RolledCardModel(Base):
 
     __tablename__ = "rolled_cards"
 
-    roll_id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    original_card_id: Mapped[int] = mapped_column(Integer, nullable=False, unique=True)
-    rerolled_card_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
-    original_roller_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    roll_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    original_card_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    rerolled_card_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    original_roller_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     being_rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     attempted_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -221,11 +231,11 @@ class CharacterModel(Base):
 
     __tablename__ = "characters"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     chat_id: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    imageb64: Mapped[str] = mapped_column(Text, nullable=False)
-    slot_iconb64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    image: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    slot_icon: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
 
     __table_args__ = (Index("ix_characters_chat_id", "chat_id"),)
 
@@ -235,11 +245,11 @@ class SpinsModel(Base):
 
     __tablename__ = "spins"
 
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    login_streak: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    last_bonus_date: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    login_streak: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    last_bonus_date: Mapped[Optional[datetime.date]] = mapped_column(nullable=True)
 
 
 class MegaspinsModel(Base):
@@ -247,9 +257,9 @@ class MegaspinsModel(Base):
 
     __tablename__ = "megaspins"
 
-    user_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    spins_until_megaspin: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    spins_until_megaspin: Mapped[int] = mapped_column(BigInteger, nullable=False, default=100)
     megaspin_available: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
@@ -260,7 +270,7 @@ class ThreadModel(Base):
 
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
     type: Mapped[str] = mapped_column(Text, primary_key=True, default="main")
-    thread_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    thread_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
 class SetModel(Base):
@@ -268,8 +278,8 @@ class SetModel(Base):
 
     __tablename__ = "sets"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    season_id: Mapped[int] = mapped_column(Integer, primary_key=True, default=0)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    season_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=0)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     source: Mapped[str] = mapped_column(Text, nullable=False, default="all")
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
@@ -297,22 +307,26 @@ class MinesweeperGameModel(Base):
 
     __tablename__ = "minesweeper_games"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[str] = mapped_column(String, nullable=False)
-    bet_card_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    bet_card_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     bet_card_title: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     bet_card_rarity: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    mine_positions: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
-    claim_point_positions: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
-    revealed_cells: Mapped[str] = mapped_column(String, nullable=False, default="[]")  # JSON string
+    mine_positions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    claim_point_positions: Mapped[list] = mapped_column(JSONB, nullable=False)
+    revealed_cells: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
-    moves_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    reward_card_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    started_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
-    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    moves_count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    reward_card_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    started_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
     source_type: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    source_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    source_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
 
     __table_args__ = (
         Index("idx_minesweeper_user_chat", "user_id", "chat_id"),
@@ -326,18 +340,22 @@ class RideTheBusGameModel(Base):
 
     __tablename__ = "rtb_games"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[str] = mapped_column(String, nullable=False)
-    bet_amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    card_ids: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
-    card_rarities: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
-    card_titles: Mapped[str] = mapped_column(String, nullable=False)  # JSON string
-    current_position: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
-    current_multiplier: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    bet_amount: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    card_ids: Mapped[list] = mapped_column(JSONB, nullable=False)
+    card_rarities: Mapped[list] = mapped_column(JSONB, nullable=False)
+    card_titles: Mapped[list] = mapped_column(JSONB, nullable=False)
+    current_position: Mapped[int] = mapped_column(BigInteger, nullable=False, default=1)
+    current_multiplier: Mapped[int] = mapped_column(BigInteger, nullable=False, default=2)
     status: Mapped[str] = mapped_column(String, nullable=False, default="active")
-    started_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
-    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    started_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    last_updated_timestamp: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
 
     __table_args__ = (
         Index("idx_rtb_user_chat", "user_id", "chat_id"),
@@ -351,14 +369,14 @@ class EventModel(Base):
 
     __tablename__ = "events"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     event_type: Mapped[str] = mapped_column(Text, nullable=False)
     outcome: Mapped[str] = mapped_column(Text, nullable=False)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[str] = mapped_column(Text, nullable=False)
-    card_id: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
-    payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)  # JSON blob
+    card_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (
         Index("idx_events_type_outcome", "event_type", "outcome"),
@@ -373,12 +391,14 @@ class ModifierModel(Base):
 
     __tablename__ = "modifiers"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    set_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    season_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    set_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    season_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     rarity: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationship to set (composite FK: set_id + season_id)
     modifier_set: Mapped[Optional["SetModel"]] = relationship(
@@ -408,10 +428,10 @@ class AchievementModel(Base):
 
     __tablename__ = "achievements"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    icon_b64: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    icon: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
 
     # Relationship to user achievements
     user_achievements: Mapped[List["UserAchievementModel"]] = relationship(
@@ -424,12 +444,12 @@ class UserAchievementModel(Base):
 
     __tablename__ = "user_achievements"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     achievement_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("achievements.id", ondelete="CASCADE"), nullable=False
+        BigInteger, ForeignKey("achievements.id", ondelete="CASCADE"), nullable=False
     )
-    unlocked_at: Mapped[datetime.datetime] = mapped_column(DateTime, nullable=False)
+    unlocked_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Relationship to achievement
     achievement: Mapped["AchievementModel"] = relationship(
@@ -448,12 +468,12 @@ class ModifierCountModel(Base):
     __tablename__ = "modifier_counts"
 
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
-    season_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    season_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     modifier: Mapped[str] = mapped_column(Text, primary_key=True)
     modifier_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("modifiers.id"), nullable=True
+        BigInteger, ForeignKey("modifiers.id"), nullable=True
     )
-    count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     __table_args__ = (
         Index("idx_modifier_counts_chat_season", "chat_id", "season_id"),
@@ -470,21 +490,12 @@ class AdminUserModel(Base):
 
     __tablename__ = "admin_users"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     username: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    telegram_user_id: Mapped[int] = mapped_column(Integer, nullable=False)
-    created_at: Mapped[str] = mapped_column(Text, nullable=False)
+    telegram_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     otp_code: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    otp_expires_at: Mapped[Optional[float]] = mapped_column(nullable=True)
+    otp_expires_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     __table_args__ = (Index("idx_admin_users_username", "username"),)
-
-
-# Configure SQLite-specific settings via events
-@event.listens_for(Base.metadata, "after_create")
-def set_sqlite_pragma(target, connection, **kw):
-    """Configure SQLite pragmas after table creation."""
-    if connection.dialect.name == "sqlite":
-        connection.execute("PRAGMA foreign_keys=ON")
-        connection.execute("PRAGMA journal_mode=WAL")

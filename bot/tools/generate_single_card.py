@@ -107,7 +107,7 @@ def find_user_by_name(display_name: str):
             session.query(UserModel)
             .filter(
                 func.lower(UserModel.display_name) == func.lower(display_name),
-                UserModel.profile_imageb64.isnot(None),
+                UserModel.profile_image.isnot(None),
             )
             .first()
         )
@@ -177,7 +177,7 @@ def generate_single_card(
             f"Found character: {character.name} (ID: {character.id}, Chat: {character.chat_id})"
         )
         base_name = character.name
-        image_b64 = character.imageb64
+        image_b64 = character.image_b64
         chat_id = character.chat_id
         source_type = "character"
         source_id = character.id
@@ -187,7 +187,7 @@ def generate_single_card(
         if user:
             logger.info(f"Found user: {user.display_name} (ID: {user.user_id})")
             base_name = user.display_name
-            image_b64 = user.profile_imageb64
+            image_b64 = user.profile_image_b64
             source_type = "user"
             source_id = user.user_id
         else:

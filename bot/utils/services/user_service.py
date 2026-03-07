@@ -131,27 +131,35 @@ def upsert_user(
     profile_imageb64: Optional[str] = None,
 ) -> None:
     """Insert or update a user record."""
+    import base64
+
+    profile_image_bytes: Optional[bytes] = None
+    if profile_imageb64 is not None:
+        profile_image_bytes = base64.b64decode(profile_imageb64)
+
     with get_session(commit=True) as session:
         user = session.query(UserModel).filter(UserModel.user_id == user_id).first()
         if user:
             user.username = username
             if display_name is not None:
                 user.display_name = display_name
-            if profile_imageb64 is not None:
-                user.profile_imageb64 = profile_imageb64
+            if profile_image_bytes is not None:
+                user.profile_image = profile_image_bytes
         else:
             user = UserModel(
                 user_id=user_id,
                 username=username,
                 display_name=display_name,
-                profile_imageb64=profile_imageb64,
+                profile_image=profile_image_bytes,
             )
             session.add(user)
 
 
 def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) -> bool:
     """Update the display name and profile image for a user, and generate slot icon."""
-    # Generate slot machine icon
+    import base64
+
+    # Generate slot machine icon (from base64 string)
     slot_icon_b64 = _generate_slot_icon(profile_imageb64)
 
     with get_session(commit=True) as session:
@@ -160,9 +168,9 @@ def update_user_profile(user_id: int, display_name: str, profile_imageb64: str) 
             return False
 
         user.display_name = display_name
-        user.profile_imageb64 = profile_imageb64
+        user.profile_image = base64.b64decode(profile_imageb64)
         if slot_icon_b64:
-            user.slot_iconb64 = slot_icon_b64
+            user.slot_icon = base64.b64decode(slot_icon_b64)
             logger.info(f"Updated user profile and slot icon for user {user_id}")
         else:
             logger.info(f"Updated user profile for user {user_id} (slot icon generation failed)")
@@ -191,8 +199,7 @@ def get_all_chat_users_with_profile(chat_id: str) -> List[User]:
             .join(ChatModel, ChatModel.user_id == UserModel.user_id)
             .filter(
                 ChatModel.chat_id == str(chat_id),
-                UserModel.profile_imageb64.isnot(None),
-                func.trim(UserModel.profile_imageb64) != "",
+                UserModel.profile_image.isnot(None),
                 UserModel.display_name.isnot(None),
                 func.trim(UserModel.display_name) != "",
             )
@@ -209,8 +216,7 @@ def get_random_chat_user_with_profile(chat_id: str) -> Optional[User]:
             .join(ChatModel, ChatModel.user_id == UserModel.user_id)
             .filter(
                 ChatModel.chat_id == str(chat_id),
-                UserModel.profile_imageb64.isnot(None),
-                func.trim(UserModel.profile_imageb64) != "",
+                UserModel.profile_image.isnot(None),
                 UserModel.display_name.isnot(None),
                 func.trim(UserModel.display_name) != "",
             )
@@ -274,14 +280,16 @@ def get_all_chat_users(chat_id: str) -> List[int]:
 
 
 def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
-    """Get all users and characters for a specific chat with id, display_name/name, slot_iconb64, and type."""
+    """Get all users and characters for a specific chat with id, display_name, slot_icon, and type."""
+    import base64
+
     with get_session() as session:
         # Get users
         user_results = (
             session.query(
                 UserModel.user_id.label("id"),
                 UserModel.display_name,
-                UserModel.slot_iconb64,
+                UserModel.slot_icon,
             )
             .join(ChatModel, ChatModel.user_id == UserModel.user_id)
             .filter(ChatModel.chat_id == str(chat_id))
@@ -293,7 +301,7 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
             session.query(
                 CharacterModel.id,
                 CharacterModel.name.label("display_name"),
-                CharacterModel.slot_iconb64,
+                CharacterModel.slot_icon,
             )
             .filter(CharacterModel.chat_id == str(chat_id))
             .all()
@@ -301,20 +309,22 @@ def get_chat_users_and_characters(chat_id: str) -> List[Dict[str, Any]]:
 
     all_items = []
     for row in user_results:
+        slot_icon_b64 = base64.b64encode(row.slot_icon).decode("utf-8") if row.slot_icon else None
         all_items.append(
             {
                 "id": row.id,
                 "display_name": row.display_name,
-                "slot_iconb64": row.slot_iconb64,
+                "slot_icon_b64": slot_icon_b64,
                 "type": "user",
             }
         )
     for row in char_results:
+        slot_icon_b64 = base64.b64encode(row.slot_icon).decode("utf-8") if row.slot_icon else None
         all_items.append(
             {
                 "id": row.id,
                 "display_name": row.display_name,
-                "slot_iconb64": row.slot_iconb64,
+                "slot_icon_b64": slot_icon_b64,
                 "type": "character",
             }
         )
