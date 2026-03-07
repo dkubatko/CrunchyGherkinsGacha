@@ -39,7 +39,7 @@ export interface CardConfigResponse {
 export interface SlotSymbolSummary {
   id: number;
   display_name?: string | null;
-  slot_iconb64?: string | null;
+  slot_icon_b64?: string | null;
   type: 'user' | 'character' | 'claim';
 }
 
@@ -93,7 +93,7 @@ export interface UserProfile {
   user_id: number;
   username: string;
   display_name?: string | null;
-  profile_imageb64?: string | null;
+  profile_image_b64?: string | null;
   claim_balance: number;
   spin_balance: number;
   card_count: number;

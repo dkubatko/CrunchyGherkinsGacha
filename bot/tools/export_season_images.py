@@ -195,8 +195,12 @@ def export_season_images(season_id: int, count: int | None = None) -> None:
             session.query(CardImageModel).filter(CardImageModel.card_id.in_(card_ids)).all()
         )
 
-        # Create lookup dict
-        image_lookup = {img.card_id: img.image_b64 for img in card_images if img.image_b64}
+        # Create lookup dict — image column is now LargeBinary (bytes), encode to b64 for processing
+        image_lookup = {
+            img.card_id: base64.b64encode(img.image).decode("utf-8")
+            for img in card_images
+            if img.image
+        }
 
         logger.info(f"Found {len(image_lookup)} cards with images")
 

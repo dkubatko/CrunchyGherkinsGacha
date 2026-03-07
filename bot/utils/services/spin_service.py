@@ -179,7 +179,7 @@ def get_daily_bonus_status(user_id: int, chat_id: str) -> dict:
             "spins_to_grant": _get_spins_for_streak(new_streak),
         }
 
-    last_date = datetime.date.fromisoformat(spins.last_bonus_date)
+    last_date = spins.last_bonus_date
 
     if last_date >= today_bonus_date:
         # Already claimed today
@@ -237,7 +237,7 @@ def claim_daily_bonus(user_id: int, chat_id: str) -> dict:
                 chat_id=str(chat_id),
                 count=spins_to_grant,
                 login_streak=new_streak,
-                last_bonus_date=today_bonus_date.isoformat(),
+                last_bonus_date=today_bonus_date,
             )
             session.add(spins)
             logger.info(
@@ -265,7 +265,7 @@ def claim_daily_bonus(user_id: int, chat_id: str) -> dict:
 
         # Check if already claimed today
         if spins.last_bonus_date:
-            last_date = datetime.date.fromisoformat(spins.last_bonus_date)
+            last_date = spins.last_bonus_date
             if last_date >= today_bonus_date:
                 return {
                     "success": False,
@@ -286,7 +286,7 @@ def claim_daily_bonus(user_id: int, chat_id: str) -> dict:
         spins_to_grant = _get_spins_for_streak(new_streak)
         spins.count += spins_to_grant
         spins.login_streak = new_streak
-        spins.last_bonus_date = today_bonus_date.isoformat()
+        spins.last_bonus_date = today_bonus_date
 
         logger.info(
             f"Daily bonus: user {user_id} in chat {chat_id} → streak {new_streak}, +{spins_to_grant} spins (total: {spins.count})"

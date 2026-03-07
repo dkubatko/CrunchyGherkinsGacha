@@ -42,7 +42,7 @@ class UserProfileResponse(BaseModel):
     user_id: int
     username: str
     display_name: Optional[str] = None
-    profile_imageb64: Optional[str] = None
+    profile_image_b64: Optional[str] = None
     claim_balance: int
     spin_balance: int
     card_count: int
@@ -135,7 +135,7 @@ class SlotSymbolSummary(BaseModel):
 
     id: int
     display_name: Optional[str] = None
-    slot_iconb64: Optional[str] = None
+    slot_icon_b64: Optional[str] = None
     type: str  # "user", "character", or "claim"
 
 

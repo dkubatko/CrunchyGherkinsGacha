@@ -8,7 +8,6 @@ This module handles:
 """
 
 import base64
-import json
 import logging
 import os
 import random
@@ -39,26 +38,6 @@ def set_debug_mode(debug: bool) -> None:
     """
     global DEBUG_MODE
     DEBUG_MODE = debug
-
-
-def _parse_timestamp(timestamp_str: Optional[str]) -> datetime:
-    """Parse ISO timestamp strings and normalize to UTC-aware datetimes."""
-    if not timestamp_str:
-        return datetime.now(timezone.utc)
-
-    try:
-        parsed = datetime.fromisoformat(timestamp_str)
-    except ValueError:
-        logger.warning(
-            "Failed to parse timestamp '%s', defaulting to current UTC time",
-            timestamp_str,
-        )
-        return datetime.now(timezone.utc)
-
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-
-    return parsed.astimezone(timezone.utc)
 
 
 def get_minesweeper_icons() -> Tuple[Optional[str], Optional[str]]:
@@ -114,12 +93,12 @@ def get_source_icon(source_type: str, source_id: int) -> Optional[str]:
 
     if normalized_type == "user":
         user = user_service.get_user(source_id)
-        if user and user.slot_iconb64:
-            return user.slot_iconb64
+        if user and user.slot_icon_b64:
+            return user.slot_icon_b64
     elif normalized_type == "character":
         character = character_service.get_character_by_id(source_id)
-        if character and character.slot_iconb64:
-            return character.slot_iconb64
+        if character and character.slot_icon_b64:
+            return character.slot_icon_b64
 
     logger.warning(f"No icon found for source {source_type}:{source_id}")
     return None
@@ -275,9 +254,9 @@ def create_game(
             bet_card_id=bet_card_id,
             bet_card_title=bet_card_title,
             bet_card_rarity=bet_card_rarity,
-            mine_positions=json.dumps(mine_positions),
-            claim_point_positions=json.dumps(claim_point_positions),
-            revealed_cells=json.dumps([]),
+            mine_positions=mine_positions,
+            claim_point_positions=claim_point_positions,
+            revealed_cells=[],
             status="active",
             moves_count=0,
             started_timestamp=now,
@@ -436,7 +415,7 @@ def reveal_cell(game_id: int, cell_index: int) -> Optional[MinesweeperGame]:
         )
 
         if game_orm:
-            game_orm.revealed_cells = json.dumps(new_revealed_cells)
+            game_orm.revealed_cells = new_revealed_cells
             game_orm.moves_count = new_moves_count
             game_orm.status = new_status
             game_orm.last_updated_timestamp = now

@@ -32,9 +32,9 @@ const ProfileView = ({ profile, loading, error }: ProfileViewProps) => {
   return (
     <div className="profile-view">
       <div className="profile-header">
-        {profile.profile_imageb64 ? (
+        {profile.profile_image_b64 ? (
           <img 
-            src={`data:image/png;base64,${profile.profile_imageb64}`} 
+            src={`data:image/png;base64,${profile.profile_image_b64}`} 
             alt={profile.display_name || profile.username} 
             className="profile-avatar"
           />

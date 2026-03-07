@@ -165,5 +165,8 @@ bot/data/cards/
 *.db-wal
 *.db-shm
 
+# Claude Code
+.claude/
+
 # Exceptions for miniapp
 !/miniapp/src/lib/

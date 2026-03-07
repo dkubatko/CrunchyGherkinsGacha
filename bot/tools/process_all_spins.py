@@ -149,7 +149,7 @@ def get_eligible_sources(chat_id: str) -> List[dict]:
     """Get all eligible sources (users and characters) for a chat."""
     sources = user_service.get_chat_users_and_characters(chat_id)
     # Filter out sources without slot icons (they can't be used in slots)
-    return [s for s in sources if s.get("slot_iconb64")]
+    return [s for s in sources if s.get("slot_icon_b64")]
 
 
 def simulate_spin(

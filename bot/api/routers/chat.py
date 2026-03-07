@@ -54,7 +54,7 @@ async def get_slot_symbols_endpoint(
             claim_symbol = {
                 "id": -1,
                 "display_name": "Claim",
-                "slot_iconb64": claim_icon_b64,
+                "slot_icon_b64": claim_icon_b64,
                 "type": "claim",
             }
             data.append(claim_symbol)
