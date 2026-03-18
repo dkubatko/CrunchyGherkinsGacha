@@ -26,6 +26,7 @@ from utils.services.card_service import (
     get_card_image,
     get_card_images_batch,
     get_card_thumbnail,
+    get_card_with_aspects,
     get_chat_card_rarity_counts,
     get_modifier_counts_for_chat,
     get_random_card_summaries,
@@ -102,6 +103,22 @@ from utils.services.rolled_card_service import (
     update_rolled_card_attempted_by,
 )
 
+from utils.services import aspect_service
+
+from utils.services.rolled_aspect_service import (
+    create_rolled_aspect,
+    delete_rolled_aspect,
+    get_rolled_aspect_by_aspect_id,
+    get_rolled_aspect_by_roll_id,
+    is_rolled_aspect_reroll_expired,
+    set_rolled_aspect_being_rerolled,
+    set_rolled_aspect_locked,
+    set_rolled_aspect_rerolled,
+    update_rolled_aspect_attempted_by,
+)
+
+from utils.services import trade_service
+
 from utils.services.thread_service import (
     clear_thread_ids,
     get_thread_id,
@@ -172,6 +189,7 @@ __all__ = [
     "get_card_image",
     "get_card_images_batch",
     "get_card_thumbnail",
+    "get_card_with_aspects",
     "get_chat_card_rarity_counts",
     "get_modifier_counts_for_chat",
     "get_random_card_summaries",
@@ -236,6 +254,20 @@ __all__ = [
     "set_rolled_card_locked",
     "set_rolled_card_rerolled",
     "update_rolled_card_attempted_by",
+    # Rolled aspect service
+    "create_rolled_aspect",
+    "delete_rolled_aspect",
+    "get_rolled_aspect_by_aspect_id",
+    "get_rolled_aspect_by_roll_id",
+    "is_rolled_aspect_reroll_expired",
+    "set_rolled_aspect_being_rerolled",
+    "set_rolled_aspect_locked",
+    "set_rolled_aspect_rerolled",
+    "update_rolled_aspect_attempted_by",
+    # Aspect service
+    "aspect_service",
+    # Trade service
+    "trade_service",
     # Thread service
     "clear_thread_ids",
     "get_thread_id",

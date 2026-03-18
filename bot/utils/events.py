@@ -44,6 +44,7 @@ class EventType(str, Enum):
     MINESWEEPER = "MINESWEEPER"
     RTB = "RTB"
     DAILY_BONUS = "DAILY_BONUS"
+    EQUIP = "EQUIP"
 
 
 # --- Outcome enums per event type ---
@@ -176,6 +177,13 @@ class DailyBonusOutcome(str, Enum):
     CLAIMED = "CLAIMED"
 
 
+class EquipOutcome(str, Enum):
+    """Outcomes for EQUIP events (equipping an aspect onto a card)."""
+
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+
+
 # --- Validation mapping ---
 
 VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
@@ -194,6 +202,7 @@ VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
     EventType.MINESWEEPER: MinesweeperOutcome,
     EventType.RTB: RtbOutcome,
     EventType.DAILY_BONUS: DailyBonusOutcome,
+    EventType.EQUIP: EquipOutcome,
 }
 
 

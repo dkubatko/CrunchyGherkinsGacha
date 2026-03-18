@@ -16,7 +16,7 @@ from sqlalchemy.orm import joinedload, noload
 
 from settings.constants import CURRENT_SEASON
 from utils.image import ImageUtil
-from utils.models import CardImageModel, CardModel
+from utils.models import CardImageModel, CardModel, ClaimModel, CardAspectModel, OwnedAspectModel
 from utils.schemas import Card, CardWithImage
 from utils.session import get_session
 
@@ -140,8 +140,21 @@ def add_card_from_generated(generated_card, chat_id: Optional[str]) -> int:
     )
 
 
-def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> bool:
-    """Attempt to claim a card for a user without touching claim balances.
+def try_claim_card(
+    card_id: int,
+    owner: str,
+    user_id: Optional[int] = None,
+    chat_id: Optional[str] = None,
+    claim_cost: Optional[int] = None,
+) -> bool:
+    """Atomically claim a card: row-lock, validate, deduct claim points,
+    and assign ownership in a single transaction.
+
+    When ``chat_id`` and ``claim_cost`` are provided the claim-point
+    deduction happens inside the same transaction (no race window).
+    If they are omitted the function behaves like a simple ownership
+    assignment (backward-compatible with callers that handle balance
+    externally).
 
     Only works for cards in the current season.
     """
@@ -153,11 +166,38 @@ def try_claim_card(card_id: int, owner: str, user_id: Optional[int] = None) -> b
                 CardModel.owner.is_(None),
                 CardModel.season_id == CURRENT_SEASON,
             )
+            .with_for_update()
             .first()
         )
 
         if card is None:
             return False
+
+        # If claim cost info provided, deduct in same transaction
+        if (
+            chat_id is not None
+            and claim_cost is not None
+            and claim_cost > 0
+            and user_id is not None
+        ):
+            claim = (
+                session.query(ClaimModel)
+                .filter(
+                    ClaimModel.user_id == user_id,
+                    ClaimModel.chat_id == str(chat_id),
+                )
+                .with_for_update()
+                .first()
+            )
+            if claim is None:
+                claim = ClaimModel(user_id=user_id, chat_id=str(chat_id), balance=1)
+                session.add(claim)
+                session.flush()
+
+            if claim.balance < claim_cost:
+                return False
+
+            claim.balance -= claim_cost
 
         card.owner = owner
         if user_id is not None:
@@ -361,6 +401,32 @@ def get_card(card_id: int) -> Optional[CardWithImage]:
         card_orm = (
             session.query(CardModel)
             .options(joinedload(CardModel.image), joinedload(CardModel.card_set))
+            .filter(
+                CardModel.id == card_id,
+                CardModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if card_orm is None:
+            return None
+        return CardWithImage.from_orm(card_orm)
+
+
+def get_card_with_aspects(card_id: int) -> Optional[CardWithImage]:
+    """Get a card by its ID with equipped aspects eagerly loaded.
+
+    Only returns cards from the current season.
+    """
+    with get_session() as session:
+        card_orm = (
+            session.query(CardModel)
+            .options(
+                joinedload(CardModel.image),
+                joinedload(CardModel.card_set),
+                joinedload(CardModel.equipped_aspects)
+                .joinedload(CardAspectModel.aspect)
+                .joinedload(OwnedAspectModel.aspect_definition),
+            )
             .filter(
                 CardModel.id == card_id,
                 CardModel.season_id == CURRENT_SEASON,
