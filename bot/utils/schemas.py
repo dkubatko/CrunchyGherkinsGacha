@@ -134,6 +134,12 @@ class Card(BaseModel):
     def from_orm(cls, card_orm) -> "Card":
         """Convert a CardModel ORM object to a Card schema."""
         set_name = card_orm.card_set.name if card_orm.card_set else None
+
+        # Populate equipped_aspects when eagerly loaded
+        equipped_aspects = []
+        if hasattr(card_orm, "equipped_aspects") and card_orm.equipped_aspects:
+            equipped_aspects = [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -153,6 +159,7 @@ class Card(BaseModel):
             updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
             description=card_orm.description,
             aspect_count=card_orm.aspect_count,
+            equipped_aspects=equipped_aspects,
         )
 
 
@@ -173,6 +180,12 @@ class CardWithImage(Card):
         image_bytes = card_orm.image.image if card_orm.image else None
         image_b64 = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else ""
         set_name = card_orm.card_set.name if card_orm.card_set else None
+
+        # Populate equipped_aspects when eagerly loaded
+        equipped_aspects = []
+        if hasattr(card_orm, "equipped_aspects") and card_orm.equipped_aspects:
+            equipped_aspects = [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+
         return cls(
             id=card_orm.id,
             base_name=card_orm.base_name,
@@ -193,6 +206,7 @@ class CardWithImage(Card):
             updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
             description=card_orm.description,
             aspect_count=card_orm.aspect_count,
+            equipped_aspects=equipped_aspects,
         )
 
 

@@ -18,7 +18,7 @@ from settings.constants import (
     TRADE_REJECTED_MESSAGE,
     TRADE_CANCELLED_MESSAGE,
 )
-from utils.services import card_service, event_service
+from utils.services import card_service, event_service, trade_service
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.miniapp import encode_single_card_token
@@ -245,7 +245,7 @@ async def accept_trade(
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(card_service.swap_card_owners, card_id1, card_id2)
+    success = await asyncio.to_thread(trade_service.trade_cards, card_id1, card_id2)
 
     chat_id_str = str(query.message.chat_id)
 
@@ -277,7 +277,7 @@ async def accept_trade(
             card_id=card_id2,
             target_card_id=card_id1,
             target_user=user1_username,
-            error_message="swap_card_owners failed",
+            error_message="trade_cards failed",
         )
 
     # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)

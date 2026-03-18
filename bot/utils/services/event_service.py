@@ -101,6 +101,7 @@ def log(
     user_id: int,
     chat_id: str,
     card_id: Optional[int] = None,
+    aspect_id: Optional[int] = None,
     **payload: Any,
 ) -> Optional[Event]:
     """
@@ -112,6 +113,7 @@ def log(
         user_id: The user who triggered the event.
         chat_id: The chat where the event occurred.
         card_id: Optional card ID associated with the event.
+        aspect_id: Optional aspect ID associated with the event.
         **payload: Additional event-specific data (stored as JSON).
 
     Returns:
@@ -154,6 +156,7 @@ def log(
                 user_id=user_id,
                 chat_id=str(chat_id),
                 card_id=card_id,
+                aspect_id=aspect_id,
                 timestamp=timestamp,
                 payload=payload_data,
             )
@@ -168,6 +171,7 @@ def log(
                 user_id=event_model.user_id,
                 chat_id=event_model.chat_id,
                 card_id=event_model.card_id,
+                aspect_id=event_model.aspect_id,
                 timestamp=timestamp,
                 payload=payload if payload else None,
             )
@@ -176,12 +180,13 @@ def log(
         _notify_observers(event)
 
         logger.debug(
-            "Event logged: %s.%s user=%s chat=%s card=%s",
+            "Event logged: %s.%s user=%s chat=%s card=%s aspect=%s",
             event_type.value,
             outcome.value,
             user_id,
             chat_id,
             card_id,
+            aspect_id,
         )
 
         return event
