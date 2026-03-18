@@ -33,7 +33,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from settings.constants import CURRENT_SEASON
-from utils.models import CardModel, ModifierCountModel, ModifierModel, SetModel
+from utils.models import CardModel, ModifierModel, SetModel
 from utils.schemas import Modifier
 from utils.session import get_session
 

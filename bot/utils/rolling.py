@@ -10,7 +10,7 @@ from utils.services import (
     character_service,
     user_service,
     set_service,
-    modifier_count_service,
+    aspect_count_service,
     modifier_service,
 )
 from utils.schemas import Card, Character, Modifier, User
@@ -186,7 +186,7 @@ def _choose_modifier_for_rarity(
         return chosen, 1.0
 
     # Get modifier usage counts for this chat from events (all cards ever rolled)
-    modifier_counts = modifier_count_service.get_counts(chat_id)
+    modifier_counts = aspect_count_service.get_counts(chat_id)
 
     # Get unique modifiers to exclude
     unique_modifiers = set(card_service.get_unique_modifiers(chat_id))

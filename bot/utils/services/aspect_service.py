@@ -9,23 +9,92 @@ from __future__ import annotations
 
 import datetime
 import logging
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from sqlalchemy.orm import joinedload
 
 from settings.constants import CURRENT_SEASON, RARITY_ORDER, get_claim_cost, get_spin_reward
 from utils.events import EquipOutcome, EventType
 from utils.models import (
+    AspectDefinitionModel,
     AspectImageModel,
     CardAspectModel,
     CardModel,
     ClaimModel,
     OwnedAspectModel,
+    SetModel,
 )
-from utils.schemas import CardAspect, OwnedAspect, OwnedAspectWithImage
+from utils.schemas import AspectDefinition, CardAspect, OwnedAspect, OwnedAspectWithImage
 from utils.session import get_session
 
 logger = logging.getLogger(__name__)
+
+# Canonical rarity order for grouping output
+_RARITY_ORDER = ("Common", "Rare", "Epic", "Legendary")
+
+
+# ---------------------------------------------------------------------------
+# Aspect definition queries
+# ---------------------------------------------------------------------------
+
+
+def get_aspect_definitions_by_rarity(
+    season_id: Optional[int] = None,
+    source: Optional[str] = None,
+    active_only: bool = True,
+) -> Dict[str, List[AspectDefinition]]:
+    """Return aspect definitions grouped by rarity for the given season.
+
+    Mirrors ``modifier_service.get_modifiers_by_rarity()`` but queries
+    ``AspectDefinitionModel`` instead of ``ModifierModel``.
+
+    Args:
+        season_id: Season to query. Defaults to ``CURRENT_SEASON``.
+        source: Optional source filter (``"roll"``, ``"slots"``).
+                Sets with ``source="all"`` always qualify.
+        active_only: If True (default), only include definitions from
+                     active sets.
+
+    Returns:
+        Ordered dict mapping rarity name → list of ``AspectDefinition``.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    with get_session() as session:
+        query = (
+            session.query(AspectDefinitionModel)
+            .join(
+                SetModel,
+                (AspectDefinitionModel.set_id == SetModel.id)
+                & (AspectDefinitionModel.season_id == SetModel.season_id),
+            )
+            .filter(AspectDefinitionModel.season_id == season_id)
+        )
+
+        if active_only:
+            query = query.filter(SetModel.active.is_(True))
+
+        if source is not None:
+            query = query.filter((SetModel.source == "all") | (SetModel.source == source))
+
+        query = query.order_by(AspectDefinitionModel.name)
+        rows = query.all()
+
+        # Build grouped result
+        grouped: Dict[str, List[AspectDefinition]] = {}
+        for ad in rows:
+            entry = AspectDefinition.from_orm(ad)
+            grouped.setdefault(ad.rarity, []).append(entry)
+
+    # Order by canonical rarity, then any extras alphabetically
+    ordered: Dict[str, List[AspectDefinition]] = {}
+    for rarity in _RARITY_ORDER:
+        ordered[rarity] = grouped.pop(rarity, [])
+    for rarity in sorted(grouped):
+        ordered[rarity] = grouped[rarity]
+
+    return ordered
 
 
 # ---------------------------------------------------------------------------
