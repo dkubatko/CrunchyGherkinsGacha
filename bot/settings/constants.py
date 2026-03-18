@@ -191,6 +191,177 @@ Create a casino slot machine icon featuring the person's portrait.
 - Output MUST be exactly 1:1 square aspect ratio
 """
 
+# ---------------------------------------------------------------------------
+# Aspect & base-card generation prompts (Step 3 — Aspect-based crafting)
+# ---------------------------------------------------------------------------
+
+ASPECT_GENERATION_PROMPT = """
+**Generate a 1:1 square aspect ratio collectible "aspect sphere" image using the provided snow globe sphere template as layout reference.**
+
+**--- Concept ---**
+The sphere represents the thematic aspect "{aspect_name}".{set_context}
+Your task is to transform the plain glass sphere template into a richly themed, visually striking sphere that embodies the concept of "{aspect_name}".
+
+**1. Sphere Styling:**
+- The output MUST be a single spherical object on a transparent or very simple background.
+- The sphere's interior should be filled with a miniature scene, pattern, or visual motif that directly represents "{aspect_name}".
+- The sphere's glass surface should show reflections, refractions, and lighting effects appropriate to the theme.
+- The base/pedestal of the sphere should be styled to match the theme.
+
+**2. Thematic Interpretation:**
+- **Literal Interpretation:** The visual content inside the sphere MUST be a direct, creative interpretation of "{aspect_name}".
+- **AVOID THEME DEFAULTS:** Do NOT default to generic fantasy, magic, or sci-fi unless the aspect name explicitly calls for it.
+- **Current-Day Grounding:** If "{aspect_name}" is abstract, ground the visual interpretation in a contemporary, real-world context.
+
+**3. Visual Quality:**
+- High-quality, detailed digital illustration style.
+- Rich colors and fine details visible even at small sizes.
+- The sphere should look like a premium collectible item — polished, luminous, and desirable.
+- Do NOT include any text, labels, or lettering anywhere in the image.
+
+**4. Output Constraints:**
+- Output MUST be exactly 1:1 square aspect ratio.
+- The sphere should be centered and fill roughly 80-90% of the image area.
+- Minimal or transparent background — the sphere is the sole subject.
+
+**5. Creativity Factor: {creativeness_factor}/100**
+- Low (10/100): Clean, simple sphere with a straightforward visual inside.
+- Medium (50/100): Detailed scene inside the sphere with thematic surface effects.
+- High (90/100): Spectacular, intricate miniature world inside the sphere with complex lighting, depth, and mesmerizing details.
+"""
+
+ASPECT_SET_CONTEXT = """\n- This aspect belongs to the themed set {set_details}. Interpret the aspect name within that broader thematic context."""
+
+BASE_CARD_GENERATION_PROMPT = """
+**Generate a 5:7 aspect ratio detailed collectible trading card using the provided template image as layout reference, and the character image as the subject of the illustration.**
+
+**--- Guiding Principles ---**
+You must achieve the following goals:
+1. **Character Portrait:** The card must be a high-quality character portrait of "{name}".
+2. **Character Recognition:** The person or character depicted on the card must remain clearly and unmistakably recognizable from the input photo.
+
+**1. Art Style & Theme:**
+- The overall style should be a high-quality, detailed digital illustration.
+- There is NO thematic modification — this is a clean, unmodified base character card.
+- The background should be a simple, elegant setting that complements the character without overwhelming them.
+
+**2. Card Transformation & Layout:**
+- **Main Artwork:** The main area of the template should contain the character and a clean, complementary background. This artwork must fill the entire area within the border of the card.
+- **Layering:** The styled nameplate must be a standalone, opaque "floating" piece layered on top of the main artwork, **disconnected** from the border of the card.
+- **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
+
+**3. Character Likeness:**
+- **Recognizability Anchor:** The character's **unique identifying facial features** and overall appearance must remain recognizable.
+- **Art Style:** Stylize & render the character in a polished digital illustration style. Do NOT re-use or lightly filter the original photo.
+
+**4. Card Border Styling:**
+- The card border **MUST** be positioned EXACTLY around the edge of the card, flush with the outer perimeter of the image.
+- The border should have elegant, understated styling — clean and refined without heavy thematic elements.
+- The border should take no more than 10% of the total card area.
+
+**5. Nameplate & Text Styling:**
+- The nameplate should display only the character name "{name}".
+- The nameplate should be clean, elegant, and readable.
+- Size: no more than 15% of the total card area.
+- Placement: horizontally centered within the nameplate, fitting in one line.
+- **DO NOT** include any other text anywhere on the card.
+
+**6. Rarity Color Application:**
+- The card's border and nameplate **MUST** use a {color} color palette to indicate card rarity.
+- This color restriction applies **ONLY to the border and the nameplate**.
+- The main artwork and character use any colors that best represent the subject.
+
+**7. Creativity Factor: {creativeness_factor}/100**
+- Controls the visual complexity of border and nameplate styling.
+- Low: Simple, clean design. Medium: Refined details. High: Sophisticated, intricate design work.
+"""
+
+EQUIP_GENERATION_PROMPT = """
+**Transform the provided trading card image by applying a new thematic aspect to it.**
+
+**--- Context ---**
+The card currently depicts a character. You are applying thematic aspects to visually transform the card.
+- **Card name:** "{card_name}"
+- **Previously applied aspects:** {existing_aspects}
+- **New aspect to apply now:** "{new_aspect_name}" (see the sphere image provided for this aspect)
+
+**--- Guiding Principles ---**
+1. **Thematic Fusion:** The card's artwork must evolve to incorporate the new aspect "{new_aspect_name}" while preserving any previously applied aspect themes.
+2. **Character Recognition:** The character on the card must remain clearly recognizable throughout the transformation.
+3. **Cumulative Transformation:** Each aspect adds a new visual layer. The result should feel like a natural blend of ALL applied aspects, not just the latest one.
+
+**1. Transformation Rules:**
+- Study the provided card image carefully — it is your starting point.
+- Integrate the theme of "{new_aspect_name}" into the card's artwork: background, character styling, lighting, atmosphere, and decorative elements.
+- If previous aspects are listed, their visual influence should still be visible in the result.
+- The sphere image for the new aspect shows the thematic visual — use it as inspiration for HOW to apply the theme.
+
+**2. Card Layout (MUST preserve):**
+- **5:7 aspect ratio** — match the input card's dimensions exactly.
+- **Border and nameplate** must remain present and styled consistently with the card's rarity.
+- **Nameplate text** must read "{card_name}".
+- **DO NOT** add any other text.
+
+**3. Character Likeness:**
+- The character's identifying facial features must remain recognizable.
+- Stylize the character to fit the combined themes, but do NOT make them unrecognizable.
+
+**4. Rarity Color:**
+- Border and nameplate use a {color} color palette (rarity indicator).
+- Main artwork is NOT constrained by this color.
+
+**5. Creativity Factor: {creativeness_factor}/100**
+- Controls how dramatically the aspect transforms the card.
+- Low: Subtle thematic additions. Medium: Clear thematic influence throughout. High: Bold, striking transformation that deeply integrates the new aspect.
+"""
+
+REFRESH_EQUIPPED_PROMPT = """
+**Generate a completely fresh 5:7 aspect ratio collectible trading card using the provided template image as layout reference, the character image as the subject, and the provided aspect sphere images as thematic guides.**
+
+**--- Context ---**
+This is a full regeneration (refresh) of an existing card. Generate a brand new image from scratch — do NOT try to match or iterate on any previous version.
+- **Card name:** "{card_name}"
+- **Equipped aspects:** {aspects}
+
+**--- Guiding Principles ---**
+1. **Thematic Fusion:** The card must visually blend ALL listed aspects into a cohesive themed card.
+2. **Character Recognition:** The person depicted must remain clearly recognizable from the character image.
+3. **Fresh Interpretation:** Create a completely new composition — different pose, background, lighting, and artistic choices from any previous version.
+
+**1. Art Style & Theme:**
+- High-quality, detailed digital illustration.
+- The visual theme must be a creative fusion of ALL equipped aspects: {aspects}.
+- Each aspect's sphere image shows its thematic visual — use them as inspiration.
+- The aspects should blend naturally rather than appearing as separate, disconnected elements.
+
+**2. Card Layout:**
+- **Main Artwork:** Character and richly detailed themed background filling the entire area within the border.
+- **Layering:** Styled nameplate as a standalone, opaque "floating" piece on top of the artwork.
+- **Final Frame:** Must retain exact edge-to-edge dimensions of the template. No added padding.
+
+**3. Character Likeness & Modification:**
+- Create a visual hybrid blending the character with the combined aspect themes.
+- The character's unique identifying facial features must remain recognizable.
+- Stylize & render — do NOT reuse or lightly filter the original photo.
+- Push the thematic interpretation to its most evocative and visually striking form.
+
+**4. Card Border Styling:**
+- Themed border styled with details matching the combined aspect themes.
+- Positioned flush with the outer perimeter. No more than 10% of total card area.
+
+**5. Nameplate & Text:**
+- Nameplate displays "{card_name}" — styled to match the card's theme.
+- No more than 15% of total card area. Centered, one line.
+- **DO NOT** include any other text.
+
+**6. Rarity Color:**
+- Border and nameplate use a {color} color palette.
+- Main artwork is NOT constrained by this color.
+
+**7. Creativity Factor: {creativeness_factor}/100**
+- Low: Clean design with aspect themes lightly applied. Medium: Balanced thematic detail. High: Spectacular, intricate fusion of all aspects with complex effects.
+"""
+
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
