@@ -103,14 +103,14 @@ app.include_router(admin_modifiers_router)
 async def startup_event():
     """Initialize services on API startup."""
     from utils.achievements import init_achievements, ensure_achievements_registered
-    from utils.modifiers import init_modifier_count_listener
+    from utils.aspect_counts import init_aspect_count_listener
 
     init_achievements()
     ensure_achievements_registered()
     logger.info("Achievement system initialized for API")
 
-    init_modifier_count_listener()
-    logger.info("Modifier count listener initialized for API")
+    init_aspect_count_listener()
+    logger.info("Aspect count listener initialized for API")
 
 
 def run_server():

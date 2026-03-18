@@ -581,9 +581,7 @@ class CardAspectModel(Base):
         BigInteger, ForeignKey("owned_aspects.id"), nullable=False
     )
     order: Mapped[int] = mapped_column(Integer, nullable=False)
-    equipped_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    equipped_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     # Relationships
     card: Mapped["CardModel"] = relationship("CardModel", back_populates="equipped_aspects")
@@ -592,7 +590,7 @@ class CardAspectModel(Base):
     __table_args__ = (
         UniqueConstraint("aspect_id", name="uq_card_aspects_aspect_id"),
         UniqueConstraint("card_id", "order", name="uq_card_aspects_card_order"),
-        CheckConstraint("\"order\" BETWEEN 1 AND 5", name="ck_card_aspects_order_range"),
+        CheckConstraint('"order" BETWEEN 1 AND 5', name="ck_card_aspects_order_range"),
         Index("idx_card_aspects_card_id_order", "card_id", "order"),
     )
 
@@ -617,9 +615,7 @@ class RolledAspectModel(Base):
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     original_rarity: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    __table_args__ = (
-        Index("ix_rolled_aspects_original_roller_id", "original_roller_id"),
-    )
+    __table_args__ = (Index("ix_rolled_aspects_original_roller_id", "original_roller_id"),)
 
     @property
     def current_aspect_id(self) -> int:
@@ -673,22 +669,22 @@ class UserAchievementModel(Base):
     )
 
 
-class ModifierCountModel(Base):
-    """Tracks modifier frequency per chat per season for efficient lookup."""
+class AspectCountModel(Base):
+    """Tracks aspect-definition frequency per chat per season."""
 
-    __tablename__ = "modifier_counts"
+    __tablename__ = "aspect_counts"
 
     chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
     season_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    modifier: Mapped[str] = mapped_column(Text, primary_key=True)
-    modifier_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("modifiers.id"), nullable=True
+    name: Mapped[str] = mapped_column(Text, primary_key=True)
+    definition_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("aspect_definitions.id"), nullable=True
     )
     count: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
 
     __table_args__ = (
-        Index("idx_modifier_counts_chat_season", "chat_id", "season_id"),
-        Index("idx_modifier_counts_modifier_id", "modifier_id"),
+        Index("idx_aspect_counts_chat_season", "chat_id", "season_id"),
+        Index("idx_aspect_counts_definition_id", "definition_id"),
     )
 
 

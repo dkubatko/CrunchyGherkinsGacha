@@ -1,8 +1,8 @@
-"""Backfill modifier_counts table from existing cards.
+"""Backfill aspect_counts table from existing cards.
 
-This script populates the modifier_counts table by aggregating modifier usage
-from all existing cards in the database. Run this once after creating the
-modifier_counts table to initialize historical data.
+This script populates the aspect_counts table by aggregating modifier/aspect
+usage from all existing cards in the database. Run this once after creating
+the aspect_counts table to initialize historical data.
 
 Usage:
     python tools/backfill_modifier_counts.py
@@ -30,17 +30,17 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 from sqlalchemy import func  # noqa: E402
 from utils.session import get_session  # noqa: E402
-from utils.models import CardModel, ModifierCountModel  # noqa: E402
+from utils.models import CardModel, AspectCountModel  # noqa: E402
 
 
-def backfill_modifier_counts(dry_run: bool = False) -> None:
+def backfill_aspect_counts(dry_run: bool = False) -> None:
     """
-    Backfill modifier_counts table from existing cards.
+    Backfill aspect_counts table from existing cards.
 
     Args:
         dry_run: If True, print what would be done without making changes.
     """
-    print("Querying cards for modifier counts...")
+    print("Querying cards for aspect counts...")
 
     with get_session() as session:
         # Aggregate cards by (chat_id, season_id, modifier)
@@ -76,24 +76,24 @@ def backfill_modifier_counts(dry_run: bool = False) -> None:
         return
 
     # Clear existing counts and insert fresh data
-    print("Clearing existing modifier_counts...")
+    print("Clearing existing aspect_counts...")
     with get_session(commit=True) as session:
-        session.query(ModifierCountModel).delete()
+        session.query(AspectCountModel).delete()
 
-    print("Inserting new modifier counts...")
+    print("Inserting new aspect counts...")
     inserted = 0
     with get_session(commit=True) as session:
         for row in results:
-            record = ModifierCountModel(
+            record = AspectCountModel(
                 chat_id=str(row.chat_id),
                 season_id=row.season_id,
-                modifier=row.modifier,
+                name=row.modifier,
                 count=row.count,
             )
             session.add(record)
             inserted += 1
 
-    print(f"Successfully inserted {inserted} modifier count records.")
+    print(f"Successfully inserted {inserted} aspect count records.")
 
     # Print summary by season
     print("\nSummary by season:")
@@ -107,7 +107,7 @@ def backfill_modifier_counts(dry_run: bool = False) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Backfill modifier_counts table from existing cards."
+        description="Backfill aspect_counts table from existing cards."
     )
     parser.add_argument(
         "--dry-run",
@@ -116,7 +116,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    backfill_modifier_counts(dry_run=args.dry_run)
+    backfill_aspect_counts(dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

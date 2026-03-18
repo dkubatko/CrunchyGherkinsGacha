@@ -150,7 +150,7 @@ from utils.services.rtb_service import (
 
 from utils.services import event_service
 
-from utils.services import modifier_count_service
+from utils.services import aspect_count_service
 
 from utils.services import modifier_service
 
@@ -296,8 +296,8 @@ __all__ = [
     "RARITY_ORDER",
     # Event service
     "event_service",
-    # Modifier count service
-    "modifier_count_service",
+    # Aspect count service
+    "aspect_count_service",
     # Modifier service
     "modifier_service",
     # Admin auth service
