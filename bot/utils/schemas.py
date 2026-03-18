@@ -87,7 +87,7 @@ class Card(BaseModel):
 
     id: int
     base_name: str
-    modifier: str
+    modifier: Optional[str] = None
     rarity: str
     owner: Optional[str]
     user_id: Optional[int]
@@ -102,6 +102,8 @@ class Card(BaseModel):
     set_name: Optional[str] = None
     updated_at: Optional[str] = None
     description: Optional[str] = None
+    aspect_count: int = 0
+    equipped_aspects: List["CardAspect"] = []
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
@@ -121,7 +123,8 @@ class Card(BaseModel):
         if include_rarity:
             parts.append(self.rarity)
 
-        parts.append(self.modifier)
+        if self.modifier:
+            parts.append(self.modifier)
         parts.append(self.base_name)
 
         title_text = " ".join(parts).strip()
@@ -148,7 +151,8 @@ class Card(BaseModel):
             season_id=card_orm.season_id,
             set_name=set_name,
             updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
-            description=getattr(card_orm, "description", None),
+            description=card_orm.description,
+            aspect_count=card_orm.aspect_count,
         )
 
 
@@ -187,7 +191,8 @@ class CardWithImage(Card):
             set_name=set_name,
             image_b64=image_b64,
             updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
-            description=getattr(card_orm, "description", None),
+            description=card_orm.description,
+            aspect_count=card_orm.aspect_count,
         )
 
 
@@ -441,6 +446,7 @@ class Event(BaseModel):
     user_id: int
     chat_id: str
     card_id: Optional[int] = None
+    aspect_id: Optional[int] = None
     timestamp: datetime.datetime
     payload: Optional[Dict[str, Any]] = None
 
@@ -454,6 +460,7 @@ class Event(BaseModel):
             user_id=event_orm.user_id,
             chat_id=event_orm.chat_id,
             card_id=event_orm.card_id,
+            aspect_id=event_orm.aspect_id,
             timestamp=event_orm.timestamp,
             payload=event_orm.payload,
         )
@@ -507,4 +514,203 @@ class UserAchievement(BaseModel):
             achievement_id=user_achievement_orm.achievement_id,
             unlocked_at=user_achievement_orm.unlocked_at,
             achievement=achievement,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Aspect system schemas (Gacha 2.0)
+# ---------------------------------------------------------------------------
+
+
+class AspectDefinition(BaseModel):
+    """Aspect definition (catalog entry) data transfer object."""
+
+    id: int
+    set_id: int
+    season_id: int
+    name: str
+    rarity: str
+    created_at: Optional[str] = None
+    set_name: Optional[str] = None
+    source: str = "all"
+    description: str = ""
+
+    @classmethod
+    def from_orm(cls, aspect_def_orm) -> "AspectDefinition":
+        """Convert an AspectDefinitionModel ORM object to an AspectDefinition schema."""
+        asp_set = aspect_def_orm.aspect_set
+        return cls(
+            id=aspect_def_orm.id,
+            set_id=aspect_def_orm.set_id,
+            season_id=aspect_def_orm.season_id,
+            name=aspect_def_orm.name,
+            rarity=aspect_def_orm.rarity,
+            created_at=(
+                aspect_def_orm.created_at.isoformat() if aspect_def_orm.created_at else None
+            ),
+            set_name=asp_set.name if asp_set else None,
+            source=asp_set.source if asp_set else "all",
+            description=asp_set.description if asp_set else "",
+        )
+
+
+class OwnedAspect(BaseModel):
+    """Owned aspect instance data transfer object (without image data)."""
+
+    id: int
+    aspect_definition_id: Optional[int] = None
+    name: Optional[str] = None
+    owner: Optional[str] = None
+    user_id: Optional[int] = None
+    chat_id: str
+    season_id: int
+    rarity: str
+    locked: bool = False
+    file_id: Optional[str] = None
+    created_at: Optional[str] = None
+    display_name: str = ""
+    aspect_definition: Optional[AspectDefinition] = None
+
+    @classmethod
+    def from_orm(cls, aspect_orm) -> "OwnedAspect":
+        """Convert an OwnedAspectModel ORM object to an OwnedAspect schema."""
+        # Resolve display name: custom override first, then definition name
+        display_name = aspect_orm.name or ""
+        aspect_def = None
+        if hasattr(aspect_orm, "aspect_definition") and aspect_orm.aspect_definition is not None:
+            aspect_def = AspectDefinition.from_orm(aspect_orm.aspect_definition)
+            if not display_name:
+                display_name = aspect_orm.aspect_definition.name
+
+        return cls(
+            id=aspect_orm.id,
+            aspect_definition_id=aspect_orm.aspect_definition_id,
+            name=aspect_orm.name,
+            owner=aspect_orm.owner,
+            user_id=aspect_orm.user_id,
+            chat_id=aspect_orm.chat_id,
+            season_id=aspect_orm.season_id,
+            rarity=aspect_orm.rarity,
+            locked=aspect_orm.locked,
+            file_id=aspect_orm.file_id,
+            created_at=(aspect_orm.created_at.isoformat() if aspect_orm.created_at else None),
+            display_name=display_name,
+            aspect_definition=aspect_def,
+        )
+
+
+class OwnedAspectWithImage(OwnedAspect):
+    """Owned aspect instance with base64-encoded sphere image data."""
+
+    image_b64: str = ""
+    thumbnail_b64: str = ""
+
+    def get_media(self):
+        """Return file_id if available, otherwise return decoded base64 image data."""
+        if self.file_id:
+            return self.file_id
+        return base64.b64decode(self.image_b64)
+
+    @classmethod
+    def from_orm(cls, aspect_orm) -> "OwnedAspectWithImage":
+        """Convert an OwnedAspectModel (with eager-loaded image) to schema."""
+        image_bytes = aspect_orm.image.image if aspect_orm.image else None
+        thumbnail_bytes = aspect_orm.image.thumbnail if aspect_orm.image else None
+        image_b64 = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else ""
+        thumbnail_b64 = base64.b64encode(thumbnail_bytes).decode("utf-8") if thumbnail_bytes else ""
+
+        # Resolve display name
+        display_name = aspect_orm.name or ""
+        aspect_def = None
+        if hasattr(aspect_orm, "aspect_definition") and aspect_orm.aspect_definition is not None:
+            aspect_def = AspectDefinition.from_orm(aspect_orm.aspect_definition)
+            if not display_name:
+                display_name = aspect_orm.aspect_definition.name
+
+        return cls(
+            id=aspect_orm.id,
+            aspect_definition_id=aspect_orm.aspect_definition_id,
+            name=aspect_orm.name,
+            owner=aspect_orm.owner,
+            user_id=aspect_orm.user_id,
+            chat_id=aspect_orm.chat_id,
+            season_id=aspect_orm.season_id,
+            rarity=aspect_orm.rarity,
+            locked=aspect_orm.locked,
+            file_id=aspect_orm.file_id,
+            created_at=(aspect_orm.created_at.isoformat() if aspect_orm.created_at else None),
+            display_name=display_name,
+            aspect_definition=aspect_def,
+            image_b64=image_b64,
+            thumbnail_b64=thumbnail_b64,
+        )
+
+
+class CardAspect(BaseModel):
+    """Junction record: an aspect equipped on a card."""
+
+    id: int
+    card_id: int
+    aspect_id: int
+    order: int
+    equipped_at: str
+    aspect: Optional[OwnedAspect] = None
+
+    @classmethod
+    def from_orm(cls, ca_orm) -> "CardAspect":
+        """Convert a CardAspectModel ORM object to a CardAspect schema."""
+        aspect = None
+        if hasattr(ca_orm, "aspect") and ca_orm.aspect is not None:
+            aspect = OwnedAspect.from_orm(ca_orm.aspect)
+
+        return cls(
+            id=ca_orm.id,
+            card_id=ca_orm.card_id,
+            aspect_id=ca_orm.aspect_id,
+            order=ca_orm.order,
+            equipped_at=ca_orm.equipped_at.isoformat() if ca_orm.equipped_at else "",
+            aspect=aspect,
+        )
+
+
+class RolledAspect(BaseModel):
+    """Rolled aspect state data transfer object."""
+
+    roll_id: int
+    original_aspect_id: int
+    rerolled_aspect_id: Optional[int] = None
+    created_at: str
+    original_roller_id: int
+    rerolled: bool
+    being_rerolled: bool
+    attempted_by: Optional[str]
+    is_locked: bool
+    original_rarity: Optional[str] = None
+
+    @property
+    def current_aspect_id(self) -> int:
+        """Get the current active aspect ID (rerolled if available, otherwise original)."""
+        if self.rerolled and self.rerolled_aspect_id:
+            return self.rerolled_aspect_id
+        return self.original_aspect_id
+
+    @property
+    def aspect_id(self) -> int:
+        """Backward-compatible alias for the active aspect id."""
+        return self.current_aspect_id
+
+    @classmethod
+    def from_orm(cls, rolled_orm) -> "RolledAspect":
+        """Convert a RolledAspectModel ORM object to a RolledAspect schema."""
+        return cls(
+            roll_id=rolled_orm.roll_id,
+            original_aspect_id=rolled_orm.original_aspect_id,
+            rerolled_aspect_id=rolled_orm.rerolled_aspect_id,
+            created_at=rolled_orm.created_at.isoformat() if rolled_orm.created_at else "",
+            original_roller_id=rolled_orm.original_roller_id,
+            rerolled=rolled_orm.rerolled,
+            being_rerolled=rolled_orm.being_rerolled,
+            attempted_by=rolled_orm.attempted_by,
+            is_locked=rolled_orm.is_locked,
+            original_rarity=rolled_orm.original_rarity,
         )

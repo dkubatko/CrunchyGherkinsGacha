@@ -13,14 +13,17 @@ from typing import Optional, List, TYPE_CHECKING
 from sqlalchemy import (
     Boolean,
     BigInteger,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
+    Integer,
     LargeBinary,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -43,8 +46,11 @@ class CardModel(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     base_name: Mapped[str] = mapped_column(Text, nullable=False)
-    modifier: Mapped[str] = mapped_column(Text, nullable=False)
+    modifier: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, doc="Display name prefix (user-chosen). NULL for base cards."
+    )
     rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    aspect_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     owner: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     file_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -83,6 +89,14 @@ class CardModel(Base):
         "ModifierModel", back_populates="cards"
     )
 
+    # Relationship to equipped aspects (ordered junction table)
+    equipped_aspects: Mapped[List["CardAspectModel"]] = relationship(
+        "CardAspectModel",
+        back_populates="card",
+        cascade="all, delete-orphan",
+        order_by="CardAspectModel.order",
+    )
+
     # Indices for performance
     __table_args__ = (
         ForeignKeyConstraint(
@@ -117,7 +131,8 @@ class CardModel(Base):
         if include_rarity:
             parts.append(self.rarity)
 
-        parts.append(self.modifier)
+        if self.modifier:
+            parts.append(self.modifier)
         parts.append(self.base_name)
 
         title_text = " ".join(parts).strip()
@@ -375,6 +390,7 @@ class EventModel(Base):
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     chat_id: Mapped[str] = mapped_column(Text, nullable=False)
     card_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    aspect_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     timestamp: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     payload: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
 
@@ -383,6 +399,7 @@ class EventModel(Base):
         Index("idx_events_user_timestamp", "user_id", "timestamp"),
         Index("idx_events_chat_timestamp", "chat_id", "timestamp"),
         Index("idx_events_card_id", "card_id"),
+        Index("idx_events_aspect_id", "aspect_id"),
     )
 
 
@@ -421,6 +438,200 @@ class ModifierModel(Base):
         Index("idx_modifiers_rarity", "rarity"),
         Index("idx_modifiers_name", "name"),
     )
+
+
+# ---------------------------------------------------------------------------
+# Aspect system models (Gacha 2.0)
+# ---------------------------------------------------------------------------
+
+
+class AspectDefinitionModel(Base):
+    """Catalog of aspect keywords grouped by set and rarity.
+
+    Replaces the legacy modifier catalog for all new aspect-related code.
+    Each row defines a named aspect (e.g., "Rainy" in the "Weather" set)
+    that can be rolled and equipped onto cards.
+    """
+
+    __tablename__ = "aspect_definitions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    set_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    season_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationship to set (composite FK: set_id + season_id)
+    aspect_set: Mapped[Optional["SetModel"]] = relationship(
+        "SetModel",
+        foreign_keys="[AspectDefinitionModel.set_id, AspectDefinitionModel.season_id]",
+        primaryjoin="and_(AspectDefinitionModel.set_id == SetModel.id, AspectDefinitionModel.season_id == SetModel.season_id)",
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["set_id", "season_id"],
+            ["sets.id", "sets.season_id"],
+            name="fk_aspect_definitions_set_season",
+        ),
+        Index("idx_aspect_definitions_set_season", "set_id", "season_id"),
+        Index("idx_aspect_definitions_rarity", "rarity"),
+        Index("idx_aspect_definitions_name", "name"),
+    )
+
+
+class OwnedAspectModel(Base):
+    """A specific aspect instance owned (or pending claim) by a user.
+
+    Each row is a unique instance with its own generated sphere image.
+    ``owner``/``user_id`` are nullable because freshly-rolled aspects
+    are unclaimed until someone uses ``/claim``.
+    """
+
+    __tablename__ = "owned_aspects"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    aspect_definition_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("aspect_definitions.id"), nullable=True
+    )
+    name: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True, doc="Custom name override for Unique/user-created aspects."
+    )
+    owner: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    user_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    chat_id: Mapped[str] = mapped_column(Text, nullable=False)
+    season_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    file_id: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationships
+    aspect_definition: Mapped[Optional["AspectDefinitionModel"]] = relationship(
+        "AspectDefinitionModel"
+    )
+    image: Mapped[Optional["AspectImageModel"]] = relationship(
+        "AspectImageModel",
+        back_populates="aspect",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    card_aspect_links: Mapped[List["CardAspectModel"]] = relationship("CardAspectModel")
+
+    __table_args__ = (
+        Index("idx_owned_aspects_chat_season", "chat_id", "season_id"),
+        Index("idx_owned_aspects_user_season", "user_id", "season_id"),
+        Index("idx_owned_aspects_owner_season", "owner", "season_id"),
+        Index("idx_owned_aspects_rarity_season", "rarity", "season_id"),
+        Index("idx_owned_aspects_file_id", "file_id"),
+        Index("idx_owned_aspects_definition_id", "aspect_definition_id"),
+    )
+
+    @property
+    def display_name(self) -> str:
+        """Resolve the display name: custom override first, then definition name."""
+        if self.name:
+            return self.name
+        if self.aspect_definition:
+            return self.aspect_definition.name
+        return ""
+
+
+class AspectImageModel(Base):
+    """Stores aspect sphere image data separately for performance.
+
+    Mirrors the ``CardImageModel`` pattern — PK is also FK to ``owned_aspects``.
+    """
+
+    __tablename__ = "aspect_images"
+
+    aspect_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("owned_aspects.id", ondelete="CASCADE"), primary_key=True
+    )
+    image: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    thumbnail: Mapped[Optional[bytes]] = mapped_column(LargeBinary, nullable=True)
+    image_updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # Relationship back to owned aspect
+    aspect: Mapped["OwnedAspectModel"] = relationship("OwnedAspectModel", back_populates="image")
+
+    __table_args__ = (Index("idx_aspect_images_aspect_id", "aspect_id"),)
+
+
+class CardAspectModel(Base):
+    """Junction table tracking which aspects are equipped on which cards.
+
+    This is the sole source of truth for card-aspect equipment state.
+    ``order`` is assigned chronologically (1–5) at equip time and is
+    immutable after assignment.
+    """
+
+    __tablename__ = "card_aspects"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    card_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("cards.id"), nullable=False)
+    aspect_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("owned_aspects.id"), nullable=False
+    )
+    order: Mapped[int] = mapped_column(Integer, nullable=False)
+    equipped_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+    # Relationships
+    card: Mapped["CardModel"] = relationship("CardModel", back_populates="equipped_aspects")
+    aspect: Mapped["OwnedAspectModel"] = relationship("OwnedAspectModel")
+
+    __table_args__ = (
+        UniqueConstraint("aspect_id", name="uq_card_aspects_aspect_id"),
+        UniqueConstraint("card_id", "order", name="uq_card_aspects_card_order"),
+        CheckConstraint("\"order\" BETWEEN 1 AND 5", name="ck_card_aspects_order_range"),
+        Index("idx_card_aspects_card_id_order", "card_id", "order"),
+    )
+
+
+class RolledAspectModel(Base):
+    """Tracks the state of rolled aspects (for claim/reroll mechanics).
+
+    Mirrors ``RolledCardModel`` but for aspect rolls. No FK constraints
+    on aspect IDs — uses soft linking like rolled cards.
+    """
+
+    __tablename__ = "rolled_aspects"
+
+    roll_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    original_aspect_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
+    rerolled_aspect_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    original_roller_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    being_rerolled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    attempted_by: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    original_rarity: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("ix_rolled_aspects_original_roller_id", "original_roller_id"),
+    )
+
+    @property
+    def current_aspect_id(self) -> int:
+        """Return the active aspect ID (rerolled if available, else original)."""
+        if self.rerolled and self.rerolled_aspect_id:
+            return self.rerolled_aspect_id
+        return self.original_aspect_id
+
+    @property
+    def aspect_id(self) -> int:
+        """Backward-compatible alias for the active aspect id."""
+        return self.current_aspect_id
 
 
 class AchievementModel(Base):
