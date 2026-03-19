@@ -23,13 +23,13 @@ from handlers.user import (
 # Rolling handlers
 from handlers.rolling import (
     roll,
+    handle_claim,
+    handle_lock,
     handle_reroll,
 )
 
 # Card handlers
 from handlers.cards import (
-    claim_card,
-    handle_lock,
     lock_card_command,
     handle_lock_card_confirm,
     refresh,
@@ -85,10 +85,10 @@ __all__ = [
     "unenroll",
     # Rolling handlers
     "roll",
+    "handle_claim",
+    "handle_lock",
     "handle_reroll",
     # Card handlers
-    "claim_card",
-    "handle_lock",
     "lock_card_command",
     "handle_lock_card_confirm",
     "refresh",

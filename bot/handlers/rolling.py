@@ -1,7 +1,8 @@
 """
 Rolling-related command handlers.
 
-This module contains handlers for rolling new cards and rerolling existing cards.
+This module contains handlers for rolling new cards/aspects, rerolling,
+claiming, and locking rolled items.
 """
 
 import asyncio
@@ -17,10 +18,10 @@ from handlers.helpers import (
     get_time_until_next_roll,
     log_card_generation,
     save_card_file_id_from_message,
+    save_aspect_file_id_from_message,
 )
 from settings.constants import (
     REACTION_IN_PROGRESS,
-    CARD_CAPTION_BASE,
     get_claim_cost,
 )
 from utils import rolling
@@ -28,13 +29,14 @@ from utils.services import (
     card_service,
     claim_service,
     rolled_card_service,
+    rolled_aspect_service,
     roll_service,
     event_service,
 )
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat, prevent_concurrency
-from utils.rolled_card import RolledCardManager
-from utils.events import EventType, RollOutcome, RerollOutcome
+from utils.roll_manager import RollManager, ClaimStatus
+from utils.events import EventType, RollOutcome, RerollOutcome, ClaimOutcome, RollLockOutcome
 from api.background_tasks import process_claim_countdown
 
 logger = logging.getLogger(__name__)
@@ -46,7 +48,7 @@ async def roll(
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Roll a new card."""
+    """Roll a new card or aspect."""
     chat_id_str = str(update.effective_chat.id)
 
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
@@ -81,7 +83,7 @@ async def roll(
             if not await asyncio.to_thread(roll_service.can_roll, user.user_id, chat_id_str):
                 hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
                 await update.message.reply_text(
-                    f"You have already rolled for a card. Next roll in {hours} hours {minutes} minutes.",
+                    f"You have already rolled. Next roll in {hours} hours {minutes} minutes.",
                     reply_to_message_id=update.message.message_id,
                 )
                 if not DEBUG_MODE:
@@ -92,80 +94,23 @@ async def roll(
                     )
                 return
 
-        generated_card = await asyncio.to_thread(
-            rolling.generate_card_for_chat,
+        # --- Determine roll type and generate ---
+        roll_result = await asyncio.to_thread(
+            rolling.generate_roll_for_chat,
             chat_id_str,
             gemini_util,
             max_retries=MAX_BOT_IMAGE_RETRIES,
             source="roll",
         )
 
-        # Log the card generation details
-        log_card_generation(generated_card, "roll")
-
-        card_id = await asyncio.to_thread(
-            card_service.add_card_from_generated,
-            generated_card,
-            update.effective_chat.id,
-        )
-
-        # Award claim points based on the rolled card's rarity
-        claim_reward = get_claim_cost(generated_card.rarity)
-        await asyncio.to_thread(
-            claim_service.increment_claim_balance,
-            user.user_id,
-            chat_id_str,
-            claim_reward,
-        )
-
-        # Create rolled card entry to track state
-        roll_id = await asyncio.to_thread(
-            rolled_card_service.create_rolled_card, card_id, user.user_id
-        )
-
-        # Use RolledCardManager to generate pre-claim caption (no claim button yet)
-        rolled_card_manager = RolledCardManager(roll_id)
-        caption = rolled_card_manager.generate_pre_claim_caption()
-
-        message = await update.message.reply_photo(
-            photo=base64.b64decode(generated_card.image_b64),
-            caption=caption,
-            reply_markup=None,  # No buttons during countdown
-            parse_mode=ParseMode.HTML,
-            reply_to_message_id=update.message.message_id,
-        )
-
-        # Spawn background task to handle countdown and reveal claim button
-        asyncio.create_task(
-            process_claim_countdown(
-                chat_id=update.effective_chat.id,
-                message_id=message.message_id,
-                roll_id=roll_id,
-            )
-        )
-
-        # Save the file_id returned by Telegram for future use
-        await save_card_file_id_from_message(message, card_id)
-
-        if not DEBUG_MODE:
-            await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
-
-        # Log successful roll
-        event_service.log(
-            EventType.ROLL,
-            RollOutcome.SUCCESS,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            card_id=card_id,
-            rarity=generated_card.rarity,
-            modifier=generated_card.modifier,
-            source_name=generated_card.base_name,
-            source_type=generated_card.source_type,
-            source_id=generated_card.source_id,
-        )
+        if roll_result.roll_type == "base_card" and roll_result.card is not None:
+            await _handle_card_roll(update, context, user, chat_id_str, roll_result.card)
+        elif roll_result.roll_type == "aspect" and roll_result.aspect is not None:
+            await _handle_aspect_roll(update, context, user, chat_id_str, roll_result.aspect)
+        else:
+            raise rolling.ImageGenerationError("Roll produced no output")
 
     except rolling.NoEligibleUserError:
-        # Log roll error
         event_service.log(
             EventType.ROLL,
             RollOutcome.ERROR,
@@ -174,7 +119,8 @@ async def roll(
             error_message="No eligible user with profile",
         )
         await update.message.reply_text(
-            "No enrolled players here have set both a display name and profile photo yet. DM me with /profile <display_name> and a picture to join the fun!",
+            "No enrolled players here have set both a display name and profile photo yet. "
+            "DM me with /profile <display_name> and a picture to join the fun!",
             reply_to_message_id=update.message.message_id,
         )
         return
@@ -201,7 +147,7 @@ async def roll(
             error_message=str(e),
         )
         await update.message.reply_text(
-            "An error occurred while rolling for a card.",
+            "An error occurred while rolling.",
             reply_to_message_id=update.message.message_id,
         )
     finally:
@@ -214,6 +160,382 @@ async def roll(
             )
 
 
+# ---------------------------------------------------------------------------
+# Roll sub-handlers (called from roll())
+# ---------------------------------------------------------------------------
+
+
+async def _handle_card_roll(update, context, user, chat_id_str, generated_card):
+    """Process a base-card roll."""
+    log_card_generation(generated_card, "roll (base card)")
+
+    card_id = await asyncio.to_thread(
+        card_service.add_card_from_generated,
+        generated_card,
+        update.effective_chat.id,
+    )
+
+    # Award claim points to the roller
+    claim_reward = get_claim_cost(generated_card.rarity)
+    await asyncio.to_thread(
+        claim_service.increment_claim_balance,
+        user.user_id,
+        chat_id_str,
+        claim_reward,
+    )
+
+    # Create rolled card entry
+    roll_id = await asyncio.to_thread(rolled_card_service.create_rolled_card, card_id, user.user_id)
+
+    # Generate pre-claim caption via RollManager
+    manager = RollManager("card", roll_id)
+    caption = manager.generate_pre_claim_caption()
+
+    message = await update.message.reply_photo(
+        photo=base64.b64decode(generated_card.image_b64),
+        caption=caption,
+        reply_markup=None,
+        parse_mode=ParseMode.HTML,
+        reply_to_message_id=update.message.message_id,
+    )
+
+    # Spawn countdown background task
+    asyncio.create_task(
+        process_claim_countdown(
+            chat_id=update.effective_chat.id,
+            message_id=message.message_id,
+            roll_id=roll_id,
+            roll_type="card",
+        )
+    )
+
+    await save_card_file_id_from_message(message, card_id)
+
+    if not DEBUG_MODE:
+        await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
+
+    event_service.log(
+        EventType.ROLL,
+        RollOutcome.SUCCESS,
+        user_id=user.user_id,
+        chat_id=chat_id_str,
+        card_id=card_id,
+        rarity=generated_card.rarity,
+        type="base_card",
+        modifier=generated_card.modifier,
+        source_name=generated_card.base_name,
+        source_type=generated_card.source_type,
+        source_id=generated_card.source_id,
+    )
+
+
+async def _handle_aspect_roll(update, context, user, chat_id_str, generated_aspect):
+    """Process an aspect roll."""
+    logger.info(
+        "Aspect roll: '%s' (id=%s, rarity=%s, set='%s') for chat %s",
+        generated_aspect.aspect_name,
+        generated_aspect.aspect_id,
+        generated_aspect.rarity,
+        generated_aspect.set_name,
+        chat_id_str,
+    )
+
+    # Award claim points to the roller
+    claim_reward = get_claim_cost(generated_aspect.rarity)
+    await asyncio.to_thread(
+        claim_service.increment_claim_balance,
+        user.user_id,
+        chat_id_str,
+        claim_reward,
+    )
+
+    # Create rolled aspect entry
+    roll_id = await asyncio.to_thread(
+        rolled_aspect_service.create_rolled_aspect,
+        generated_aspect.aspect_id,
+        user.user_id,
+    )
+
+    # Generate pre-claim caption via RollManager
+    manager = RollManager("aspect", roll_id)
+    caption = manager.generate_pre_claim_caption()
+
+    message = await update.message.reply_photo(
+        photo=base64.b64decode(generated_aspect.image_b64),
+        caption=caption,
+        reply_markup=None,
+        parse_mode=ParseMode.HTML,
+        reply_to_message_id=update.message.message_id,
+    )
+
+    # Spawn countdown background task
+    asyncio.create_task(
+        process_claim_countdown(
+            chat_id=update.effective_chat.id,
+            message_id=message.message_id,
+            roll_id=roll_id,
+            roll_type="aspect",
+        )
+    )
+
+    await save_aspect_file_id_from_message(message, generated_aspect.aspect_id)
+
+    if not DEBUG_MODE:
+        await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
+
+    event_service.log(
+        EventType.ROLL,
+        RollOutcome.SUCCESS,
+        user_id=user.user_id,
+        chat_id=chat_id_str,
+        aspect_id=generated_aspect.aspect_id,
+        rarity=generated_aspect.rarity,
+        type="aspect",
+        aspect_name=generated_aspect.aspect_name,
+        aspect_definition_id=generated_aspect.aspect_definition_id,
+        set_name=generated_aspect.set_name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Callback helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_roll_callback(data: str) -> tuple:
+    """Extract ``(roll_type, roll_id)`` from callback data.
+
+    ``claim_42``  → ``("card", 42)``
+    ``aclaim_42`` → ``("aspect", 42)``
+    """
+    prefix, roll_id_str = data.split("_", 1)
+    roll_type = "aspect" if prefix.startswith("a") else "card"
+    return roll_type, int(roll_id_str)
+
+
+def _resolve_chat_id(item_chat_id, query):
+    """Resolve a chat-ID string from an item field or Telegram query."""
+    if item_chat_id is not None:
+        return str(item_chat_id)
+    if query.message:
+        return str(query.message.chat_id)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Callback handlers  (claim / lock / reroll — unified for card & aspect)
+# ---------------------------------------------------------------------------
+
+
+@verify_user_in_chat
+@prevent_concurrency("pending_roll_actions")
+async def handle_claim(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle claim button click for both cards and aspects."""
+    query = update.callback_query
+    roll_type, roll_id = _parse_roll_callback(query.data)
+    chat_id = str(update.effective_chat.id) if update.effective_chat else None
+
+    manager = RollManager(roll_type, roll_id)
+
+    item = manager.item
+    if item is None:
+        await query.answer("Item not found!", show_alert=True)
+        return
+
+    if manager.is_being_rerolled():
+        await query.answer("Being rerolled, please wait.", show_alert=True)
+        return
+
+    claim_result = await asyncio.to_thread(
+        manager.claim_item,
+        user.username,
+        user.user_id,
+        chat_id,
+    )
+
+    cost_to_spend = claim_result.cost if claim_result.cost is not None else 1
+    item_label = roll_type.replace("_", " ").capitalize()
+
+    if claim_result.status is ClaimStatus.INSUFFICIENT_BALANCE:
+        message = f"Not enough claim points!\n\nCost: {cost_to_spend}"
+        if claim_result.balance is not None:
+            message += f"\n\nBalance: {claim_result.balance}"
+        await query.answer(message, show_alert=True)
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.INSUFFICIENT,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=item.id if roll_type == "card" else None,
+            aspect_id=item.id if roll_type == "aspect" else None,
+            type=roll_type,
+            cost=cost_to_spend,
+            balance=claim_result.balance,
+        )
+        return
+
+    # Refresh item after claim
+    item = manager.item
+    item_title = item.title() if roll_type == "card" else item.display_name
+    spent_line = f"Spent: {cost_to_spend} claim point{'s' if cost_to_spend != 1 else ''}"
+
+    def _build_claim_message(balance):
+        msg = f"{item_label} {item_title} claimed!\n\n{spent_line}"
+        if balance is not None:
+            msg += f"\n\nRemaining balance: {balance}."
+        return msg
+
+    if claim_result.status is ClaimStatus.SUCCESS:
+        await query.answer(_build_claim_message(claim_result.balance), show_alert=True)
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=item.id if roll_type == "card" else None,
+            aspect_id=item.id if roll_type == "aspect" else None,
+            type=roll_type,
+            cost=cost_to_spend,
+            rarity=item.rarity,
+            balance=claim_result.balance,
+        )
+    elif claim_result.status is ClaimStatus.ALREADY_OWNED_BY_USER:
+        remaining_balance = claim_result.balance
+        if remaining_balance is None and chat_id and user.user_id:
+            remaining_balance = await asyncio.to_thread(
+                claim_service.get_claim_balance, user.user_id, chat_id
+            )
+        await query.answer(_build_claim_message(remaining_balance), show_alert=True)
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.ALREADY_OWNED,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=item.id if roll_type == "card" else None,
+            aspect_id=item.id if roll_type == "aspect" else None,
+            type=roll_type,
+        )
+    else:
+        fresh_item = manager.item
+        owner = fresh_item.owner if fresh_item else "someone"
+        await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
+        event_service.log(
+            EventType.CLAIM,
+            ClaimOutcome.TAKEN,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=item.id if roll_type == "card" else None,
+            aspect_id=item.id if roll_type == "aspect" else None,
+            type=roll_type,
+            claimed_by=owner,
+        )
+
+    try:
+        await query.edit_message_caption(
+            caption=manager.generate_caption(),
+            reply_markup=manager.generate_keyboard(),
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+
+@verify_user_in_chat
+@prevent_concurrency("pending_roll_actions", cross_user=True)
+async def handle_lock(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle lock button click for both cards and aspects."""
+    query = update.callback_query
+    roll_type, roll_id = _parse_roll_callback(query.data)
+    chat_id = str(update.effective_chat.id) if update.effective_chat else None
+
+    manager = RollManager(roll_type, roll_id)
+
+    if not manager.is_valid():
+        await query.answer("Item not found!", show_alert=True)
+        return
+
+    if not manager.is_claimed():
+        await query.answer("Must be claimed before it can be locked!", show_alert=True)
+        return
+
+    item = manager.item
+    if item is None:
+        await query.answer("Item not found!", show_alert=True)
+        return
+
+    if not manager.can_user_lock(user.user_id, user.username):
+        await query.answer("Only the owner can lock!", show_alert=True)
+        return
+
+    try:
+        lock_result = await asyncio.to_thread(
+            manager.lock_item,
+            user.user_id,
+            chat_id,
+        )
+    except ValueError as exc:
+        logger.error("Lock failed: %s", exc)
+        await query.answer("Unable to lock right now.", show_alert=True)
+        return
+
+    if not lock_result.success:
+        message = f"Not enough claim points!\n\nCost: {lock_result.cost}"
+        if lock_result.current_balance is not None:
+            message += f"\n\nBalance: {lock_result.current_balance}"
+        await query.answer(message, show_alert=True)
+        event_service.log(
+            EventType.ROLL_LOCK,
+            RollLockOutcome.INSUFFICIENT,
+            user_id=user.user_id,
+            chat_id=chat_id,
+            card_id=item.id if roll_type == "card" else None,
+            aspect_id=item.id if roll_type == "aspect" else None,
+            type=roll_type,
+            cost=lock_result.cost,
+            balance=lock_result.current_balance,
+        )
+        return
+
+    lock_message = "Locked!"
+    if lock_result.cost > 0:
+        lock_message = (
+            "Locked!\n\n"
+            f"Spent: {lock_result.cost} claim point{'s' if lock_result.cost != 1 else ''}"
+        )
+        if lock_result.remaining_balance is not None:
+            lock_message += f"\n\nBalance: {lock_result.remaining_balance}"
+    await query.answer(lock_message, show_alert=True)
+
+    event_service.log(
+        EventType.ROLL_LOCK,
+        RollLockOutcome.LOCKED,
+        user_id=user.user_id,
+        chat_id=chat_id,
+        card_id=item.id if roll_type == "card" else None,
+        aspect_id=item.id if roll_type == "aspect" else None,
+        type=roll_type,
+        cost=lock_result.cost,
+        balance=lock_result.remaining_balance,
+    )
+
+    try:
+        await query.edit_message_caption(
+            caption=manager.generate_caption(),
+            reply_markup=None,
+            parse_mode=ParseMode.HTML,
+        )
+    except Exception:
+        pass
+
+
 @verify_user_in_chat
 @prevent_concurrency("pending_roll_actions", cross_user=True)
 async def handle_reroll(
@@ -221,118 +543,90 @@ async def handle_reroll(
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Handle reroll button click."""
+    """Handle reroll button click for both cards and aspects."""
     query = update.callback_query
+    roll_type, roll_id = _parse_roll_callback(query.data)
 
-    data_parts = query.data.split("_")
-    roll_id = int(data_parts[1])
+    manager = RollManager(roll_type, roll_id)
 
-    rolled_card_manager = RolledCardManager(roll_id)
-
-    if not rolled_card_manager.is_valid():
-        await query.answer("Card not found!", show_alert=True)
+    if not manager.is_valid():
+        await query.answer("Item not found!", show_alert=True)
         return
 
-    active_card = rolled_card_manager.card
-    if active_card is None:
-        await query.answer("Card data unavailable", show_alert=True)
+    active_item = manager.item
+    if active_item is None:
+        await query.answer("Item data unavailable", show_alert=True)
         return
 
-    # Check if the user clicking can reroll this card
-    if not rolled_card_manager.can_user_reroll(user.user_id):
-        rolled_card = rolled_card_manager.rolled_card
-        if rolled_card and rolled_card.original_roller_id != user.user_id:
-            await query.answer("Only the original roller can reroll this card!", show_alert=True)
-        elif rolled_card_manager.is_reroll_expired():
+    if not manager.can_user_reroll(user.user_id):
+        rolled = manager.rolled
+        if rolled and rolled.original_roller_id != user.user_id:
+            await query.answer("Only the original roller can reroll!", show_alert=True)
+        elif manager.is_reroll_expired():
             await query.answer("Reroll has expired", show_alert=True)
-
-            caption = rolled_card_manager.generate_caption()
-            reply_markup = rolled_card_manager.generate_keyboard()
             await query.edit_message_caption(
-                caption=caption, reply_markup=reply_markup, parse_mode=ParseMode.HTML
+                caption=manager.generate_caption(),
+                reply_markup=manager.generate_keyboard(),
+                parse_mode=ParseMode.HTML,
             )
         else:
-            await query.answer("Cannot reroll this card", show_alert=True)
+            await query.answer("Cannot reroll this item", show_alert=True)
         return
 
-    original_card = rolled_card_manager.original_card or active_card
-    original_owner_id = active_card.user_id
-    original_claim_chat_id = active_card.chat_id
-    if original_claim_chat_id is None and query.message:
-        original_claim_chat_id = str(query.message.chat_id)
-    elif original_claim_chat_id is not None:
-        original_claim_chat_id = str(original_claim_chat_id)
+    original_item = manager.original_item or active_item
+    original_owner_id = active_item.user_id
+    original_claim_chat_id = _resolve_chat_id(active_item.chat_id, query)
 
     try:
-        # Set being_rerolled status and update UI
-        rolled_card_manager.set_being_rerolled(True)
-        rerolling_caption = rolled_card_manager.generate_caption()
-        await query.edit_message_caption(caption=rerolling_caption, parse_mode=ParseMode.HTML)
-
-        # Answer callback query immediately to avoid timeout
-        await query.answer("Rerolling card...")
-
-        downgraded_rarity = rolling.get_downgraded_rarity(original_card.rarity)
-        chat_id_for_roll = active_card.chat_id or (
-            str(query.message.chat_id) if query.message else None
+        manager.set_being_rerolled(True)
+        await query.edit_message_caption(
+            caption=manager.generate_caption(),
+            parse_mode=ParseMode.HTML,
         )
+        await query.answer("Rerolling...")
+
+        chat_id_for_roll = _resolve_chat_id(active_item.chat_id, query)
         if chat_id_for_roll is None:
             raise ValueError("Unable to resolve chat id for reroll")
 
-        generated_card = await asyncio.to_thread(
-            rolling.generate_card_for_chat,
-            str(chat_id_for_roll),
+        downgraded_rarity = rolling.get_downgraded_rarity(original_item.rarity)
+
+        result = await asyncio.to_thread(
+            manager.execute_reroll,
             gemini_util,
+            chat_id_for_roll,
             downgraded_rarity,
+            original_item.rarity,
             max_retries=MAX_BOT_IMAGE_RETRIES,
             source="roll",
         )
 
-        # Log the card generation details
-        log_card_generation(generated_card, "reroll")
-
-        # Add new card to database
-        new_card_chat_id = active_card.chat_id or (query.message.chat_id if query.message else None)
-        new_card_id = await asyncio.to_thread(
-            card_service.add_card_from_generated,
-            generated_card,
-            new_card_chat_id,
-        )
-
-        # Delete the original card
-        await asyncio.to_thread(card_service.delete_card, active_card.id)
-
-        # Update rolled card state to point to the new card
-        rolled_card_manager.mark_rerolled(new_card_id, original_card.rarity)
-
-        # Generate pre-claim caption for the new card (no claim button yet)
-        caption = rolled_card_manager.generate_pre_claim_caption()
-
-        # Update message with new image and countdown caption (no buttons during countdown)
         message = await query.edit_message_media(
             media=InputMediaPhoto(
-                media=base64.b64decode(generated_card.image_b64),
-                caption=caption,
+                media=base64.b64decode(result.image_b64),
+                caption=manager.generate_pre_claim_caption(),
                 parse_mode=ParseMode.HTML,
             ),
             reply_markup=None,
         )
 
-        # Spawn background task to handle countdown and reveal claim button
         asyncio.create_task(
             process_claim_countdown(
                 chat_id=query.message.chat_id,
                 message_id=query.message.message_id,
                 roll_id=roll_id,
+                roll_type=roll_type,
             )
         )
 
-        # Save the file_id returned by Telegram for future use
-        await save_card_file_id_from_message(message, new_card_id)
+        if roll_type == "card":
+            await save_card_file_id_from_message(message, result.new_item_id)
+        else:
+            await save_aspect_file_id_from_message(message, result.new_item_id)
 
-        # If original card was claimed, refund the claim cost based on the card's rarity
+        # Refund if the original was claimed
         if original_owner_id is not None and original_claim_chat_id is not None:
-            refund_amount = get_claim_cost(active_card.rarity)
+            refund_amount = get_claim_cost(active_item.rarity)
             await asyncio.to_thread(
                 claim_service.increment_claim_balance,
                 original_owner_id,
@@ -340,87 +634,62 @@ async def handle_reroll(
                 refund_amount,
             )
 
-        # Log successful reroll
         event_service.log(
             EventType.REROLL,
             RerollOutcome.SUCCESS,
             user_id=user.user_id,
             chat_id=chat_id_for_roll,
-            card_id=new_card_id,
-            old_card_id=active_card.id,
-            old_rarity=original_card.rarity,
-            new_rarity=generated_card.rarity,
-            modifier=generated_card.modifier,
-            source_name=generated_card.base_name,
-            source_type=generated_card.source_type,
-            source_id=generated_card.source_id,
+            old_rarity=result.old_rarity,
+            new_rarity=result.rarity,
+            **result.event_kwargs,
         )
     except rolling.NoEligibleUserError:
-        # Log reroll error
-        chat_id_for_log = active_card.chat_id or (
-            str(query.message.chat_id) if query.message else "unknown"
-        )
+        chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
         event_service.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,
             chat_id=chat_id_for_log,
-            card_id=active_card.id,
             error_message="No eligible user with profile",
         )
-        # Restore original state on error
-        rolled_card_manager.set_being_rerolled(False)
-        original_caption = rolled_card_manager.generate_caption()
-        original_markup = rolled_card_manager.generate_keyboard()
+        manager.set_being_rerolled(False)
         await query.edit_message_caption(
-            caption=original_caption,
-            reply_markup=original_markup,
+            caption=manager.generate_caption(),
+            reply_markup=manager.generate_keyboard(),
             parse_mode=ParseMode.HTML,
         )
         await query.answer(
-            "No enrolled players here have set both a display name and profile photo yet.",
+            "No enrolled players have set a display name and profile photo yet.",
             show_alert=True,
         )
     except rolling.ImageGenerationError:
-        # Log reroll error
-        chat_id_for_log = active_card.chat_id or (
-            str(query.message.chat_id) if query.message else "unknown"
-        )
+        chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
         event_service.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,
             chat_id=chat_id_for_log,
-            card_id=active_card.id,
             error_message="Image generation failed",
         )
-        # Restore original state on error
-        rolled_card_manager.set_being_rerolled(False)
-        original_caption = rolled_card_manager.generate_caption()
-        original_markup = rolled_card_manager.generate_keyboard()
+        manager.set_being_rerolled(False)
         await query.edit_message_caption(
-            caption=original_caption,
-            reply_markup=original_markup,
+            caption=manager.generate_caption(),
+            reply_markup=manager.generate_keyboard(),
             parse_mode=ParseMode.HTML,
         )
         await query.answer("Sorry, couldn't generate a new image!", show_alert=True)
     except Exception as e:
-        logger.error(f"Error in reroll: {e}")
-        # Restore original state on error
+        logger.error("Error in reroll (roll_type=%s): %s", roll_type, e)
         try:
-            rolled_card_manager.set_being_rerolled(False)
-            original_caption = rolled_card_manager.generate_caption()
-            original_markup = rolled_card_manager.generate_keyboard()
+            manager.set_being_rerolled(False)
             await query.edit_message_caption(
-                caption=original_caption,
-                reply_markup=original_markup,
+                caption=manager.generate_caption(),
+                reply_markup=manager.generate_keyboard(),
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
             pass
-
-        # Try to answer callback query, but don't fail if it times out
         try:
             await query.answer("An error occurred during reroll!", show_alert=True)
-        except Exception as callback_error:
-            logger.warning(f"Failed to answer callback query: {callback_error}")
+        except Exception as cb_err:
+            logger.warning("Failed to answer callback query: %s", cb_err)

@@ -9,7 +9,7 @@ import datetime
 import logging
 from datetime import timezone
 
-from utils.services import card_service, roll_service
+from utils.services import card_service, roll_service, aspect_service
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +55,20 @@ async def save_card_file_id_from_message(message, card_id: int) -> None:
         file_id = message.photo[-1].file_id  # Get the largest photo size
         await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
         logger.debug(f"Saved file_id for card {card_id}")
+
+
+async def save_aspect_file_id_from_message(message, aspect_id: int) -> None:
+    """
+    Extract and save the Telegram file_id from a message containing an aspect sphere photo.
+
+    Args:
+        message: The Telegram message object containing the photo
+        aspect_id: The database ID of the owned aspect to update
+    """
+    if message and message.photo:
+        file_id = message.photo[-1].file_id
+        await asyncio.to_thread(aspect_service.update_aspect_file_id, aspect_id, file_id)
+        logger.debug(f"Saved file_id for aspect {aspect_id}")
 
 
 def build_burning_text(card_titles: list[str], revealed: int, strike_all: bool = False) -> str:

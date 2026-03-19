@@ -22,10 +22,10 @@ from handlers import (
     unenroll,
     # Rolling handlers
     roll,
+    handle_claim,
+    handle_lock,
     handle_reroll,
     # Card handlers
-    claim_card,
-    handle_lock,
     lock_card_command,
     handle_lock_card_confirm,
     refresh,
@@ -121,11 +121,11 @@ def _register_admin_handlers(application: Application) -> None:
 
 def _register_callback_handlers(application: Application) -> None:
     """Register all callback query handlers."""
-    # Card action callbacks
-    application.add_handler(CallbackQueryHandler(claim_card, pattern="^claim_"))
-    application.add_handler(CallbackQueryHandler(handle_lock, pattern="^lock_"))
+    # Roll action callbacks (unified for card & aspect via a?<action>_ patterns)
+    application.add_handler(CallbackQueryHandler(handle_claim, pattern="^a?claim_"))
     application.add_handler(CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_"))
-    application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^reroll_"))
+    application.add_handler(CallbackQueryHandler(handle_lock, pattern="^a?lock_"))
+    application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^a?reroll_"))
 
     # Recycling and burning callbacks
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))

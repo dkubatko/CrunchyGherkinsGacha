@@ -778,11 +778,12 @@ async def process_claim_countdown(
     chat_id: int,
     message_id: int,
     roll_id: int,
+    roll_type: str = "card",
     delay_low: float = CLAIM_UNLOCK_DELAY_LOW,
     delay_high: float = CLAIM_UNLOCK_DELAY_HIGH,
 ) -> None:
     """
-    Process the claim countdown for a newly rolled card.
+    Process the claim countdown for a newly rolled card or aspect.
 
     Rotates through fun messages during the delay, then reveals the claim button.
     Message rotation is best-effort; the final reveal is retried on failure.
@@ -791,6 +792,7 @@ async def process_claim_countdown(
         chat_id: The chat where the message was sent.
         message_id: The ID of the message to edit.
         roll_id: The roll ID to use for generating captions/keyboards.
+        roll_type: ``"card"`` or ``"aspect"``.
         delay_low: Minimum delay in seconds (default: CLAIM_UNLOCK_DELAY_LOW).
         delay_high: Maximum delay in seconds (default: CLAIM_UNLOCK_DELAY_HIGH).
     """
@@ -798,13 +800,13 @@ async def process_claim_countdown(
 
     from telegram.error import NetworkError, RetryAfter, TimedOut
 
-    from utils.rolled_card import RolledCardManager
+    from utils.roll_manager import RollManager
 
     bot = create_bot_instance()
 
-    def get_manager_if_active() -> Optional[RolledCardManager]:
-        """Return RolledCardManager if card is still claimable, else None."""
-        manager = RolledCardManager(roll_id)
+    def get_manager_if_active() -> Optional[RollManager]:
+        """Return RollManager if item is still claimable, else None."""
+        manager = RollManager(roll_type, roll_id)
         if not manager.is_valid() or manager.is_claimed() or manager.is_being_rerolled():
             return None
         return manager
@@ -819,14 +821,16 @@ async def process_claim_countdown(
         leftover = total_delay - (num_iterations * interval)
 
         logger.info(
-            "Claim countdown started (roll_id=%d): delay=%.2fs, iterations=%d",
+            "Claim countdown started (roll_type=%s, roll_id=%d): delay=%.2fs, iterations=%d",
+            roll_type,
             roll_id,
             total_delay,
             num_iterations,
         )
 
-        # Get shuffled messages for rotation
-        messages = CARD_STATUS_PRE_CLAIM_MESSAGES.copy()
+        # Get shuffled messages for rotation (type-appropriate)
+        manager_for_messages = RollManager(roll_type, roll_id)
+        messages = manager_for_messages.pre_claim_messages.copy()
         random.shuffle(messages)
 
         for i in range(num_iterations):
@@ -869,7 +873,7 @@ async def process_claim_countdown(
             manager = get_manager_if_active()
             if manager is None:
                 logger.debug(
-                    "Claim countdown final: card no longer claimable (roll_id=%d)", roll_id
+                    "Claim countdown final: item no longer claimable (roll_id=%d)", roll_id
                 )
                 return
 
