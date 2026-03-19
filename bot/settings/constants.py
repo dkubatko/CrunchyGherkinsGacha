@@ -689,3 +689,65 @@ REFRESH_ABORTED_MESSAGE = (
     "<b>{card_title}</b>\n\n"
     "Refresh cancelled. Original image kept and claim points remain spent."
 )
+
+# ---------------------------------------------------------------------------
+# Equip constants
+# ---------------------------------------------------------------------------
+
+EQUIP_USAGE_MESSAGE = (
+    "Usage: /equip &lt;aspect_id&gt; &lt;card_id&gt; [name]\n\n"
+    "Equip an aspect onto a card to transform it.\n\n"
+    "• <b>aspect_id</b> — the ID of the aspect to equip\n"
+    "• <b>card_id</b> — the ID of the card to equip it on\n"
+    "• <b>name</b> (optional) — custom name prefix for the card (defaults to aspect name)\n\n"
+    "Aspect rarity must be ≤ card rarity (Unique aspects can go on any card).\n"
+    "Maximum 5 aspects per card."
+)
+EQUIP_DM_RESTRICTED_MESSAGE = "Equipping aspects is only available in the group chat."
+EQUIP_INVALID_IDS_MESSAGE = "Invalid IDs. Both aspect ID and card ID must be numbers."
+EQUIP_ASPECT_NOT_FOUND_MESSAGE = "Aspect not found. Check the ID and try again."
+EQUIP_CARD_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
+EQUIP_NOT_YOUR_ASPECT_MESSAGE = "You can only equip aspects you currently own."
+EQUIP_NOT_YOUR_CARD_MESSAGE = "You can only equip aspects onto cards you currently own."
+EQUIP_CHAT_MISMATCH_MESSAGE = "Both the aspect and card must belong to this chat."
+EQUIP_CARD_LOCKED_MESSAGE = "Cannot equip onto a locked card. Unlock it first."
+EQUIP_ASPECT_LOCKED_MESSAGE = "Cannot equip a locked aspect. Unlock it first."
+EQUIP_ASPECT_EQUIPPED_MESSAGE = "This aspect is already equipped on a card."
+EQUIP_CAPACITY_MESSAGE = "This card already has 5 aspects equipped (maximum)."
+EQUIP_RARITY_MISMATCH_MESSAGE = (
+    "Rarity mismatch: a <b>{aspect_rarity}</b> aspect cannot be equipped "
+    "on a <b>{card_rarity}</b> card. Aspect rarity must be equal to or lower than card rarity."
+)
+EQUIP_NAME_TOO_LONG_MESSAGE = "Name prefix is too long. Please keep it under 30 characters."
+EQUIP_NAME_INVALID_CHARS_MESSAGE = "Name prefix contains invalid characters. Avoid HTML/markdown special characters (<, >, &, *, _, `)."
+EQUIP_CONFIRM_MESSAGE = (
+    "Equip <b>🔮 [{aspect_id}] {aspect_name}</b> ({aspect_rarity}) "
+    "onto <b>[{card_id}] {card_title}</b>?\n\n"
+    "Card will be renamed to: <b>{new_title}</b>\n"
+    "Aspects on card: {aspect_count}/5"
+)
+EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
+EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
+EQUIP_NOT_YOURS_MESSAGE = "This equip prompt isn't for you!"
+EQUIP_CRAFTING_MESSAGE = (
+    "⚙️ <b>Crafting...</b>\n\n"
+    "Equipping <b>🔮 {aspect_name}</b> onto <b>{card_title}</b>...\n\n"
+    "<i>Generating new card art — this may take a moment.</i>"
+)
+EQUIP_DB_FAILURE_MESSAGE = (
+    "Equip failed. The aspect or card may no longer meet the requirements. "
+    "Please check and try again."
+)
+EQUIP_SUCCESS_MESSAGE = (
+    "✨ <b>Equip complete!</b>\n\n"
+    "<b>[{card_id}] {new_title}</b>\n"
+    "Rarity: <b>{rarity}</b>\n"
+    "Aspects: <b>{aspect_count}/5</b>"
+)
+EQUIP_IMAGE_FAILURE_MESSAGE = (
+    "✨ Aspect equipped successfully, but image generation failed.\n\n"
+    "<b>[{card_id}] {new_title}</b>\n"
+    "Rarity: <b>{rarity}</b>\n"
+    "Aspects: <b>{aspect_count}/5</b>\n\n"
+    "<i>Use /refresh to regenerate the card art.</i>"
+)

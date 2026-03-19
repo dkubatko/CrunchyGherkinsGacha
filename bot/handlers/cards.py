@@ -89,10 +89,42 @@ from settings.constants import (
     CREATE_CANCELLED_MESSAGE,
     UNIQUE_ADDENDUM,
     SLOTS_VIEW_IN_APP_LABEL,
+    # Equip constants
+    EQUIP_USAGE_MESSAGE,
+    EQUIP_DM_RESTRICTED_MESSAGE,
+    EQUIP_INVALID_IDS_MESSAGE,
+    EQUIP_ASPECT_NOT_FOUND_MESSAGE,
+    EQUIP_CARD_NOT_FOUND_MESSAGE,
+    EQUIP_NOT_YOUR_ASPECT_MESSAGE,
+    EQUIP_NOT_YOUR_CARD_MESSAGE,
+    EQUIP_CHAT_MISMATCH_MESSAGE,
+    EQUIP_CARD_LOCKED_MESSAGE,
+    EQUIP_ASPECT_LOCKED_MESSAGE,
+    EQUIP_ASPECT_EQUIPPED_MESSAGE,
+    EQUIP_CAPACITY_MESSAGE,
+    EQUIP_RARITY_MISMATCH_MESSAGE,
+    EQUIP_NAME_TOO_LONG_MESSAGE,
+    EQUIP_NAME_INVALID_CHARS_MESSAGE,
+    EQUIP_CONFIRM_MESSAGE,
+    EQUIP_CANCELLED_MESSAGE,
+    EQUIP_ALREADY_RUNNING_MESSAGE,
+    EQUIP_NOT_YOURS_MESSAGE,
+    EQUIP_CRAFTING_MESSAGE,
+    EQUIP_DB_FAILURE_MESSAGE,
+    EQUIP_SUCCESS_MESSAGE,
+    EQUIP_IMAGE_FAILURE_MESSAGE,
+    RARITY_ORDER,
 )
 from utils import rolling
 from utils.miniapp import encode_single_card_token
-from utils.services import card_service, user_service, claim_service, spin_service, event_service
+from utils.services import (
+    card_service,
+    user_service,
+    claim_service,
+    spin_service,
+    event_service,
+    aspect_service,
+)
 from utils.schemas import User, Card
 from utils.decorators import verify_user, verify_user_in_chat, prevent_concurrency
 from utils.events import (
@@ -102,6 +134,7 @@ from utils.events import (
     RefreshOutcome,
     RecycleOutcome,
     CreateOutcome,
+    EquipOutcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -698,7 +731,15 @@ async def _generate_refresh_options(
     gemini_util,
     max_retries: int,
 ) -> tuple[str, str]:
-    """Generate two refresh image options."""
+    """Generate two refresh image options.
+
+    For cards with equipped aspects, uses the equipped-card refresh path
+    (``generate_refresh_equipped_image``) which generates from scratch
+    using the character photo + all equipped aspect sphere images.
+    """
+    if card.aspect_count > 0:
+        return await _generate_equipped_refresh_options(card, gemini_util, max_retries)
+
     option1_b64 = await asyncio.to_thread(
         rolling.regenerate_card_image,
         card,
@@ -714,6 +755,81 @@ async def _generate_refresh_options(
         refresh_attempt=3,
     )
     return option1_b64, option2_b64
+
+
+async def _generate_equipped_refresh_options(
+    card: Card,
+    gemini_util,
+    max_retries: int,
+) -> tuple[str, str]:
+    """Generate two refresh options for a card with equipped aspects.
+
+    Uses ``generate_refresh_equipped_image`` which starts from scratch
+    with the character photo, rarity template, and all equipped aspect
+    sphere images — producing a completely fresh interpretation.
+    """
+    # Get source profile image
+    if not card.source_type or not card.source_id:
+        raise rolling.InvalidSourceError(
+            f"Card {card.id} has no source information "
+            f"(source_type={card.source_type}, source_id={card.source_id})"
+        )
+    profile = await asyncio.to_thread(
+        rolling.get_profile_for_source, card.source_type, card.source_id
+    )
+
+    # Gather all equipped aspect images
+    equipped = await asyncio.to_thread(aspect_service.get_aspects_for_card, card.id)
+    aspects_data: list[tuple[str, bytes]] = []
+    for ca in equipped:
+        aspect_with_img = await asyncio.to_thread(
+            aspect_service.get_aspect_with_image, ca.aspect_id
+        )
+        if aspect_with_img and aspect_with_img.image_b64:
+            aspects_data.append(
+                (aspect_with_img.display_name, base64.b64decode(aspect_with_img.image_b64))
+            )
+
+    card_name = card.title()
+    total_attempts = max(1, max_retries + 1)
+
+    results: list[str] = []
+    for attempt_idx in range(2):
+        temperature = 1.0 + (0.25 * (attempt_idx + 1))
+        last_error: Optional[Exception] = None
+
+        for attempt in range(1, total_attempts + 1):
+            try:
+                image_b64 = await asyncio.to_thread(
+                    gemini_util.generate_refresh_equipped_image,
+                    card.rarity,
+                    card_name,
+                    aspects_data,
+                    base_image_b64=profile.image_b64,
+                    temperature=temperature,
+                )
+                if not image_b64:
+                    raise rolling.ImageGenerationError("Empty image returned")
+                results.append(image_b64)
+                break
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "Equipped refresh attempt %s/%s (option %s) failed for card %s: %s",
+                    attempt,
+                    total_attempts,
+                    attempt_idx + 1,
+                    card.id,
+                    exc,
+                )
+                if attempt < total_attempts:
+                    await asyncio.sleep(1)
+        else:
+            raise last_error or rolling.ImageGenerationError(
+                "Equipped refresh failed after retries"
+            )
+
+    return results[0], results[1]
 
 
 async def _update_to_refresh_options(
@@ -1306,6 +1422,497 @@ async def handle_burn_callback(
             pass
     finally:
         burning_users.discard(user.user_id)
+
+
+# =============================================================================
+# Equip Aspect Handlers
+# =============================================================================
+
+_EQUIP_INVALID_NAME_CHARS = set("<>&*_`")
+
+
+def _validate_equip_name(name_prefix: str) -> Optional[str]:
+    """Validate the equip name prefix.
+
+    Returns an error message string if invalid, or ``None`` if valid.
+    """
+    if len(name_prefix) > 30:
+        return EQUIP_NAME_TOO_LONG_MESSAGE
+    if any(ch in _EQUIP_INVALID_NAME_CHARS for ch in name_prefix):
+        return EQUIP_NAME_INVALID_CHARS_MESSAGE
+    return None
+
+
+def _rarity_index(rarity: str) -> int:
+    """Return the index of a rarity in RARITY_ORDER (lower = rarer)."""
+    try:
+        return RARITY_ORDER.index(rarity)
+    except ValueError:
+        return len(RARITY_ORDER)
+
+
+@verify_user_in_chat
+async def equip(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Equip an aspect onto a card."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text(
+            EQUIP_DM_RESTRICTED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if not context.args or len(context.args) < 2:
+        await message.reply_text(
+            EQUIP_USAGE_MESSAGE,
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Parse aspect_id and card_id
+    try:
+        aspect_id = int(context.args[0])
+        card_id = int(context.args[1])
+    except ValueError:
+        await message.reply_text(
+            EQUIP_INVALID_IDS_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Optional name prefix (remaining args joined)
+    name_prefix_args = context.args[2:]
+    name_prefix_raw = " ".join(name_prefix_args).strip() if name_prefix_args else None
+
+    chat_id_str = str(chat.id)
+
+    # Fetch aspect and card
+    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    if not aspect:
+        await message.reply_text(
+            EQUIP_ASPECT_NOT_FOUND_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    card = await asyncio.to_thread(card_service.get_card, card_id)
+    if not card:
+        await message.reply_text(
+            EQUIP_CARD_NOT_FOUND_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Ownership checks
+    if aspect.user_id != user.user_id:
+        await message.reply_text(
+            EQUIP_NOT_YOUR_ASPECT_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if card.user_id != user.user_id:
+        await message.reply_text(
+            EQUIP_NOT_YOUR_CARD_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Chat membership
+    if aspect.chat_id != chat_id_str:
+        await message.reply_text(
+            EQUIP_CHAT_MISMATCH_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if not card.chat_id or card.chat_id != chat_id_str:
+        await message.reply_text(
+            EQUIP_CHAT_MISMATCH_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Lock checks
+    if card.locked:
+        await message.reply_text(
+            EQUIP_CARD_LOCKED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    if aspect.locked:
+        await message.reply_text(
+            EQUIP_ASPECT_LOCKED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Check equipped status
+    equipped_aspects = await asyncio.to_thread(aspect_service.get_aspects_for_card, card_id)
+    is_already_equipped = any(ca.aspect_id == aspect_id for ca in equipped_aspects)
+    if is_already_equipped:
+        await message.reply_text(
+            EQUIP_ASPECT_EQUIPPED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Capacity check
+    if card.aspect_count >= 5:
+        await message.reply_text(
+            EQUIP_CAPACITY_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Rarity compatibility
+    if aspect.rarity != "Unique":
+        aspect_idx = _rarity_index(aspect.rarity)
+        card_idx = _rarity_index(card.rarity)
+        if aspect_idx < card_idx:
+            await message.reply_text(
+                EQUIP_RARITY_MISMATCH_MESSAGE.format(
+                    aspect_rarity=aspect.rarity,
+                    card_rarity=card.rarity,
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_to_message_id=message.message_id,
+            )
+            return
+
+    # Resolve name prefix
+    if name_prefix_raw:
+        name_prefix = name_prefix_raw
+    else:
+        name_prefix = aspect.display_name or "Unknown"
+
+    # Capitalize first letter
+    name_prefix = name_prefix[0].upper() + name_prefix[1:] if name_prefix else name_prefix
+
+    # Validate name
+    name_error = _validate_equip_name(name_prefix)
+    if name_error:
+        await message.reply_text(
+            name_error,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Build new display title for the confirmation
+    new_title = f"{name_prefix} {card.base_name}"
+    card_title = card.title(include_id=True, include_rarity=True)
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Equip!",
+                    callback_data=f"equip_yes_{aspect_id}_{card_id}_{user.user_id}",
+                ),
+                InlineKeyboardButton(
+                    "Cancel",
+                    callback_data=f"equip_cancel_{aspect_id}_{card_id}_{user.user_id}",
+                ),
+            ]
+        ]
+    )
+
+    # Store session data for the callback
+    session_key = f"equip_session_{chat_id_str}_{user.user_id}"
+    context.user_data[session_key] = {
+        "aspect_id": aspect_id,
+        "card_id": card_id,
+        "name_prefix": name_prefix,
+        "aspect_name": aspect.display_name,
+        "aspect_rarity": aspect.rarity,
+        "card_title": card.title(),
+        "new_title": new_title,
+    }
+
+    await message.reply_text(
+        EQUIP_CONFIRM_MESSAGE.format(
+            aspect_id=aspect_id,
+            aspect_name=html.escape(aspect.display_name),
+            aspect_rarity=aspect.rarity,
+            card_id=card_id,
+            card_title=card_title,
+            new_title=html.escape(new_title),
+            aspect_count=card.aspect_count,
+        ),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+    )
+
+
+@verify_user_in_chat
+async def handle_equip_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle equip confirmation callback."""
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    # equip_<action>_<aspect_id>_<card_id>_<user_id>
+    if len(data_parts) < 5:
+        await query.answer("Invalid equip data.")
+        return
+
+    action = data_parts[1]
+    try:
+        aspect_id = int(data_parts[2])
+        card_id = int(data_parts[3])
+        target_user_id = int(data_parts[4])
+    except ValueError:
+        await query.answer("Invalid equip data.")
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer(EQUIP_NOT_YOURS_MESSAGE, show_alert=True)
+        return
+
+    chat = update.effective_chat
+    chat_id_str = str(chat.id) if chat else None
+
+    session_key = f"equip_session_{chat_id_str}_{user.user_id}"
+    session = context.user_data.get(session_key)
+
+    if action == "cancel":
+        context.user_data.pop(session_key, None)
+        await query.answer(EQUIP_CANCELLED_MESSAGE)
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text(EQUIP_CANCELLED_MESSAGE)
+            except Exception:
+                pass
+        if chat_id_str:
+            event_service.log(
+                EventType.EQUIP,
+                EquipOutcome.FAILURE,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                card_id=card_id,
+                aspect_id=aspect_id,
+                reason="cancelled",
+            )
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    if not session:
+        await query.answer("Session expired or invalid.", show_alert=True)
+        try:
+            await query.edit_message_text("Session expired. Please try /equip again.")
+        except Exception:
+            pass
+        return
+
+    equipping_users = context.bot_data.setdefault("equipping_users", set())
+    if user.user_id in equipping_users:
+        await query.answer(EQUIP_ALREADY_RUNNING_MESSAGE, show_alert=True)
+        return
+
+    equipping_users.add(user.user_id)
+    name_prefix = session["name_prefix"]
+    aspect_name = session["aspect_name"]
+    card_title = session["card_title"]
+    new_title = session["new_title"]
+
+    try:
+        await query.answer()
+
+        # Show crafting message
+        try:
+            await query.edit_message_text(
+                EQUIP_CRAFTING_MESSAGE.format(
+                    aspect_name=html.escape(aspect_name),
+                    card_title=html.escape(card_title),
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
+        # Execute the atomic equip transaction
+        equip_success = await asyncio.to_thread(
+            aspect_service.equip_aspect_on_card,
+            aspect_id,
+            card_id,
+            user.user_id,
+            name_prefix,
+            chat_id_str,
+        )
+
+        if not equip_success:
+            await query.edit_message_text(EQUIP_DB_FAILURE_MESSAGE)
+            event_service.log(
+                EventType.EQUIP,
+                EquipOutcome.FAILURE,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                card_id=card_id,
+                aspect_id=aspect_id,
+                reason="db_validation_failed",
+            )
+            return
+
+        # --- Image generation phase ---
+        # Retrieve the updated card with its image
+        card_with_image = await asyncio.to_thread(card_service.get_card_with_aspects, card_id)
+        if not card_with_image:
+            logger.error("Card %s not found after successful equip", card_id)
+            await query.edit_message_text(
+                EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    card_id=card_id,
+                    new_title=html.escape(new_title),
+                    rarity=session["aspect_rarity"],
+                    aspect_count=card_with_image.aspect_count if card_with_image else "?",
+                )
+            )
+            return
+
+        # Gather equipped aspect images for Gemini
+        equipped_aspects_data = await asyncio.to_thread(
+            aspect_service.get_aspects_for_card, card_id
+        )
+
+        existing_aspects: list[tuple[str, bytes]] = []
+        new_aspect_image_bytes: Optional[bytes] = None
+
+        for ca in equipped_aspects_data:
+            aspect_with_img = await asyncio.to_thread(
+                aspect_service.get_aspect_with_image, ca.aspect_id
+            )
+            if not aspect_with_img or not aspect_with_img.image_b64:
+                continue
+
+            img_bytes = base64.b64decode(aspect_with_img.image_b64)
+            if ca.aspect_id == aspect_id:
+                # This is the newly equipped aspect
+                new_aspect_image_bytes = img_bytes
+            else:
+                # Previously equipped aspect
+                existing_aspects.append((aspect_with_img.display_name, img_bytes))
+
+        new_aspect_count = card_with_image.aspect_count
+
+        if new_aspect_image_bytes is None:
+            logger.warning("Could not load image for newly equipped aspect %s", aspect_id)
+            await query.edit_message_text(
+                EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    card_id=card_id,
+                    new_title=html.escape(new_title),
+                    rarity=card_with_image.rarity,
+                    aspect_count=new_aspect_count,
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Generate the transformed card image
+        try:
+            new_image_b64 = await asyncio.to_thread(
+                gemini_util.generate_equipped_card_image,
+                card_with_image.image_b64,
+                existing_aspects,
+                aspect_name,
+                new_aspect_image_bytes,
+                card_with_image.rarity,
+                new_title,
+            )
+        except Exception as exc:
+            logger.error("Equip image generation failed for card %s: %s", card_id, exc)
+            new_image_b64 = None
+
+        if new_image_b64:
+            # Update the card image in DB
+            await asyncio.to_thread(card_service.update_card_image, card_id, new_image_b64)
+
+            # Send the new card photo
+            image_bytes = base64.b64decode(new_image_b64)
+
+            caption = EQUIP_SUCCESS_MESSAGE.format(
+                card_id=card_id,
+                new_title=html.escape(new_title),
+                rarity=card_with_image.rarity,
+                aspect_count=new_aspect_count,
+            )
+
+            reply_markup = None
+            if MINIAPP_URL_ENV:
+                card_token = encode_single_card_token(card_id)
+                card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
+                reply_markup = InlineKeyboardMarkup(
+                    [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
+                )
+
+            sent_message = await context.bot.send_photo(
+                chat_id=query.message.chat_id,
+                message_thread_id=query.message.message_thread_id,
+                photo=image_bytes,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+            )
+
+            await save_card_file_id_from_message(sent_message, card_id)
+
+            # Delete the crafting message
+            try:
+                await query.message.delete()
+            except Exception:
+                pass
+        else:
+            # Image generation failed but equip succeeded
+            await query.edit_message_text(
+                EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    card_id=card_id,
+                    new_title=html.escape(new_title),
+                    rarity=card_with_image.rarity,
+                    aspect_count=new_aspect_count,
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+
+    except Exception as exc:
+        logger.exception("Unexpected error during equip for card %s: %s", card_id, exc)
+        event_service.log(
+            EventType.EQUIP,
+            EquipOutcome.FAILURE,
+            user_id=user.user_id,
+            chat_id=chat_id_str or "",
+            card_id=card_id,
+            aspect_id=aspect_id,
+            error_message=str(exc),
+        )
+        try:
+            await query.edit_message_text(
+                "An unexpected error occurred during equip. Please try again later."
+            )
+        except Exception:
+            pass
+    finally:
+        equipping_users.discard(user.user_id)
+        context.user_data.pop(session_key, None)
 
 
 # =============================================================================

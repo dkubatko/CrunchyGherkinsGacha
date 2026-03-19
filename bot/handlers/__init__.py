@@ -40,6 +40,8 @@ from handlers.cards import (
     handle_create_callback,
     recycle,
     handle_recycle_callback,
+    equip,
+    handle_equip_callback,
 )
 
 # Collection handlers
@@ -99,6 +101,8 @@ __all__ = [
     "handle_create_callback",
     "recycle",
     "handle_recycle_callback",
+    "equip",
+    "handle_equip_callback",
     # Collection handlers
     "casino",
     "balance",
