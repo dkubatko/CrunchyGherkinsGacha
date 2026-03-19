@@ -1,19 +1,20 @@
 import logging
 import random
 import time
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Dict, List, Literal, Optional, Union
 
-from settings.constants import RARITIES, UNIQUE_ADDENDUM
+from settings.constants import CURRENT_SEASON, RARITIES, ROLL_TYPE_WEIGHTS, UNIQUE_ADDENDUM
 from utils.services import (
     card_service,
     character_service,
     user_service,
     set_service,
     aspect_count_service,
+    aspect_service,
     modifier_service,
 )
-from utils.schemas import Card, Character, Modifier, User
+from utils.schemas import AspectDefinition, Card, Character, Modifier, User
 from utils.gemini import GeminiUtil
 
 
@@ -57,6 +58,29 @@ class GeneratedCard:
     set_name: str = ""
     modifier_id: Optional[int] = None
     description: Optional[str] = None
+
+
+@dataclass
+class GeneratedAspect:
+    """Result of generating an aspect sphere image."""
+
+    aspect_id: int  # DB id of the OwnedAspectModel created for this roll
+    aspect_name: str
+    rarity: str
+    image_b64: str
+    set_name: str = ""
+    set_id: Optional[int] = None
+    aspect_definition_id: Optional[int] = None
+    set_description: str = ""
+
+
+@dataclass
+class RollResult:
+    """Tagged union of a roll outcome: either a base card or an aspect."""
+
+    roll_type: Literal["base_card", "aspect"]
+    card: Optional[GeneratedCard] = None
+    aspect: Optional[GeneratedAspect] = None
 
 
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
@@ -231,6 +255,62 @@ def _choose_modifier_for_rarity(
     return chosen, chosen_weight
 
 
+def _choose_aspect_definition_for_rarity(
+    rarity: str,
+    chat_id: Optional[str] = None,
+    source: Optional[str] = None,
+) -> AspectDefinition:
+    """Choose a random aspect definition for the given rarity using weighted selection.
+
+    Mirrors ``_choose_modifier_for_rarity`` but queries ``aspect_definitions``
+    instead of ``modifiers`` and uses ``aspect_count_service`` for weighting.
+
+    Args:
+        rarity: The rarity level to choose an aspect definition for.
+        chat_id: The chat ID to check for existing usage (optional).
+        source: Filter definitions by source ("roll" or "slots").
+
+    Returns:
+        An ``AspectDefinition`` schema instance.
+
+    Raises:
+        InvalidSourceError: If no aspect definitions exist for the rarity.
+    """
+    defs_by_rarity = aspect_service.get_aspect_definitions_by_rarity(source=source)
+    definitions = defs_by_rarity.get(rarity)
+    if not definitions:
+        raise InvalidSourceError(f"No aspect definitions configured for rarity '{rarity}'")
+
+    # Uniform selection when no chat context
+    if chat_id is None:
+        return random.choice(definitions)
+
+    # Weighted selection: 1/(1+count) favoring unseen definitions
+    counts = aspect_count_service.get_counts(chat_id)
+
+    weights: List[float] = []
+    for ad in definitions:
+        count = counts.get(ad.name, 0)
+        weights.append(1.0 / (1 + count))
+
+    chosen = random.choices(definitions, weights=weights, k=1)[0]
+    chosen_weight = weights[definitions.index(chosen)]
+
+    logger.info(
+        "Chose aspect definition '%s' (id=%s, set='%s', weight=%.2f) "
+        "for rarity=%s, source=%s, chat=%s",
+        chosen.name,
+        chosen.id,
+        chosen.set_name,
+        chosen_weight,
+        rarity,
+        source or "any",
+        chat_id or "none",
+    )
+
+    return chosen
+
+
 def _create_generated_card(
     profile: SelectedProfile,
     gemini_util: GeminiUtil,
@@ -376,6 +456,203 @@ def generate_card_from_profile(
     raise last_error or ImageGenerationError("Image generation failed after retries")
 
 
+def _determine_roll_type() -> str:
+    """Determine whether this roll produces a base card or an aspect.
+
+    Uses ``ROLL_TYPE_WEIGHTS`` from config.  Returns ``"base_card"`` or
+    ``"aspect"``.
+    """
+    types = list(ROLL_TYPE_WEIGHTS.keys())
+    weights = [ROLL_TYPE_WEIGHTS[t] for t in types]
+    return random.choices(types, weights=weights, k=1)[0]
+
+
+def _generate_base_card_for_chat(
+    chat_id: str,
+    gemini_util: GeminiUtil,
+    rarity: str,
+    max_retries: int = 0,
+) -> GeneratedCard:
+    """Generate a base character card (no modifier / theme) for a chat."""
+    profile = select_random_source_with_image(chat_id)
+    if not profile:
+        raise NoEligibleUserError
+
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            image_b64 = gemini_util.generate_image(
+                profile.name,
+                "",  # no modifier
+                rarity,
+                base_image_b64=profile.image_b64,
+                no_modifier=True,
+            )
+            if not image_b64:
+                raise ImageGenerationError
+
+            logger.info(
+                "Successfully generated base card for chat %s (source=%s:%s, rarity=%s)",
+                chat_id,
+                profile.source_type,
+                profile.source_id,
+                rarity,
+            )
+
+            return GeneratedCard(
+                base_name=profile.name,
+                modifier=None,
+                rarity=rarity,
+                card_title=profile.name,
+                image_b64=image_b64,
+                source_type=profile.source_type,
+                source_id=profile.source_id,
+                set_id=None,
+                set_name="",
+                modifier_id=None,
+            )
+        except ImageGenerationError as exc:
+            last_error = exc
+            logger.warning(
+                "Base card generation attempt %s/%s failed for chat %s (source=%s:%s, rarity=%s)",
+                attempt,
+                total_attempts,
+                chat_id,
+                profile.source_type,
+                profile.source_id,
+                rarity,
+            )
+            if attempt < total_attempts:
+                time.sleep(1)
+                refreshed = select_random_source_with_image(chat_id)
+                if refreshed:
+                    profile = refreshed
+
+    raise last_error or ImageGenerationError("Base card generation failed after retries")
+
+
+def _generate_aspect_for_chat(
+    chat_id: str,
+    gemini_util: GeminiUtil,
+    rarity: str,
+    max_retries: int = 0,
+    source: Optional[str] = None,
+) -> GeneratedAspect:
+    """Generate an aspect sphere for a chat.
+
+    Selects an aspect definition, generates the sphere image via Gemini,
+    creates the ``OwnedAspectModel`` (unclaimed), and returns a
+    ``GeneratedAspect``.
+    """
+    aspect_def = _choose_aspect_definition_for_rarity(rarity, chat_id, source=source)
+
+    total_attempts = max(1, max_retries + 1)
+    last_error: Optional[Exception] = None
+
+    for attempt in range(1, total_attempts + 1):
+        try:
+            image_b64 = gemini_util.generate_aspect_image(
+                aspect_name=aspect_def.name,
+                rarity=rarity,
+                set_name=aspect_def.set_name,
+                set_description=aspect_def.description or None,
+            )
+            if not image_b64:
+                raise ImageGenerationError("Empty aspect image returned")
+
+            # Create the owned aspect in DB (unclaimed — owner/user_id = None)
+            import base64 as _b64
+
+            image_bytes = _b64.b64decode(image_b64)
+            from utils.image import ImageUtil
+
+            thumbnail_bytes = ImageUtil.create_thumbnail(image_bytes)
+
+            aspect_id = aspect_service.add_owned_aspect(
+                aspect_definition_id=aspect_def.id,
+                chat_id=str(chat_id),
+                season_id=CURRENT_SEASON,
+                rarity=rarity,
+                image=image_bytes,
+                thumbnail=thumbnail_bytes,
+                owner=None,
+                user_id=None,
+            )
+
+            logger.info(
+                "Successfully generated aspect for chat %s (aspect_def='%s', "
+                "id=%s, rarity=%s, set='%s')",
+                chat_id,
+                aspect_def.name,
+                aspect_id,
+                rarity,
+                aspect_def.set_name,
+            )
+
+            return GeneratedAspect(
+                aspect_id=aspect_id,
+                aspect_name=aspect_def.name,
+                rarity=rarity,
+                image_b64=image_b64,
+                set_name=aspect_def.set_name or "",
+                set_id=aspect_def.set_id,
+                aspect_definition_id=aspect_def.id,
+                set_description=aspect_def.description or "",
+            )
+        except ImageGenerationError as exc:
+            last_error = exc
+            logger.warning(
+                "Aspect generation attempt %s/%s failed for chat %s "
+                "(aspect_def='%s', rarity=%s)",
+                attempt,
+                total_attempts,
+                chat_id,
+                aspect_def.name,
+                rarity,
+            )
+            if attempt < total_attempts:
+                time.sleep(1)
+
+    raise last_error or ImageGenerationError("Aspect generation failed after retries")
+
+
+def generate_roll_for_chat(
+    chat_id: str,
+    gemini_util: GeminiUtil,
+    rarity: Optional[str] = None,
+    max_retries: int = 0,
+    source: Optional[str] = None,
+    roll_type: Optional[str] = None,
+) -> RollResult:
+    """Roll for the chat, producing either a base card or an aspect.
+
+    Args:
+        chat_id: The chat ID.
+        gemini_util: GeminiUtil instance.
+        rarity: Optional rarity override.  If None, uses weighted random.
+        max_retries: Extra generation attempts on failure.
+        source: Source filter for definitions ("roll", "slots", etc.).
+        roll_type: Force a specific roll type ("base_card" or "aspect").
+                   If None, determined by ``ROLL_TYPE_WEIGHTS``.
+
+    Returns:
+        A ``RollResult`` with either ``.card`` or ``.aspect`` populated.
+    """
+    chosen_type = roll_type or _determine_roll_type()
+    chosen_rarity = rarity or get_random_rarity(source)
+
+    if chosen_type == "base_card":
+        card = _generate_base_card_for_chat(chat_id, gemini_util, chosen_rarity, max_retries)
+        return RollResult(roll_type="base_card", card=card)
+    else:
+        aspect = _generate_aspect_for_chat(
+            chat_id, gemini_util, chosen_rarity, max_retries, source=source
+        )
+        return RollResult(roll_type="aspect", aspect=aspect)
+
+
 def generate_card_for_chat(
     chat_id: str,
     gemini_util: GeminiUtil,
@@ -384,6 +661,10 @@ def generate_card_for_chat(
     source: Optional[str] = None,
 ) -> GeneratedCard:
     """Generate a card for a chat using a random eligible user's or character's profile image.
+
+    Produces a modifier-themed card.  Used by recycle, slots victory,
+    and minesweeper — **not** by the main ``/roll`` pipeline (which uses
+    ``generate_roll_for_chat``).
 
     Args:
         chat_id: The chat ID to generate the card for.

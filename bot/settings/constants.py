@@ -402,6 +402,36 @@ CARD_STATUS_PRE_CLAIM_MESSAGES = [
     "Almost ready...",
     "Just a moment...",
 ]
+
+# Aspect roll caption templates
+ASPECT_CAPTION_BASE = (
+    "<b>🔮 [{aspect_id}] {aspect_name}</b>\nRarity: <b>{rarity}</b>\nSet: <b>{set_name}</b>"
+)
+ASPECT_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
+ASPECT_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
+ASPECT_STATUS_LOCKED = "\n\n<i>Locked from re-rolling</i>"
+ASPECT_STATUS_REROLLING = "\n\n<b>Rerolling...</b>"
+ASPECT_STATUS_REROLLED = (
+    "\n\n<i>Rerolled from <b>{original_rarity}</b> to <b>{downgraded_rarity}</b></i>"
+)
+ASPECT_STATUS_ATTEMPTED = "\n<i>Attempted by: {users}</i>"
+ASPECT_STATUS_PRE_CLAIM_MESSAGES = [
+    "Shaping the sphere...",
+    "Swirling the essence...",
+    "Infusing the theme...",
+    "Polishing the glass...",
+    "Sealing the magic...",
+    "Channeling the vibes...",
+    "Consulting the stars...",
+    "Condensing the aura...",
+    "Spinning the globe...",
+    "Tinting the crystal...",
+    "Taunting the players...",
+    "Getting unstuck...",
+    "Messing around...",
+    "Almost ready...",
+    "Just a moment...",
+]
 PRE_CLAIM_ROTATION_INTERVAL = config.get(
     "PRE_CLAIM_ROTATION_INTERVAL", 1.5
 )  # Seconds between message rotations
@@ -409,6 +439,9 @@ PRE_CLAIM_ROTATION_INTERVAL = config.get(
 # Claim unlock delay configuration (random delay in seconds)
 CLAIM_UNLOCK_DELAY_LOW = config.get("CLAIM_UNLOCK_DELAY_LOW", 3)  # Minimum delay in seconds
 CLAIM_UNLOCK_DELAY_HIGH = config.get("CLAIM_UNLOCK_DELAY_HIGH", 6)  # Maximum delay in seconds
+
+# Roll type weights (base_card vs aspect)
+ROLL_TYPE_WEIGHTS = config.get("ROLL_TYPE_WEIGHTS", {"base_card": 10, "aspect": 90})
 
 RECYCLE_ALLOWED_RARITIES = {
     "common": "Common",

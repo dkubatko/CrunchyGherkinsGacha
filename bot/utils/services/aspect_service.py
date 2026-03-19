@@ -321,6 +321,26 @@ def update_aspect_file_id(aspect_id: int, file_id: str) -> bool:
         return True
 
 
+def delete_aspect(aspect_id: int) -> bool:
+    """Delete an owned aspect from the database (used during rerolls).
+
+    Only works for unclaimed aspects in the current season.
+    The cascade on OwnedAspectModel will also remove the related
+    AspectImageModel row.
+    """
+    with get_session(commit=True) as session:
+        deleted = (
+            session.query(OwnedAspectModel)
+            .filter(
+                OwnedAspectModel.id == aspect_id,
+                OwnedAspectModel.season_id == CURRENT_SEASON,
+            )
+            .delete()
+        )
+    logger.info("Deleted aspect %d: %s", aspect_id, deleted > 0)
+    return deleted > 0
+
+
 # ---------------------------------------------------------------------------
 # Burn / Recycle
 # ---------------------------------------------------------------------------
