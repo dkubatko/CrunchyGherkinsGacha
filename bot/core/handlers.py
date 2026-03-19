@@ -36,6 +36,8 @@ from handlers import (
     handle_create_callback,
     recycle,
     handle_recycle_callback,
+    equip,
+    handle_equip_callback,
     # Collection handlers
     casino,
     balance,
@@ -105,6 +107,7 @@ def _register_card_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("create", create_unique_card))
     application.add_handler(CommandHandler("refresh", refresh))
     application.add_handler(CommandHandler("lock", lock_card_command))
+    application.add_handler(CommandHandler("equip", equip))
 
 
 def _register_trade_handlers(application: Application) -> None:
@@ -132,6 +135,7 @@ def _register_callback_handlers(application: Application) -> None:
     application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^burn_"))
     application.add_handler(CallbackQueryHandler(handle_create_callback, pattern="^create_"))
     application.add_handler(CallbackQueryHandler(handle_refresh_callback, pattern="^refresh_"))
+    application.add_handler(CallbackQueryHandler(handle_equip_callback, pattern="^equip_"))
 
     # Collection navigation callbacks
     application.add_handler(
