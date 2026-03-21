@@ -1,14 +1,12 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './Casino.css';
 import { Title, SpinsBadge, ClaimPointsBadge } from '@/components/common';
 import Slots from './slots/Slots';
-import Minesweeper from './minesweeper/Minesweeper';
 import RideTheBus from './rtb/RideTheBus';
 import DailyBonusPopup from './DailyBonusPopup';
 import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 import slotsCover from '@/assets/casino/slots_cover.webp';
-import minesweeperCover from '@/assets/casino/minesweeper_cover.webp';
 import rtbCover from '@/assets/casino/rtb_cover.webp';
 
 interface SlotSymbol {
@@ -52,7 +50,7 @@ interface CasinoProps {
   updateClaimPoints: (count: number) => void;
 }
 
-type GameView = 'catalog' | 'slots' | 'minesweeper' | 'ridethebus';
+type GameView = 'catalog' | 'slots' | 'ridethebus';
 
 type GameInfo = {
   title: string;
@@ -60,7 +58,7 @@ type GameInfo = {
   rules: string[];
 };
 
-const GAME_INFO: Record<'slots' | 'minesweeper' | 'ridethebus', GameInfo> = {
+const GAME_INFO: Record<'slots' | 'ridethebus', GameInfo> = {
   slots: {
     title: 'Slots',
     description: 'Spin the reels to win cards!',
@@ -68,15 +66,6 @@ const GAME_INFO: Record<'slots' | 'minesweeper' | 'ridethebus', GameInfo> = {
       'Match 3 symbols to win a card',
       'Claim your daily bonus for free spins!',
       'Burn cards to get more spins!'
-    ]
-  },
-  minesweeper: {
-    title: 'Minesweeper',
-    description: 'Bet a card & clear the board to win!',
-    rules: [
-      'Select a card to bet to set reward rarity',
-      'Reveal three symbols to win a card',
-      'Reveal a bomb and lose your bet card!'
     ]
   },
   ridethebus: {
@@ -105,15 +94,10 @@ export default function Casino({
   updateClaimPoints
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
-  const [showInfo, setShowInfo] = useState<'slots' | 'minesweeper' | 'ridethebus' | null>(null);
+  const [showInfo, setShowInfo] = useState<'slots' | 'ridethebus' | null>(null);
   const [rtbAvailable, setRtbAvailable] = useState<boolean>(true);
   const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
   const rtbCheckRef = useRef(false);
-
-  // Callback for Minesweeper: receives delta (increment) and converts to absolute
-  const handleClaimPointsDelta = useCallback((delta: number) => {
-    updateClaimPoints((claimPoints ?? 0) + delta);
-  }, [claimPoints, updateClaimPoints]);
 
   // Daily bonus state
   const [showDailyBonus, setShowDailyBonus] = useState(false);
@@ -184,12 +168,12 @@ export default function Casino({
     return cleanup;
   }, [currentView]);
 
-  const handleGameSelect = (game: 'slots' | 'minesweeper' | 'ridethebus') => {
+  const handleGameSelect = (game: 'slots' | 'ridethebus') => {
     TelegramUtils.triggerHapticSelection();
     setCurrentView(game);
   };
 
-  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'minesweeper' | 'ridethebus') => {
+  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'ridethebus') => {
     e.stopPropagation(); // Prevent card click
     TelegramUtils.triggerHapticImpact('light');
     setShowInfo(game);
@@ -214,16 +198,6 @@ export default function Casino({
         onMegaspinUpdate={updateMegaspin}
         claimPoints={claimPoints ?? undefined}
         onClaimPointsUpdate={updateClaimPoints}
-      />
-    );
-  }
-
-  if (currentView === 'minesweeper') {
-    return (
-      <Minesweeper
-        chatId={chatId}
-        initData={initData}
-        onClaimPointsDelta={handleClaimPointsDelta}
       />
     );
   }
@@ -259,24 +233,6 @@ export default function Casino({
             <div className="casino-game-info">
               <div className="casino-game-name">Slots</div>
               <div className="casino-game-description">Spin to win</div>
-            </div>
-          </div>
-          
-          <div 
-            className="casino-game-card"
-            onClick={() => handleGameSelect('minesweeper')}
-          >
-            <img src={minesweeperCover} alt="Minesweeper" className="casino-game-image" />
-            <button 
-              className="casino-info-icon"
-              onClick={(e) => handleInfoClick(e, 'minesweeper')}
-              aria-label="Minesweeper info"
-            >
-              i
-            </button>
-            <div className="casino-game-info">
-              <div className="casino-game-name">Minesweeper</div>
-              <div className="casino-game-description">Clear the board</div>
             </div>
           </div>
           
