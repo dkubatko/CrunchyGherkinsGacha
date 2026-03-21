@@ -20,7 +20,6 @@ from api.routers import (
     cards_router,
     chat_router,
     downloads_router,
-    minesweeper_router,
     rtb_router,
     slots_router,
     trade_router,
@@ -91,7 +90,6 @@ app.include_router(downloads_router)
 app.include_router(trade_router)
 app.include_router(user_router)
 app.include_router(slots_router)
-app.include_router(minesweeper_router)
 app.include_router(rtb_router)
 app.include_router(chat_router)
 app.include_router(admin_auth_router)
