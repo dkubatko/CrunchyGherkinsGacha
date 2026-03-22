@@ -7,6 +7,7 @@ equipping aspects onto cards.
 
 from __future__ import annotations
 
+import base64
 import datetime
 import logging
 from typing import Dict, List, Optional
@@ -15,6 +16,7 @@ from sqlalchemy.orm import joinedload
 
 from settings.constants import CURRENT_SEASON, RARITY_ORDER, get_claim_cost, get_spin_reward
 from utils.events import EquipOutcome, EventType
+from utils.image import ImageUtil
 from utils.models import (
     AspectDefinitionModel,
     AspectImageModel,
@@ -191,6 +193,145 @@ def get_aspect_with_image(aspect_id: int) -> Optional[OwnedAspectWithImage]:
             .first()
         )
         return OwnedAspectWithImage.from_orm(aspect) if aspect else None
+
+
+def get_aspect_image(aspect_id: int) -> Optional[str]:
+    """Get the base64 encoded full-size image for an aspect.
+
+    Only returns images for aspects in the current season.
+
+    Args:
+        aspect_id: The ID of the owned aspect.
+
+    Returns:
+        Base64 encoded image string, or None if not found or wrong season.
+    """
+    with get_session() as session:
+        aspect = (
+            session.query(OwnedAspectModel)
+            .filter(
+                OwnedAspectModel.id == aspect_id,
+                OwnedAspectModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not aspect:
+            return None
+
+        aspect_image = (
+            session.query(AspectImageModel).filter(AspectImageModel.aspect_id == aspect_id).first()
+        )
+        if not aspect_image or not aspect_image.image:
+            return None
+        return base64.b64encode(aspect_image.image).decode("utf-8")
+
+
+def get_aspect_thumbnail(aspect_id: int) -> Optional[str]:
+    """Get the thumbnail base64 image for an aspect, generating it if missing.
+
+    Only returns images for aspects in the current season.
+    Returns the 1/4-scale thumbnail (much smaller than the full image).
+
+    Args:
+        aspect_id: The ID of the owned aspect.
+
+    Returns:
+        Base64 encoded thumbnail string, or None if not found or wrong season.
+    """
+    with get_session(commit=True) as session:
+        aspect = (
+            session.query(OwnedAspectModel)
+            .filter(
+                OwnedAspectModel.id == aspect_id,
+                OwnedAspectModel.season_id == CURRENT_SEASON,
+            )
+            .first()
+        )
+        if not aspect:
+            return None
+
+        aspect_image = (
+            session.query(AspectImageModel).filter(AspectImageModel.aspect_id == aspect_id).first()
+        )
+        if not aspect_image:
+            return None
+
+        # Return cached thumbnail if available
+        if aspect_image.thumbnail:
+            return base64.b64encode(aspect_image.thumbnail).decode("utf-8")
+
+        # Generate thumbnail from full image on-the-fly
+        if not aspect_image.image:
+            return None
+
+        try:
+            thumb_bytes = ImageUtil.compress_to_fraction(aspect_image.image, scale_factor=1 / 4)
+            aspect_image.thumbnail = thumb_bytes
+            return base64.b64encode(thumb_bytes).decode("utf-8")
+        except Exception as exc:
+            logger.warning("Failed to generate thumbnail for aspect %s: %s", aspect_id, exc)
+            return base64.b64encode(aspect_image.image).decode("utf-8")
+
+
+def get_aspect_images_batch(aspect_ids: List[int]) -> Dict[int, str]:
+    """Get thumbnail base64 images for multiple aspects, generating them when missing.
+
+    Only returns images for aspects in the current season.
+
+    Args:
+        aspect_ids: List of aspect IDs to fetch images for.
+
+    Returns:
+        Dictionary mapping aspect_id to thumbnail base64 string.
+    """
+    if not aspect_ids:
+        return {}
+
+    with get_session(commit=True) as session:
+        # Filter to only aspects in the current season
+        valid_ids = {
+            row[0]
+            for row in session.query(OwnedAspectModel.id)
+            .filter(
+                OwnedAspectModel.id.in_(aspect_ids),
+                OwnedAspectModel.season_id == CURRENT_SEASON,
+            )
+            .all()
+        }
+
+        if not valid_ids:
+            return {}
+
+        aspect_images = (
+            session.query(AspectImageModel).filter(AspectImageModel.aspect_id.in_(valid_ids)).all()
+        )
+
+        fetched: Dict[int, str] = {}
+        for ai in aspect_images:
+            aid = ai.aspect_id
+            thumb = ai.thumbnail
+            full = ai.image
+
+            if thumb:
+                fetched[aid] = base64.b64encode(thumb).decode("utf-8")
+                continue
+
+            if not full:
+                continue
+
+            try:
+                thumb_bytes = ImageUtil.compress_to_fraction(full, scale_factor=1 / 4)
+                ai.thumbnail = thumb_bytes
+                fetched[aid] = base64.b64encode(thumb_bytes).decode("utf-8")
+            except Exception as exc:
+                logger.warning(
+                    "Failed to generate thumbnail during batch fetch for aspect %s: %s",
+                    aid,
+                    exc,
+                )
+                fetched[aid] = base64.b64encode(full).decode("utf-8")
+
+        return fetched
 
 
 def get_aspects_for_card(card_id: int) -> List[CardAspect]:

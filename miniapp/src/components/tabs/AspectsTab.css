@@ -1,0 +1,56 @@
+/* Aspect-specific overrides for the shared grid-card classes */
+.grid-card.aspect-sphere {
+  padding-top: 180%; /* same ratio as cards for consistency in grid */
+}
+
+/* ── Aspect filter controls ── */
+.aspect-filter-controls {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.aspect-filter-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.aspect-filter-select {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--tg-theme-separator-color, rgba(255, 255, 255, 0.15));
+  background: var(--tg-theme-secondary-bg-color, #333);
+  color: var(--tg-theme-text-color, #fff);
+  font-size: 0.75rem;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  padding-right: 22px;
+}
+
+.aspect-filter-select:focus {
+  outline: none;
+  border-color: var(--tg-theme-button-color, #3390ec);
+}
+
+.aspect-filter-count {
+  font-size: 0.7rem;
+  opacity: 0.6;
+  text-align: right;
+  padding-right: 2px;
+}
+
+@media (max-width: 480px) {
+  .aspect-filter-select {
+    font-size: 0.65rem;
+    padding: 5px 6px;
+    padding-right: 18px;
+  }
+}

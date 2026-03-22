@@ -102,8 +102,8 @@ async def get_card_detail(
     card_id: int,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Fetch metadata for a single card."""
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    """Fetch metadata for a single card, including equipped aspects."""
+    card = await asyncio.to_thread(card_service.get_card_with_aspects, card_id)
     if not card:
         logger.warning("Card detail requested for non-existent card_id: %s", card_id)
         raise HTTPException(status_code=404, detail="Card not found")

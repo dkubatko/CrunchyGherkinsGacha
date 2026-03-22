@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { CardModal, CardGrid, FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
 import Loading from '@/components/common/Loading';
-import { BurnConfirmDialog, LockConfirmDialog } from '@/components/dialogs';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
@@ -26,7 +25,7 @@ import { TelegramUtils } from '@/utils/telegram';
 import { ApiService } from '@/services/api';
 
 // Types
-import type { CardData, ClaimBalanceState, ProfileState, UserProfile } from '@/types';
+import type { CardData, ProfileState, UserProfile } from '@/types';
 
 interface CollectionTabProps {
   currentUserId: number;
@@ -54,8 +53,6 @@ const CollectionTab = ({
     enableTrade,
     collectionDisplayName,
     collectionUsername,
-    refetch: refetchCards,
-    updateCard: updateCardInCollection
   } = useCollectionCards(initialTargetUserId, chatId, initData, {
     initialIsOwnCollection,
     initialEnableTrade,
@@ -68,26 +65,9 @@ const CollectionTab = ({
   // UI state
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
-  const [showBurnDialog, setShowBurnDialog] = useState(false);
-  const [showLockDialog, setShowLockDialog] = useState(false);
-  const [lockingCard, setLockingCard] = useState(false);
-  const [burningCard, setBurningCard] = useState(false);
-  const [triggerBurn, setTriggerBurn] = useState(false);
-  const [isBurningInProgress, setIsBurningInProgress] = useState(false);
   const [chatProfiles, setChatProfiles] = useState<Record<string, ProfileState>>({});
   const profileRequestsRef = useRef<Map<string, Promise<UserProfile | null>>>(new Map());
   const pendingChatIdsRef = useRef<Set<string>>(new Set());
-  const cardConfigLoadedRef = useRef(false);
-  const [burnRewards, setBurnRewards] = useState<Record<string, number> | null>(null);
-  const [lockCosts, setLockCosts] = useState<Record<string, number> | null>(null);
-  const burnResultRef = useRef<{
-    rarity: string;
-    cardName: string;
-    spinsAwarded: number;
-    newSpinTotal: number;
-    cardId: number;
-    burnedCardIndex: number;
-  } | null>(null);
   const [isTradeView, setIsTradeView] = useState(false);
 
   const isTradeMode = Boolean(selectedCardForTrade);
@@ -167,41 +147,15 @@ const CollectionTab = ({
     });
   }, [ensureUserProfile]);
 
-  // Load card config on first render
-  useEffect(() => {
-    if (cardConfigLoadedRef.current) return;
-    cardConfigLoadedRef.current = true;
-
-    const loadCardConfig = async () => {
-      try {
-        const config = await ApiService.fetchCardConfig(initData);
-        setBurnRewards(config.burn_rewards);
-        setLockCosts(config.lock_costs);
-      } catch (err) {
-        console.error('Failed to fetch card config:', err);
-        cardConfigLoadedRef.current = false;
-      }
-    };
-    void loadCardConfig();
-  }, [initData]);
-
   const {
     allCards,
     loading: allCardsLoading,
     error: allCardsError,
     refetch: refetchAllCards,
-    updateCard: updateAllCardsCollection
   } = useAllCards(initData, cardsScopeChatId, {
     enabled: shouldFetchAllCards,
     tradeCardId: activeTradeCardId
   });
-
-  const refreshCardsData = useCallback(async () => {
-    await refetchCards();
-    if (shouldFetchAllCards) {
-      await refetchAllCards();
-    }
-  }, [refetchCards, refetchAllCards, shouldFetchAllCards]);
 
   const tradeCardName = selectedCardForTrade
     ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
@@ -225,22 +179,7 @@ const CollectionTab = ({
   const shareEnabled = Boolean(initData);
 
   // Feature hooks
-  const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
-  const currentDialogCard = modalCard ?? cards[currentIndex] ?? null;
-  const currentDialogProfileState = currentDialogCard?.chat_id
-    ? chatProfiles[currentDialogCard.chat_id]
-    : undefined;
-
-  const currentDialogClaimState: ClaimBalanceState | undefined = currentDialogProfileState
-    ? {
-        balance: currentDialogProfileState.profile?.claim_balance ?? null,
-        loading: currentDialogProfileState.loading,
-        error: currentDialogProfileState.error
-      }
-    : undefined;
-  const currentDialogCardName = currentDialogCard
-    ? `${currentDialogCard.modifier} ${currentDialogCard.base_name}`.trim()
-    : null;
+  const { showModal, modalCard, openModal, closeModal } = useModal();
 
   const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
     setSelectedCardForTrade(null);
@@ -325,191 +264,21 @@ const CollectionTab = ({
     return cleanup;
   }, [isTradeView]);
 
-  // Burn handlers
-  const handleBurnClick = useCallback(() => {
-    const targetCard = modalCard || cards[currentIndex];
-    if (!targetCard) return;
-    if (!targetCard.chat_id) {
-      TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
-      return;
-    }
-    setShowBurnDialog(true);
-  }, [modalCard, cards, currentIndex]);
-
-  const handleBurnConfirm = async () => {
-    if (burningCard) return;
-    const targetCard = modalCard || cards[currentIndex];
-    if (!targetCard) return;
-    const targetChatId = targetCard.chat_id;
-    if (!targetChatId) {
-      TelegramUtils.showAlert('Unable to burn this card because it is not associated with a chat yet.');
-      return;
-    }
-
-    try {
-      setBurningCard(true);
-      const result = await ApiService.burnCard(targetCard.id, currentUserId, targetChatId, initData);
-      const cardName = `${targetCard.modifier} ${targetCard.base_name}`.trim();
-      burnResultRef.current = {
-        rarity: targetCard.rarity,
-        cardName,
-        spinsAwarded: result.spins_awarded,
-        newSpinTotal: result.new_spin_total,
-        cardId: targetCard.id,
-        burnedCardIndex: cards.findIndex((c: CardData) => c.id === targetCard.id),
-      };
-
-      setShowBurnDialog(false);
-      setTriggerBurn(true);
-      setIsBurningInProgress(true);
-    } catch (burnError) {
-      console.error('Failed to burn card:', burnError);
-      setShowBurnDialog(false);
-      setBurningCard(false);
-      TelegramUtils.showAlert(burnError instanceof Error ? burnError.message : 'Failed to burn card');
-    }
-  };
-
-  const handleBurnComplete = async () => {
-    setTriggerBurn(false);
-    setBurningCard(false);
-    setIsBurningInProgress(false);
-
-    const burnResult = burnResultRef.current;
-    if (!burnResult) return;
-    burnResultRef.current = null;
-
-    if (modalCard) {
-      closeModal();
-    } else if (burnResult.burnedCardIndex !== -1) {
-      if (cards.length > 1) {
-        if (burnResult.burnedCardIndex === cards.length - 1) {
-          setCurrentIndex(Math.max(0, burnResult.burnedCardIndex - 1));
-        }
-      } else {
-        setCurrentIndex(0);
-      }
-    }
-
-    const notification = `${burnResult.rarity} ${burnResult.cardName} burned!\n\nReceived ${burnResult.spinsAwarded} spins\n\nBalance: ${burnResult.newSpinTotal}`;
-    TelegramUtils.showAlert(notification);
-    await refreshCardsData();
-  };
-
-  const handleBurnCancel = () => setShowBurnDialog(false);
-
-  // Lock handlers
-  const handleLockClick = useCallback(() => {
-    const targetCard = modalCard || cards[currentIndex];
-    if (!targetCard) return;
-    if (!targetCard.chat_id) {
-      TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
-      return;
-    }
-    const rarityLockCost = Math.max(1, lockCosts?.[targetCard.rarity] ?? 1);
-    if (rarityLockCost > 0) void ensureUserProfile(targetCard.chat_id);
-    setShowLockDialog(true);
-  }, [modalCard, cards, currentIndex, lockCosts, ensureUserProfile]);
-
-  const updateCardLockState = (cardId: number, locked: boolean) => {
-    if (modalCard && modalCard.id === cardId) updateModalCard({ locked });
-    updateCardInCollection(cardId, { locked });
-    updateAllCardsCollection(cardId, { locked });
-    if (selectedCardForTrade?.id === cardId) {
-      setSelectedCardForTrade((prev) => prev ? { ...prev, locked } : prev);
-    }
-  };
-
-  const handleLockConfirm = async () => {
-    if (lockingCard) return;
-    const targetCard = modalCard || cards[currentIndex];
-    if (!targetCard) return;
-    const targetChatId = targetCard.chat_id;
-    if (!targetChatId) {
-      TelegramUtils.showAlert('Unable to lock this card because it is not associated with a chat yet.');
-      return;
-    }
-
-    try {
-      setLockingCard(true);
-      const isCurrentlyLocked = targetCard.locked || false;
-      const result = await ApiService.lockCard(
-        targetCard.id, currentUserId, targetChatId, !isCurrentlyLocked, initData
-      );
-
-      setChatProfiles(prev => {
-        const currentProfile = prev[targetChatId]?.profile;
-        if (!currentProfile) return prev;
-        return {
-          ...prev,
-          [targetChatId]: {
-            ...prev[targetChatId],
-            profile: { ...currentProfile, claim_balance: result.balance }
-          }
-        };
-      });
-
-      setLockingCard(false);
-      setShowLockDialog(false);
-      updateCardLockState(targetCard.id, result.locked);
-
-      if (result.lock_cost !== undefined) {
-        setLockCosts(prev => ({ ...(prev ?? {}), [targetCard.rarity]: result.lock_cost }));
-      }
-
-      TelegramUtils.showAlert(result.message);
-      await refreshCardsData();
-    } catch (lockError) {
-      console.error('Failed to lock/unlock card:', lockError);
-      setChatProfiles(prev => {
-        const existing = prev[targetChatId];
-        const message = lockError instanceof Error ? lockError.message : 'Failed to lock/unlock card';
-        return {
-          ...prev,
-          [targetChatId]: existing
-            ? { ...existing, loading: false, error: message }
-            : { profile: null, loading: false, error: message }
-        };
-      });
-      TelegramUtils.showAlert(lockError instanceof Error ? lockError.message : 'Failed to lock/unlock card');
-    } finally {
-      setLockingCard(false);
-      setShowLockDialog(false);
-    }
-  };
-
-  const handleLockCancel = () => setShowLockDialog(false);
-
   // Action Panel logic
   const actionButtons = useMemo<ActionButton[]>(() => {
     if (loading || error) return [];
     const buttons: ActionButton[] = [];
-    const shouldDisableActions = burningCard || isBurningInProgress;
-
-    if (isOwnCollection && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
-      if (modalCard.chat_id) {
-        buttons.push({
-          id: 'burn', text: 'Burn', onClick: handleBurnClick,
-          variant: 'burn-red', disabled: shouldDisableActions
-        });
-        buttons.push({
-          id: 'lock', text: modalCard.locked ? 'Unlock' : 'Lock',
-          onClick: handleLockClick, variant: 'lock-grey',
-          disabled: shouldDisableActions || lockingCard
-        });
-      }
-    }
 
     if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
       buttons.push({
         id: 'trade', text: 'Trade', onClick: handleTradeClick,
-        variant: 'primary', disabled: shouldDisableActions
+        variant: 'primary'
       });
     } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
       modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
       buttons.push({
         id: 'select', text: 'Select', onClick: handleSelectClick,
-        variant: 'primary', disabled: shouldDisableActions
+        variant: 'primary'
       });
     }
 
@@ -517,16 +286,11 @@ const CollectionTab = ({
   }, [
     loading,
     error,
-    burningCard,
-    isBurningInProgress,
     isOwnCollection,
     cards.length,
     isTradeView,
     selectedCardForTrade,
     modalCard,
-    handleBurnClick,
-    handleLockClick,
-    lockingCard,
     enableTrade,
     handleTradeClick,
     handleSelectClick
@@ -563,35 +327,11 @@ const CollectionTab = ({
     );
   }
 
-  const currentDialogSpinReward = currentDialogCard && burnRewards
-    ? burnRewards[currentDialogCard.rarity] ?? null
-    : null;
-  const currentDialogLockCost = currentDialogCard
-    ? Math.max(1, lockCosts?.[currentDialogCard.rarity] ?? 1)
-    : 1;
-
   return (
     <>
-      <BurnConfirmDialog
-        isOpen={showBurnDialog}
-        onConfirm={handleBurnConfirm}
-        onCancel={handleBurnCancel}
-        cardName={currentDialogCardName}
-        spinReward={currentDialogSpinReward}
-        processing={burningCard}
-      />
-      <LockConfirmDialog
-        isOpen={showLockDialog}
-        locking={lockingCard}
-        card={currentDialogCard}
-        lockCost={currentDialogLockCost}
-        claimState={currentDialogClaimState}
-        onConfirm={handleLockConfirm}
-        onCancel={handleLockCancel}
-      />
       <div
         className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
-        {...(!isBurningInProgress && !isTradeView ? swipeHandlers : {})}
+        {...(!isTradeView ? swipeHandlers : {})}
       >
         {/* Trade view: selecting a card to trade for */}
         {isTradeView ? (
@@ -690,12 +430,9 @@ const CollectionTab = ({
           orientation={orientation}
           orientationKey={orientationKey}
           initData={initData}
-          onClose={isBurningInProgress ? () => {} : closeModal}
+          onClose={closeModal}
           onShare={shareEnabled ? handleShareCard : undefined}
           onCardOpen={handleCardOpen}
-          triggerBurn={triggerBurn}
-          onBurnComplete={handleBurnComplete}
-          isBurning={isBurningInProgress}
           isActionPanelVisible={isActionPanelVisible}
         />
       )}

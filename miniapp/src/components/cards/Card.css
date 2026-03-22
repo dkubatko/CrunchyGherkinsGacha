@@ -195,6 +195,17 @@
   letter-spacing: -0.02em;
 }
 
+.card-aspects {
+  display: inline-block;
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: rgba(200, 180, 255, 0.95);
+  background: rgba(100, 80, 160, 0.35);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  margin: 0 0 0.2rem 0;
+}
+
 .card-share-button-inline {
   grid-column: 3;
   justify-self: start;

@@ -82,49 +82,6 @@ class ShareCardRequest(BaseModel):
     user_id: int
 
 
-class LockCardRequest(BaseModel):
-    """Request to lock or unlock a card."""
-
-    card_id: int
-    user_id: int
-    chat_id: str
-    lock: bool  # True to lock, False to unlock
-
-
-class LockCardResponse(BaseModel):
-    """Response after locking/unlocking a card."""
-
-    success: bool
-    locked: bool
-    balance: int
-    message: str
-    lock_cost: int
-
-
-class CardConfigResponse(BaseModel):
-    """Configuration for card burn rewards and lock costs."""
-
-    burn_rewards: Dict[str, int]
-    lock_costs: Dict[str, int]
-
-
-class BurnCardRequest(BaseModel):
-    """Request to burn a card for spins."""
-
-    card_id: int
-    user_id: int
-    chat_id: str
-
-
-class BurnCardResponse(BaseModel):
-    """Response after burning a card."""
-
-    success: bool
-    message: str
-    spins_awarded: int
-    new_spin_total: int
-
-
 # =============================================================================
 # ASPECT SCHEMAS
 # =============================================================================
@@ -162,6 +119,26 @@ class AspectLockResponse(BaseModel):
     balance: int
     message: str
     lock_cost: int
+
+
+class AspectImagesRequest(BaseModel):
+    """Request for batch aspect thumbnail images."""
+
+    aspect_ids: List[int]
+
+
+class AspectImageResponse(BaseModel):
+    """Response containing a single aspect's thumbnail image."""
+
+    aspect_id: int
+    image_b64: str
+
+
+class AspectConfigResponse(BaseModel):
+    """Configuration for aspect burn rewards and lock costs."""
+
+    burn_rewards: Dict[str, int]
+    lock_costs: Dict[str, int]
 
 
 # =============================================================================

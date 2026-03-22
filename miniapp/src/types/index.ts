@@ -1,7 +1,16 @@
+export interface CardAspectData {
+  id: number;
+  card_id: number;
+  aspect_id: number;
+  order: number;
+  equipped_at: string;
+  aspect?: AspectData | null;
+}
+
 export interface CardData {
   id: number;
   base_name: string;
-  modifier: string;
+  modifier?: string | null;
   rarity: string;
   owner?: string;
   user_id?: number | null;
@@ -9,6 +18,40 @@ export interface CardData {
   locked?: boolean;
   set_name?: string | null;
   updated_at?: string | null;
+  aspect_count?: number;
+  equipped_aspects?: CardAspectData[];
+}
+
+export interface AspectDefinitionData {
+  id: number;
+  set_id: number;
+  season_id: number;
+  name: string;
+  rarity: string;
+  set_name?: string | null;
+  source?: string;
+  description?: string;
+}
+
+export interface AspectData {
+  id: number;
+  aspect_definition_id?: number | null;
+  name?: string | null;
+  owner?: string | null;
+  user_id?: number | null;
+  chat_id: string;
+  season_id: number;
+  rarity: string;
+  locked: boolean;
+  file_id?: string | null;
+  created_at?: string | null;
+  display_name: string;
+  aspect_definition?: AspectDefinitionData | null;
+}
+
+export interface AspectConfigResponse {
+  burn_rewards: Record<string, number>;
+  lock_costs: Record<string, number>;
 }
 
 export interface OrientationData {
@@ -18,7 +61,7 @@ export interface OrientationData {
   isStarted: boolean;
 }
 
-export type HubTab = 'profile' | 'collection' | 'casino' | 'allCards';
+export type HubTab = 'profile' | 'collection' | 'aspects' | 'casino' | 'allCards';
 
 export interface UserSummary {
   user_id: number;
@@ -29,11 +72,6 @@ export interface UserSummary {
 export interface UserCollectionResponse {
   user: UserSummary;
   cards: CardData[];
-}
-
-export interface CardConfigResponse {
-  burn_rewards: Record<string, number>;
-  lock_costs: Record<string, number>;
 }
 
 export interface SlotSymbolSummary {

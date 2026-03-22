@@ -2,15 +2,20 @@
 Aspect-related API endpoints.
 
 This module contains endpoints for aspect operations including:
+- Listing user aspects
+- Aspect detail retrieval
+- Aspect image retrieval (full and thumbnail)
+- Batch thumbnail retrieval
+- Aspect config (burn rewards, lock costs)
 - Burning aspects for spins
 - Locking/unlocking aspects
 """
 
 import asyncio
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import (
     get_validated_user,
@@ -20,10 +25,14 @@ from api.dependencies import (
 from api.schemas import (
     AspectBurnRequest,
     AspectBurnResponse,
+    AspectConfigResponse,
+    AspectImageResponse,
+    AspectImagesRequest,
     AspectLockRequest,
     AspectLockResponse,
 )
-from settings.constants import get_lock_cost, get_spin_reward
+from settings.constants import RARITY_ORDER, get_lock_cost, get_spin_reward
+from utils.schemas import OwnedAspect
 from utils.services import (
     aspect_service,
     claim_service,
@@ -36,6 +45,119 @@ from utils.events import EventType, BurnOutcome, LockOutcome
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/aspects", tags=["aspects"])
+
+
+# =============================================================================
+# READ ENDPOINTS
+# =============================================================================
+
+
+@router.get("", response_model=List[OwnedAspect])
+async def get_user_aspects(
+    chat_id: Optional[str] = Query(None, alias="chat_id"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get all unequipped aspects owned by the authenticated user."""
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    aspects = await asyncio.to_thread(
+        aspect_service.get_user_aspects,
+        auth_user_id,
+        chat_id=chat_id,
+    )
+    return aspects
+
+
+@router.get("/config", response_model=AspectConfigResponse)
+async def get_aspect_config(
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get aspect burn rewards and lock costs for each rarity."""
+    burn_rewards = {r: get_spin_reward(r) for r in RARITY_ORDER}
+    lock_costs = {r: get_lock_cost(r) for r in RARITY_ORDER}
+    return AspectConfigResponse(burn_rewards=burn_rewards, lock_costs=lock_costs)
+
+
+# =============================================================================
+# IMAGE ENDPOINTS
+# =============================================================================
+
+
+@router.get("/image/{aspect_id}", response_model=str)
+async def get_aspect_image_route(
+    aspect_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the base64 encoded full-size image for an aspect."""
+    image_b64 = await asyncio.to_thread(aspect_service.get_aspect_image, aspect_id)
+    if not image_b64:
+        raise HTTPException(status_code=404, detail="Image not found")
+    return image_b64
+
+
+@router.get("/thumbnail/{aspect_id}", response_model=str)
+async def get_aspect_thumbnail_route(
+    aspect_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get the thumbnail (1/4 scale) base64 encoded image for an aspect."""
+    thumb_b64 = await asyncio.to_thread(aspect_service.get_aspect_thumbnail, aspect_id)
+    if not thumb_b64:
+        raise HTTPException(status_code=404, detail="Thumbnail not found")
+    return thumb_b64
+
+
+@router.post("/thumbnails", response_model=List[AspectImageResponse])
+async def get_aspect_thumbnails_batch(
+    request: AspectImagesRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get base64 encoded thumbnails for multiple aspects in a single batch."""
+    aspect_ids = request.aspect_ids or []
+    unique_ids = list(dict.fromkeys(aspect_ids))
+
+    if not unique_ids:
+        raise HTTPException(status_code=400, detail="aspect_ids must contain at least one value")
+
+    if len(unique_ids) > 3:
+        raise HTTPException(
+            status_code=400, detail="A maximum of 3 aspect IDs can be requested per batch"
+        )
+
+    images = await asyncio.to_thread(aspect_service.get_aspect_images_batch, unique_ids)
+
+    if not images:
+        raise HTTPException(status_code=404, detail="No images found for requested aspect IDs")
+
+    response_payload = [
+        AspectImageResponse(aspect_id=aid, image_b64=image)
+        for aid, image in images.items()
+        if image
+    ]
+
+    if not response_payload:
+        raise HTTPException(status_code=404, detail="No images found for requested aspect IDs")
+
+    return response_payload
+
+
+# =============================================================================
+# DETAIL ENDPOINT (path param catch-all - must come after specific paths)
+# =============================================================================
+
+
+@router.get("/{aspect_id}", response_model=OwnedAspect)
+async def get_aspect_detail(
+    aspect_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Fetch metadata for a single aspect."""
+    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    if not aspect:
+        logger.warning("Aspect detail requested for non-existent aspect_id: %s", aspect_id)
+        raise HTTPException(status_code=404, detail="Aspect not found")
+    return aspect
 
 
 @router.post("/{aspect_id}/burn", response_model=AspectBurnResponse)
