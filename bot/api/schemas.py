@@ -179,6 +179,14 @@ class SlotsVictoryRequest(BaseModel):
     is_megaspin: bool = False
 
 
+class SlotsAspectVictoryRequest(BaseModel):
+    """Request to process a slots aspect victory."""
+
+    user_id: int
+    chat_id: str
+    rarity: str
+
+
 class SlotsClaimWinRequest(BaseModel):
     """Request to process a claim point win from slots."""
 
@@ -268,6 +276,7 @@ class SlotVerifyResponse(BaseModel):
     is_win: bool
     slot_results: List[SlotSymbolInfo]
     rarity: Optional[str] = None
+    win_type: Optional[str] = None  # "card", "aspect", or None (for losses/claim wins)
 
 
 # =============================================================================

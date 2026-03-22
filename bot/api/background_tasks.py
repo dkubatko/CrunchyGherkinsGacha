@@ -632,6 +632,199 @@ async def process_minesweeper_loss_background(
         )
 
 
+async def process_slot_aspect_victory_background(
+    bot_token: str,
+    debug_mode: bool,
+    username: str,
+    normalized_rarity: str,
+    chat_id: str,
+    user_id: int,
+    gemini_util_instance,
+):
+    """Process slots aspect victory in background after responding to client.
+
+    Generates an aspect sphere image, creates an OwnedAspectModel assigned to
+    the winner, and sends the result image to chat.  On failure the user is
+    refunded spins.
+    """
+    from settings.constants import (
+        SLOTS_ASPECT_VICTORY_PENDING_MESSAGE,
+        SLOTS_ASPECT_VICTORY_RESULT_MESSAGE,
+        SLOTS_ASPECT_VICTORY_FAILURE_MESSAGE,
+        get_spin_reward,
+    )
+    from utils.services import aspect_service
+
+    spin_refund_amount = get_spin_reward(normalized_rarity)
+    bot = None
+    thread_id: Optional[int] = None
+    refund_processed = False
+    aspect_generated = False
+
+    try:
+        from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+
+        bot = create_bot_instance()
+
+        # Send pending message
+        pending_caption = SLOTS_ASPECT_VICTORY_PENDING_MESSAGE.format(
+            username=username,
+            rarity=normalized_rarity,
+        )
+
+        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": pending_caption,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        pending_message = await bot.send_message(**send_params)
+
+        try:
+            if NO_GENERATION:
+                logger.info("NO_GENERATION mode: Skipping aspect generation for slots victory")
+                skip_caption = (
+                    f"🎰 <b>SLOTS ASPECT WIN!</b> (Generation Disabled)\n\n"
+                    f"👤 Winner: @{username}\n"
+                    f"⭐ Rarity: <b>{normalized_rarity}</b>\n\n"
+                    f"<i>Aspect generation is disabled in debug mode.</i>"
+                )
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=pending_message.message_id,
+                    text=skip_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+                await asyncio.to_thread(
+                    spin_service.increment_user_spins, user_id, chat_id, spin_refund_amount
+                )
+                refund_processed = True
+                return
+
+            # Generate aspect using the normal pipeline (picks a random
+            # aspect definition of the given rarity and generates a sphere)
+            generated_aspect = await asyncio.to_thread(
+                rolling.generate_aspect_for_chat,
+                chat_id,
+                gemini_util_instance,
+                normalized_rarity,
+                max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
+                source="slots",
+            )
+
+            # Assign to winner immediately (slot wins are auto-assigned)
+            await asyncio.to_thread(
+                aspect_service.set_aspect_owner,
+                generated_aspect.aspect_id,
+                username,
+                user_id,
+            )
+
+            aspect_generated = True
+
+            # Log spin event
+            event_service.log(
+                EventType.SPIN,
+                SpinOutcome.ASPECT_WIN,
+                user_id=user_id,
+                chat_id=chat_id,
+                aspect_id=generated_aspect.aspect_id,
+                rarity=normalized_rarity,
+                aspect_name=generated_aspect.aspect_name,
+                set_name=generated_aspect.set_name,
+                type="aspect",
+            )
+
+            # Send result image
+            final_caption = SLOTS_ASPECT_VICTORY_RESULT_MESSAGE.format(
+                username=username,
+                rarity=normalized_rarity,
+                aspect_name=generated_aspect.aspect_name,
+                set_name=(generated_aspect.set_name or "").title(),
+            )
+
+            aspect_image = base64.b64decode(generated_aspect.image_b64)
+
+            photo_params = {
+                "chat_id": chat_id,
+                "photo": aspect_image,
+                "caption": final_caption,
+                "parse_mode": ParseMode.HTML,
+            }
+            if thread_id is not None:
+                photo_params["message_thread_id"] = thread_id
+
+            aspect_message = await bot.send_photo(**photo_params)
+
+            # Delete pending message
+            await bot.delete_message(chat_id=chat_id, message_id=pending_message.message_id)
+
+            # Cache file_id
+            if aspect_message.photo:
+                file_id = aspect_message.photo[-1].file_id
+                await asyncio.to_thread(
+                    aspect_service.update_aspect_file_id,
+                    generated_aspect.aspect_id,
+                    file_id,
+                )
+
+            logger.info(
+                "Successfully processed slots aspect victory for user %s: aspect %s",
+                username,
+                generated_aspect.aspect_id,
+            )
+
+        except Exception as exc:
+            logger.error("Error processing slots aspect victory for user %s: %s", username, exc)
+            failure_caption = SLOTS_ASPECT_VICTORY_FAILURE_MESSAGE.format(
+                username=username,
+                rarity=normalized_rarity,
+            )
+            try:
+                await bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=pending_message.message_id,
+                    text=failure_caption,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception as edit_exc:
+                logger.error("Failed to update failure message: %s", edit_exc)
+
+            if spin_refund_amount > 0 and not aspect_generated:
+                refund_processed = await refund_slots_victory_failure(
+                    bot=bot,
+                    bot_token=TELEGRAM_TOKEN,
+                    debug_mode=DEBUG_MODE,
+                    username=username,
+                    rarity=normalized_rarity,
+                    display_name="aspect",
+                    chat_id=chat_id,
+                    user_id=user_id,
+                    spin_amount=spin_refund_amount,
+                    thread_id=thread_id,
+                )
+
+    except Exception as exc:
+        logger.error("Critical error in slots aspect victory background processing: %s", exc)
+        if spin_refund_amount > 0 and not refund_processed and not aspect_generated:
+            await refund_slots_victory_failure(
+                bot=bot,
+                bot_token=TELEGRAM_TOKEN,
+                debug_mode=DEBUG_MODE,
+                username=username,
+                rarity=normalized_rarity,
+                display_name="aspect",
+                chat_id=chat_id,
+                user_id=user_id,
+                spin_amount=spin_refund_amount,
+                thread_id=thread_id,
+            )
+
+
 async def refund_slots_victory_failure(
     bot,
     bot_token: str,

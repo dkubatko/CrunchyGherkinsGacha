@@ -15,7 +15,10 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
-from api.background_tasks import process_slots_victory_background
+from api.background_tasks import (
+    process_slots_victory_background,
+    process_slot_aspect_victory_background,
+)
 from api.config import DEBUG_MODE, TELEGRAM_TOKEN, gemini_util
 from api.dependencies import get_validated_user, validate_user_in_chat, verify_user_match
 from api.helpers import generate_slot_loss_pattern, normalize_rarity
@@ -25,6 +28,7 @@ from api.schemas import (
     DailyBonusStatusResponse,
     MegaspinInfo,
     SlotSymbolInfo,
+    SlotsAspectVictoryRequest,
     SlotsClaimWinRequest,
     SlotsClaimWinResponse,
     SlotsVictoryRequest,
@@ -33,7 +37,7 @@ from api.schemas import (
     SpinsRequest,
     SpinsResponse,
 )
-from settings.constants import SLOT_CLAIM_CHANCE, SLOT_WIN_CHANCE
+from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_WIN_CHANCE
 from utils.rolling import get_random_rarity
 from utils.services import (
     character_service,
@@ -311,6 +315,7 @@ async def verify_slot_spin(
         winning_symbol: Optional[SlotSymbolInfo] = None
         slot_results: List[SlotSymbolInfo] = []
         is_win = False
+        win_type: Optional[str] = None
 
         if is_card_win:
             # Player wins a card - select a random user or character symbol
@@ -327,9 +332,26 @@ async def verify_slot_spin(
                 # All three reels show the winning symbol
                 slot_results = [winning_symbol, winning_symbol, winning_symbol]
                 is_win = True
+                win_type = "card"
 
         if not is_card_win:
-            # Check for claim win (only if they didn't win a card)
+            # Check for aspect win (between card win and claim win)
+            aspect_chance = 0.3 if DEBUG_MODE else SLOT_ASPECT_WIN_CHANCE
+            is_aspect_win = random.random() < aspect_chance
+
+            if is_aspect_win:
+                # Aspect win — pick a random eligible (non-claim) symbol for reel display
+                eligible_symbols = [s for s in request.symbols if s.type != "claim"]
+
+                if eligible_symbols:
+                    winning_symbol = random.choice(eligible_symbols)
+                    rarity = get_random_rarity(source="slots")
+                    slot_results = [winning_symbol, winning_symbol, winning_symbol]
+                    is_win = True
+                    win_type = "aspect"
+
+        if not is_win:
+            # Check for claim win (only if they didn't win a card or aspect)
             claim_chance = 0.5 if DEBUG_MODE else SLOT_CLAIM_CHANCE
             claim_win = random.random() < claim_chance
 
@@ -347,22 +369,27 @@ async def verify_slot_spin(
             slot_results = generate_slot_loss_pattern(random, request.symbols)
 
         # Build descriptive log message
-        if is_card_win and rarity:
-            win_type = f"card ({rarity})"
+        if win_type == "card" and rarity:
+            win_type_log = f"card ({rarity})"
+        elif win_type == "aspect" and rarity:
+            win_type_log = f"aspect ({rarity})"
         elif winning_symbol and winning_symbol.type == "claim":
-            win_type = "claim point"
+            win_type_log = "claim point"
         else:
-            win_type = "loss"
+            win_type_log = "loss"
 
         logger.info(
             f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
-            f"result={win_type}, win_chance={win_chance:.3f}, "
+            f"result={win_type_log}, win_chance={win_chance:.3f}, "
             f"winning_symbol={winning_symbol}, slot_results={[f'{s.type}:{s.id}' for s in slot_results]}"
         )
 
-        # Log spin event (card wins are logged after successful generation in background task)
-        if is_card_win and rarity:
+        # Log spin event (card/aspect wins are logged after successful generation in background task)
+        if win_type == "card" and rarity:
             # Card win events are logged in process_slots_victory_background after card generation
+            pass
+        elif win_type == "aspect" and rarity:
+            # Aspect win events are logged in process_slot_aspect_victory_background after aspect generation
             pass
         elif winning_symbol and winning_symbol.type == "claim":
             event_service.log(
@@ -379,7 +406,9 @@ async def verify_slot_spin(
                 chat_id=request.chat_id,
             )
 
-        return SlotVerifyResponse(is_win=is_win, slot_results=slot_results, rarity=rarity)
+        return SlotVerifyResponse(
+            is_win=is_win, slot_results=slot_results, rarity=rarity, win_type=win_type
+        )
 
     except Exception as e:
         logger.error(
@@ -433,7 +462,9 @@ async def verify_megaspin(
 
         # Megaspin success event is logged in process_slots_victory_background after card generation
 
-        return SlotVerifyResponse(is_win=True, slot_results=slot_results, rarity=rarity)
+        return SlotVerifyResponse(
+            is_win=True, slot_results=slot_results, rarity=rarity, win_type="card"
+        )
 
     except HTTPException:
         raise
@@ -532,6 +563,67 @@ async def slots_victory(
             user_id=request.user_id,
             gemini_util_instance=gemini_util,
             is_megaspin=request.is_megaspin,
+        )
+    )
+
+    return response_data
+
+
+@router.post("/aspect-victory")
+async def slots_aspect_victory(
+    request: SlotsAspectVictoryRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Handle a slot aspect victory by generating an aspect and sharing it in the chat."""
+    # Verify the authenticated user matches the requested user_id
+    await verify_user_match(request.user_id, validated_user)
+
+    # Extract user data from validated data
+    user_data: Dict[str, Any] = validated_user["user"] or {}
+    auth_user_id = user_data.get("id")
+
+    # Get username
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+    if not username:
+        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    # Validate request parameters
+    normalized_rarity = normalize_rarity(request.rarity)
+    if not normalized_rarity:
+        logger.warning("Unsupported rarity '%s' provided for aspect victory", request.rarity)
+        raise HTTPException(status_code=400, detail="Unsupported rarity value")
+
+    chat_id = str(request.chat_id).strip()
+    if not chat_id:
+        logger.warning("Empty chat_id provided for slots aspect victory")
+        raise HTTPException(status_code=400, detail="chat_id is required")
+
+    if not TELEGRAM_TOKEN:
+        logger.error("Bot token not available for slots aspect victory")
+        raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+    # Validate chat exists and user is enrolled
+    await validate_user_in_chat(request.user_id, chat_id)
+
+    # All validation passed - respond immediately with success
+    response_data = {
+        "status": "processing",
+        "message": "Slots aspect victory accepted, processing aspect...",
+    }
+
+    # Process aspect generation in background task (fire-and-forget)
+    asyncio.create_task(
+        process_slot_aspect_victory_background(
+            bot_token=TELEGRAM_TOKEN,
+            debug_mode=DEBUG_MODE,
+            username=username,
+            normalized_rarity=normalized_rarity,
+            chat_id=chat_id,
+            user_id=request.user_id,
+            gemini_util_instance=gemini_util,
         )
     )
 

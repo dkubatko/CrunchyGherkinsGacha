@@ -105,6 +105,7 @@ export interface SlotVerifyResponse {
   is_win: boolean;
   slot_results: SlotSymbolInfo[];
   rarity?: string | null;
+  win_type?: string | null;
 }
 
 export interface MegaspinInfo {
