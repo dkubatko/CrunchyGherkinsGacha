@@ -4,7 +4,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional, Union
 
-from settings.constants import CURRENT_SEASON, RARITIES, ROLL_TYPE_WEIGHTS, UNIQUE_ADDENDUM
+from settings.constants import CURRENT_SEASON, RARITIES, ROLL_TYPE_WEIGHTS
 from utils.services import (
     card_service,
     character_service,
@@ -570,7 +570,7 @@ def generate_aspect_for_chat(
             image_bytes = _b64.b64decode(image_b64)
             from utils.image import ImageUtil
 
-            thumbnail_bytes = ImageUtil.create_thumbnail(image_bytes)
+            thumbnail_bytes = ImageUtil.compress_to_fraction(image_bytes)
 
             aspect_id = aspect_service.add_owned_aspect(
                 aspect_definition_id=aspect_def.id,
@@ -785,13 +785,6 @@ def regenerate_card_image(
             # Calculate temperature based on refresh attempt (1.0, 1.25, 1.5)
             temperature = 1.0 + (0.25 * (refresh_attempt - 1))
 
-            # Add UNIQUE_ADDENDUM for Unique rarity cards
-            instruction_addendum = UNIQUE_ADDENDUM if card.rarity == "Unique" else ""
-
-            # Append stored description for Unique cards
-            if card.rarity == "Unique" and card.description:
-                instruction_addendum += f"   - **Additional description:** User provided the following additional context for the card generation: {card.description}"
-
             # Use the existing modifier, rarity and name
             image_b64 = gemini_util.generate_image(
                 card.base_name,
@@ -799,7 +792,6 @@ def regenerate_card_image(
                 card.rarity,
                 base_image_b64=profile.image_b64,
                 temperature=temperature,
-                instruction_addendum=instruction_addendum,
                 modifier_info=regen_modifier_info,
             )
 
@@ -860,54 +852,3 @@ def find_profile_by_name(chat_id: str, name: str) -> Optional[SelectedProfile]:
             )
 
     return None
-
-
-def generate_unique_card(
-    modifier: str,
-    profile: SelectedProfile,
-    gemini_util: GeminiUtil,
-    instruction_addendum: str,
-    max_retries: int = 0,
-    description: str = "",
-) -> GeneratedCard:
-    """Generate a Unique card with a specific modifier and profile."""
-    rarity = "Unique"
-
-    # Append user-provided description to the addendum if present
-    full_addendum = instruction_addendum
-    if description:
-        full_addendum += f"   - **Additional description:** User provided the following additional context for the card generation: {description}"
-
-    total_attempts = max(1, max_retries + 1)
-    last_error: Optional[Exception] = None
-
-    for attempt in range(1, total_attempts + 1):
-        try:
-            image_b64 = gemini_util.generate_image(
-                profile.name,
-                modifier,
-                rarity,
-                base_image_b64=profile.image_b64,
-                instruction_addendum=full_addendum,
-            )
-
-            if not image_b64:
-                raise ImageGenerationError("Empty image returned")
-
-            return GeneratedCard(
-                base_name=profile.name,
-                modifier=modifier,
-                rarity=rarity,
-                card_title=f"{modifier} {profile.name}",
-                image_b64=image_b64,
-                source_type=profile.source_type,
-                source_id=profile.source_id,
-                set_id=None,  # Unique cards don't belong to a set usually, or we can assign one if needed
-                set_name="",
-                description=description or None,
-            )
-        except Exception as e:
-            logger.error(f"Error generating unique card (attempt {attempt}/{total_attempts}): {e}")
-            last_error = e
-
-    raise last_error or ImageGenerationError("Image generation failed after retries")

@@ -71,10 +71,23 @@ async def save_aspect_file_id_from_message(message, aspect_id: int) -> None:
         logger.debug(f"Saved file_id for aspect {aspect_id}")
 
 
-def build_burning_text(card_titles: list[str], revealed: int, strike_all: bool = False) -> str:
-    """Build the burning animation text for card recycling/burning."""
+def build_burning_text(
+    card_titles: list[str],
+    revealed: int,
+    strike_all: bool = False,
+    item_label: str = "cards",
+) -> str:
+    """Build the burning animation text for card/aspect recycling/burning.
+
+    Args:
+        card_titles: List of HTML-escaped display names for the items being burned.
+        revealed: Number of items revealed so far in the animation.
+        strike_all: If True, strike through all revealed items.
+        item_label: Label for the item type (e.g. "cards", "aspects").
+    """
+    header = f"Burning {item_label}..."
     if revealed <= 0:
-        return "Burning cards..."
+        return header
 
     lines = []
     for idx in range(revealed):
@@ -83,4 +96,4 @@ def build_burning_text(card_titles: list[str], revealed: int, strike_all: bool =
             line = f"<s>{line}</s>"
         lines.append(line)
 
-    return "Burning cards...\n\n" + "\n".join(lines)
+    return f"{header}\n\n" + "\n".join(lines)

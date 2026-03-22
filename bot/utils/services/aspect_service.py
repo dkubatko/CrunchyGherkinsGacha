@@ -106,10 +106,19 @@ def get_user_aspects(
     user_id: int,
     season_id: Optional[int] = None,
     chat_id: Optional[str] = None,
+    rarity: Optional[str] = None,
+    unlocked_only: bool = False,
 ) -> List[OwnedAspect]:
     """Get all unequipped aspects owned by a user for the given season.
 
     "Unequipped" means the aspect has no entry in ``card_aspects``.
+
+    Args:
+        user_id: The user whose aspects to query.
+        season_id: Season filter (defaults to ``CURRENT_SEASON``).
+        chat_id: Optional chat filter.
+        rarity: Optional rarity filter (e.g. ``"Legendary"``).
+        unlocked_only: If True, exclude locked aspects.
     """
     if season_id is None:
         season_id = CURRENT_SEASON
@@ -127,6 +136,10 @@ def get_user_aspects(
         )
         if chat_id is not None:
             query = query.filter(OwnedAspectModel.chat_id == str(chat_id))
+        if rarity is not None:
+            query = query.filter(OwnedAspectModel.rarity == rarity)
+        if unlocked_only:
+            query = query.filter(OwnedAspectModel.locked.is_(False))
 
         return [OwnedAspect.from_orm(a) for a in query.all()]
 
@@ -141,6 +154,28 @@ def get_aspect_by_id(aspect_id: int) -> Optional[OwnedAspect]:
             .first()
         )
         return OwnedAspect.from_orm(aspect) if aspect else None
+
+
+def get_unique_aspect_names(chat_id: str, season_id: Optional[int] = None) -> List[str]:
+    """Return the display names of all Unique aspects in a chat for the given season.
+
+    Used to enforce name uniqueness when creating new Unique aspects.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    with get_session() as session:
+        results = (
+            session.query(OwnedAspectModel.name)
+            .filter(
+                OwnedAspectModel.chat_id == str(chat_id),
+                OwnedAspectModel.rarity == "Unique",
+                OwnedAspectModel.season_id == season_id,
+            )
+            .distinct()
+            .all()
+        )
+        return [row[0] for row in results if row[0] is not None]
 
 
 def get_aspect_with_image(aspect_id: int) -> Optional[OwnedAspectWithImage]:

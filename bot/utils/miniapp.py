@@ -24,6 +24,12 @@ def encode_single_card_token(card_id: int) -> str:
     return _encode_token(raw_token)
 
 
+def encode_single_aspect_token(aspect_id: int) -> str:
+    """Encode a single aspect payload for the mini app."""
+    raw_token = f"a-{aspect_id}"
+    return _encode_token(raw_token)
+
+
 def encode_casino_token(chat_id: str) -> str:
     """Encode a casino catalog payload for the mini app."""
     raw_token = f"casino-{chat_id}"
