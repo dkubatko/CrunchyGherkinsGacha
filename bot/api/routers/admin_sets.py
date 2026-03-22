@@ -15,7 +15,7 @@ from api.schemas import (
     AdminSetResponse,
     AdminSetUpdateRequest,
 )
-from utils.services import modifier_service, set_service
+from utils.services import aspect_service, modifier_service, set_service
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ router = APIRouter(prefix="/admin/sets", tags=["admin-sets"])
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _set_to_response(set_model, modifier_count: int = 0) -> AdminSetResponse:
+def _set_to_response(set_model, aspect_count: int = 0) -> AdminSetResponse:
     """Convert a ``SetModel`` ORM object to an API response."""
     return AdminSetResponse(
         id=set_model.id,
@@ -34,7 +34,7 @@ def _set_to_response(set_model, modifier_count: int = 0) -> AdminSetResponse:
         source=set_model.source,
         description=set_model.description,
         active=set_model.active,
-        modifier_count=modifier_count,
+        aspect_count=aspect_count,
     )
 
 
@@ -56,7 +56,7 @@ async def list_sets(
 ):
     """Return all sets for a season, with modifier counts."""
     sets = await asyncio.to_thread(modifier_service.get_sets_by_season, season_id, False)
-    counts = await asyncio.to_thread(modifier_service.get_modifier_count_per_set, season_id)
+    counts = await asyncio.to_thread(aspect_service.get_aspect_definition_count_per_set, season_id)
 
     return [_set_to_response(s, counts.get(s.id, 0)) for s in sets]
 
@@ -122,5 +122,5 @@ async def update_set(
     if updated is None:
         raise HTTPException(status_code=404, detail="Set not found")
 
-    counts = await asyncio.to_thread(modifier_service.get_modifier_count_per_set, season_id)
+    counts = await asyncio.to_thread(aspect_service.get_aspect_definition_count_per_set, season_id)
     return _set_to_response(updated, counts.get(set_id, 0))

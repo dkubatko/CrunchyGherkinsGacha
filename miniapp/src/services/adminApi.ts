@@ -1,8 +1,8 @@
 import type {
   AdminSet,
-  AdminModifier,
-  AdminModifierCreate,
-  AdminModifierUpdate,
+  AdminAspectDef,
+  AdminAspectDefCreate,
+  AdminAspectDefUpdate,
   AdminSetCreate,
   AdminSetUpdate,
   AdminMe,
@@ -105,17 +105,17 @@ export class AdminApiService {
     return this.handleResponse(res);
   }
 
-  // ── Modifiers ─────────────────────────────────────────────────────────
+  // ── Aspect Definitions ────────────────────────────────────────────────
 
-  static async getModifiers(setId: number, seasonId: number): Promise<AdminModifier[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/modifiers/sets/${setId}/season/${seasonId}`, {
+  static async getAspectDefs(setId: number, seasonId: number): Promise<AdminAspectDef[]> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects/sets/${setId}/season/${seasonId}`, {
       headers: this.getHeaders(),
     });
     return this.handleResponse(res);
   }
 
-  static async createModifier(data: AdminModifierCreate): Promise<AdminModifier> {
-    const res = await fetch(`${API_BASE_URL}/admin/modifiers`, {
+  static async createAspectDef(data: AdminAspectDefCreate): Promise<AdminAspectDef> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects`, {
       method: 'POST',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
@@ -123,8 +123,8 @@ export class AdminApiService {
     return this.handleResponse(res);
   }
 
-  static async updateModifier(modifierId: number, data: AdminModifierUpdate): Promise<AdminModifier> {
-    const res = await fetch(`${API_BASE_URL}/admin/modifiers/${modifierId}`, {
+  static async updateAspectDef(defId: number, data: AdminAspectDefUpdate): Promise<AdminAspectDef> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}`, {
       method: 'PUT',
       headers: this.getHeaders(),
       body: JSON.stringify(data),
@@ -132,8 +132,8 @@ export class AdminApiService {
     return this.handleResponse(res);
   }
 
-  static async deleteModifier(modifierId: number): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/admin/modifiers/${modifierId}`, {
+  static async deleteAspectDef(defId: number): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}`, {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
@@ -155,8 +155,8 @@ export class AdminApiService {
     }
   }
 
-  static async getModifierStats(modifierId: number): Promise<{ card_count: number }> {
-    const res = await fetch(`${API_BASE_URL}/admin/modifiers/${modifierId}/stats`, {
+  static async getAspectDefStats(defId: number): Promise<{ owned_count: number }> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}/stats`, {
       headers: this.getHeaders(),
     });
     return this.handleResponse(res);

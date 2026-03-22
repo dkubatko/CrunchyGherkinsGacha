@@ -172,7 +172,7 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
                   <span className="admin-set-meta-sep">·</span>
                   <span>{set.source}</span>
                   <span className="admin-set-meta-sep">·</span>
-                  <span>{set.modifier_count} modifiers</span>
+                  <span>{set.aspect_count} aspects</span>
                 </div>
                 {set.description && (
                   <p className="admin-set-card-desc">{set.description}</p>

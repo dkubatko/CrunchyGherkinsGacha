@@ -451,7 +451,7 @@ class AdminSetResponse(BaseModel):
     source: str
     description: str
     active: bool
-    modifier_count: int = 0
+    aspect_count: int = 0
 
 
 class AdminSetCreateRequest(BaseModel):
@@ -472,8 +472,8 @@ class AdminSetUpdateRequest(BaseModel):
     active: Optional[bool] = None
 
 
-class AdminModifierResponse(BaseModel):
-    """Modifier data returned by admin endpoints."""
+class AdminAspectDefResponse(BaseModel):
+    """Aspect definition data returned by admin endpoints."""
 
     id: int
     name: str
@@ -481,11 +481,11 @@ class AdminModifierResponse(BaseModel):
     set_id: int
     season_id: int
     created_at: str
-    card_count: int = 0
+    owned_count: int = 0
 
 
-class AdminModifierCreateRequest(BaseModel):
-    """Request body to create a single modifier."""
+class AdminAspectDefCreateRequest(BaseModel):
+    """Request body to create a single aspect definition."""
 
     set_id: int
     season_id: int
@@ -493,30 +493,30 @@ class AdminModifierCreateRequest(BaseModel):
     rarity: str
 
 
-class AdminModifierUpdateRequest(BaseModel):
-    """Request body to update an existing modifier. Only provided fields are applied."""
+class AdminAspectDefUpdateRequest(BaseModel):
+    """Request body to update an existing aspect definition. Only provided fields are applied."""
 
     name: Optional[str] = None
     rarity: Optional[str] = None
     set_id: Optional[int] = None
 
 
-class AdminBulkModifierItem(BaseModel):
-    """A single item in a bulk modifier upsert."""
+class AdminBulkAspectDefItem(BaseModel):
+    """A single item in a bulk aspect definition upsert."""
 
     set_id: int
     name: str
     rarity: str
 
 
-class AdminBulkModifierRequest(BaseModel):
-    """Request body for bulk modifier upsert."""
+class AdminBulkAspectDefRequest(BaseModel):
+    """Request body for bulk aspect definition upsert."""
 
     season_id: int
-    modifiers: List[AdminBulkModifierItem]
+    definitions: List[AdminBulkAspectDefItem]
 
 
-class AdminBulkModifierResponse(BaseModel):
-    """Response from bulk modifier upsert."""
+class AdminBulkAspectDefResponse(BaseModel):
+    """Response from bulk aspect definition upsert."""
 
     upserted: int

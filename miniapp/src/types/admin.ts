@@ -5,27 +5,27 @@ export interface AdminSet {
   source: string;
   description: string;
   active: boolean;
-  modifier_count: number;
+  aspect_count: number;
 }
 
-export interface AdminModifier {
+export interface AdminAspectDef {
   id: number;
   name: string;
   rarity: string;
   set_id: number;
   season_id: number;
   created_at: string;
-  card_count: number;
+  owned_count: number;
 }
 
-export interface AdminModifierCreate {
+export interface AdminAspectDefCreate {
   set_id: number;
   season_id: number;
   name: string;
   rarity: string;
 }
 
-export interface AdminModifierUpdate {
+export interface AdminAspectDefUpdate {
   name?: string;
   rarity?: string;
   set_id?: number;

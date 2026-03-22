@@ -77,7 +77,7 @@ const AdminApp: React.FC = () => {
               ← Back
             </button>
           )}
-          <h1 className="admin-title">Modifier Admin</h1>
+          <h1 className="admin-title">Aspect Admin</h1>
         </div>
         <button className="admin-logout-btn" onClick={logout}>
           Logout
