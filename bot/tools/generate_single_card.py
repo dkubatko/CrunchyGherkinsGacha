@@ -33,13 +33,12 @@ from dotenv import load_dotenv
 # Add parent directory to path to import utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.services import card_service, modifier_service, set_service, user_service
+from utils.services import card_service, set_service, user_service
 from utils.schemas import Character, User
 from utils.session import get_session
 from utils.models import CharacterModel, UserModel
 from sqlalchemy import func
 from utils.gemini import GeminiUtil
-from utils.schemas import Modifier
 from settings.constants import RARITIES
 
 load_dotenv()
@@ -52,39 +51,6 @@ logger = logging.getLogger(__name__)
 # Load environment variables needed for GeminiUtil
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 IMAGE_GEN_MODEL = os.getenv("IMAGE_GEN_MODEL")
-
-
-def load_random_modifier_from_set(set_name: str, rarity: str = None):
-    """
-    Load a random modifier from a set in the database.
-
-    Args:
-        set_name: Name of the set (e.g., 'Classic', 'Anime')
-        rarity: Optional rarity to filter modifiers by. If None, picks from all rarities.
-
-    Returns:
-        A tuple of (modifier_name, set_id, modifier_db_id) or raises if not found.
-    """
-    set_id = set_service.get_set_id_by_name(set_name)
-    if set_id is None:
-        raise ValueError(f"Set '{set_name}' not found in database")
-
-    mods = modifier_service.get_modifiers_by_set(set_id)
-
-    if rarity:
-        mods = [m for m in mods if m.rarity == rarity]
-
-    if not mods:
-        raise ValueError(
-            f"No modifiers found in set '{set_name}'" + (f" for rarity {rarity}" if rarity else "")
-        )
-
-    chosen = random.choice(mods)
-    logger.info(
-        f"Randomly selected modifier '{chosen.name}' from set '{set_name}'"
-        + (f" (rarity: {rarity})" if rarity else "")
-    )
-    return chosen.name, set_id, chosen.id
 
 
 def find_character_by_name(character_name: str):
@@ -143,20 +109,14 @@ def generate_single_card(
         rarity = random.choice(list(RARITIES.keys()))
         logger.info(f"Randomly selected rarity: {rarity}")
 
-    # Handle random modifier selection from set in DB
-    resolved_set_id = None
-    resolved_modifier_id = None
+    # Handle random modifier — no longer supported since the modifiers table was removed
     if modifier.lower() == "random":
-        if not set_name:
-            logger.error("Must specify --set when using 'random' as modifier")
-            return None, None
-        try:
-            modifier, resolved_set_id, resolved_modifier_id = load_random_modifier_from_set(
-                set_name, rarity
-            )
-        except Exception as e:
-            logger.error(f"Failed to load random modifier from set '{set_name}': {e}")
-            return None, None
+        logger.error(
+            "Random modifier selection is no longer supported. "
+            "The modifiers table has been removed in Gacha 2.0. "
+            "Specify a modifier string directly."
+        )
+        return None, None
 
     # Validate rarity
     if rarity not in RARITIES:
@@ -222,38 +182,14 @@ def generate_single_card(
         else:
             logger.info("User has no existing cards, using source chat_id")
 
-    # Resolve set_id from set_name if provided (before image generation so we can pass set context)
-    set_id = resolved_set_id
-    modifier_id = resolved_modifier_id
-    tool_modifier_info: Modifier | None = None
-    if set_name and set_id is None:
+    # Resolve set_id from set_name if provided
+    set_id = None
+    if set_name:
         set_id = set_service.get_set_id_by_name(set_name)
         if set_id is None:
             logger.warning(f"Set '{set_name}' not found in database, card will have no set")
-
-    # Try to resolve modifier_id from DB if not already known
-    if modifier_id is None and set_id is not None:
-        db_mod = modifier_service.get_modifier_by_name_and_set(modifier, set_id)
-        if db_mod is not None:
-            modifier_id = db_mod.id
-            logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
-    if modifier_id is None:
-        # Try across all sets by name + rarity
-        mod_schema = modifier_service.get_modifier_by_name_and_rarity(modifier, rarity)
-        if mod_schema is not None:
-            modifier_id = mod_schema.id
-            if set_id is None:
-                set_id = mod_schema.set_id
-            logger.info(f"Resolved modifier '{modifier}' to DB ID: {modifier_id}")
-
-    if set_id is not None:
-        logger.info(f"Using set '{set_name}' (ID: {set_id})")
-        tool_modifier_info = Modifier(
-            id=modifier_id or 0,
-            name=modifier,
-            set_id=set_id,
-            set_name=set_name,
-        )
+        else:
+            logger.info(f"Using set '{set_name}' (ID: {set_id})")
 
     # Initialize Gemini utility
     logger.info(f"Generating card: {rarity} {modifier} {base_name}")
@@ -263,10 +199,8 @@ def generate_single_card(
     try:
         generated_image_b64 = gemini_util.generate_image(
             base_name=base_name,
-            modifier=modifier,
             rarity=rarity,
             base_image_b64=image_b64,
-            modifier_info=tool_modifier_info,
         )
 
         if not generated_image_b64:
@@ -284,7 +218,6 @@ def generate_single_card(
             source_type=source_type,
             source_id=source_id,
             set_id=set_id,
-            modifier_id=modifier_id,
         )
         logger.info(f"✅ Card added to database with ID: {card_id}")
 

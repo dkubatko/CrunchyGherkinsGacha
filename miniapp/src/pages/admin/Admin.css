@@ -622,9 +622,9 @@
   color: #ffd54f;
 }
 
-/* ── Modifier List ──────────────────────────────────────────────────────── */
+/* ── Aspect List ─────────────────────────────────────────────────────── */
 
-.admin-modifier-list {
+.admin-aspect-list {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   overflow: hidden;
@@ -724,7 +724,7 @@
   font-style: italic;
 }
 
-.admin-modifier-header {
+.admin-aspect-header {
   display: flex;
   align-items: center;
   padding: 0.6rem 0.85rem;
@@ -736,7 +736,7 @@
   font-weight: 600;
 }
 
-.admin-modifier-row {
+.admin-aspect-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
@@ -751,7 +751,7 @@
 }
 
 @media (hover: hover) {
-  .admin-modifier-row:hover {
+  .admin-aspect-row:hover {
     background: rgba(255, 255, 255, 0.04);
     border-color: rgba(255, 255, 255, 0.1);
   }
@@ -904,7 +904,7 @@
 }
 
 @media (hover: hover) {
-  .admin-modifier-row:hover .admin-action-icon {
+  .admin-aspect-row:hover .admin-action-icon {
     opacity: 0.7;
   }
 
@@ -959,11 +959,11 @@
     overflow-y: visible;
   }
 
-  .admin-modifier-header {
+  .admin-aspect-header {
     display: none;
   }
 
-  .admin-modifier-row {
+  .admin-aspect-row {
     gap: 0.25rem;
     padding: 0.4rem;
   }

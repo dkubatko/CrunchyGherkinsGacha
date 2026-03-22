@@ -13,7 +13,7 @@ const inFlightFullImageRequests = new Map<number, Promise<string>>();
 
 interface CardProps {
   rarity: string;
-  modifier: string;
+  modifier: string | null;
   base_name: string;
   orientation: OrientationData;
   tiltKey: number;
@@ -241,7 +241,7 @@ const Card: React.FC<CardProps> = ({
           >
             <AnimatedImage 
               imageUrl={imageUrl}
-              alt={`${modifier} ${base_name}`}
+              alt={[modifier, base_name].filter(Boolean).join(' ')}
               rarity={rarity}
               orientation={orientation}
               effectsEnabled={effectsEnabled}
@@ -254,7 +254,7 @@ const Card: React.FC<CardProps> = ({
           <div className="card-image-container">
             <img 
               src={imageUrl} 
-              alt={`${modifier} ${base_name}`}
+              alt={[modifier, base_name].filter(Boolean).join(' ')}
             />
           </div>
         )
@@ -270,7 +270,7 @@ const Card: React.FC<CardProps> = ({
               backgroundClip: 'text'
             }}
           >
-            {modifier} {base_name}
+            {[modifier, base_name].filter(Boolean).join(' ')}
           </h3>
           {showInlineShareButton && (
             <button
@@ -295,7 +295,9 @@ const Card: React.FC<CardProps> = ({
           )}
         </div>
         <p className="card-rarity">{rarity}</p>
-        <p className="card-set">{rarity === 'Unique' ? 'Unique' : (set_name || 'Unknown')}</p>
+        {(rarity === 'Unique' || set_name) && (
+          <p className="card-set">{rarity === 'Unique' ? 'Unique' : set_name}</p>
+        )}
         {aspect_count > 0 && (
           <p className="card-aspects">⬡ {aspect_count} aspect{aspect_count !== 1 ? 's' : ''}</p>
         )}

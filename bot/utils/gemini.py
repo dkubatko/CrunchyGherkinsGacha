@@ -13,16 +13,13 @@ from settings.constants import (
     ASPECT_SET_CONTEXT,
     BASE_CARD_GENERATION_PROMPT,
     EQUIP_GENERATION_PROMPT,
-    IMAGE_GENERATOR_INSTRUCTION,
     RARITIES,
     CARD_TEMPLATES_PATH,
     REFRESH_EQUIPPED_PROMPT,
     SLOT_MACHINE_INSTRUCTION,
-    SET_CONTEXT,
     UNIQUE_ASPECT_ADDENDUM,
 )
 from utils.image import ImageUtil
-from utils.schemas import Modifier
 
 logger = logging.getLogger(__name__)
 
@@ -95,61 +92,28 @@ class GeminiUtil:
     def generate_image(
         self,
         base_name: str,
-        modifier: str,
         rarity: str,
         base_image_path: str | None = None,
         base_image_b64: str | None = None,
         temperature: float = 1.0,
         instruction_addendum: str = "",
-        modifier_info: Modifier | None = None,
-        no_modifier: bool = False,
     ):
         try:
             if base_image_path is None and base_image_b64 is None:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
 
-            if no_modifier:
-                # Base card generation — no modifier/modification applied
-                prompt = BASE_CARD_GENERATION_PROMPT.format(
-                    name=base_name,
-                    rarity=rarity,
-                    color=RARITIES[rarity]["color"],
-                    creativeness_factor=RARITIES[rarity]["creativeness_factor"],
-                )
-                if instruction_addendum:
-                    prompt += instruction_addendum
+            prompt = BASE_CARD_GENERATION_PROMPT.format(
+                name=base_name,
+                rarity=rarity,
+                color=RARITIES[rarity]["color"],
+                creativeness_factor=RARITIES[rarity]["creativeness_factor"],
+            )
+            if instruction_addendum:
+                prompt += instruction_addendum
 
-                logger.info(
-                    f"Requesting base card image generation for '{base_name}', rarity '{rarity}' (temperature {temperature})"
-                )
-            else:
-                # Extract set context from modifier_info if available
-                set_name = modifier_info.set_name if modifier_info else ""
-                set_description = modifier_info.description if modifier_info else ""
-
-                # Build conditional set context if set_name is provided
-                if set_name:
-                    set_details = (
-                        f"'{set_name}': {set_description}" if set_description else f"'{set_name}'"
-                    )
-                    set_context = SET_CONTEXT.format(set_details=set_details)
-                else:
-                    set_context = ""
-
-                prompt = IMAGE_GENERATOR_INSTRUCTION.format(
-                    modification=modifier,
-                    name=base_name,
-                    rarity=rarity,
-                    color=RARITIES[rarity]["color"],
-                    creativeness_factor=RARITIES[rarity]["creativeness_factor"],
-                    set_context=set_context,
-                )
-                if instruction_addendum:
-                    prompt += instruction_addendum
-
-                logger.info(
-                    f"Requesting image generation for '{base_name}' with modifier '{modifier}', rarity '{rarity}', set '{set_name or 'none'}' (temperature {temperature})"
-                )
+            logger.info(
+                f"Requesting base card image generation for '{base_name}', rarity '{rarity}' (temperature {temperature})"
+            )
 
             template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
             template_part = self._prepare_image_part(image_path=template_image_path)
@@ -173,9 +137,7 @@ class GeminiUtil:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
-                    logger.info(
-                        f"Image for {modifier} {base_name} generated and processed successfully."
-                    )
+                    logger.info(f"Image for '{base_name}' generated and processed successfully.")
                     return base64.b64encode(processed_image_bytes).decode("utf-8")
             logger.warning("No image data found in response.")
             return None

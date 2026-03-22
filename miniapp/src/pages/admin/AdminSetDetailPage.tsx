@@ -326,14 +326,15 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
       {/* Grouped aspect list */}
       {loading ? (
         <div className="admin-loading">Loading aspects…</div>
-      ) : filtered.length === 0 ? (
-        <div className="admin-empty">
-          {aspectDefs.length === 0
-            ? 'No aspects in this set yet.'
-            : 'No aspects match your filters.'}
-        </div>
       ) : (
         <div className="admin-rarity-grid-scroll">
+          {filtered.length === 0 && (
+            <div className="admin-empty">
+              {aspectDefs.length === 0
+                ? 'No aspects in this set yet. Use the forms below to add some.'
+                : 'No aspects match your filters.'}
+            </div>
+          )}
           <div className="admin-rarity-grid">
             {RARITIES.map((rarity) => {
               const items = grouped[rarity] ?? [];
@@ -385,7 +386,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
                       items.map((mod) => (
                         <div
                           key={mod.id}
-                          className="admin-modifier-row"
+                          className="admin-aspect-row"
                           draggable={editingId !== mod.id}
                           onDragStart={() => handleDragStart(mod.id)}
                           onDragEnd={handleDragEnd}

@@ -19,19 +19,19 @@ const LockIndicator = () => (
 );
 
 const MiniCard: React.FC<MiniCardProps> = ({ card, imageB64, isLoading, hasFailed, onClick }) => {
-  const setName = card.rarity === 'Unique' ? 'UNIQUE' : (card.set_name || 'Unknown').toUpperCase();
+  const setName = card.rarity === 'Unique' ? 'UNIQUE' : card.set_name ? card.set_name.toUpperCase() : null;
   const hasImage = imageB64 && !hasFailed;
 
   const overlays = (
     <>
       {!card.locked && <div className="grid-card-number-overlay">#{card.id}</div>}
-      <div className="grid-card-set-overlay">{setName}</div>
+      {setName && <div className="grid-card-set-overlay">{setName}</div>}
     </>
   );
 
   const cardInfo = (
     <div className="grid-card-info">
-      <div className="grid-card-title">{card.modifier} {card.base_name}</div>
+      <div className="grid-card-title">{[card.modifier, card.base_name].filter(Boolean).join(' ')}</div>
       <div className="grid-card-rarity">{card.rarity}</div>
     </div>
   );

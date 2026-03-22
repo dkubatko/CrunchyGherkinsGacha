@@ -72,10 +72,10 @@ async def create_aspect_definition(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Create a single aspect definition."""
-    from utils.services import modifier_service
+    from utils.services import set_service
 
     # Validate the target set exists
-    target_set = await asyncio.to_thread(modifier_service.get_set, body.set_id, body.season_id)
+    target_set = await asyncio.to_thread(set_service.get_set, body.set_id, body.season_id)
     if target_set is None:
         raise HTTPException(
             status_code=404,

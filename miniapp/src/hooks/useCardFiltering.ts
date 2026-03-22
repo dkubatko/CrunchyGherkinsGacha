@@ -65,8 +65,8 @@ const applyFilteringAndSorting = (
         bValue = b.id;
         break;
       case 'name':
-        aValue = `${a.modifier} ${a.base_name}`.toLowerCase();
-        bValue = `${b.modifier} ${b.base_name}`.toLowerCase();
+        aValue = [a.modifier, a.base_name].filter(Boolean).join(' ').toLowerCase();
+        bValue = [b.modifier, b.base_name].filter(Boolean).join(' ').toLowerCase();
         break;
       default:
         aValue = a.id;

@@ -63,9 +63,6 @@ class CardModel(Base):
     source_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     set_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True)
     season_id: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
-    modifier_id: Mapped[Optional[int]] = mapped_column(
-        BigInteger, ForeignKey("modifiers.id"), nullable=True
-    )
     updated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -82,11 +79,6 @@ class CardModel(Base):
         back_populates="cards",
         foreign_keys="[CardModel.set_id, CardModel.season_id]",
         primaryjoin="and_(CardModel.set_id == SetModel.id, CardModel.season_id == SetModel.season_id)",
-    )
-
-    # Relationship to modifier
-    card_modifier: Mapped[Optional["ModifierModel"]] = relationship(
-        "ModifierModel", back_populates="cards"
     )
 
     # Relationship to equipped aspects (ordered junction table)
@@ -110,7 +102,6 @@ class CardModel(Base):
         Index("idx_cards_rarity", "rarity"),
         Index("idx_cards_season_id", "season_id"),
         Index("idx_cards_season_user", "season_id", "user_id"),
-        Index("idx_cards_modifier_id", "modifier_id"),
     )
 
     def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
@@ -308,14 +299,6 @@ class SetModel(Base):
         primaryjoin="and_(SetModel.id == CardModel.set_id, SetModel.season_id == CardModel.season_id)",
     )
 
-    # Relationship to modifiers
-    modifiers: Mapped[List["ModifierModel"]] = relationship(
-        "ModifierModel",
-        back_populates="modifier_set",
-        foreign_keys="[ModifierModel.set_id, ModifierModel.season_id]",
-        primaryjoin="and_(SetModel.id == ModifierModel.set_id, SetModel.season_id == ModifierModel.season_id)",
-    )
-
 
 class MinesweeperGameModel(Base):
     """Represents a minesweeper game state."""
@@ -400,43 +383,6 @@ class EventModel(Base):
         Index("idx_events_chat_timestamp", "chat_id", "timestamp"),
         Index("idx_events_card_id", "card_id"),
         Index("idx_events_aspect_id", "aspect_id"),
-    )
-
-
-class ModifierModel(Base):
-    """Represents a modifier keyword belonging to a set."""
-
-    __tablename__ = "modifiers"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    set_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    season_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    name: Mapped[str] = mapped_column(Text, nullable=False)
-    rarity: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-    # Relationship to set (composite FK: set_id + season_id)
-    modifier_set: Mapped[Optional["SetModel"]] = relationship(
-        "SetModel",
-        back_populates="modifiers",
-        foreign_keys="[ModifierModel.set_id, ModifierModel.season_id]",
-        primaryjoin="and_(ModifierModel.set_id == SetModel.id, ModifierModel.season_id == SetModel.season_id)",
-    )
-
-    # Relationship to cards that used this modifier
-    cards: Mapped[List["CardModel"]] = relationship("CardModel", back_populates="card_modifier")
-
-    __table_args__ = (
-        ForeignKeyConstraint(
-            ["set_id", "season_id"],
-            ["sets.id", "sets.season_id"],
-            name="fk_modifiers_set_season",
-        ),
-        Index("idx_modifiers_set_season", "set_id", "season_id"),
-        Index("idx_modifiers_rarity", "rarity"),
-        Index("idx_modifiers_name", "name"),
     )
 
 
@@ -585,7 +531,9 @@ class CardAspectModel(Base):
 
     # Relationships
     card: Mapped["CardModel"] = relationship("CardModel", back_populates="equipped_aspects")
-    aspect: Mapped["OwnedAspectModel"] = relationship("OwnedAspectModel")
+    aspect: Mapped["OwnedAspectModel"] = relationship(
+        "OwnedAspectModel", overlaps="card_aspect_links"
+    )
 
     __table_args__ = (
         UniqueConstraint("aspect_id", name="uq_card_aspects_aspect_id"),

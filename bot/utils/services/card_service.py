@@ -44,14 +44,13 @@ def add_card(
     source_id: int,
     set_id: Optional[int] = None,
     season_id: Optional[int] = None,
-    modifier_id: Optional[int] = None,
     description: Optional[str] = None,
 ) -> int:
     """Add a new card to the database.
 
     Args:
         base_name: The base name for the card.
-        modifier: The modifier for the card.
+        modifier: The modifier for the card (nullable string).
         rarity: The rarity of the card.
         image_b64: Base64-encoded image data.
         chat_id: The chat ID where the card was created.
@@ -59,7 +58,6 @@ def add_card(
         source_id: The source ID.
         set_id: Optional set ID for the modifier set.
         season_id: The season this card belongs to. Defaults to CURRENT_SEASON.
-        modifier_id: Optional modifier database ID.
         description: Optional user-provided description for unique cards.
 
     Returns:
@@ -93,7 +91,6 @@ def add_card(
             source_id=source_id,
             set_id=set_id,
             season_id=season_id,
-            modifier_id=modifier_id,
             description=description,
         )
         session.add(card)
@@ -135,7 +132,6 @@ def add_card_from_generated(generated_card, chat_id: Optional[str]) -> int:
         source_type=generated_card.source_type,
         source_id=generated_card.source_id,
         set_id=generated_card.set_id,
-        modifier_id=getattr(generated_card, "modifier_id", None),
         description=getattr(generated_card, "description", None),
     )
 
@@ -937,44 +933,6 @@ def delete_card(card_id) -> bool:
         )
     logger.info(f"Deleted card {card_id}: {deleted > 0}")
     return deleted > 0
-
-
-def get_modifier_counts_for_chat(chat_id: str) -> Dict[str, int]:
-    """Get the count of each modifier used in cards for a specific chat in the current season.
-
-    Args:
-        chat_id: The chat ID to get modifier counts for.
-
-    Returns:
-        A dictionary mapping modifier strings to their occurrence count.
-    """
-    with get_session() as session:
-        results = (
-            session.query(CardModel.modifier, func.count(CardModel.id).label("count"))
-            .filter(
-                CardModel.chat_id == str(chat_id),
-                CardModel.season_id == CURRENT_SEASON,
-            )
-            .group_by(CardModel.modifier)
-            .all()
-        )
-        return {row[0]: row[1] for row in results if row[0] is not None}
-
-
-def get_unique_modifiers(chat_id: str) -> List[str]:
-    """Get a list of modifiers used in Unique cards for a specific chat in the current season."""
-    with get_session() as session:
-        results = (
-            session.query(CardModel.modifier)
-            .filter(
-                CardModel.chat_id == str(chat_id),
-                CardModel.rarity == "Unique",
-                CardModel.season_id == CURRENT_SEASON,
-            )
-            .distinct()
-            .all()
-        )
-        return [row[0] for row in results if row[0] is not None]
 
 
 def delete_cards(card_ids: List[int]) -> int:

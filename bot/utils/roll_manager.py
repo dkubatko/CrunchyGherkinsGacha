@@ -394,7 +394,6 @@ class RollManager:
             card_id=card.id,
             card_title=card.title(),
             rarity=card.rarity,
-            set_name=(card.set_name or "").title(),
         )
 
     def _aspect_base_caption(self, aspect: OwnedAspect) -> str:
@@ -605,11 +604,11 @@ class RollManager:
         old_item_id = active_item.id
 
         if self.roll_type == "card":
-            generated = rolling._generate_base_card_for_chat(
-                chat_id,
+            generated = rolling.generate_base_card(
                 gemini_util,
                 downgraded_rarity,
                 max_retries,
+                chat_id=chat_id,
             )
             new_item_id = card_service.add_card_from_generated(generated, chat_id)
             card_service.delete_card(old_item_id)

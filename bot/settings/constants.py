@@ -115,59 +115,6 @@ def _build_cost_summary(cost_lookup) -> str:
 LOCK_COST_SUMMARY = _build_cost_summary(get_lock_cost)
 REFRESH_COST_SUMMARY = _build_cost_summary(get_refresh_cost)
 
-
-IMAGE_GENERATOR_INSTRUCTION = """
-**Generate a 5:7 aspect ratio detailed collectible trading card using the provided template image as layout reference, and the character image as the subject of the illustration.**
-
-**--- Guiding Principles ---**
-You must achieve the following goals:
-1.  **Thematic Transformation:** The card must be a creative visual representation reflective of its name, "{modification} {name}", where {modification} is the modification tag and {name} is the character's name.
-2.  **Character Recognition:** The person or character depicted on the card must remain clearly and unmistakably recognizable from the input photo.
-
-**1. Art Style & Theme:**
-The overall style should be a high-quality, detailed digital illustration.
-   - **Literal Interpretation:** The visual theme and art style MUST be a direct interpretation of the `{modification}` modification tag.{set_context}
-   - **AVOID THEME DEFAULTS:** You are strictly forbidden from defaulting to a generic theme (for example **fantasy, magic, arcane, sci-fi, or futuristic**) unless the tag requests that theme explicitly.
-   - **Current-Day Grounding:** If modification tag `{modification}` is an abstract concept, a personality trait, or a term without an obvious visual theme, your interpretation MUST be grounded in a **contemporary, real-world, non-speculative context**.
-
-**2. Card Transformation & Layout:**
-   - **Main Artwork:** the main area of the template should contain the character and a richly detailed, themed background. This artwork must fill the entire area within the border of the card.
-   - **Layering:** The styled nameplate must be a standalone, opaque "floating" piece layered on top of the main artwork, **disconnected** from the border of the card.
-   - **Final Frame:** The final image **must retain the exact edge-to-edge dimensions of the provided template**, with no added external padding, margins, or borders.
-
-**3. Character Likeness & Modification:**
-   - **Fusion Concept:** Create a visual *hybrid* that blends the reference person with the concept specified by the `{modification}` tag.
-   - **Recognizability Anchor:** The character's **unique identifying facial features**, and reference character overall must remain recognizable.
-   - **Art Style** Stylize & render the character in the specified art style & theme. Do NOT re-use or lightly filter the original photo.
-   - **Artistic Mandate:** Push the thematic interpretation to its most evocative and visually striking form that remains **permissible by content policy**. Maximize suggestive elements while ensuring that the image is successfully generated.
-
-**4. Card Border Styling:**
-   - **Thematic Elements:** The card border is a key thematic element and **MUST** be styled with details that match the theme. That may include patterns, textures, depth, and any other effects.
-   - **Edge Placement:** The border **MUST** be positioned EXACTLY around the edge of the card, flush with the outer perimeter of the image. The border **must NOT** be isolated or floating within the card interior.
-   - **Size Constraint:** The border should take no more than 10% of the total card area (measured from the edge inward).
-   - **Always Apply Styling:** The border **MUST** always have thematic styling applied. *NEVER* leave a plain, solid color border/outline around the generated card.
-
-**5. Nameplate & Text Styling:**
-   - **Thematic Elements:** The nameplate and card title within are key thematic elements and **MUST** be styled consistently with the rest of the generated card. Do NOT use plain or generic styling for the nameplate and text.
-   - **Styling:** The nameplate border, background, text and font must incorporate design elements (e.g., depth, patterns, textures, lighting) that reflect the card's theme, and be consistent with the styling of the card border.
-   - **Size Constraint:** The nameplate should take no more than 15% of the total card area.
-   - **Placement:** The card name "{modification} {name}" MUST be placed horizontally, centered and contained within the nameplate, while **fitting in one line** if possible.
-   - **Other text:** **DO NOT** include any other text anywhere on the card.
-
-**6. Rarity Color Application:**
-   - The card's border and nameplate **MUST** use a {color} color palette to indicate card's rarity.
-   - This color restriction applies **ONLY to the border and the nameplate**.
-   - The main artwork, background, and character are **NOT constrained** by this color and should use any colors that best represent the theme.
-
-**7. Creativity Factor: {creativeness_factor}/100**
-   - The "creativity factor" dictates the **visual complexity** of the card's design, including the styling complexity for the border, nameplate, and text.
-     Higher creativity factor allows to go beyond the theme basics and create complex and sophisticated design based on the specified tag & overall theme.
-     Creativity factor does **NOT** control the art style genre or the degree of deviation from the person's likeness.
-     - **Low creativity (e.g., 10/100):** A simple, clean design with minor details and effects, while following the general card theme directly.
-     - **Medium creativity (e.g., 50/100):** A detailed design with balanced thematic patterns, complex effects, and noticeable but not overwhelming decorative elements throughout the card's design.
-     - **High creativity (e.g., 90/100):** Deep exploration of the theme with thoughtful and intricate design work throughout the card: high level of detail, sophisticated design, dynamic lighting, depth, convexity, and other complex thematic effects & elements. 
-"""
-
 UNIQUE_ASPECT_ADDENDUM = """
 **6. Unique Aspect Requirements:**
    - This is a "Unique" rarity aspect sphere — a one-of-a-kind creation of the highest tier.
@@ -176,8 +123,6 @@ UNIQUE_ASPECT_ADDENDUM = """
    - The sphere should feel like a legendary artifact — awe-inspiring and unmistakably premium.
    - **Color Freedom:** You are NOT bound by any rarity color scheme. Choose ANY color palette that best enhances the sphere's theme and visual impact.
 """
-
-SET_CONTEXT = """\n   - The card is part of a themed set {set_details}. The modification tag should be interpreted within the context of that general theme; set should not influence the card directly, but rather provide the interpretive context for the modification tag."""
 
 SLOT_MACHINE_INSTRUCTION = """
 Create a casino slot machine icon featuring the person's portrait.
@@ -367,14 +312,11 @@ REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
     "<b>{lock_icon}[{card_id}] {card_title}</b>\n"
-    "Rarity: <b>{rarity}</b>\n"
-    "Set: <b>{set_name}</b>\n\n"
+    "Rarity: <b>{rarity}</b>\n\n"
     "<i>Showing {current_index}/{total_cards} owned by @{username}</i>"
 )
 
-CARD_CAPTION_BASE = (
-    "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>\nSet: <b>{set_name}</b>"
-)
+CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
 CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
 CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
 CARD_STATUS_LOCKED = "\n\n<i>Locked from re-rolling</i>"
@@ -685,9 +627,8 @@ SLOTS_VICTORY_PENDING_MESSAGE = (
 
 SLOTS_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\n"
-    "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>\n"
-    "Set: <b>{set_name}</b>"
+    "<b>[{card_id}] {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
 )
 
 SLOTS_VICTORY_FAILURE_MESSAGE = (
@@ -698,9 +639,8 @@ MEGASPIN_VICTORY_PENDING_MESSAGE = "@{username} used a <b>megaspin</b> and won a
 
 MEGASPIN_VICTORY_RESULT_MESSAGE = (
     "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\n"
-    "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>\n"
-    "Set: <b>{set_name}</b>"
+    "<b>[{card_id}] {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
 )
 
 MEGASPIN_VICTORY_FAILURE_MESSAGE = "@{username} used a <b>megaspin</b> and won a {rarity} {display_name}!\n\nCard generation failed."
@@ -722,9 +662,8 @@ MINESWEEPER_VICTORY_PENDING_MESSAGE = (
 
 MINESWEEPER_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in Minesweeper!\n\n"
-    "<b>[{card_id}] {modifier} {base_name}</b>\n"
-    "Rarity: <b>{rarity}</b>\n"
-    "Set: <b>{set_name}</b>"
+    "<b>[{card_id}] {base_name}</b>\n"
+    "Rarity: <b>{rarity}</b>"
 )
 
 MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
