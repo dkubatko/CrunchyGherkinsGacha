@@ -28,17 +28,17 @@ from handlers import (
     # Card handlers
     refresh,
     handle_refresh_callback,
-    create_unique_card,
-    handle_create_callback,
     equip,
     handle_equip_callback,
-    # Aspect handlers (burn, lock, recycle)
+    # Aspect handlers (burn, lock, recycle, create)
     burn,
     handle_burn_callback,
     lock_aspect_command,
     handle_lock_aspect_confirm,
     recycle,
     handle_recycle_callback,
+    create_unique_aspect,
+    handle_create_callback,
     # Collection handlers
     casino,
     balance,
@@ -105,7 +105,7 @@ def _register_card_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("roll", roll))
     application.add_handler(CommandHandler("recycle", recycle))
     application.add_handler(CommandHandler("burn", burn))
-    application.add_handler(CommandHandler("create", create_unique_card))
+    application.add_handler(CommandHandler("create", create_unique_aspect))
     application.add_handler(CommandHandler("refresh", refresh))
     application.add_handler(CommandHandler("lock", lock_aspect_command))
     application.add_handler(CommandHandler("equip", equip))

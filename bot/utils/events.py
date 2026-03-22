@@ -127,7 +127,7 @@ class RecycleOutcome(str, Enum):
 
 
 class CreateOutcome(str, Enum):
-    """Outcomes for CREATE (unique card) events."""
+    """Outcomes for CREATE (unique aspect) events."""
 
     SUCCESS = "SUCCESS"
     CANCELLED = "CANCELLED"

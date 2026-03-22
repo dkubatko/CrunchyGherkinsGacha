@@ -1,16 +1,14 @@
 """
 Card-related command handlers.
 
-This module contains handlers for refreshing card images, creating unique cards,
-and equipping aspects onto cards.
+This module contains handlers for refreshing card images and equipping
+aspects onto cards.
 """
 
 import asyncio
 import base64
-import datetime
 import html
 import logging
-import random
 from io import BytesIO
 from typing import Optional
 
@@ -20,13 +18,10 @@ from telegram.ext import ContextTypes
 
 from config import DEBUG_MODE, MAX_BOT_IMAGE_RETRIES, MINIAPP_URL_ENV, gemini_util
 from handlers.helpers import (
-    build_burning_text,
     log_card_generation,
     save_card_file_id_from_message,
 )
 from settings.constants import (
-    CARD_CAPTION_BASE,
-    CARD_STATUS_CLAIMED,
     REFRESH_USAGE_MESSAGE,
     REFRESH_DM_RESTRICTED_MESSAGE,
     REFRESH_INVALID_ID_MESSAGE,
@@ -42,19 +37,6 @@ from settings.constants import (
     REFRESH_SUCCESS_MESSAGE,
     REFRESH_OPTIONS_READY_MESSAGE,
     get_refresh_cost,
-    # Create unique constants
-    CREATE_USAGE_MESSAGE,
-    CREATE_DM_RESTRICTED_MESSAGE,
-    CREATE_CONFIRM_MESSAGE,
-    CREATE_WARNING_EXISTING_MODIFIER,
-    CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE,
-    CREATE_INSUFFICIENT_CARDS_MESSAGE,
-    CREATE_ALREADY_RUNNING_MESSAGE,
-    CREATE_NOT_YOURS_MESSAGE,
-    CREATE_FAILURE_NO_PROFILE,
-    CREATE_FAILURE_UNEXPECTED,
-    CREATE_CANCELLED_MESSAGE,
-    UNIQUE_ADDENDUM,
     SLOTS_VIEW_IN_APP_LABEL,
     # Equip constants
     EQUIP_USAGE_MESSAGE,
@@ -86,7 +68,6 @@ from utils import rolling
 from utils.miniapp import encode_single_card_token
 from utils.services import (
     card_service,
-    user_service,
     claim_service,
     event_service,
     aspect_service,
@@ -96,7 +77,6 @@ from utils.decorators import verify_user_in_chat
 from utils.events import (
     EventType,
     RefreshOutcome,
-    CreateOutcome,
     EquipOutcome,
 )
 
@@ -1307,337 +1287,3 @@ async def handle_equip_callback(
     finally:
         equipping_users.discard(user.user_id)
         context.user_data.pop(session_key, None)
-
-
-# =============================================================================
-# Create Unique Card Handlers
-# =============================================================================
-
-
-@verify_user_in_chat
-async def create_unique_card(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: User,
-) -> None:
-    """Create a unique card by recycling legendary cards."""
-    message = update.message
-    chat = update.effective_chat
-
-    if not message or not chat:
-        return
-
-    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
-        await message.reply_text(
-            CREATE_DM_RESTRICTED_MESSAGE,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    if not context.args or len(context.args) < 2:
-        cost = rolling.RARITIES["Unique"]["recycle_cost"]
-        await message.reply_text(
-            CREATE_USAGE_MESSAGE.format(cost=cost),
-            parse_mode=ParseMode.HTML,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Parse arguments: Modifier Name (Name is always the last word)
-    # Also parse optional description after a newline
-    raw_text = message.text or ""
-    lines = raw_text.split("\n", 1)
-    description = lines[1].strip() if len(lines) > 1 else ""
-
-    if len(description) > 300:
-        await message.reply_text(
-            "Description is too long. Please keep it under 300 characters.",
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Use only the first line (command + modifier + name) for argument parsing
-    first_line_args = lines[0].split()[1:]  # skip the /create command itself
-    if len(first_line_args) < 2:
-        cost = rolling.RARITIES["Unique"]["recycle_cost"]
-        await message.reply_text(
-            CREATE_USAGE_MESSAGE.format(cost=cost),
-            parse_mode=ParseMode.HTML,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    chat_id_str = str(chat.id)
-
-    name = first_line_args[-1]
-    modifier_raw = " ".join(first_line_args[:-1])
-    modifier = (
-        modifier_raw[0].upper() + modifier_raw[1:] if modifier_raw else ""
-    )  # Capitalize first letter
-
-    if len(modifier) > 20:
-        await message.reply_text(
-            "Modifier is too long. Please keep it under 20 characters.",
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Try to find a profile matching the name
-    profile = await asyncio.to_thread(rolling.find_profile_by_name, chat_id_str, name)
-
-    if not profile:
-        await message.reply_text(
-            CREATE_FAILURE_NO_PROFILE.format(name=name),
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Check cost
-    cost = rolling.RARITIES["Unique"]["recycle_cost"]
-    unlocked_legendaries = await asyncio.to_thread(
-        card_service.get_user_cards_by_rarity,
-        user.user_id,
-        user.username,
-        "Legendary",
-        chat_id_str,
-        limit=None,
-        unlocked=True,
-    )
-
-    if len(unlocked_legendaries) < cost:
-        await message.reply_text(
-            CREATE_INSUFFICIENT_CARDS_MESSAGE.format(required=cost),
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Check if modifier already exists in Unique cards (disallow duplicates)
-    unique_modifiers = await asyncio.to_thread(card_service.get_unique_modifiers, chat_id_str)
-    if modifier in unique_modifiers:
-        await message.reply_text(
-            CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE.format(modifier=modifier),
-            parse_mode=ParseMode.HTML,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Check if modifier exists in non-unique cards (warn but allow)
-    all_modifiers = await asyncio.to_thread(card_service.get_modifier_counts_for_chat, chat_id_str)
-    warning = ""
-    if modifier in all_modifiers:
-        warning = CREATE_WARNING_EXISTING_MODIFIER.format(modifier=modifier)
-
-    # Confirm
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton("Confirm", callback_data=f"create_yes_{user.user_id}"),
-                InlineKeyboardButton("Cancel", callback_data=f"create_cancel_{user.user_id}"),
-            ]
-        ]
-    )
-
-    session_key = f"create_session_{chat_id_str}_{user.user_id}"
-    context.user_data[session_key] = {
-        "modifier": modifier,
-        "profile": profile,
-        "cost": cost,
-        "description": description,
-        "timestamp": datetime.datetime.now().isoformat(),
-    }
-
-    await message.reply_text(
-        CREATE_CONFIRM_MESSAGE.format(
-            cost=cost,
-            modifier=modifier,
-            name=name,
-        )
-        + warning,
-        parse_mode=ParseMode.HTML,
-        reply_markup=keyboard,
-        reply_to_message_id=message.message_id,
-    )
-
-
-async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle create unique card confirmation callback."""
-    query = update.callback_query
-    await query.answer()
-
-    data = query.data.split("_")
-    action = data[1]  # yes or cancel
-    user_id = int(data[2])
-
-    if user_id != query.from_user.id:
-        await query.answer(CREATE_NOT_YOURS_MESSAGE, show_alert=True)
-        return
-
-    chat_id_str = str(query.message.chat_id)
-    session_key = f"create_session_{chat_id_str}_{user_id}"
-    session = context.user_data.get(session_key)
-
-    if not session:
-        await query.edit_message_text("Session expired or invalid.")
-        return
-
-    if action == "cancel":
-        del context.user_data[session_key]
-        await query.edit_message_text(CREATE_CANCELLED_MESSAGE)
-        return
-
-    if action == "yes":
-        # Double check cost
-        cost = session["cost"]
-        user = await asyncio.to_thread(user_service.get_user, user_id)
-        unlocked_legendaries = await asyncio.to_thread(
-            card_service.get_user_cards_by_rarity,
-            user_id,
-            user.username,
-            "Legendary",
-            chat_id_str,
-            limit=None,
-            unlocked=True,
-        )
-
-        if len(unlocked_legendaries) < cost:
-            await query.edit_message_text(CREATE_INSUFFICIENT_CARDS_MESSAGE.format(required=cost))
-            del context.user_data[session_key]
-            return
-
-        # Prepare cards to burn
-        cards_to_burn = unlocked_legendaries[:cost]
-        card_titles = [html.escape(card.title()) for card in cards_to_burn]
-
-        # Remove keyboard
-        await query.edit_message_reply_markup(reply_markup=None)
-
-        # Start generation in background
-        modifier = session["modifier"]
-        profile = session["profile"]
-        description = session.get("description", "")
-
-        generation_task = asyncio.create_task(
-            asyncio.to_thread(
-                rolling.generate_unique_card,
-                modifier,
-                profile,
-                gemini_util,
-                UNIQUE_ADDENDUM,
-                description=description,
-            )
-        )
-
-        # Show burning animation
-        message_id = query.message.message_id
-        for idx in range(len(cards_to_burn)):
-            text = build_burning_text(card_titles, idx + 1)
-            try:
-                await context.bot.edit_message_text(
-                    chat_id=query.message.chat_id,
-                    message_id=message_id,
-                    text=text,
-                    parse_mode=ParseMode.HTML,
-                )
-            except Exception:
-                pass
-            await asyncio.sleep(1)
-
-        try:
-            await context.bot.edit_message_text(
-                chat_id=query.message.chat_id,
-                message_id=message_id,
-                text=build_burning_text(card_titles, len(cards_to_burn), strike_all=True)
-                + "\n\nCreating <b>Unique</b> card...",
-                parse_mode=ParseMode.HTML,
-            )
-        except Exception:
-            pass
-
-        try:
-            # Wait for generation
-            generated_card = await generation_task
-
-            # Add to DB
-            card_id = await asyncio.to_thread(
-                card_service.add_card_from_generated,
-                generated_card,
-                chat_id_str,
-            )
-
-            # Set owner
-            await asyncio.to_thread(card_service.set_card_owner, card_id, user.username, user_id)
-
-            # NOW delete the cards (skip in debug mode)
-            if not DEBUG_MODE:
-                card_ids = [c.id for c in cards_to_burn]
-                await asyncio.to_thread(card_service.delete_cards, card_ids)
-
-            # Log create success event
-            event_service.log(
-                EventType.CREATE,
-                CreateOutcome.SUCCESS,
-                user_id=user_id,
-                chat_id=chat_id_str,
-                card_id=card_id,
-                modifier=generated_card.modifier,
-                source_name=generated_card.base_name,
-                source_type=generated_card.source_type,
-                source_id=generated_card.source_id,
-                cards_burned=[c.id for c in cards_to_burn],
-            )
-
-            # Send result
-            card = await asyncio.to_thread(card_service.get_card, card_id)
-
-            # Clean up session
-            del context.user_data[session_key]
-
-            # Send photo
-            image_bytes = base64.b64decode(generated_card.image_b64)
-
-            burned_block = "\n".join([f"<s>🔥{t}🔥</s>" for t in card_titles])
-
-            caption = (
-                CARD_CAPTION_BASE.format(
-                    card_id=card.id,
-                    card_title=html.escape(card.title()),
-                    rarity=card.rarity,
-                    set_name=(card.set_name or "").title(),
-                )
-                + CARD_STATUS_CLAIMED.format(username=user.username)
-                + f"\n\nBurned cards:\n\n<b>{burned_block}</b>"
-            )
-
-            # Build View in app button if MINIAPP_URL is configured
-            reply_markup = None
-            if MINIAPP_URL_ENV:
-                card_token = encode_single_card_token(card_id)
-                card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
-                reply_markup = InlineKeyboardMarkup(
-                    [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
-                )
-
-            await context.bot.send_photo(
-                chat_id=query.message.chat_id,
-                message_thread_id=query.message.message_thread_id,
-                photo=image_bytes,
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                reply_markup=reply_markup,
-            )
-
-            # Delete processing message
-            await query.message.delete()
-
-        except Exception as e:
-            logger.error(f"Error creating unique card: {e}", exc_info=True)
-            # Log create error event
-            event_service.log(
-                EventType.CREATE,
-                CreateOutcome.ERROR,
-                user_id=user_id,
-                chat_id=chat_id_str,
-                error_message=str(e),
-            )
-            await query.edit_message_text(CREATE_FAILURE_UNEXPECTED)
-            # Note: Cards are NOT deleted if we land here

@@ -19,6 +19,7 @@ from settings.constants import (
     REFRESH_EQUIPPED_PROMPT,
     SLOT_MACHINE_INSTRUCTION,
     SET_CONTEXT,
+    UNIQUE_ASPECT_ADDENDUM,
 )
 from utils.image import ImageUtil
 from utils.schemas import Modifier
@@ -257,6 +258,7 @@ class GeminiUtil:
         set_name: str | None = None,
         set_description: str | None = None,
         temperature: float = 1.0,
+        instruction_addendum: str = "",
     ) -> str | None:
         """Generate a 1:1 aspect sphere image from the sphere template.
 
@@ -266,6 +268,8 @@ class GeminiUtil:
             set_name: Optional set name for thematic context.
             set_description: Optional set description for thematic context.
             temperature: Gemini sampling temperature.
+            instruction_addendum: Extra instructions appended to the prompt
+                (e.g. user description for Unique creations).
 
         Returns:
             Base64-encoded 1:1 sphere image, or None on failure.
@@ -287,6 +291,13 @@ class GeminiUtil:
                 set_context=set_context,
                 creativeness_factor=creativeness,
             )
+
+            # Unique aspects always get the special addendum
+            if rarity == "Unique":
+                prompt += UNIQUE_ASPECT_ADDENDUM
+
+            if instruction_addendum:
+                prompt += instruction_addendum
 
             logger.info(
                 f"Requesting aspect sphere generation for '{aspect_name}', "

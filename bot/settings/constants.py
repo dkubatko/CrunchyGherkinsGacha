@@ -167,13 +167,13 @@ The overall style should be a high-quality, detailed digital illustration.
      - **High creativity (e.g., 90/100):** Deep exploration of the theme with thoughtful and intricate design work throughout the card: high level of detail, sophisticated design, dynamic lighting, depth, convexity, and other complex thematic effects & elements. 
 """
 
-UNIQUE_ADDENDUM = """
-**8. Unique Card Requirements:**
-   - This is a "Unique" rarity card, which means it is a one-of-a-kind creation and is of higher rarity than any other.
-   - The design must be absolutely mind-blowing in quality, detail, and thematic execution.
-   - Push the boundaries of the art style and theme to the maximum extent possible.
-   - Ensure the character remains recognizable, but integrated into a spectacular scene or composition.
-   - **Color Freedom:** You are NOT bound by a specific rarity color. Choose ANY color palette for the border and nameplate that best enhances the card's theme and visual impact.
+UNIQUE_ASPECT_ADDENDUM = """
+**6. Unique Aspect Requirements:**
+   - This is a "Unique" rarity aspect sphere — a one-of-a-kind creation of the highest tier.
+   - The sphere design must be absolutely spectacular in quality, detail, and thematic execution.
+   - Push the boundaries of visual complexity: intricate interior scenes, mesmerizing lighting, extraordinary depth and detail.
+   - The sphere should feel like a legendary artifact — awe-inspiring and unmistakably premium.
+   - **Color Freedom:** You are NOT bound by any rarity color scheme. Choose ANY color palette that best enhances the sphere's theme and visual impact.
 """
 
 SET_CONTEXT = """\n   - The card is part of a themed set {set_details}. The modification tag should be interpreted within the context of that general theme; set should not influence the card directly, but rather provide the interpretive context for the modification tag."""
@@ -585,29 +585,25 @@ ASPECT_RECYCLE_FAILURE_UNEXPECTED = (
     "An unexpected error occurred while recycling aspects. Try again later."
 )
 
-CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;\n[optional description]\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards.\n\nYou can add a description (up to 300 characters) on a new line to guide the art."
-CREATE_DM_RESTRICTED_MESSAGE = "Creating unique cards is only available in the group chat."
-CREATE_CONFIRM_MESSAGE = "Burn {cost} unlocked <b>Legendary</b> cards to create <b>Unique</b> card <b>{modifier} {name}</b>?"
-CREATE_WARNING_EXISTING_MODIFIER = (
-    "\n\n⚠️ <b>Warning:</b> The modifier '<b>{modifier}</b>' has already been used in this chat."
+CREATE_USAGE_MESSAGE = "Usage: /create &lt;AspectName&gt;\n[optional description]\n\nCreates a <b>Unique</b> aspect by burning {cost} unlocked Legendary aspects.\n\nYou can add a description (up to 300 characters) on a new line to guide the art."
+CREATE_DM_RESTRICTED_MESSAGE = "Creating unique aspects is only available in the group chat."
+CREATE_CONFIRM_MESSAGE = "Burn {cost} unlocked <b>Legendary</b> aspects to create <b>Unique</b> aspect <b>🔮 {aspect_name}</b>?"
+CREATE_DUPLICATE_UNIQUE_NAME_MESSAGE = (
+    "The name '<b>{aspect_name}</b>' has already been used for another Unique aspect in this chat. "
+    "Please choose a different name."
 )
-CREATE_DUPLICATE_UNIQUE_MODIFIER_MESSAGE = (
-    "Modifier '<b>{modifier}</b>' has already been used for another Unique card in this chat. "
-    "Please choose a different modifier."
-)
-CREATE_INSUFFICIENT_CARDS_MESSAGE = (
-    "You need at least {required} unlocked Legendary cards in this chat to create a Unique card."
-)
+CREATE_INSUFFICIENT_ASPECTS_MESSAGE = "You need at least {required} unlocked, unequipped Legendary aspects in this chat to create a Unique aspect."
 CREATE_ALREADY_RUNNING_MESSAGE = "You already have a creation in progress."
 CREATE_NOT_YOURS_MESSAGE = "This creation prompt isn't for you!"
-CREATE_FAILURE_NO_PROFILE = "Creation failed: could not find a profile for '{name}'."
 CREATE_FAILURE_IMAGE = (
-    "Creation failed: image generation is unavailable right now. Your cards were not burned."
+    "Creation failed: image generation is unavailable right now. Your aspects were not burned."
 )
-CREATE_FAILURE_UNEXPECTED = "An unexpected error occurred while creating the card. Try again later."
-CREATE_SUCCESS_MESSAGE = "Successfully created <b>Unique</b> card <b>{card_title}</b>!"
+CREATE_FAILURE_UNEXPECTED = (
+    "An unexpected error occurred while creating the aspect. Try again later."
+)
+CREATE_SUCCESS_MESSAGE = "Successfully created <b>Unique</b> aspect <b>🔮 {aspect_name}</b>!"
 CREATE_CANCELLED_MESSAGE = "Creation cancelled."
-CREATE_PROCESSING_MESSAGE = "Creating <b>Unique</b> card..."
+CREATE_PROCESSING_MESSAGE = "Creating <b>Unique</b> aspect..."
 
 TRADE_REQUEST_MESSAGE = (
     "Trade requested:\n\n"

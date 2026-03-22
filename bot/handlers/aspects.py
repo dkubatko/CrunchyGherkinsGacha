@@ -7,6 +7,7 @@ and recycling aspects into upgraded aspects.
 
 import asyncio
 import base64
+import datetime
 import html
 import logging
 import random
@@ -22,6 +23,9 @@ from settings.constants import (
     RECYCLE_UPGRADE_MAP,
     SLOTS_VIEW_IN_APP_LABEL,
     ASPECT_CAPTION_BASE,
+    ASPECT_STATUS_CLAIMED,
+    CURRENT_SEASON,
+    RARITIES,
     get_spin_reward,
     get_lock_cost,
     get_recycle_cost,
@@ -56,14 +60,27 @@ from settings.constants import (
     ASPECT_RECYCLE_FAILURE_NOT_ENOUGH,
     ASPECT_RECYCLE_FAILURE_IMAGE,
     ASPECT_RECYCLE_FAILURE_UNEXPECTED,
+    # Create unique aspect constants
+    CREATE_USAGE_MESSAGE,
+    CREATE_DM_RESTRICTED_MESSAGE,
+    CREATE_CONFIRM_MESSAGE,
+    CREATE_DUPLICATE_UNIQUE_NAME_MESSAGE,
+    CREATE_INSUFFICIENT_ASPECTS_MESSAGE,
+    CREATE_ALREADY_RUNNING_MESSAGE,
+    CREATE_NOT_YOURS_MESSAGE,
+    CREATE_FAILURE_UNEXPECTED,
+    CREATE_CANCELLED_MESSAGE,
+    CREATE_PROCESSING_MESSAGE,
 )
 from utils import rolling
-from utils.miniapp import encode_single_card_token
+from utils.miniapp import encode_single_aspect_token
+from utils.image import ImageUtil
 from utils.services import (
     aspect_service,
     claim_service,
     event_service,
     spin_service,
+    user_service,
 )
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
@@ -72,6 +89,7 @@ from utils.events import (
     LockOutcome,
     BurnOutcome,
     RecycleOutcome,
+    CreateOutcome,
 )
 
 logger = logging.getLogger(__name__)
@@ -858,7 +876,7 @@ async def handle_recycle_callback(
 
         # Show burning animation
         for idx in range(len(aspects_to_burn)):
-            text = build_burning_text(aspect_names, idx + 1)
+            text = build_burning_text(aspect_names, idx + 1, item_label="aspects")
             try:
                 await context.bot.edit_message_text(
                     chat_id=chat_id,
@@ -874,7 +892,9 @@ async def handle_recycle_callback(
             await context.bot.edit_message_text(
                 chat_id=chat_id,
                 message_id=message_id,
-                text=build_burning_text(aspect_names, len(aspects_to_burn), strike_all=True)
+                text=build_burning_text(
+                    aspect_names, len(aspects_to_burn), strike_all=True, item_label="aspects"
+                )
                 + "\n\n♻️ Recycling...",
                 parse_mode=ParseMode.HTML,
             )
@@ -987,7 +1007,7 @@ async def handle_recycle_callback(
         # Build View in app button if MINIAPP_URL is configured
         reply_markup = None
         if MINIAPP_URL_ENV:
-            aspect_token = encode_single_card_token(generated_aspect.aspect_id)
+            aspect_token = encode_single_aspect_token(generated_aspect.aspect_id)
             aspect_url = f"{MINIAPP_URL_ENV}?startapp={aspect_token}"
             reply_markup = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
@@ -1002,3 +1022,335 @@ async def handle_recycle_callback(
 
     finally:
         recycling_users.discard(user.user_id)
+
+
+# =============================================================================
+# Create Unique Aspect Handlers
+# =============================================================================
+
+
+@verify_user_in_chat
+async def create_unique_aspect(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Create a Unique aspect by sacrificing Legendary aspects."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
+        await message.reply_text(
+            CREATE_DM_RESTRICTED_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    cost = RARITIES["Unique"]["recycle_cost"]
+
+    if not context.args or len(context.args) < 1:
+        await message.reply_text(
+            CREATE_USAGE_MESSAGE.format(cost=cost),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Parse arguments: /create <AspectName> with optional description on new line
+    raw_text = message.text or ""
+    lines = raw_text.split("\n", 1)
+    description = lines[1].strip() if len(lines) > 1 else ""
+
+    if len(description) > 300:
+        await message.reply_text(
+            "Description is too long. Please keep it under 300 characters.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Extract aspect name from the first line (everything after /create)
+    first_line_args = lines[0].split(maxsplit=1)
+    if len(first_line_args) < 2 or not first_line_args[1].strip():
+        await message.reply_text(
+            CREATE_USAGE_MESSAGE.format(cost=cost),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    aspect_name_raw = first_line_args[1].strip()
+    # Capitalize first letter
+    aspect_name = aspect_name_raw[0].upper() + aspect_name_raw[1:] if aspect_name_raw else ""
+
+    if len(aspect_name) > 30:
+        await message.reply_text(
+            "Aspect name is too long. Please keep it under 30 characters.",
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    chat_id_str = str(chat.id)
+
+    # Check if user has enough unlocked, unequipped Legendary aspects
+    unlocked_legendaries = await asyncio.to_thread(
+        aspect_service.get_user_aspects,
+        user.user_id,
+        chat_id=chat_id_str,
+        rarity="Legendary",
+        unlocked_only=True,
+    )
+
+    if len(unlocked_legendaries) < cost:
+        await message.reply_text(
+            CREATE_INSUFFICIENT_ASPECTS_MESSAGE.format(required=cost),
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Check if name already exists in Unique aspects (disallow duplicates)
+    unique_names = await asyncio.to_thread(aspect_service.get_unique_aspect_names, chat_id_str)
+    if aspect_name in unique_names:
+        await message.reply_text(
+            CREATE_DUPLICATE_UNIQUE_NAME_MESSAGE.format(aspect_name=aspect_name),
+            parse_mode=ParseMode.HTML,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    # Confirm
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton("Confirm", callback_data=f"create_yes_{user.user_id}"),
+                InlineKeyboardButton("Cancel", callback_data=f"create_cancel_{user.user_id}"),
+            ]
+        ]
+    )
+
+    session_key = f"create_session_{chat_id_str}_{user.user_id}"
+    context.user_data[session_key] = {
+        "aspect_name": aspect_name,
+        "cost": cost,
+        "description": description,
+        "timestamp": datetime.datetime.now().isoformat(),
+    }
+
+    await message.reply_text(
+        CREATE_CONFIRM_MESSAGE.format(cost=cost, aspect_name=aspect_name),
+        parse_mode=ParseMode.HTML,
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+    )
+
+
+async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle create unique aspect confirmation callback."""
+    query = update.callback_query
+    await query.answer()
+
+    data = query.data.split("_")
+    action = data[1]  # yes or cancel
+    user_id = int(data[2])
+
+    if user_id != query.from_user.id:
+        await query.answer(CREATE_NOT_YOURS_MESSAGE, show_alert=True)
+        return
+
+    chat_id_str = str(query.message.chat_id)
+    session_key = f"create_session_{chat_id_str}_{user_id}"
+    session = context.user_data.get(session_key)
+
+    if not session:
+        await query.edit_message_text("Session expired or invalid.")
+        return
+
+    if action == "cancel":
+        del context.user_data[session_key]
+        await query.edit_message_text(CREATE_CANCELLED_MESSAGE)
+        return
+
+    if action == "yes":
+        # Concurrency guard — prevent double-confirm
+        creating_users = context.bot_data.setdefault("creating_users", set())
+        if user_id in creating_users:
+            await query.answer(CREATE_ALREADY_RUNNING_MESSAGE, show_alert=True)
+            return
+
+        creating_users.add(user_id)
+
+        try:
+            # Re-validate cost
+            cost = session["cost"]
+            aspect_name = session["aspect_name"]
+            description = session.get("description", "")
+            user = await asyncio.to_thread(user_service.get_user, user_id)
+
+            unlocked_legendaries = await asyncio.to_thread(
+                aspect_service.get_user_aspects,
+                user_id,
+                chat_id=chat_id_str,
+                rarity="Legendary",
+                unlocked_only=True,
+            )
+
+            if len(unlocked_legendaries) < cost:
+                await query.edit_message_text(
+                    CREATE_INSUFFICIENT_ASPECTS_MESSAGE.format(required=cost)
+                )
+                del context.user_data[session_key]
+                return
+
+            # Select aspects to burn (first N unlocked unequipped legendaries)
+            aspects_to_burn = unlocked_legendaries[:cost]
+            aspect_titles = [
+                html.escape(f"🔮 {a.display_name} ({a.rarity})") for a in aspects_to_burn
+            ]
+
+            # Remove keyboard
+            await query.edit_message_reply_markup(reply_markup=None)
+
+            # Build optional user description addendum for Gemini
+            addendum = ""
+            if description:
+                addendum = (
+                    f"\nAdditional user description for guiding the sphere art: {description}"
+                )
+
+            # Start sphere generation in background
+            creativeness = RARITIES.get("Unique", {}).get("creativeness_factor", 200)
+            generation_task = asyncio.create_task(
+                asyncio.to_thread(
+                    gemini_util.generate_aspect_image,
+                    aspect_name,
+                    rarity="Unique",
+                    temperature=creativeness / 100.0,
+                    instruction_addendum=addendum,
+                )
+            )
+
+            # Show burning animation
+            message_id = query.message.message_id
+            for idx in range(len(aspects_to_burn)):
+                text = build_burning_text(aspect_titles, idx + 1, item_label="aspects")
+                try:
+                    await context.bot.edit_message_text(
+                        chat_id=query.message.chat_id,
+                        message_id=message_id,
+                        text=text,
+                        parse_mode=ParseMode.HTML,
+                    )
+                except Exception:
+                    pass
+                await asyncio.sleep(1)
+
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=query.message.chat_id,
+                    message_id=message_id,
+                    text=build_burning_text(
+                        aspect_titles, len(aspects_to_burn), strike_all=True, item_label="aspects"
+                    )
+                    + "\n\n"
+                    + CREATE_PROCESSING_MESSAGE,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+
+            try:
+                # Wait for sphere generation
+                image_b64 = await generation_task
+
+                if not image_b64:
+                    raise Exception("Sphere image generation returned empty result")
+
+                # Process image and thumbnail
+                image_bytes = base64.b64decode(image_b64)
+                thumbnail_bytes = ImageUtil.compress_to_fraction(image_bytes)
+
+                # Create the Unique aspect — assigned to user immediately
+                aspect_id = await asyncio.to_thread(
+                    aspect_service.add_owned_aspect,
+                    aspect_definition_id=None,
+                    chat_id=chat_id_str,
+                    season_id=CURRENT_SEASON,
+                    rarity="Unique",
+                    image=image_bytes,
+                    thumbnail=thumbnail_bytes,
+                    owner=user.username,
+                    user_id=user_id,
+                    name=aspect_name,
+                )
+
+                # Delete burned aspects (skip in debug mode)
+                if not DEBUG_MODE:
+                    burn_ids = [a.id for a in aspects_to_burn]
+                    await asyncio.to_thread(aspect_service.recycle_aspects, burn_ids, user_id)
+
+                # Log create success event
+                event_service.log(
+                    EventType.CREATE,
+                    CreateOutcome.SUCCESS,
+                    user_id=user_id,
+                    chat_id=chat_id_str,
+                    aspect_id=aspect_id,
+                    aspect_name=aspect_name,
+                    aspects_burned=[a.id for a in aspects_to_burn],
+                )
+
+                # Clean up session
+                del context.user_data[session_key]
+
+                # Build caption
+                burned_block = "\n".join([f"<s>🔥{t}🔥</s>" for t in aspect_titles])
+
+                caption = (
+                    ASPECT_CAPTION_BASE.format(
+                        aspect_id=aspect_id,
+                        aspect_name=html.escape(aspect_name),
+                        rarity="Unique",
+                        set_name="—",
+                    )
+                    + ASPECT_STATUS_CLAIMED.format(username=user.username)
+                    + f"\n\nBurned aspects:\n\n<b>{burned_block}</b>"
+                )
+
+                # Build View in app button if MINIAPP_URL is configured
+                reply_markup = None
+                if MINIAPP_URL_ENV:
+                    aspect_token = encode_single_aspect_token(aspect_id)
+                    aspect_url = f"{MINIAPP_URL_ENV}?startapp={aspect_token}"
+                    reply_markup = InlineKeyboardMarkup(
+                        [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
+                    )
+
+                await context.bot.send_photo(
+                    chat_id=query.message.chat_id,
+                    message_thread_id=query.message.message_thread_id,
+                    photo=image_bytes,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+
+                # Delete processing message
+                await query.message.delete()
+
+            except Exception as e:
+                logger.error(f"Error creating unique aspect: {e}", exc_info=True)
+                # Log create error event
+                event_service.log(
+                    EventType.CREATE,
+                    CreateOutcome.ERROR,
+                    user_id=user_id,
+                    chat_id=chat_id_str,
+                    error_message=str(e),
+                )
+                await query.edit_message_text(CREATE_FAILURE_UNEXPECTED)
+                # Note: Aspects are NOT deleted if we land here
+
+        finally:
+            creating_users.discard(user_id)
