@@ -149,7 +149,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     ? {
         id: selectedAspect.id,
         base_name: selectedAspect.display_name,
-        modifier: '',
+        modifier: null,
         rarity: selectedAspect.rarity,
         locked: selectedAspect.locked,
       }

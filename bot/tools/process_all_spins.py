@@ -242,13 +242,13 @@ async def process_card_victory(
         try:
             # Generate card (this is the slow part - runs in thread pool)
             generated_card = await asyncio.to_thread(
-                rolling.generate_card_from_source,
-                result.source_type,
-                result.source_id,
+                rolling.generate_base_card,
                 gemini_util,
                 result.rarity,
                 2,  # max_retries
-                chat_id,
+                chat_id=chat_id,
+                profile_type=result.source_type,
+                profile_id=result.source_id,
             )
 
             # Add card to database and assign to winner

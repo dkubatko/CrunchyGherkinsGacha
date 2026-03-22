@@ -71,7 +71,7 @@ const LockConfirmDialog = ({
       ) : card.locked ? (
         <>
           <p>
-            Unlock <strong>{card.modifier} {card.base_name}</strong>?
+            Unlock <strong>{[card.modifier, card.base_name].filter(Boolean).join(' ')}</strong>?
           </p>
           <p className="lock-dialog-subtitle">
             Claim points will not be refunded.
@@ -81,7 +81,7 @@ const LockConfirmDialog = ({
       ) : (
         <>
           <p>
-            Lock <strong>{card.modifier} {card.base_name}</strong>?
+            Lock <strong>{[card.modifier, card.base_name].filter(Boolean).join(' ')}</strong>?
           </p>
           <p className="lock-dialog-subtitle">
             This will consume <strong>{costLabel}</strong>

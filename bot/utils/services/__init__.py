@@ -28,10 +28,8 @@ from utils.services.card_service import (
     get_card_thumbnail,
     get_card_with_aspects,
     get_chat_card_rarity_counts,
-    get_modifier_counts_for_chat,
     get_random_card_summaries,
     get_total_cards_count,
-    get_unique_modifiers,
     get_user_card_count,
     get_user_card_rarity_counts,
     get_user_cards_by_rarity,
@@ -152,8 +150,6 @@ from utils.services import event_service
 
 from utils.services import aspect_count_service
 
-from utils.services import modifier_service
-
 from utils.services import admin_auth_service
 
 from utils.services.achievement_service import (
@@ -191,10 +187,8 @@ __all__ = [
     "get_card_thumbnail",
     "get_card_with_aspects",
     "get_chat_card_rarity_counts",
-    "get_modifier_counts_for_chat",
     "get_random_card_summaries",
     "get_total_cards_count",
-    "get_unique_modifiers",
     "get_user_card_count",
     "get_user_card_rarity_counts",
     "get_user_cards_by_rarity",
@@ -298,8 +292,6 @@ __all__ = [
     "event_service",
     # Aspect count service
     "aspect_count_service",
-    # Modifier service
-    "modifier_service",
     # Admin auth service
     "admin_auth_service",
     # Achievement service

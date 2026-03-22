@@ -158,7 +158,7 @@ const CollectionTab = ({
   });
 
   const tradeCardName = selectedCardForTrade
-    ? `${selectedCardForTrade.modifier} ${selectedCardForTrade.base_name}`
+    ? [selectedCardForTrade.modifier, selectedCardForTrade.base_name].filter(Boolean).join(' ')
     : null;
 
   const baseDisplayedCards = useMemo(() => {
