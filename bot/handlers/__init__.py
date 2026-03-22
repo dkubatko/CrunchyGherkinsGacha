@@ -5,7 +5,8 @@ This module exports all command and callback handlers for use in the main bot ap
 Handlers are organized by domain:
 - user: Registration, profile, enrollment
 - rolling: Roll, reroll cards
-- cards: Claim, lock, refresh, burn, recycle, create unique cards
+- cards: Refresh, create unique cards, equip
+- aspects: Burn, lock, recycle aspects
 - collection: Collection view, balance, stats, casino
 - trade: Trade initiation, acceptance, rejection
 - admin: Admin-only commands (spins, reload, set_thread)
@@ -30,18 +31,22 @@ from handlers.rolling import (
 
 # Card handlers
 from handlers.cards import (
-    lock_card_command,
-    handle_lock_card_confirm,
     refresh,
     handle_refresh_callback,
-    burn,
-    handle_burn_callback,
     create_unique_card,
     handle_create_callback,
-    recycle,
-    handle_recycle_callback,
     equip,
     handle_equip_callback,
+)
+
+# Aspect handlers (burn, lock, recycle)
+from handlers.aspects import (
+    burn,
+    handle_burn_callback,
+    lock_aspect_command,
+    handle_lock_aspect_confirm,
+    recycle,
+    handle_recycle_callback,
 )
 
 # Collection handlers
@@ -91,18 +96,19 @@ __all__ = [
     "handle_lock",
     "handle_reroll",
     # Card handlers
-    "lock_card_command",
-    "handle_lock_card_confirm",
     "refresh",
     "handle_refresh_callback",
-    "burn",
-    "handle_burn_callback",
     "create_unique_card",
     "handle_create_callback",
-    "recycle",
-    "handle_recycle_callback",
     "equip",
     "handle_equip_callback",
+    # Aspect handlers (burn, lock, recycle)
+    "burn",
+    "handle_burn_callback",
+    "lock_aspect_command",
+    "handle_lock_aspect_confirm",
+    "recycle",
+    "handle_recycle_callback",
     # Collection handlers
     "casino",
     "balance",

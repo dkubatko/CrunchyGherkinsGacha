@@ -17,6 +17,7 @@ from slowapi.errors import RateLimitExceeded
 from api.config import DEBUG_MODE
 from api.limiter import limiter
 from api.routers import (
+    aspects_router,
     cards_router,
     chat_router,
     downloads_router,
@@ -85,6 +86,7 @@ app.add_middleware(
 )
 
 # Include all routers
+app.include_router(aspects_router)
 app.include_router(cards_router)
 app.include_router(downloads_router)
 app.include_router(trade_router)

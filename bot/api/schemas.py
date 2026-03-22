@@ -126,6 +126,45 @@ class BurnCardResponse(BaseModel):
 
 
 # =============================================================================
+# ASPECT SCHEMAS
+# =============================================================================
+
+
+class AspectBurnRequest(BaseModel):
+    """Request to burn an aspect for spins."""
+
+    user_id: int
+    chat_id: str
+
+
+class AspectBurnResponse(BaseModel):
+    """Response after burning an aspect."""
+
+    success: bool
+    message: str
+    spins_awarded: int
+    new_spin_total: int
+
+
+class AspectLockRequest(BaseModel):
+    """Request to lock or unlock an aspect."""
+
+    user_id: int
+    chat_id: str
+    lock: bool  # True to lock, False to unlock
+
+
+class AspectLockResponse(BaseModel):
+    """Response after locking/unlocking an aspect."""
+
+    success: bool
+    locked: bool
+    balance: int
+    message: str
+    lock_cost: int
+
+
+# =============================================================================
 # SLOTS SCHEMAS
 # =============================================================================
 

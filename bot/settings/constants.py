@@ -458,11 +458,11 @@ RECYCLE_UPGRADE_MAP = {
 DEFAULT_RECYCLE_COST = 3
 
 
-def get_recycle_required_cards(rarity_name: str) -> int:
-    """Return how many cards must be burned to upgrade the given rarity.
+def get_recycle_cost(rarity_name: str) -> int:
+    """Return how many items must be burned to recycle up to the next rarity.
 
-    The burn requirement for a rarity is determined by the recycle_cost of the
-    next rarity in the progression (rarity + 1).
+    The requirement is determined by the ``recycle_cost`` of the target
+    (upgrade) rarity in ``config.json``.
     """
 
     upgrade_rarity = RECYCLE_UPGRADE_MAP.get(rarity_name)
@@ -524,6 +524,65 @@ BURN_FAILURE_SPINS_MESSAGE = "Card burned but awarding spins failed. Please cont
 BURN_SUCCESS_MESSAGE = (
     "Burn complete! Awarded <b>{spin_reward} spins</b>.\n"
     "New spin balance: <b>{new_spin_total}</b>."
+)
+
+# ---------------------------------------------------------------------------
+# Aspect Burn / Lock / Recycle constants
+# ---------------------------------------------------------------------------
+
+ASPECT_BURN_USAGE_MESSAGE = (
+    "Usage: /burn <aspect_id>. Burns an aspect you own in this chat for spins."
+)
+ASPECT_BURN_DM_RESTRICTED_MESSAGE = "Burning aspects is only available in the group chat."
+ASPECT_BURN_INVALID_ID_MESSAGE = "Invalid aspect ID. Please provide a numeric aspect ID."
+ASPECT_BURN_NOT_FOUND_MESSAGE = "Aspect not found. Check the ID and try again."
+ASPECT_BURN_NOT_YOURS_MESSAGE = "You can only burn aspects you currently own."
+ASPECT_BURN_CHAT_MISMATCH_MESSAGE = "This aspect doesn't belong to this chat."
+ASPECT_BURN_LOCKED_MESSAGE = "This aspect is locked. Unlock it first before burning."
+ASPECT_BURN_EQUIPPED_MESSAGE = "This aspect is equipped on a card. Unequip it first before burning."
+ASPECT_BURN_CONFIRM_MESSAGE = (
+    "Burn <b>🔮 [{aspect_id}] {rarity} {aspect_name}</b> for <b>{spin_reward} spins</b>?"
+)
+ASPECT_BURN_CANCELLED_MESSAGE = "Burn cancelled."
+ASPECT_BURN_ALREADY_RUNNING_MESSAGE = "You already have a burn in progress."
+ASPECT_BURN_PROCESSING_MESSAGE = "Burning aspect..."
+ASPECT_BURN_FAILURE_MESSAGE = "Burn failed. Please try again later."
+ASPECT_BURN_SUCCESS_MESSAGE = (
+    "Burn complete! Awarded <b>{spin_reward} spins</b>.\n"
+    "New spin balance: <b>{new_spin_total}</b>."
+)
+
+ASPECT_LOCK_USAGE_MESSAGE = (
+    "Usage: /lock <aspect_id>.\n\n"
+    "Lock or unlock an aspect you own.\n\n"
+    "Claim points cost varies by rarity:\n"
+    f"{LOCK_COST_SUMMARY}"
+)
+ASPECT_LOCK_NOT_FOUND_MESSAGE = "Aspect not found. Check the ID and try again."
+ASPECT_LOCK_NOT_YOURS_MESSAGE = "You can only lock aspects you currently own."
+
+ASPECT_RECYCLE_USAGE_MESSAGE = (
+    "Usage: /recycle <rarity> where rarity is one of common, rare, epic.\n"
+    "Burns unlocked aspects of that rarity to guarantee the next tier.\n\n"
+    "3C \u2192 1R\n3R \u2192 1E\n4E \u2192 1L"
+)
+ASPECT_RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling aspects is only available in the group chat."
+ASPECT_RECYCLE_SELECT_RARITY_MESSAGE = "Select <b>aspect rarity</b> to recycle"
+ASPECT_RECYCLE_CONFIRM_MESSAGE = "Burn {burn_count} unlocked <b>{rarity}</b> aspects to generate 1 <b>{upgraded_rarity}</b> aspect?"
+ASPECT_RECYCLE_INSUFFICIENT_MESSAGE = (
+    "You need at least {required} unlocked {rarity} aspects in this chat to recycle."
+)
+ASPECT_RECYCLE_ALREADY_RUNNING_MESSAGE = "You already have a recycle in progress."
+ASPECT_RECYCLE_NOT_YOURS_MESSAGE = "This recycle prompt isn't for you!"
+ASPECT_RECYCLE_UNKNOWN_RARITY_MESSAGE = (
+    "Unknown rarity. Please choose one of common, rare, or epic."
+)
+ASPECT_RECYCLE_FAILURE_NOT_ENOUGH = "Recycle failed: not enough unlocked aspects remaining."
+ASPECT_RECYCLE_FAILURE_IMAGE = (
+    "Recycle failed: image generation is unavailable right now. Your aspects were not burned."
+)
+ASPECT_RECYCLE_FAILURE_UNEXPECTED = (
+    "An unexpected error occurred while recycling aspects. Try again later."
 )
 
 CREATE_USAGE_MESSAGE = "Usage: /create &lt;Modifier&gt; &lt;Name&gt;\n[optional description]\n\nCreates a <b>Unique</b> card by burning {cost} Legendary cards.\n\nYou can add a description (up to 300 characters) on a new line to guide the art."

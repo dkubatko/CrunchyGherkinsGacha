@@ -590,7 +590,7 @@ class RollManager:
         deletes the old card, and marks the roll as rerolled.
 
         For aspect rolls: generates a new aspect (which is created in the
-        DB by ``_generate_aspect_for_chat``), deletes the old aspect, and
+        DB by ``generate_aspect_for_chat``), deletes the old aspect, and
         marks the roll as rerolled.
 
         Returns a :class:`RerollResult` with the new item details and
@@ -632,7 +632,7 @@ class RollManager:
                 },
             )
         else:
-            generated = rolling._generate_aspect_for_chat(
+            generated = rolling.generate_aspect_for_chat(
                 chat_id,
                 gemini_util,
                 downgraded_rarity,
