@@ -386,6 +386,38 @@ export class ApiService {
     return response.json();
   }
 
+  static async processAspectVictory(
+    userId: number,
+    chatId: string,
+    rarity: string,
+    initData: string
+  ): Promise<{ status: string; message: string }> {
+    const response = await fetch(`${API_BASE_URL}/slots/aspect-victory`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        rarity: rarity
+      })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to process aspect victory (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
   static async getUserSpins(userId: number, chatId: string, initData: string): Promise<{ spins: number; success: boolean; megaspin?: MegaspinInfo | null }> {
     const params = new URLSearchParams({
       user_id: userId.toString(),

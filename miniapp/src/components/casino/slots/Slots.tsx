@@ -71,6 +71,7 @@ interface PendingWin {
   symbol: SlotSymbol;
   rarity: RarityName;
   isMegaspin?: boolean;
+  winType?: string | null;
 }
 
 const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
@@ -357,11 +358,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     isWin: boolean;
     slotResults: SlotSymbolInfo[];
     rarity: string | null;
+    winType: string | null;
   }> => {
     const availableSymbols = symbols.length;
 
     if (availableSymbols === 0) {
-      return { isWin: false, slotResults: [], rarity: null };
+      return { isWin: false, slotResults: [], rarity: null, winType: null };
     }
 
     const randomNumber = Math.floor(Math.random() * availableSymbols);
@@ -380,7 +382,8 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     return {
       isWin: verifyResult.is_win,
       slotResults: verifyResult.slot_results,
-      rarity: verifyResult.rarity ?? null
+      rarity: verifyResult.rarity ?? null,
+      winType: verifyResult.win_type ?? null
     };
   }, [userId, chatId, initData, symbols]);
 
@@ -404,7 +407,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    const { symbol, rarity, isMegaspin } = pendingWin;
+    const { symbol, rarity, isMegaspin, winType } = pendingWin;
     
     // Check if this is a claim win (special handling)
     if (symbol.type === 'claim') {
@@ -451,6 +454,54 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       };
       
       processClaimWin();
+      return;
+    }
+
+    // Aspect win
+    if (winType === 'aspect') {
+      TelegramUtils.triggerHapticNotification('success');
+
+      const processAspectWin = async () => {
+        try {
+          if (currentlyAutospinning) {
+            await new Promise<void>((resolve) => setTimeout(resolve, 800));
+          } else {
+            await new Promise<void>((resolve) => setTimeout(resolve, 500));
+          }
+
+          await ApiService.processAspectVictory(
+            userId,
+            chatId,
+            rarity.toLowerCase(),
+            initData
+          );
+
+          if (currentlyAutospinning) {
+            autospinCardsWonRef.current += 1;
+          }
+
+          if (!currentlyAutospinning) {
+            TelegramUtils.showAlert(`Won a ${rarity} Aspect Sphere!\n\nGenerating sphere...`);
+          }
+        } catch (error) {
+          console.error('Failed to process aspect victory:', error);
+          if (!currentlyAutospinning) {
+            const errorMessage = error instanceof Error ? error.message : 'Failed to process aspect victory';
+            TelegramUtils.showAlert(`Error: ${errorMessage}`);
+          }
+        } finally {
+          resetReels();
+        }
+      };
+
+      const animation = startRarityWheelAnimation(rarity);
+      if (animation) {
+        animation.then(processAspectWin).catch(() => {
+          processAspectWin();
+        });
+      } else {
+        processAspectWin();
+      }
       return;
     }
 
@@ -567,7 +618,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         onMegaspinUpdate(consumeResult.megaspin);
       }
 
-      const { isWin, slotResults, rarity: serverRarity } = await generateServerVerifiedResults();
+      const { isWin, slotResults, rarity: serverRarity, winType } = await generateServerVerifiedResults();
       
       // Convert server-provided symbol results to indices
       const normalizedResults = slotResults.map(symbolInfo => {
@@ -633,11 +684,12 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
             // Use 'Common' as a placeholder rarity for claim wins (won't be used)
             pendingWinRef.current = { 
               symbol: winningSymbolFromArray, 
-              rarity: 'Common' as RarityName 
+              rarity: 'Common' as RarityName,
+              winType: winType
             };
           }
         } else if (serverRarity) {
-          // Card win - process victory
+          // Card or aspect win - process victory
           const winningIndex = normalizedResults[0];
           const winningSymbolFromArray = symbols[winningIndex];
 
@@ -648,7 +700,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
             if (!normalizedRarity) {
               console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
             } else {
-              pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity };
+              pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, winType: winType };
             }
           }
         }

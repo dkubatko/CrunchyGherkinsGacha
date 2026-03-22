@@ -127,8 +127,12 @@ async def execute_trade(
         # Create inline keyboard with accept/reject buttons, card view links, and cancel button
         keyboard = [
             [
-                InlineKeyboardButton("Accept", callback_data=f"trade_accept_{card_id1}_{card_id2}"),
-                InlineKeyboardButton("Reject", callback_data=f"trade_reject_{card_id1}_{card_id2}"),
+                InlineKeyboardButton(
+                    "Accept", callback_data=f"card_trade_accept_{card_id1}_{card_id2}"
+                ),
+                InlineKeyboardButton(
+                    "Reject", callback_data=f"card_trade_reject_{card_id1}_{card_id2}"
+                ),
             ]
         ]
 
@@ -178,6 +182,7 @@ async def execute_trade(
                 target_card_id=card_id2,
                 target_user=card2.owner,
                 source="miniapp",
+                type="card",
             )
         except Exception as e:
             logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")

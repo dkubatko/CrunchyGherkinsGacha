@@ -24,6 +24,7 @@ RARITIES = config["RARITIES"]
 BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
 CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
 SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
+SLOT_ASPECT_WIN_CHANCE = config.get("SLOT_ASPECT_WIN_CHANCE", 0.04)
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
 MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
 MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
@@ -631,6 +632,51 @@ TRADE_CANCELLED_MESSAGE = (
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
     "❌\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
+)
+
+# Aspect trade messages
+ASPECT_TRADE_REQUEST_MESSAGE = (
+    "Aspect trade requested:\n\n"
+    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
+    "🔄\n\n"
+    "@{user2_username}'s\n<b>{aspect2_title}</b>"
+)
+
+ASPECT_TRADE_COMPLETE_MESSAGE = (
+    "Aspect trade completed:\n\n"
+    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
+    "🤝\n\n"
+    "@{user2_username}'s\n<b>{aspect2_title}</b>"
+)
+
+ASPECT_TRADE_REJECTED_MESSAGE = (
+    "Aspect trade rejected:\n\n"
+    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
+    "🚫\n\n"
+    "@{user2_username}'s\n<b>{aspect2_title}</b>"
+)
+
+ASPECT_TRADE_CANCELLED_MESSAGE = (
+    "Aspect trade cancelled:\n\n"
+    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
+    "❌\n\n"
+    "@{user2_username}'s\n<b>{aspect2_title}</b>"
+)
+
+# Slots aspect victory messages
+SLOTS_ASPECT_VICTORY_PENDING_MESSAGE = (
+    "@{username} won a <b>{rarity}</b> aspect in slots!\n\nGenerating aspect..."
+)
+
+SLOTS_ASPECT_VICTORY_RESULT_MESSAGE = (
+    "@{username} won a <b>{rarity}</b> aspect in slots!\n\n"
+    "<b>🔮 {aspect_name}</b>\n"
+    "Rarity: <b>{rarity}</b>\n"
+    "Set: <b>{set_name}</b>"
+)
+
+SLOTS_ASPECT_VICTORY_FAILURE_MESSAGE = (
+    "@{username} won a {rarity} aspect in slots!\n\nAspect generation failed."
 )
 
 SLOTS_VICTORY_PENDING_MESSAGE = (

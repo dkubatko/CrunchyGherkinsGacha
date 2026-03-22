@@ -63,8 +63,10 @@ from handlers.collection import (
 # Trade handlers
 from handlers.trade import (
     trade,
-    accept_trade,
-    reject_trade,
+    accept_card_trade,
+    reject_card_trade,
+    accept_aspect_trade,
+    reject_aspect_trade,
 )
 
 # Admin handlers
@@ -119,8 +121,10 @@ __all__ = [
     "stats",
     # Trade handlers
     "trade",
-    "accept_trade",
-    "reject_trade",
+    "accept_card_trade",
+    "reject_card_trade",
+    "accept_aspect_trade",
+    "reject_aspect_trade",
     # Admin handlers
     "spins",
     "reload",

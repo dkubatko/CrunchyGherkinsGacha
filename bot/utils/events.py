@@ -138,6 +138,7 @@ class SpinOutcome(str, Enum):
     """Outcomes for SPIN events."""
 
     CARD_WIN = "CARD_WIN"
+    ASPECT_WIN = "ASPECT_WIN"
     CLAIM_WIN = "CLAIM_WIN"
     LOSS = "LOSS"
     NO_SPINS = "NO_SPINS"

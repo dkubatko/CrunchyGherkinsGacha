@@ -756,6 +756,20 @@ def lock_aspect(aspect_id: int, user_id: int) -> Optional[bool]:
         return aspect.locked
 
 
+def set_aspect_owner(aspect_id: int, username: str, user_id: int) -> bool:
+    """Assign an owner to an aspect (e.g. for slot wins).
+
+    Returns ``True`` if the aspect was found and updated.
+    """
+    with get_session(commit=True) as session:
+        aspect = session.query(OwnedAspectModel).filter(OwnedAspectModel.id == aspect_id).first()
+        if not aspect:
+            return False
+        aspect.owner = username
+        aspect.user_id = user_id
+        return True
+
+
 def update_aspect_file_id(aspect_id: int, file_id: str) -> bool:
     """Store the Telegram file_id for an aspect sphere image.
 
