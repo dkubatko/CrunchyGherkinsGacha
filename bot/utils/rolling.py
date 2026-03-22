@@ -533,7 +533,7 @@ def _generate_base_card_for_chat(
     raise last_error or ImageGenerationError("Base card generation failed after retries")
 
 
-def _generate_aspect_for_chat(
+def generate_aspect_for_chat(
     chat_id: str,
     gemini_util: GeminiUtil,
     rarity: str,
@@ -545,6 +545,8 @@ def _generate_aspect_for_chat(
     Selects an aspect definition, generates the sphere image via Gemini,
     creates the ``OwnedAspectModel`` (unclaimed), and returns a
     ``GeneratedAspect``.
+
+    Used by the main roll pipeline and the recycle-aspect flow.
     """
     aspect_def = _choose_aspect_definition_for_rarity(rarity, chat_id, source=source)
 
@@ -647,7 +649,7 @@ def generate_roll_for_chat(
         card = _generate_base_card_for_chat(chat_id, gemini_util, chosen_rarity, max_retries)
         return RollResult(roll_type="base_card", card=card)
     else:
-        aspect = _generate_aspect_for_chat(
+        aspect = generate_aspect_for_chat(
             chat_id, gemini_util, chosen_rarity, max_retries, source=source
         )
         return RollResult(roll_type="aspect", aspect=aspect)

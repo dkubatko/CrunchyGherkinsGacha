@@ -26,18 +26,19 @@ from handlers import (
     handle_lock,
     handle_reroll,
     # Card handlers
-    lock_card_command,
-    handle_lock_card_confirm,
     refresh,
     handle_refresh_callback,
-    burn,
-    handle_burn_callback,
     create_unique_card,
     handle_create_callback,
-    recycle,
-    handle_recycle_callback,
     equip,
     handle_equip_callback,
+    # Aspect handlers (burn, lock, recycle)
+    burn,
+    handle_burn_callback,
+    lock_aspect_command,
+    handle_lock_aspect_confirm,
+    recycle,
+    handle_recycle_callback,
     # Collection handlers
     casino,
     balance,
@@ -106,7 +107,7 @@ def _register_card_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("burn", burn))
     application.add_handler(CommandHandler("create", create_unique_card))
     application.add_handler(CommandHandler("refresh", refresh))
-    application.add_handler(CommandHandler("lock", lock_card_command))
+    application.add_handler(CommandHandler("lock", lock_aspect_command))
     application.add_handler(CommandHandler("equip", equip))
 
 
@@ -126,13 +127,15 @@ def _register_callback_handlers(application: Application) -> None:
     """Register all callback query handlers."""
     # Roll action callbacks (unified for card & aspect via a?<action>_ patterns)
     application.add_handler(CallbackQueryHandler(handle_claim, pattern="^a?claim_"))
-    application.add_handler(CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_"))
     application.add_handler(CallbackQueryHandler(handle_lock, pattern="^a?lock_"))
     application.add_handler(CallbackQueryHandler(handle_reroll, pattern="^a?reroll_"))
 
-    # Recycling and burning callbacks
-    application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^recycle_"))
-    application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^burn_"))
+    # Aspect burn, lock, recycle callbacks
+    application.add_handler(CallbackQueryHandler(handle_burn_callback, pattern="^aburn_"))
+    application.add_handler(
+        CallbackQueryHandler(handle_lock_aspect_confirm, pattern="^alockaspect_")
+    )
+    application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^arecycle_"))
     application.add_handler(CallbackQueryHandler(handle_create_callback, pattern="^create_"))
     application.add_handler(CallbackQueryHandler(handle_refresh_callback, pattern="^refresh_"))
     application.add_handler(CallbackQueryHandler(handle_equip_callback, pattern="^equip_"))
