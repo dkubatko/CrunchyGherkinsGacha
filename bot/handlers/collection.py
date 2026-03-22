@@ -16,7 +16,7 @@ from telegram.ext import ContextTypes
 from config import DEBUG_MODE, MINIAPP_URL_ENV
 from handlers.helpers import save_card_file_id_from_message
 from settings.constants import COLLECTION_CAPTION
-from utils.services import card_service, user_service, claim_service, spin_service
+from utils.services import card_service, user_service, claim_service, spin_service, aspect_service
 from utils.schemas import User
 from utils.decorators import verify_user, verify_user_in_chat
 from utils.miniapp import encode_miniapp_token, encode_casino_token
@@ -692,14 +692,27 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
         )
         spin_label = "spin" if spin_count == 1 else "spins"
         spins_line = f"{spin_count} {spin_label}"
+
+        # Aspect counts
+        user_aspects = await asyncio.to_thread(
+            aspect_service.get_user_aspects,
+            user_id,
+            None,  # season_id (defaults to CURRENT_SEASON)
+            chat_id,
+        )
+        aspect_total = len(user_aspects)
     else:
         balance_line = "unknown (no linked user ID)"
         spins_line = "unknown (no linked user ID)"
+        aspect_total = 0
 
     handle_display = f"@{username}" if username else "unknown"
 
+    aspect_label = "aspect" if aspect_total == 1 else "aspects"
+
     return (
-        f"{handle_display}: {user_stats['owned']} / {user_stats['total']} cards\n"
+        f"{handle_display}: {user_stats['owned']} / {user_stats['total']} cards, "
+        f"{aspect_total} {aspect_label}\n"
         f"U: {user_stats['rarities']['Unique']}, "
         f"L: {user_stats['rarities']['Legendary']}, "
         f"E: {user_stats['rarities']['Epic']}, "

@@ -10,3 +10,6 @@ export { useVirtualizedImages } from './useVirtualizedImages';
 export { useSlots } from './useSlots';
 export { useLongPress } from './useLongPress';
 export { useCardFiltering, DEFAULT_FILTER_OPTIONS, DEFAULT_SORT_OPTIONS } from './useCardFiltering';
+export { useAspects } from './useAspects';
+export { useAspectFiltering, DEFAULT_ASPECT_FILTER_OPTIONS, DEFAULT_ASPECT_SORT_OPTIONS } from './useAspectFiltering';
+export { useVirtualizedAspectImages } from './useVirtualizedAspectImages';

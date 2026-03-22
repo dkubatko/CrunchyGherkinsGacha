@@ -32,6 +32,7 @@ interface CardProps {
   set_name?: string | null;
   updated_at?: string | null;
   enableDownload?: boolean;
+  aspect_count?: number;
 }
 
 const Card: React.FC<CardProps> = ({
@@ -54,7 +55,8 @@ const Card: React.FC<CardProps> = ({
   onBurnComplete,
   set_name,
   updated_at,
-  enableDownload = false
+  enableDownload = false,
+  aspect_count = 0
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -294,6 +296,9 @@ const Card: React.FC<CardProps> = ({
         </div>
         <p className="card-rarity">{rarity}</p>
         <p className="card-set">{rarity === 'Unique' ? 'Unique' : (set_name || 'Unknown')}</p>
+        {aspect_count > 0 && (
+          <p className="card-aspects">⬡ {aspect_count} aspect{aspect_count !== 1 ? 's' : ''}</p>
+        )}
         {showOwner && owner && (
           <p className="card-owner">
             Owned by <span className="card-owner-username">@{owner}</span>

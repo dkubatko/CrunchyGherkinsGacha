@@ -4,13 +4,14 @@ import type {
   SlotSymbolSummary,
   SlotVerifyResponse,
   SlotSymbolInfo,
-  CardConfigResponse,
   UserProfile,
   MegaspinInfo,
   RTBGameResponse,
   RTBGuessResponse,
   RTBCashOutResponse,
   RTBConfigResponse,
+  AspectData,
+  AspectConfigResponse,
 } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -128,58 +129,6 @@ export class ApiService {
     }
   }
 
-  static async lockCard(
-    cardId: number,
-    userId: number,
-    chatId: string,
-    lock: boolean,
-    initData: string
-  ): Promise<{ success: boolean; locked: boolean; balance: number; message: string; lock_cost: number }> {
-    const response = await fetch(`${API_BASE_URL}/cards/lock`, {
-      method: 'POST',
-      headers: this.getHeaders(initData),
-      body: JSON.stringify({ card_id: cardId, user_id: userId, chat_id: chatId, lock })
-    });
-
-    if (!response.ok) {
-      let detail = `Failed to lock/unlock card (Error ${response.status})`;
-      try {
-        const payload = await response.json();
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail);
-    }
-
-    return response.json();
-  }
-
-  static async burnCard(cardId: number, userId: number, chatId: string, initData: string): Promise<{ success: boolean; message: string; spins_awarded: number; new_spin_total: number }> {
-    const response = await fetch(`${API_BASE_URL}/cards/burn`, {
-      method: 'POST',
-      headers: this.getHeaders(initData),
-      body: JSON.stringify({ card_id: cardId, user_id: userId, chat_id: chatId })
-    });
-
-    if (!response.ok) {
-      let detail = `Failed to burn card (Error ${response.status})`;
-      try {
-        const payload = await response.json();
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail);
-    }
-
-    return response.json();
-  }
-
   static async fetchUserProfile(userId: number, chatId: string, initData: string): Promise<UserProfile> {
     const params = new URLSearchParams({
       chat_id: chatId
@@ -259,19 +208,119 @@ export class ApiService {
     return `${API_BASE_URL}/cards/view/${cardId}.png?token=${encodeURIComponent(token)}`;
   }
 
-  static async fetchCardConfig(initData: string): Promise<CardConfigResponse> {
-    const response = await fetch(`${API_BASE_URL}/cards/config`, {
+  // ========== Aspect Methods ==========
+
+  static async fetchUserAspects(initData: string, chatId?: string | null): Promise<AspectData[]> {
+    const params = new URLSearchParams();
+    if (chatId) {
+      params.set('chat_id', chatId);
+    }
+
+    const endpoint = `${API_BASE_URL}/aspects`;
+    const url = params.size > 0 ? `${endpoint}?${params.toString()}` : endpoint;
+
+    const response = await fetch(url, {
       headers: this.getHeaders(initData)
     });
 
     if (!response.ok) {
-      if (response.status === 401) {
-        throw new Error('Authentication failed. Please reopen the app from Telegram.');
-      } else if (response.status >= 500) {
-        throw new Error('Server error. Please try again later.');
-      } else {
-        throw new Error(`Failed to fetch card config (Error ${response.status})`);
+      throw new Error('Failed to fetch aspects');
+    }
+
+    return response.json();
+  }
+
+  static async fetchAspectDetail(aspectId: number, initData: string): Promise<AspectData> {
+    const response = await fetch(`${API_BASE_URL}/aspects/${encodeURIComponent(String(aspectId))}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Aspect not found.');
       }
+      throw new Error(`Failed to load aspect (Error ${response.status})`);
+    }
+
+    return response.json();
+  }
+
+  static async fetchAspectImage(aspectId: number, initData: string): Promise<string> {
+    const response = await fetch(`${API_BASE_URL}/aspects/image/${aspectId}`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch aspect image');
+    }
+
+    return response.json();
+  }
+
+  static async fetchAspectConfig(initData: string): Promise<AspectConfigResponse> {
+    const response = await fetch(`${API_BASE_URL}/aspects/config`, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch aspect config');
+    }
+
+    return response.json();
+  }
+
+  static async burnAspect(
+    aspectId: number,
+    userId: number,
+    chatId: string,
+    initData: string
+  ): Promise<{ success: boolean; message: string; spins_awarded: number; new_spin_total: number }> {
+    const response = await fetch(`${API_BASE_URL}/aspects/${aspectId}/burn`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ user_id: userId, chat_id: chatId })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to burn aspect (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async lockAspect(
+    aspectId: number,
+    userId: number,
+    chatId: string,
+    lock: boolean,
+    initData: string
+  ): Promise<{ success: boolean; locked: boolean; balance: number; message: string; lock_cost: number }> {
+    const response = await fetch(`${API_BASE_URL}/aspects/${aspectId}/lock`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ user_id: userId, chat_id: chatId, lock })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to lock/unlock aspect (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
     }
 
     return response.json();

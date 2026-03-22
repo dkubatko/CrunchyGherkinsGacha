@@ -6,6 +6,7 @@ import './HubPage.css';
 import BottomNav from '@/components/common/BottomNav';
 import ProfileTab from '@/components/tabs/ProfileTab';
 import CollectionTab from '@/components/tabs/CollectionTab';
+import AspectsTab from '@/components/tabs/AspectsTab';
 import CasinoTab from '@/components/tabs/CasinoTab';
 import AllCardsTab from '@/components/tabs/AllCardsTab';
 
@@ -44,6 +45,7 @@ export const HubPage = ({
     const disabled = new Set<HubTab>();
     if (!chatId) {
       disabled.add('profile');
+      disabled.add('aspects');
       disabled.add('casino');
       disabled.add('allCards');
     }
@@ -94,6 +96,17 @@ export const HubPage = ({
               chatId={chatId}
               isOwnCollection={isOwnCollection}
               enableTrade={enableTrade}
+              initData={initData}
+            />
+          </div>
+        )}
+
+        {/* Aspects Tab */}
+        {mountedTabs.has('aspects') && chatId && (
+          <div className={`hub-tab-panel ${activeTab === 'aspects' ? 'active' : ''}`}>
+            <AspectsTab
+              currentUserId={currentUserId}
+              chatId={chatId}
               initData={initData}
             />
           </div>
