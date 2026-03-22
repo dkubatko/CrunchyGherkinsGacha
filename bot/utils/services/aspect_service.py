@@ -12,6 +12,7 @@ import datetime
 import logging
 from typing import Dict, List, Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from settings.constants import CURRENT_SEASON, RARITY_ORDER, get_claim_cost, get_spin_reward
@@ -97,6 +98,277 @@ def get_aspect_definitions_by_rarity(
         ordered[rarity] = grouped[rarity]
 
     return ordered
+
+
+def get_aspect_definitions_by_set(
+    set_id: int,
+    season_id: Optional[int] = None,
+) -> List[AspectDefinitionModel]:
+    """Return all aspect definitions belonging to a set.
+
+    Args:
+        set_id: The set's ID within the season.
+        season_id: Season to query. Defaults to ``CURRENT_SEASON``.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    with get_session() as session:
+        return (
+            session.query(AspectDefinitionModel)
+            .filter(
+                AspectDefinitionModel.set_id == set_id,
+                AspectDefinitionModel.season_id == season_id,
+            )
+            .order_by(AspectDefinitionModel.rarity, AspectDefinitionModel.name)
+            .all()
+        )
+
+
+def get_aspect_definition_by_id(
+    definition_id: int,
+) -> Optional[AspectDefinitionModel]:
+    """Fetch a single aspect definition by its auto-increment ID."""
+    with get_session() as session:
+        return (
+            session.query(AspectDefinitionModel)
+            .filter(AspectDefinitionModel.id == definition_id)
+            .first()
+        )
+
+
+def get_aspect_definition_by_name_and_set(
+    name: str,
+    set_id: int,
+    season_id: Optional[int] = None,
+) -> Optional[AspectDefinitionModel]:
+    """Lookup an aspect definition by name within a specific set.
+
+    Args:
+        name: The aspect keyword (case-sensitive).
+        set_id: The set ID.
+        season_id: Season to query. Defaults to ``CURRENT_SEASON``.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    with get_session() as session:
+        return (
+            session.query(AspectDefinitionModel)
+            .filter(
+                AspectDefinitionModel.name == name,
+                AspectDefinitionModel.set_id == set_id,
+                AspectDefinitionModel.season_id == season_id,
+            )
+            .first()
+        )
+
+
+def get_aspect_definition_count_per_set(
+    season_id: Optional[int] = None,
+) -> Dict[int, int]:
+    """Return a mapping of set_id → number of aspect definitions for the season."""
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    with get_session() as session:
+        rows = (
+            session.query(
+                AspectDefinitionModel.set_id,
+                func.count(AspectDefinitionModel.id),
+            )
+            .filter(AspectDefinitionModel.season_id == season_id)
+            .group_by(AspectDefinitionModel.set_id)
+            .all()
+        )
+        return {set_id: count for set_id, count in rows}
+
+
+def get_owned_count_for_definition(definition_id: int) -> int:
+    """Return the number of owned aspect instances linked to a definition."""
+    with get_session() as session:
+        return (
+            session.query(func.count(OwnedAspectModel.id))
+            .filter(OwnedAspectModel.aspect_definition_id == definition_id)
+            .scalar()
+            or 0
+        )
+
+
+# ---------------------------------------------------------------------------
+# Aspect definition CRUD
+# ---------------------------------------------------------------------------
+
+
+def create_aspect_definition(
+    set_id: int,
+    name: str,
+    rarity: str,
+    season_id: Optional[int] = None,
+) -> AspectDefinitionModel:
+    """Create a new aspect definition in the database.
+
+    Args:
+        set_id: The set this definition belongs to.
+        name: The aspect keyword.
+        rarity: The rarity level (Common / Rare / Epic / Legendary).
+        season_id: Season ID. Defaults to ``CURRENT_SEASON``.
+
+    Returns:
+        The newly created ``AspectDefinitionModel``.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    with get_session(commit=True) as session:
+        definition = AspectDefinitionModel(
+            set_id=set_id,
+            season_id=season_id,
+            name=name,
+            rarity=rarity,
+            created_at=now,
+        )
+        session.add(definition)
+        session.flush()
+        logger.info(
+            "Created aspect definition id=%s name='%s' rarity=%s set=%s season=%s",
+            definition.id,
+            name,
+            rarity,
+            set_id,
+            season_id,
+        )
+        return definition
+
+
+def update_aspect_definition(
+    definition_id: int,
+    *,
+    name: Optional[str] = None,
+    rarity: Optional[str] = None,
+    set_id: Optional[int] = None,
+) -> Optional[AspectDefinitionModel]:
+    """Update an existing aspect definition's fields.
+
+    Only provided (non-None) fields are updated.
+
+    Returns:
+        The updated ``AspectDefinitionModel``, or ``None`` if not found.
+    """
+    with get_session(commit=True) as session:
+        definition = (
+            session.query(AspectDefinitionModel)
+            .filter(AspectDefinitionModel.id == definition_id)
+            .first()
+        )
+        if not definition:
+            return None
+
+        if name is not None:
+            definition.name = name
+        if rarity is not None:
+            definition.rarity = rarity
+        if set_id is not None:
+            definition.set_id = set_id
+
+        logger.info(
+            "Updated aspect definition id=%s: name=%s rarity=%s set=%s",
+            definition_id,
+            name,
+            rarity,
+            set_id,
+        )
+        return definition
+
+
+def delete_aspect_definition(definition_id: int) -> tuple[bool, str]:
+    """Delete an aspect definition if it is not linked to any owned aspects.
+
+    Returns:
+        A tuple ``(success: bool, message: str)``.
+    """
+    with get_session(commit=True) as session:
+        definition = (
+            session.query(AspectDefinitionModel)
+            .filter(AspectDefinitionModel.id == definition_id)
+            .first()
+        )
+        if not definition:
+            return False, "Aspect definition not found"
+
+        owned_count = (
+            session.query(func.count(OwnedAspectModel.id))
+            .filter(OwnedAspectModel.aspect_definition_id == definition_id)
+            .scalar()
+        )
+        if owned_count and owned_count > 0:
+            return (
+                False,
+                f"Cannot delete: definition is used by {owned_count} owned aspect(s)",
+            )
+
+        session.delete(definition)
+        logger.info(
+            "Deleted aspect definition id=%s name='%s'",
+            definition_id,
+            definition.name,
+        )
+        return True, "Aspect definition deleted"
+
+
+def bulk_upsert_aspect_definitions(
+    definitions: list[dict],
+    season_id: Optional[int] = None,
+) -> int:
+    """Bulk insert or update aspect definitions.
+
+    Each dict should contain at least ``set_id``, ``name``, ``rarity``.
+    If a definition with the same ``(name, set_id, season_id)`` already
+    exists, its rarity is updated; otherwise a new row is inserted.
+
+    Returns:
+        The number of rows inserted or updated.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    count = 0
+
+    with get_session(commit=True) as session:
+        for def_dict in definitions:
+            set_id = def_dict["set_id"]
+            name = def_dict["name"]
+            rarity = def_dict["rarity"]
+
+            existing = (
+                session.query(AspectDefinitionModel)
+                .filter(
+                    AspectDefinitionModel.name == name,
+                    AspectDefinitionModel.set_id == set_id,
+                    AspectDefinitionModel.season_id == season_id,
+                )
+                .first()
+            )
+
+            if existing:
+                existing.rarity = rarity
+            else:
+                session.add(
+                    AspectDefinitionModel(
+                        set_id=set_id,
+                        season_id=season_id,
+                        name=name,
+                        rarity=rarity,
+                        created_at=now,
+                    )
+                )
+            count += 1
+
+    logger.info("Bulk upserted %d aspect definitions for season %s", count, season_id)
+    return count
 
 
 # ---------------------------------------------------------------------------

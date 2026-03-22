@@ -14,7 +14,7 @@ from api.routers.trade import router as trade_router
 from api.routers.user import router as user_router
 from api.routers.admin_auth import router as admin_auth_router
 from api.routers.admin_sets import router as admin_sets_router
-from api.routers.admin_modifiers import router as admin_modifiers_router
+from api.routers.admin_aspects import router as admin_aspects_router
 
 __all__ = [
     "aspects_router",
@@ -27,5 +27,5 @@ __all__ = [
     "user_router",
     "admin_auth_router",
     "admin_sets_router",
-    "admin_modifiers_router",
+    "admin_aspects_router",
 ]

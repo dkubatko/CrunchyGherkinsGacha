@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { AdminApiService } from '../../services/adminApi';
-import type { AdminSet, AdminModifier, AdminModifierCreate } from '../../types/admin';
+import type { AdminSet, AdminAspectDef, AdminAspectDefCreate } from '../../types/admin';
 import './Admin.css';
 
 const RARITIES = ['Common', 'Rare', 'Epic', 'Legendary'];
@@ -67,17 +67,17 @@ interface Props {
 }
 
 const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
-  const [modifiers, setModifiers] = useState<AdminModifier[]>([]);
+  const [aspectDefs, setAspectDefs] = useState<AdminAspectDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState(set.description ?? '');
   const [savingDescription, setSavingDescription] = useState(false);
-  const [draggedModifierId, setDraggedModifierId] = useState<number | null>(null);
+  const [draggedDefId, setDraggedDefId] = useState<number | null>(null);
   const [dragOverRarity, setDragOverRarity] = useState<string | null>(null);
 
-  // Add modifier form (per-rarity)
+  // Add aspect form (per-rarity)
   const [newByRarity, setNewByRarity] = useState<Record<string, string>>({
     Common: '',
     Rare: '',
@@ -90,32 +90,32 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
 
-  const loadModifiers = useCallback(async (silent = false) => {
+  const loadAspectDefs = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const data = await AdminApiService.getModifiers(set.id, set.season_id);
-      setModifiers(data);
+      const data = await AdminApiService.getAspectDefs(set.id, set.season_id);
+      setAspectDefs(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load modifiers');
+      setError(err instanceof Error ? err.message : 'Failed to load aspects');
     } finally {
       setLoading(false);
     }
   }, [set.id, set.season_id]);
 
   useEffect(() => {
-    loadModifiers();
-  }, [loadModifiers]);
+    loadAspectDefs();
+  }, [loadAspectDefs]);
 
   useEffect(() => {
     setDescriptionDraft(set.description ?? '');
   }, [set.description]);
 
-  const filtered = modifiers.filter(
+  const filtered = aspectDefs.filter(
     (m) => !search || m.name.toLowerCase().includes(search.toLowerCase()),
   );
 
-  const grouped = RARITIES.reduce<Record<string, AdminModifier[]>>((acc, rarity) => {
+  const grouped = RARITIES.reduce<Record<string, AdminAspectDef[]>>((acc, rarity) => {
     acc[rarity] = filtered
       .filter((m) => m.rarity === rarity)
       .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -146,45 +146,45 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
     }
   };
 
-  const handleAddModifier = async (rarity: string, e: React.FormEvent) => {
+  const handleAddAspectDef = async (rarity: string, e: React.FormEvent) => {
     e.preventDefault();
     const name = (newByRarity[rarity] ?? '').trim();
     if (!name) return;
     setAddingRarity(rarity);
     setError('');
     try {
-      const payload: AdminModifierCreate = {
+      const payload: AdminAspectDefCreate = {
         set_id: set.id,
         season_id: set.season_id,
         name,
         rarity,
       };
-      await AdminApiService.createModifier(payload);
+      await AdminApiService.createAspectDef(payload);
       setNewByRarity((prev) => ({ ...prev, [rarity]: '' }));
-      await loadModifiers(true);
-      onSetUpdated({ ...set, modifier_count: set.modifier_count + 1 });
+      await loadAspectDefs(true);
+      onSetUpdated({ ...set, aspect_count: set.aspect_count + 1 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add modifier');
+      setError(err instanceof Error ? err.message : 'Failed to add aspect');
     } finally {
       setAddingRarity(null);
     }
   };
 
-  const handleStartEdit = (mod: AdminModifier) => {
-    setEditingId(mod.id);
-    setEditName(mod.name);
+  const handleStartEdit = (def: AdminAspectDef) => {
+    setEditingId(def.id);
+    setEditName(def.name);
   };
 
-  const handleSaveEdit = async (modId: number) => {
+  const handleSaveEdit = async (defId: number) => {
     setError('');
     try {
-      await AdminApiService.updateModifier(modId, {
+      await AdminApiService.updateAspectDef(defId, {
         name: editName.trim(),
       });
       setEditingId(null);
-      await loadModifiers(true);
+      await loadAspectDefs(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update modifier');
+      setError(err instanceof Error ? err.message : 'Failed to update aspect');
     }
   };
 
@@ -192,50 +192,50 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
     setEditingId(null);
   };
 
-  const handleDelete = async (mod: AdminModifier) => {
+  const handleDelete = async (def: AdminAspectDef) => {
     const warning =
-      mod.card_count > 0
-        ? `WARNING: ${mod.card_count} card(s) use this modifier.\n\n`
+      def.owned_count > 0
+        ? `WARNING: ${def.owned_count} owned aspect(s) use this definition.\n\n`
         : '';
-    if (!confirm(`${warning}Delete "${mod.name}"?`)) return;
+    if (!confirm(`${warning}Delete "${def.name}"?`)) return;
     setError('');
     try {
-      await AdminApiService.deleteModifier(mod.id);
-      await loadModifiers(true);
-      onSetUpdated({ ...set, modifier_count: set.modifier_count - 1 });
+      await AdminApiService.deleteAspectDef(def.id);
+      await loadAspectDefs(true);
+      onSetUpdated({ ...set, aspect_count: set.aspect_count - 1 });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete modifier');
+      setError(err instanceof Error ? err.message : 'Failed to delete aspect');
     }
   };
 
-  const handleDragStart = (modifierId: number) => {
-    setDraggedModifierId(modifierId);
+  const handleDragStart = (defId: number) => {
+    setDraggedDefId(defId);
   };
 
   const handleDragEnd = () => {
-    setDraggedModifierId(null);
+    setDraggedDefId(null);
     setDragOverRarity(null);
   };
 
   const handleDropRarity = async (targetRarity: string) => {
-    if (draggedModifierId == null) return;
-    const mod = modifiers.find((m) => m.id === draggedModifierId);
-    if (!mod || mod.rarity === targetRarity) {
+    if (draggedDefId == null) return;
+    const def = aspectDefs.find((m) => m.id === draggedDefId);
+    if (!def || def.rarity === targetRarity) {
       handleDragEnd();
       return;
     }
 
     setError('');
-    const prev = modifiers;
-    setModifiers((curr) =>
-      curr.map((m) => (m.id === draggedModifierId ? { ...m, rarity: targetRarity } : m)),
+    const prev = aspectDefs;
+    setAspectDefs((curr) =>
+      curr.map((m) => (m.id === draggedDefId ? { ...m, rarity: targetRarity } : m)),
     );
 
     try {
-      await AdminApiService.updateModifier(draggedModifierId, { rarity: targetRarity });
+      await AdminApiService.updateAspectDef(draggedDefId, { rarity: targetRarity });
     } catch (err) {
-      setModifiers(prev);
-      setError(err instanceof Error ? err.message : 'Failed to move modifier');
+      setAspectDefs(prev);
+      setError(err instanceof Error ? err.message : 'Failed to move aspect');
     } finally {
       handleDragEnd();
     }
@@ -257,7 +257,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
           <span className="admin-set-meta-sep">·</span>
           <span>Season {set.season_id}</span>
           <span className="admin-set-meta-sep">·</span>
-          <span>{modifiers.length} modifiers</span>
+          <span>{aspectDefs.length} aspects</span>
           <span className="admin-set-meta-sep">·</span>
           <span>{set.source}</span>
         </div>
@@ -315,7 +315,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
         <input
           type="text"
           className="admin-search"
-          placeholder="Search modifiers…"
+          placeholder="Search aspects…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
@@ -323,14 +323,14 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
 
       {error && <div className="admin-error">{error}</div>}
 
-      {/* Grouped modifier list */}
+      {/* Grouped aspect list */}
       {loading ? (
-        <div className="admin-loading">Loading modifiers…</div>
+        <div className="admin-loading">Loading aspects…</div>
       ) : filtered.length === 0 ? (
         <div className="admin-empty">
-          {modifiers.length === 0
-            ? 'No modifiers in this set yet.'
-            : 'No modifiers match your filters.'}
+          {aspectDefs.length === 0
+            ? 'No aspects in this set yet.'
+            : 'No aspects match your filters.'}
         </div>
       ) : (
         <div className="admin-rarity-grid-scroll">
@@ -358,12 +358,12 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
 
                   <form
                     className="admin-rarity-add-form"
-                    onSubmit={(e) => handleAddModifier(rarity, e)}
+                    onSubmit={(e) => handleAddAspectDef(rarity, e)}
                   >
                     <input
                       type="text"
                       className="admin-rarity-add-input"
-                      placeholder={`Add ${rarity} modifier`}
+                      placeholder={`Add ${rarity} aspect`}
                       value={newByRarity[rarity] ?? ''}
                       onChange={(e) =>
                         setNewByRarity((prev) => ({ ...prev, [rarity]: e.target.value }))
@@ -404,7 +404,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
                               />
                               <div className="admin-mod-badges">
                                 <span className="admin-mini-badge">#{mod.id}</span>
-                                <span className="admin-mini-badge admin-mini-badge-cards">📇 {mod.card_count}</span>
+                                <span className="admin-mini-badge admin-mini-badge-cards">📇 {mod.owned_count}</span>
                               </div>
                               <div className="admin-mod-row-bottom">
                                 <span className="admin-mod-col-actions">
@@ -430,7 +430,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
                               <span className="admin-mod-col-name">{mod.name}</span>
                               <div className="admin-mod-badges">
                                 <span className="admin-mini-badge">#{mod.id}</span>
-                                <span className="admin-mini-badge admin-mini-badge-cards">📇 {mod.card_count}</span>
+                                <span className="admin-mini-badge admin-mini-badge-cards">📇 {mod.owned_count}</span>
                               </div>
                               <div className="admin-mod-row-bottom">
                                 <span className="admin-mod-col-actions">
