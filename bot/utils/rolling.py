@@ -454,6 +454,8 @@ def generate_roll_for_chat(
     max_retries: int = 0,
     source: Optional[str] = None,
     roll_type: Optional[str] = None,
+    profile_type: Optional[str] = None,
+    profile_id: Optional[int] = None,
 ) -> RollResult:
     """Roll for the chat, producing either a base card or an aspect.
 
@@ -465,6 +467,8 @@ def generate_roll_for_chat(
         source: Source filter for definitions ("roll", "slots", etc.).
         roll_type: Force a specific roll type ("base_card" or "aspect").
                    If None, determined by ``ROLL_TYPE_WEIGHTS``.
+        profile_type: Force a specific profile source ("user" or "character").
+        profile_id: The user_id or character id to use with profile_type.
 
     Returns:
         A ``RollResult`` with either ``.card`` or ``.aspect`` populated.
@@ -473,7 +477,14 @@ def generate_roll_for_chat(
     chosen_rarity = rarity or get_random_rarity(source)
 
     if chosen_type == "base_card":
-        card = generate_base_card(gemini_util, chosen_rarity, max_retries, chat_id=chat_id)
+        card = generate_base_card(
+            gemini_util,
+            chosen_rarity,
+            max_retries,
+            chat_id=chat_id,
+            profile_type=profile_type,
+            profile_id=profile_id,
+        )
         return RollResult(roll_type="base_card", card=card)
     else:
         aspect = generate_aspect_for_chat(
