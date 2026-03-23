@@ -95,12 +95,21 @@ async def roll(
                 return
 
         # --- Determine roll type and generate ---
+        # If the user has no cards yet, guarantee a base card of themselves
+        user_card_count = await asyncio.to_thread(
+            card_service.get_user_card_count, user.user_id, chat_id_str
+        )
+        first_roll = user_card_count == 0
+
         roll_result = await asyncio.to_thread(
             rolling.generate_roll_for_chat,
             chat_id_str,
             gemini_util,
             max_retries=MAX_BOT_IMAGE_RETRIES,
             source="roll",
+            roll_type="base_card" if first_roll else None,
+            profile_type="user" if first_roll else None,
+            profile_id=user.user_id if first_roll else None,
         )
 
         if roll_result.roll_type == "base_card" and roll_result.card is not None:
