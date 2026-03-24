@@ -46,13 +46,15 @@ A **Telegram-based gacha card game** where users collect AI-generated cards feat
 
 ### Stack
 - **Backend** (`bot/`): Python with `python-telegram-bot` + FastAPI
-- **Database**: SQLite with SQLAlchemy ORM + Alembic migrations
+- **Database**: PostgreSQL with SQLAlchemy ORM (`postgresql+psycopg`) + Alembic migrations; URL via `DATABASE_URL` env var
 - **Frontend** (`miniapp/`): React + Vite + TypeScript, runs as Telegram Mini App
 - **Image Generation**: Google Gemini API
 
 ### Two Entry Points
 1. **Telegram Bot** (`bot/bot.py`): Handles slash commands in group chats (`/roll`, `/claim`, `/trade`, etc.)
 2. **REST API** (`bot/api/`): Powers the Mini App (collection viewing, casino games, card management)
+
+> **Debug vs Production:** Debug mode (`--debug` flag or `DEBUG_MODE=true` env) uses Telegram's test environment API endpoints; production uses a local Telegram Bot API server at `http://localhost:8081` (`local_mode=True`).
 
 ### Data Flow
 ```
@@ -64,7 +66,7 @@ Bot Handlers ──────────────────► FastAPI E
      └──────────► Service Layer ◄───────┘
                        │
                        ▼
-              SQLite Database
+            PostgreSQL Database
 ```
 
 ---
@@ -75,8 +77,9 @@ Bot Handlers ──────────────────► FastAPI E
 - **Handlers** (`bot/handlers/`): Telegram command handlers, thin layer that delegates to services
 - **API Routers** (`bot/api/routers/`): FastAPI endpoints, organized by domain
 - **Services** (`bot/utils/services/`): All business logic lives here; handlers/routers never do raw DB queries
-- **Models** (`bot/utils/models.py`): SQLAlchemy ORM models
-- **Schemas**: Pydantic models for API request/response validation
+- **Models** (`bot/utils/models.py`): SQLAlchemy ORM models (uses `Mapped[T]` + `mapped_column()` syntax)
+- **Schemas** (`bot/utils/schemas.py`, `bot/api/schemas.py`): Pydantic models for service-level and API request/response validation
+- **Constants** (`bot/settings/constants.py`): Loads and exports all `config.json` values + environment variables like `CURRENT_SEASON`
 
 ### Handler Decorators
 Bot commands use decorators for auth/validation:
@@ -92,7 +95,39 @@ All Mini App API calls include `Authorization: tma <initData>` header. The backe
 The Mini App is launched with a `start_param` token that determines what view to show:
 - Card view, collection view, or casino view
 - Tokens are base64-encoded with a `tg1_` prefix
-- Encoding happens in bot code, decoding in frontend
+- Encoding happens in bot code (`bot/utils/miniapp.py`), decoding in frontend
+- **Token payload shapes**: `u-<user_id>`, `uc-<user_id>_<chat_id>`, `c-<card_id>`, `casino-<user_id>_<chat_id>_<game>`
+
+### Database Session Pattern
+All service functions use `get_session()` from `bot/utils/session.py`:
+```python
+# Read operations (flush only)
+with get_session() as session:
+    card = session.query(CardModel).filter(...).first()
+
+# Write operations (must pass commit=True)
+with get_session(commit=True) as session:
+    session.add(new_model)
+```
+
+### FastAPI Async Pattern
+API routers use `asyncio.to_thread()` to call synchronous service functions without blocking:
+```python
+# In routers: wrap synchronous service calls
+balance = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
+```
+
+### Season System
+- `CURRENT_SEASON` is set via env var (default `0`); cards have a `season_id` column
+- Only current-season cards can be claimed; historical cards remain in collections
+- Initialize a season with `python bot/tools/init_season.py`
+
+### CLI Admin Tools (`bot/tools/`)
+Run directly with `python bot/tools/<script>.py`. Examples:
+- `add_spins.py` — manually grant spins
+- `create_admin.py` — register an admin user
+- `init_season.py` — bootstrap a new season
+- `export_season_images.py` — export card images for a season
 
 ### Event System
 User actions emit typed events (ROLL, CLAIM, BURN, SPIN, etc.) that:
@@ -125,7 +160,7 @@ All tunable game values: rarity weights, costs, rewards, casino odds, cooldowns,
 python bot/bot.py --debug
 
 # API server
-uvicorn bot.api.server:app --reload
+cd bot && uvicorn api.server:app --reload
 
 # Mini App dev server
 cd miniapp && npm run dev
@@ -133,15 +168,19 @@ cd miniapp && npm run dev
 
 ### Database Changes
 1. Modify models in `bot/utils/models.py`
-2. Create Alembic migration: `cd bot && alembic revision -m "description"`
-3. Migrations auto-run on startup
+2. Create Alembic migration: `cd bot && alembic revision --autogenerate -m "description"`
+3. Apply: `cd bot && alembic upgrade head` (also runs automatically on startup via `bot/utils/database.py`)
+4. Migration files live in `bot/alembic/versions/` (50+ existing versions)
 
 ---
 
 ## Key Conventions
 
 - **Never bypass the service layer** — all DB operations go through `utils/services/`
+- **Use `get_session(commit=True)`** for writes, plain `get_session()` for reads
 - **Use existing decorators** — don't reinvent auth/validation in handlers
+- **Wrap sync DB calls with `asyncio.to_thread()`** in FastAPI routers
 - **Extend ApiService class** — don't scatter fetch calls in frontend components
 - **Typed events** — use the event enums when logging actions
-- **Token encoding** — mini app launch params must use the established token format
+- **Token encoding** — mini app launch params must use the established token format (`bot/utils/miniapp.py`)
+- **No test suite** — manual testing via bot/API; no pytest or vitest configured
