@@ -3,6 +3,7 @@ import './AspectsTab.css';
 
 // Components
 import { AspectGrid, AspectModal } from '@/components/aspects';
+import { FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
 import Loading from '@/components/common/Loading';
 import { BurnConfirmDialog, LockConfirmDialog } from '@/components/dialogs';
@@ -35,6 +36,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     displayedAspects,
     filterOptions,
     sortOptions,
+    filterValues,
     onFilterChange,
     onSortChange,
   } = useAspectFiltering(aspects);
@@ -162,7 +164,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
 
     buttons.push({
       id: 'lock',
-      text: selectedAspect.locked ? '🔓 Unlock' : '🔒 Lock',
+      text: selectedAspect.locked ? 'Unlock' : 'Lock',
       onClick: handleLockClick,
       variant: 'secondary',
     });
@@ -170,7 +172,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     if (!selectedAspect.locked) {
       buttons.push({
         id: 'burn',
-        text: '🔥 Burn',
+        text: 'Burn',
         onClick: handleBurnClick,
         variant: 'burn-red',
       });
@@ -180,15 +182,6 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
   }, [selectedAspect, showModal, handleLockClick, handleBurnClick]);
 
   const isActionPanelVisible = actionButtons.length > 0;
-
-  // Unique set names for filter dropdown
-  const setNames = useMemo(() => {
-    const names = new Set<string>();
-    aspects.forEach((a) => {
-      if (a.aspect_definition?.set_name) names.add(a.aspect_definition.set_name);
-    });
-    return Array.from(names).sort();
-  }, [aspects]);
 
   if (loading) {
     return <Loading message="Loading aspects..." />;
@@ -210,65 +203,20 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
         <div className="app-content">
           <Title title="Aspects" />
 
-          {/* Filter / sort controls */}
           {aspects.length > 0 && (
-            <div className="aspect-filter-controls">
-              <div className="aspect-filter-row">
-                <select
-                  value={filterOptions.rarity}
-                  onChange={(e) => onFilterChange({ ...filterOptions, rarity: e.target.value })}
-                  className="aspect-filter-select"
-                >
-                  <option value="">All Rarities</option>
-                  {['Common', 'Rare', 'Epic', 'Legendary', 'Unique'].map((r) => (
-                    <option key={r} value={r}>{r}</option>
-                  ))}
-                </select>
-
-                <select
-                  value={filterOptions.locked}
-                  onChange={(e) => onFilterChange({ ...filterOptions, locked: e.target.value })}
-                  className="aspect-filter-select"
-                >
-                  <option value="">Lock Status</option>
-                  <option value="locked">Locked</option>
-                  <option value="unlocked">Unlocked</option>
-                </select>
-
-                {setNames.length > 1 && (
-                  <select
-                    value={filterOptions.setName}
-                    onChange={(e) => onFilterChange({ ...filterOptions, setName: e.target.value })}
-                    className="aspect-filter-select"
-                  >
-                    <option value="">All Sets</option>
-                    {setNames.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
-                )}
-
-                <select
-                  value={`${sortOptions.field}-${sortOptions.direction}`}
-                  onChange={(e) => {
-                    const [field, direction] = e.target.value.split('-') as [typeof sortOptions.field, typeof sortOptions.direction];
-                    onSortChange({ field, direction });
-                  }}
-                  className="aspect-filter-select"
-                >
-                  <option value="rarity-desc">Rarity ↓</option>
-                  <option value="rarity-asc">Rarity ↑</option>
-                  <option value="name-asc">Name A-Z</option>
-                  <option value="name-desc">Name Z-A</option>
-                  <option value="id-desc">Newest</option>
-                  <option value="id-asc">Oldest</option>
-                </select>
-              </div>
-
-              <div className="aspect-filter-count">
-                {displayedAspects.length} / {aspects.length}
-              </div>
-            </div>
+            <FilterSortControls
+              filterOptions={filterOptions}
+              sortOptions={sortOptions}
+              onFilterChange={onFilterChange}
+              onSortChange={onSortChange}
+              showOwnerFilter={false}
+              showCharacterFilter={false}
+              filterValues={filterValues}
+              counter={{
+                current: displayedAspects.length,
+                total: aspects.length,
+              }}
+            />
           )}
 
           {aspects.length === 0 ? (

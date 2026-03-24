@@ -43,16 +43,15 @@ const MiniCard: React.FC<MiniCardProps> = ({ card, imageB64, isLoading, hasFaile
         <>
           <img src={`data:image/png;base64,${imageB64}`} alt={card.base_name} decoding="async" />
           {overlays}
-          {cardInfo}
         </>
       ) : (
         <div className="card-image-loader">
           {overlays}
           {hasFailed && <div className="grid-card-error"><div>❌</div></div>}
           {isLoading && !hasFailed && <BeatLoader color="#fff" size={6} speedMultiplier={0.8} />}
-          {cardInfo}
         </div>
       )}
+      {cardInfo}
     </div>
   );
 };

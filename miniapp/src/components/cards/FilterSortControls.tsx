@@ -16,13 +16,22 @@ export interface SortOptions {
   direction: 'asc' | 'desc';
 }
 
+export interface FilterValues {
+  owners: string[];
+  rarities: string[];
+  characters: string[];
+  sets: string[];
+}
+
 interface FilterSortControlsProps {
-  cards: CardData[];
+  cards?: CardData[];
   filterOptions: FilterOptions;
   sortOptions: SortOptions;
   onFilterChange: (filters: FilterOptions) => void;
   onSortChange: (sort: SortOptions) => void;
-  showOwnerFilter?: boolean; // Optional prop to show/hide owner filter
+  showOwnerFilter?: boolean;
+  showCharacterFilter?: boolean;
+  filterValues?: FilterValues;
   counter?: {
     current: number | string;
     total: number | string;
@@ -30,12 +39,14 @@ interface FilterSortControlsProps {
 }
 
 const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
-  cards,
+  cards = [],
   filterOptions,
   sortOptions,
   onFilterChange,
   onSortChange,
-  showOwnerFilter = true, // Default to true to maintain existing behavior
+  showOwnerFilter = true,
+  showCharacterFilter = true,
+  filterValues: externalFilterValues,
   counter,
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
@@ -49,19 +60,19 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   const hasScrolledToActiveRef = useRef<string | null>(null);
 
   // Get unique owners from cards for the filter dropdown
-  const uniqueOwners = Array.from(new Set(
+  const uniqueOwners = externalFilterValues?.owners ?? Array.from(new Set(
     cards
       .map(card => card.owner)
       .filter((owner): owner is string => Boolean(owner))
   )).sort();
 
   // Get unique character names from cards for the filter dropdown
-  const uniqueCharacterNames = Array.from(new Set(
+  const uniqueCharacterNames = externalFilterValues?.characters ?? Array.from(new Set(
     cards.map(card => card.base_name)
   )).sort();
 
   // Get unique set names from cards for the filter dropdown
-  const uniqueSetNames = Array.from(new Set(
+  const uniqueSetNames = externalFilterValues?.sets ?? Array.from(new Set(
     cards
       .map(card => card.set_name)
       .filter((setName): setName is string => Boolean(setName))
@@ -69,7 +80,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
 
   // Get unique rarities from cards for the filter dropdown, sorted by rarity order
   const rarityArray = [...RARITY_SEQUENCE] as string[];
-  const uniqueRarities = Array.from(new Set(
+  const uniqueRarities = externalFilterValues?.rarities ?? Array.from(new Set(
     cards.map(card => card.rarity)
   )).sort((a, b) => {
     const aIndex = rarityArray.indexOf(a);
@@ -133,7 +144,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     }
   };
 
-  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || filterOptions.characterName || filterOptions.setName;
+  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || (showCharacterFilter && filterOptions.characterName) || filterOptions.setName;
   const isActiveSortField = (field: string) => sortOptions.field === field;
 
   const handleFilterToggle = () => {
@@ -246,17 +257,19 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                     </button>
                   </div>
 
-                  <div className="dropdown-item" ref={el => { categoryItemRefs.current['characterName'] = el; }}>
-                    <button 
-                      className={`dropdown-main-option ${expandedFilter === 'characterName' ? 'selected' : ''} ${filterOptions.characterName ? 'has-filter' : ''}`}
-                      onClick={() => handleFilterOptionClick('characterName')}
-                    >
-                      <span>Character</span>
-                      <svg className={`expand-icon ${expandedFilter === 'characterName' ? 'rotated' : ''}`} viewBox="0 0 24 24">
-                        <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
-                      </svg>
-                    </button>
-                  </div>
+                  {showCharacterFilter && (
+                    <div className="dropdown-item" ref={el => { categoryItemRefs.current['characterName'] = el; }}>
+                      <button 
+                        className={`dropdown-main-option ${expandedFilter === 'characterName' ? 'selected' : ''} ${filterOptions.characterName ? 'has-filter' : ''}`}
+                        onClick={() => handleFilterOptionClick('characterName')}
+                      >
+                        <span>Character</span>
+                        <svg className={`expand-icon ${expandedFilter === 'characterName' ? 'rotated' : ''}`} viewBox="0 0 24 24">
+                          <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  )}
 
                   {uniqueSetNames.length > 0 && (
                     <div className="dropdown-item" ref={el => { categoryItemRefs.current['setName'] = el; }}>
@@ -355,7 +368,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                 </div>
               )}
 
-              {expandedFilter === 'characterName' && (
+              {showCharacterFilter && expandedFilter === 'characterName' && (
                 <div className="dropdown-submenu" style={{ '--submenu-offset': `${getSubmenuOffset()}px` } as React.CSSProperties}>
                   <div className="dropdown-submenu-content" ref={submenuContentRef}>
                     <button 

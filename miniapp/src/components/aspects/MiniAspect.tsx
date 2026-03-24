@@ -45,16 +45,15 @@ const MiniAspect: React.FC<MiniAspectProps> = ({ aspect, imageB64, isLoading, ha
         <>
           <img src={`data:image/png;base64,${imageB64}`} alt={aspect.display_name} decoding="async" />
           {overlays}
-          {cardInfo}
         </>
       ) : (
         <div className="card-image-loader">
           {overlays}
           {hasFailed && <div className="grid-card-error"><div>❌</div></div>}
           {isLoading && !hasFailed && <BeatLoader color="#fff" size={6} speedMultiplier={0.8} />}
-          {cardInfo}
         </div>
       )}
+      {cardInfo}
     </div>
   );
 };

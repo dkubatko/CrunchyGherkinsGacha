@@ -1,33 +1,25 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { AspectData } from '@/types';
+import type { FilterOptions, SortOptions, FilterValues } from '@/components/cards';
 import { RARITY_SEQUENCE } from '@/utils/rarityStyles';
 
-export interface AspectFilterOptions {
-  rarity: string;
-  locked: string;
-  setName: string;
-}
-
-export interface AspectSortOptions {
-  field: 'rarity' | 'name' | 'id';
-  direction: 'asc' | 'desc';
-}
-
-export const DEFAULT_ASPECT_FILTER_OPTIONS: AspectFilterOptions = {
+export const DEFAULT_ASPECT_FILTER_OPTIONS: FilterOptions = {
+  owner: '',
   rarity: '',
   locked: '',
+  characterName: '',
   setName: ''
 };
 
-export const DEFAULT_ASPECT_SORT_OPTIONS: AspectSortOptions = {
+export const DEFAULT_ASPECT_SORT_OPTIONS: SortOptions = {
   field: 'rarity',
   direction: 'desc'
 };
 
 const applyFilteringAndSorting = (
   aspects: AspectData[],
-  filterOptions: AspectFilterOptions,
-  sortOptions: AspectSortOptions,
+  filterOptions: FilterOptions,
+  sortOptions: SortOptions,
 ): AspectData[] => {
   let filtered = aspects;
 
@@ -85,19 +77,39 @@ const applyFilteringAndSorting = (
 };
 
 export const useAspectFiltering = (aspects: AspectData[]) => {
-  const [filterOptions, setFilterOptions] = useState<AspectFilterOptions>(DEFAULT_ASPECT_FILTER_OPTIONS);
-  const [sortOptions, setSortOptions] = useState<AspectSortOptions>(DEFAULT_ASPECT_SORT_OPTIONS);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions>(DEFAULT_ASPECT_FILTER_OPTIONS);
+  const [sortOptions, setSortOptions] = useState<SortOptions>(DEFAULT_ASPECT_SORT_OPTIONS);
 
   const displayedAspects = useMemo(
     () => applyFilteringAndSorting(aspects, filterOptions, sortOptions),
     [aspects, filterOptions, sortOptions]
   );
 
-  const onFilterChange = useCallback((newFilters: AspectFilterOptions) => {
+  const filterValues = useMemo<FilterValues>(() => {
+    const rarityArray = [...RARITY_SEQUENCE] as string[];
+    const sets = new Set<string>();
+    const rarities = new Set<string>();
+    aspects.forEach((a) => {
+      rarities.add(a.rarity);
+      if (a.aspect_definition?.set_name) sets.add(a.aspect_definition.set_name);
+    });
+    return {
+      owners: [],
+      characters: [],
+      rarities: Array.from(rarities).sort((a, b) => {
+        const aPos = rarityArray.indexOf(a);
+        const bPos = rarityArray.indexOf(b);
+        return (aPos === -1 ? rarityArray.length : aPos) - (bPos === -1 ? rarityArray.length : bPos);
+      }),
+      sets: Array.from(sets).sort(),
+    };
+  }, [aspects]);
+
+  const onFilterChange = useCallback((newFilters: FilterOptions) => {
     setFilterOptions(newFilters);
   }, []);
 
-  const onSortChange = useCallback((newSort: AspectSortOptions) => {
+  const onSortChange = useCallback((newSort: SortOptions) => {
     setSortOptions(newSort);
   }, []);
 
@@ -110,6 +122,7 @@ export const useAspectFiltering = (aspects: AspectData[]) => {
     filterOptions,
     sortOptions,
     displayedAspects,
+    filterValues,
     setFilterOptions,
     setSortOptions,
     onFilterChange,
