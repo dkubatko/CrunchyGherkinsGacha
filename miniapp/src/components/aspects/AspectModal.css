@@ -6,6 +6,8 @@
   padding: 24px;
   max-width: 360px;
   width: 90%;
+  /* Center vertically in the available space above the action panel */
+  margin: auto 0;
 }
 
 .aspect-modal-sphere {
@@ -36,36 +38,80 @@
   opacity: 0.3;
 }
 
-.aspect-modal-info {
-  text-align: center;
+/* ID badge — mirrors .card-id styling */
+.aspect-modal-id {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 10;
+}
+
+/* Lock indicator — mirrors .card-lock-indicator styling */
+.aspect-modal-lock-indicator {
+  position: absolute;
+  top: 16px;
+  left: 16px;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  padding: 4px 8px;
+  border-radius: 6px;
+  z-index: 10;
 }
 
-.aspect-modal-name {
-  font-size: 1.3rem;
-  font-weight: 700;
-  margin: 0;
+.aspect-modal-lock-icon {
+  width: 1rem;
+  height: 1rem;
+  filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.6));
 }
 
-.aspect-modal-rarity {
-  font-size: 1rem;
+.aspect-modal-lock-id {
+  color: white;
+  font-size: 0.7rem;
   font-weight: 600;
 }
 
+/* Info section — mirrors .card-info styling */
+.aspect-modal-info {
+  text-align: center;
+  flex-shrink: 0;
+  margin-top: 0.5rem;
+}
+
+.aspect-modal-name {
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin: 0 0 0.2rem 0;
+  line-height: 1.1;
+}
+
+/* Rarity — mirrors .card-rarity */
+.aspect-modal-rarity {
+  font-size: 0.9rem;
+  color: #ccc;
+  margin: 0 0 0.2rem 0;
+  text-transform: capitalize;
+}
+
+/* Set badge — mirrors .card-set pill */
 .aspect-modal-set {
-  font-size: 0.85rem;
-  opacity: 0.7;
-}
-
-.aspect-modal-locked {
-  font-size: 0.85rem;
-  opacity: 0.8;
-}
-
-.aspect-modal-id {
-  font-size: 0.75rem;
-  opacity: 0.5;
-  margin-top: 4px;
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(128, 128, 128, 0.4);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
 }

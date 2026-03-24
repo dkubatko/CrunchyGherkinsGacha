@@ -14,13 +14,14 @@ interface AspectGridProps {
 const COLUMNS = 3;
 const GAP = 10;
 const PADDING = 10;
+const INFO_HEIGHT = 36;
 
 const getRowHeightFromWidth = (width: number) => {
   const safeWidth = Math.max(1, width);
   const totalHorizontalPadding = PADDING * 2;
   const totalGap = GAP * (COLUMNS - 1);
   const cardWidth = Math.max(0, (safeWidth - totalHorizontalPadding - totalGap) / COLUMNS);
-  const cardHeight = cardWidth * 1.8;
+  const cardHeight = cardWidth + INFO_HEIGHT; // 1:1 image + info bar
   return Math.ceil(cardHeight + GAP);
 };
 
