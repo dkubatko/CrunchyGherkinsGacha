@@ -9,7 +9,9 @@ import datetime
 import logging
 from datetime import timezone
 
-from utils.services import card_service, roll_service, aspect_service
+from repos import card_repo
+from repos import roll_repo
+from repos import aspect_repo
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,7 @@ def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
     Uses UTC for consistent timezone handling.
     """
-    last_roll_time = roll_service.get_last_roll_time(user_id, chat_id)
+    last_roll_time = roll_repo.get_last_roll_time(user_id, chat_id)
     if last_roll_time is None:
         return 0, 0  # Can roll immediately if never rolled before
 
@@ -53,7 +55,7 @@ async def save_card_file_id_from_message(message, card_id: int) -> None:
     """
     if message and message.photo:
         file_id = message.photo[-1].file_id  # Get the largest photo size
-        await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
+        await asyncio.to_thread(card_repo.update_card_file_id, card_id, file_id)
         logger.debug(f"Saved file_id for card {card_id}")
 
 
@@ -67,7 +69,7 @@ async def save_aspect_file_id_from_message(message, aspect_id: int) -> None:
     """
     if message and message.photo:
         file_id = message.photo[-1].file_id
-        await asyncio.to_thread(aspect_service.update_aspect_file_id, aspect_id, file_id)
+        await asyncio.to_thread(aspect_repo.update_aspect_file_id, aspect_id, file_id)
         logger.debug(f"Saved file_id for aspect {aspect_id}")
 
 

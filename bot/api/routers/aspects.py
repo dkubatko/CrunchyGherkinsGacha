@@ -33,13 +33,11 @@ from api.schemas import (
 )
 from settings.constants import RARITY_ORDER, get_lock_cost, get_spin_reward
 from utils.schemas import OwnedAspect
-from utils.services import (
-    aspect_service,
-    claim_service,
-    event_service,
-    spin_service,
-    user_service,
-)
+from repos import aspect_repo
+from repos import claim_repo
+from repos import spin_repo
+from managers import aspect_manager
+from managers import event_manager
 from utils.events import EventType, BurnOutcome, LockOutcome
 
 logger = logging.getLogger(__name__)
@@ -61,12 +59,12 @@ async def get_user_aspects(
     user_data: Dict[str, Any] = validated_user.get("user") or {}
     auth_user_id = user_data.get("id")
 
-    aspects = await asyncio.to_thread(
-        aspect_service.get_user_aspects,
+    aspect_models = await asyncio.to_thread(
+        aspect_repo.get_user_aspects,
         auth_user_id,
         chat_id=chat_id,
     )
-    return aspects
+    return aspect_models
 
 
 @router.get("/config", response_model=AspectConfigResponse)
@@ -90,7 +88,7 @@ async def get_aspect_image_route(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the base64 encoded full-size image for an aspect."""
-    image_b64 = await asyncio.to_thread(aspect_service.get_aspect_image, aspect_id)
+    image_b64 = await asyncio.to_thread(aspect_repo.get_aspect_image, aspect_id)
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
     return image_b64
@@ -102,7 +100,7 @@ async def get_aspect_thumbnail_route(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the thumbnail (1/4 scale) base64 encoded image for an aspect."""
-    thumb_b64 = await asyncio.to_thread(aspect_service.get_aspect_thumbnail, aspect_id)
+    thumb_b64 = await asyncio.to_thread(aspect_repo.get_aspect_thumbnail, aspect_id)
     if not thumb_b64:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     return thumb_b64
@@ -125,7 +123,7 @@ async def get_aspect_thumbnails_batch(
             status_code=400, detail="A maximum of 3 aspect IDs can be requested per batch"
         )
 
-    images = await asyncio.to_thread(aspect_service.get_aspect_images_batch, unique_ids)
+    images = await asyncio.to_thread(aspect_repo.get_aspect_images_batch, unique_ids)
 
     if not images:
         raise HTTPException(status_code=404, detail="No images found for requested aspect IDs")
@@ -153,7 +151,7 @@ async def get_aspect_detail(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Fetch metadata for a single aspect."""
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         logger.warning("Aspect detail requested for non-existent aspect_id: %s", aspect_id)
         raise HTTPException(status_code=404, detail="Aspect not found")
@@ -173,7 +171,7 @@ async def burn_aspect(
     auth_user_id = user_data.get("id")
 
     # Fetch the aspect
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         logger.warning("Burn requested for non-existent aspect_id: %s", aspect_id)
         raise HTTPException(status_code=404, detail="Aspect not found")
@@ -209,7 +207,7 @@ async def burn_aspect(
         raise HTTPException(status_code=500, detail="No spin reward configured for this rarity")
 
     # Perform the burn (validates unlocked + unequipped internally)
-    reward = await asyncio.to_thread(aspect_service.burn_aspect, aspect_id, auth_user_id, chat_id)
+    reward = await asyncio.to_thread(aspect_manager.burn_aspect, aspect_id, auth_user_id, chat_id)
 
     if reward is None:
         logger.warning(
@@ -223,7 +221,7 @@ async def burn_aspect(
         )
 
     # Get updated spin balance
-    spins_record = await asyncio.to_thread(spin_service.get_user_spins, auth_user_id, chat_id)
+    spins_record = await asyncio.to_thread(spin_repo.get_user_spins, auth_user_id, chat_id)
     new_spin_total = spins_record.count if spins_record else reward
 
     logger.info(
@@ -237,7 +235,7 @@ async def burn_aspect(
         new_spin_total,
     )
 
-    event_service.log(
+    event_manager.log(
         EventType.BURN,
         BurnOutcome.SUCCESS,
         user_id=auth_user_id,
@@ -269,7 +267,7 @@ async def lock_aspect(
     auth_user_id = user_data.get("id")
 
     # Fetch the aspect
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         logger.warning("Lock requested for non-existent aspect_id: %s", aspect_id)
         raise HTTPException(status_code=404, detail="Aspect not found")
@@ -299,7 +297,7 @@ async def lock_aspect(
     if request.lock:
         # Charge claim points for locking
         current_balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, auth_user_id, chat_id
+            claim_repo.get_claim_balance, auth_user_id, chat_id
         )
         if current_balance < lock_cost:
             raise HTTPException(
@@ -310,11 +308,11 @@ async def lock_aspect(
             )
 
         remaining_balance = await asyncio.to_thread(
-            claim_service.reduce_claim_points, auth_user_id, chat_id, lock_cost
+            claim_repo.reduce_claim_points, auth_user_id, chat_id, lock_cost
         )
         if remaining_balance is None:
             current_balance = await asyncio.to_thread(
-                claim_service.get_claim_balance, auth_user_id, chat_id
+                claim_repo.get_claim_balance, auth_user_id, chat_id
             )
             raise HTTPException(
                 status_code=400,
@@ -324,18 +322,18 @@ async def lock_aspect(
             )
 
     # Toggle lock
-    new_lock_state = await asyncio.to_thread(aspect_service.lock_aspect, aspect_id, auth_user_id)
+    new_lock_state = await asyncio.to_thread(aspect_repo.lock_aspect, aspect_id, auth_user_id)
 
     if new_lock_state is None:
         raise HTTPException(status_code=400, detail="Failed to update aspect lock status")
 
     # Get balance for response
-    balance = await asyncio.to_thread(claim_service.get_claim_balance, auth_user_id, chat_id)
+    balance = await asyncio.to_thread(claim_repo.get_claim_balance, auth_user_id, chat_id)
 
     action = "locked" if new_lock_state else "unlocked"
     logger.info("User %s %s aspect %s", auth_user_id, action, aspect_id)
 
-    event_service.log(
+    event_manager.log(
         EventType.LOCK,
         LockOutcome.LOCKED if new_lock_state else LockOutcome.UNLOCKED,
         user_id=auth_user_id,

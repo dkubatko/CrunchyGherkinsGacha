@@ -16,7 +16,9 @@ from api.dependencies import get_validated_user
 from api.helpers import build_single_card_url
 from settings.constants import TRADE_REQUEST_MESSAGE
 from utils.schemas import Card as APICard
-from utils.services import card_service, thread_service, event_service
+from repos import card_repo
+from repos import thread_repo
+from managers import event_manager
 from utils.events import EventType, TradeOutcome
 
 logger = logging.getLogger(__name__)
@@ -30,7 +32,7 @@ async def get_trade_options(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get trade options for a specific card, scoped to the same chat."""
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     if not card:
         logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
         raise HTTPException(status_code=404, detail="Card not found")
@@ -39,7 +41,8 @@ async def get_trade_options(
         logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
         raise HTTPException(status_code=400, detail="Card is not associated with a chat")
 
-    cards = await asyncio.to_thread(card_service.get_all_cards, card.chat_id)
+    card_models = await asyncio.to_thread(card_repo.get_all_cards, card.chat_id)
+    cards = card_models
 
     initiating_owner = card.owner
     filtered_cards = [
@@ -74,8 +77,8 @@ async def execute_trade(
 
     try:
         # Get cards from database
-        card1 = await asyncio.to_thread(card_service.get_card, card_id1)
-        card2 = await asyncio.to_thread(card_service.get_card, card_id2)
+        card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
+        card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
 
         if not card1 or not card2:
             raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
@@ -154,10 +157,10 @@ async def execute_trade(
             bot = create_bot_instance()
 
             # Get thread_id for trade notifications, fallback to main if trade not set
-            thread_id = await asyncio.to_thread(thread_service.get_thread_id, str(chat_id), "trade")
+            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(chat_id), "trade")
             if thread_id is None:
                 thread_id = await asyncio.to_thread(
-                    thread_service.get_thread_id, str(chat_id), "main"
+                    thread_repo.get_thread_id, str(chat_id), "main"
                 )
 
             send_params = {
@@ -173,7 +176,7 @@ async def execute_trade(
             await bot.send_message(**send_params)
 
             # Log trade created event
-            event_service.log(
+            event_manager.log(
                 EventType.TRADE,
                 TradeOutcome.CREATED,
                 user_id=user_id,

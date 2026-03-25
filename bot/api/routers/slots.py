@@ -39,14 +39,14 @@ from api.schemas import (
 )
 from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_WIN_CHANCE
 from utils.rolling import get_random_rarity
-from utils.services import (
-    character_service,
-    claim_service,
-    spin_service,
-    user_service,
-    event_service,
-)
+from repos import character_repo
+from repos import claim_repo
+from repos import spin_repo
+from repos import user_repo
+from managers import event_manager
+from managers import spin_manager
 from utils.events import EventType, SpinOutcome, MegaspinOutcome
+
 
 logger = logging.getLogger(__name__)
 
@@ -66,11 +66,11 @@ async def get_user_spins(
         await validate_user_in_chat(user_id, chat_id)
 
         # Get current spin count (no auto-grant; daily bonus is claimed explicitly)
-        spins_count = await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
+        spins_count = await asyncio.to_thread(spin_repo.get_user_spin_count, user_id, chat_id)
 
         # Get megaspin info
-        megaspins_data = await asyncio.to_thread(spin_service.get_user_megaspins, user_id, chat_id)
-        total_spins_required = spin_service._get_spins_for_megaspin()
+        megaspins_data = await asyncio.to_thread(spin_repo.get_user_megaspins, user_id, chat_id)
+        total_spins_required = spin_repo._get_spins_for_megaspin()
         megaspin_info = MegaspinInfo(
             spins_until_megaspin=megaspins_data.spins_until_megaspin,
             total_spins_required=total_spins_required,
@@ -103,7 +103,7 @@ async def get_daily_bonus_status(
         await verify_user_match(user_id, validated_user)
         await validate_user_in_chat(user_id, chat_id)
 
-        status = await asyncio.to_thread(spin_service.get_daily_bonus_status, user_id, chat_id)
+        status = await asyncio.to_thread(spin_manager.get_daily_bonus_status, user_id, chat_id)
 
         return DailyBonusStatusResponse(
             available=status["available"],
@@ -132,7 +132,7 @@ async def claim_daily_bonus(
         await validate_user_in_chat(request.user_id, request.chat_id)
 
         result = await asyncio.to_thread(
-            spin_service.claim_daily_bonus, request.user_id, request.chat_id
+            spin_manager.claim_daily_bonus, request.user_id, request.chat_id
         )
 
         return DailyBonusClaimResponse(
@@ -166,15 +166,15 @@ async def consume_user_spin(
 
         # Attempt to consume a spin
         success = await asyncio.to_thread(
-            spin_service.consume_user_spin, request.user_id, request.chat_id
+            spin_repo.consume_user_spin, request.user_id, request.chat_id
         )
 
         if success:
             # Update megaspin counter (decrement by 1)
             megaspins_data = await asyncio.to_thread(
-                spin_service.decrement_megaspin_counter, request.user_id, request.chat_id
+                spin_manager.decrement_megaspin_counter, request.user_id, request.chat_id
             )
-            total_spins_required = spin_service._get_spins_for_megaspin()
+            total_spins_required = spin_repo._get_spins_for_megaspin()
             megaspin_info = MegaspinInfo(
                 spins_until_megaspin=megaspins_data.spins_until_megaspin,
                 total_spins_required=total_spins_required,
@@ -183,7 +183,7 @@ async def consume_user_spin(
 
             # Get remaining spins after consumption
             remaining_spins = await asyncio.to_thread(
-                spin_service.get_user_spin_count,
+                spin_repo.get_user_spin_count,
                 request.user_id,
                 request.chat_id,
             )
@@ -197,16 +197,16 @@ async def consume_user_spin(
         else:
             # Get current spins to show in error
             current_spins = await asyncio.to_thread(
-                spin_service.get_user_spin_count,
+                spin_repo.get_user_spin_count,
                 request.user_id,
                 request.chat_id,
             )
 
             # Get current megaspin info
             megaspins_data = await asyncio.to_thread(
-                spin_service.get_user_megaspins, request.user_id, request.chat_id
+                spin_repo.get_user_megaspins, request.user_id, request.chat_id
             )
-            total_spins_required = spin_service._get_spins_for_megaspin()
+            total_spins_required = spin_repo._get_spins_for_megaspin()
             megaspin_info = MegaspinInfo(
                 spins_until_megaspin=megaspins_data.spins_until_megaspin,
                 total_spins_required=total_spins_required,
@@ -240,14 +240,14 @@ async def consume_megaspin(
 
         # Attempt to consume the megaspin
         success = await asyncio.to_thread(
-            spin_service.consume_megaspin, request.user_id, request.chat_id
+            spin_repo.consume_megaspin, request.user_id, request.chat_id
         )
 
         # Get updated megaspin info
         megaspins_data = await asyncio.to_thread(
-            spin_service.get_user_megaspins, request.user_id, request.chat_id
+            spin_repo.get_user_megaspins, request.user_id, request.chat_id
         )
-        total_spins_required = spin_service._get_spins_for_megaspin()
+        total_spins_required = spin_repo._get_spins_for_megaspin()
         megaspin_info = MegaspinInfo(
             spins_until_megaspin=megaspins_data.spins_until_megaspin,
             total_spins_required=total_spins_required,
@@ -392,14 +392,14 @@ async def verify_slot_spin(
             # Aspect win events are logged in process_slot_aspect_victory_background after aspect generation
             pass
         elif winning_symbol and winning_symbol.type == "claim":
-            event_service.log(
+            event_manager.log(
                 EventType.SPIN,
                 SpinOutcome.CLAIM_WIN,
                 user_id=request.user_id,
                 chat_id=request.chat_id,
             )
         else:
-            event_service.log(
+            event_manager.log(
                 EventType.SPIN,
                 SpinOutcome.LOSS,
                 user_id=request.user_id,
@@ -415,7 +415,7 @@ async def verify_slot_spin(
             f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
         )
         # Log spin error
-        event_service.log(
+        event_manager.log(
             EventType.SPIN,
             SpinOutcome.ERROR,
             user_id=request.user_id,
@@ -473,7 +473,7 @@ async def verify_megaspin(
             f"Error verifying megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
         )
         # Log megaspin error
-        event_service.log(
+        event_manager.log(
             EventType.MEGASPIN,
             MegaspinOutcome.ERROR,
             user_id=request.user_id,
@@ -499,7 +499,7 @@ async def slots_victory(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -529,15 +529,19 @@ async def slots_victory(
 
     # Get source display name for validation
     if source_type == "user":
-        source_user = await asyncio.to_thread(user_service.get_user, request.source.id)
-        if not source_user or not source_user.display_name:
+        source_user = await asyncio.to_thread(user_repo.get_user, request.source.id)
+        if not source_user:
+            raise HTTPException(status_code=404, detail="Source user not found or incomplete")
+        if not source_user.display_name:
             raise HTTPException(status_code=404, detail="Source user not found or incomplete")
         display_name = source_user.display_name
     else:
         source_character = await asyncio.to_thread(
-            character_service.get_character_by_id, request.source.id
+            character_repo.get_character_by_id, request.source.id
         )
-        if not source_character or not source_character.name:
+        if not source_character:
+            raise HTTPException(status_code=404, detail="Source character not found")
+        if not source_character.name:
             raise HTTPException(status_code=404, detail="Source character not found")
         if str(source_character.chat_id) != chat_id:
             raise HTTPException(status_code=400, detail="Character does not belong to chat")
@@ -585,7 +589,7 @@ async def slots_aspect_victory(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -651,7 +655,7 @@ async def slots_claim_win(
         # Add claim points to the user's balance
         amount = max(1, request.amount)  # Ensure at least 1 point is added
         new_balance = await asyncio.to_thread(
-            claim_service.increment_claim_balance, request.user_id, chat_id, amount
+            claim_repo.increment_claim_balance, request.user_id, chat_id, amount
         )
 
         logger.info(

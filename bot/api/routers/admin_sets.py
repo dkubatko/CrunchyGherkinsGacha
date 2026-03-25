@@ -15,7 +15,8 @@ from api.schemas import (
     AdminSetResponse,
     AdminSetUpdateRequest,
 )
-from utils.services import aspect_service, set_service
+from repos import aspect_repo
+from repos import set_repo
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +26,15 @@ router = APIRouter(prefix="/admin/sets", tags=["admin-sets"])
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _set_to_response(set_model, aspect_count: int = 0) -> AdminSetResponse:
-    """Convert a ``SetModel`` ORM object to an API response."""
+def _set_to_response(set_dto, aspect_count: int = 0) -> AdminSetResponse:
+    """Convert a ``Set`` DTO to an API response."""
     return AdminSetResponse(
-        id=set_model.id,
-        season_id=set_model.season_id,
-        name=set_model.name,
-        source=set_model.source,
-        description=set_model.description,
-        active=set_model.active,
+        id=set_dto.id,
+        season_id=set_dto.season_id,
+        name=set_dto.name,
+        source=set_dto.source,
+        description=set_dto.description,
+        active=set_dto.active,
         aspect_count=aspect_count,
     )
 
@@ -46,7 +47,7 @@ async def list_seasons(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Return all season IDs that have at least one set."""
-    return await asyncio.to_thread(set_service.get_available_seasons)
+    return await asyncio.to_thread(set_repo.get_available_seasons)
 
 
 @router.get("/seasons/{season_id}", response_model=List[AdminSetResponse])
@@ -55,8 +56,8 @@ async def list_sets(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Return all sets for a season, with modifier counts."""
-    sets = await asyncio.to_thread(set_service.get_sets_by_season, season_id, False)
-    counts = await asyncio.to_thread(aspect_service.get_aspect_definition_count_per_set, season_id)
+    sets = await asyncio.to_thread(set_repo.get_sets_by_season, season_id, False)
+    counts = await asyncio.to_thread(aspect_repo.get_aspect_definition_count_per_set, season_id)
 
     return [_set_to_response(s, counts.get(s.id, 0)) for s in sets]
 
@@ -73,23 +74,23 @@ async def create_set(
     """
 
     def _do_create():
-        existing = set_service.get_sets_by_season(season_id, active_only=False)
+        existing = set_repo.get_sets_by_season(season_id, active_only=False)
         next_id = max((s.id for s in existing), default=0) + 1
-        set_service.upsert_set(
+        set_repo.upsert_set(
             set_id=next_id,
             name=body.name,
             season_id=season_id,
             source=body.source,
         )
-        # Apply description and active via set_service.update_set
+        # Apply description and active via update_set
         if body.description or not body.active:
-            set_service.update_set(
+            set_repo.update_set(
                 next_id,
                 season_id,
                 description=body.description or None,
                 active=body.active if not body.active else None,
             )
-        return set_service.get_set(next_id, season_id)
+        return set_repo.get_set(next_id, season_id)
 
     new_set = await asyncio.to_thread(_do_create)
     if new_set is None:
@@ -108,7 +109,7 @@ async def update_set(
     """Update an existing set's metadata."""
 
     def _do_update():
-        return set_service.update_set(
+        return set_repo.update_set(
             set_id,
             season_id,
             name=body.name,
@@ -121,5 +122,5 @@ async def update_set(
     if updated is None:
         raise HTTPException(status_code=404, detail="Set not found")
 
-    counts = await asyncio.to_thread(aspect_service.get_aspect_definition_count_per_set, season_id)
+    counts = await asyncio.to_thread(aspect_repo.get_aspect_definition_count_per_set, season_id)
     return _set_to_response(updated, counts.get(set_id, 0))

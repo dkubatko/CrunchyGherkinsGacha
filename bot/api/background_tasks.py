@@ -44,7 +44,10 @@ from settings.constants import (
 )
 from utils import rolling
 from utils.events import EventType, SpinOutcome, MegaspinOutcome, MinesweeperOutcome
-from utils.services import card_service, event_service, spin_service, thread_service
+from repos import card_repo
+from repos import spin_repo
+from repos import thread_repo
+from managers import event_manager
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +90,7 @@ async def process_slots_victory_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -119,7 +122,7 @@ async def process_slots_victory_background(
                 )
                 # Give spin refund since user "won"
                 await asyncio.to_thread(
-                    spin_service.increment_user_spins, user_id, chat_id, spin_refund_amount
+                    spin_repo.increment_user_spins, user_id, chat_id, spin_refund_amount
                 )
                 refund_processed = True
                 logger.info(
@@ -142,19 +145,19 @@ async def process_slots_victory_background(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                card_service.add_card_from_generated,
+                card_repo.add_card_from_generated,
                 generated_card,
                 chat_id,
             )
 
-            await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
+            await asyncio.to_thread(card_repo.set_card_owner, card_id, username, user_id)
 
             # Mark that card was successfully generated and assigned
             card_generated_and_assigned = True
 
             # Log spin/megaspin card win event after successful card generation
             if is_megaspin:
-                event_service.log(
+                event_manager.log(
                     EventType.MEGASPIN,
                     MegaspinOutcome.SUCCESS,
                     user_id=user_id,
@@ -167,7 +170,7 @@ async def process_slots_victory_background(
                     source_id=source_id,
                 )
             else:
-                event_service.log(
+                event_manager.log(
                     EventType.SPIN,
                     SpinOutcome.CARD_WIN,
                     user_id=user_id,
@@ -218,7 +221,7 @@ async def process_slots_victory_background(
             # Save the file_id from the card message
             if card_message.photo:
                 file_id = card_message.photo[-1].file_id
-                await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
+                await asyncio.to_thread(card_repo.update_card_file_id, card_id, file_id)
 
             logger.info(
                 "Successfully processed slots victory for user %s: card %s", username, card_id
@@ -301,7 +304,7 @@ async def process_burn_notification(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -341,7 +344,7 @@ async def process_minesweeper_bet_notification(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -387,7 +390,7 @@ async def process_rtb_result_notification(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -442,7 +445,7 @@ async def process_minesweeper_victory_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -468,15 +471,15 @@ async def process_minesweeper_victory_background(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                card_service.add_card_from_generated,
+                card_repo.add_card_from_generated,
                 generated_card,
                 chat_id,
             )
 
-            await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
+            await asyncio.to_thread(card_repo.set_card_owner, card_id, username, user_id)
 
             # Log minesweeper win event after successful card generation
-            event_service.log(
+            event_manager.log(
                 EventType.MINESWEEPER,
                 MinesweeperOutcome.WON,
                 user_id=user_id,
@@ -528,7 +531,7 @@ async def process_minesweeper_victory_background(
             # Save the file_id from the card message
             if card_message.photo:
                 file_id = card_message.photo[-1].file_id
-                await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
+                await asyncio.to_thread(card_repo.update_card_file_id, card_id, file_id)
 
             logger.info(
                 "Successfully processed minesweeper victory for user %s: card %s", username, card_id
@@ -582,7 +585,7 @@ async def process_minesweeper_loss_background(
     """Process minesweeper loss in background after responding to client."""
     try:
         # Delete the bet card from database
-        success = await asyncio.to_thread(card_service.delete_card, bet_card_id)
+        success = await asyncio.to_thread(card_repo.delete_card, bet_card_id)
 
         if not success:
             logger.error("Failed to delete bet card %s after minesweeper loss", bet_card_id)
@@ -598,7 +601,7 @@ async def process_minesweeper_loss_background(
         )
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -647,7 +650,7 @@ async def process_slot_aspect_victory_background(
         SLOTS_ASPECT_VICTORY_FAILURE_MESSAGE,
         get_spin_reward,
     )
-    from utils.services import aspect_service
+    from repos import aspect_repo
 
     spin_refund_amount = get_spin_reward(normalized_rarity)
     bot = None
@@ -666,7 +669,7 @@ async def process_slot_aspect_victory_background(
             rarity=normalized_rarity,
         )
 
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -694,7 +697,7 @@ async def process_slot_aspect_victory_background(
                     parse_mode=ParseMode.HTML,
                 )
                 await asyncio.to_thread(
-                    spin_service.increment_user_spins, user_id, chat_id, spin_refund_amount
+                    spin_repo.increment_user_spins, user_id, chat_id, spin_refund_amount
                 )
                 refund_processed = True
                 return
@@ -712,7 +715,7 @@ async def process_slot_aspect_victory_background(
 
             # Assign to winner immediately (slot wins are auto-assigned)
             await asyncio.to_thread(
-                aspect_service.set_aspect_owner,
+                aspect_repo.set_aspect_owner,
                 generated_aspect.aspect_id,
                 username,
                 user_id,
@@ -721,7 +724,7 @@ async def process_slot_aspect_victory_background(
             aspect_generated = True
 
             # Log spin event
-            event_service.log(
+            event_manager.log(
                 EventType.SPIN,
                 SpinOutcome.ASPECT_WIN,
                 user_id=user_id,
@@ -761,7 +764,7 @@ async def process_slot_aspect_victory_background(
             if aspect_message.photo:
                 file_id = aspect_message.photo[-1].file_id
                 await asyncio.to_thread(
-                    aspect_service.update_aspect_file_id,
+                    aspect_repo.update_aspect_file_id,
                     generated_aspect.aspect_id,
                     file_id,
                 )
@@ -837,7 +840,7 @@ async def refund_slots_victory_failure(
 
     try:
         new_total = await asyncio.to_thread(
-            spin_service.increment_user_spins, user_id, chat_id, spin_amount
+            spin_repo.increment_user_spins, user_id, chat_id, spin_amount
         )
     except Exception as exc:
         logger.error(
@@ -868,7 +871,7 @@ async def refund_slots_victory_failure(
 
     try:
         if thread_id is None:
-            thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         send_params = {
             "chat_id": chat_id,
@@ -907,19 +910,19 @@ async def send_achievement_notification(
         True if notification was sent successfully, False otherwise.
     """
     from settings.constants import ACHIEVEMENT_NOTIFICATION_MESSAGE
-    from utils.services import user_service
+    from repos import user_repo
 
     try:
         bot = create_bot_instance()
 
         # Get username for mention
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, user_id)
         if not username:
             logger.warning("Cannot send achievement notification: no username for user %d", user_id)
             return False
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
 
         # Build notification message
         achievement = user_achievement.achievement

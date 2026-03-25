@@ -7,8 +7,9 @@ for database operations. Uses PostgreSQL via psycopg (v3) as the database backen
 from __future__ import annotations
 
 import atexit
+import functools
 import logging
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from typing import Generator, Optional
 
 from sqlalchemy import create_engine
@@ -167,6 +168,54 @@ def get_session(commit: bool = False) -> Generator[Session, None, None]:
         raise
     finally:
         session.close()
+
+
+def use_session(session: Optional[Session] = None, commit: bool = False):
+    """Return existing session (via nullcontext) or create a new one.
+
+    When ``session`` is provided the caller already owns the transaction, so
+    no commit/rollback/close is performed here.  When ``session`` is *None* a
+    fresh ``get_session(commit=commit)`` context manager is returned.
+
+    Usage::
+
+        with use_session(session) as s:
+            s.query(...)
+    """
+    if session is not None:
+        return nullcontext(session)
+    return get_session(commit=commit)
+
+
+def with_session(func=None, *, commit: bool = False):
+    """Decorator that injects an optional ``session`` keyword arg into repo functions.
+
+    If the caller provides ``session=s``, uses it directly (no commit/close).
+    If the caller omits ``session``, creates a new one via ``get_session(commit=commit)``.
+
+    Supports both bare and parameterised usage::
+
+        @with_session                  # read-only (commit=False)
+        def get_card(card_id, *, session): ...
+
+        @with_session(commit=True)     # write operations
+        def create_card(name, *, session): ...
+
+    Callers::
+
+        card = get_card(123)                       # auto-creates session
+        card = get_card(123, session=my_session)    # uses provided session
+    """
+    def decorator(f):
+        @functools.wraps(f)
+        def wrapper(*args, session=None, **kwargs):
+            with use_session(session, commit=commit) as s:
+                return f(*args, session=s, **kwargs)
+        return wrapper
+
+    if func is not None:
+        return decorator(func)
+    return decorator
 
 
 @contextmanager

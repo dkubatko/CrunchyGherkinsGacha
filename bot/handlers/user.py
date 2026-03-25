@@ -16,7 +16,10 @@ from telegram.ext import ContextTypes
 
 from config import ADMIN_USERNAME, DEBUG_MODE
 from settings.constants import REACTION_IN_PROGRESS
-from utils.services import user_service, character_service
+from repos import user_repo
+from repos import character_repo
+from managers import character_manager
+from managers import user_manager
 from utils.schemas import User
 from utils.decorators import verify_user
 
@@ -41,13 +44,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
         return
 
-    user_exists = await asyncio.to_thread(user_service.user_exists, user.id)
+    user_exists = await asyncio.to_thread(user_repo.user_exists, user.id)
 
     display_name = None
     if not user_exists:
         display_name = user.full_name or user.username
 
-    await asyncio.to_thread(user_service.upsert_user, user.id, user.username, display_name, None)
+    await asyncio.to_thread(user_repo.upsert_user, user.id, user.username, display_name, None)
 
     if user_exists:
         await message.reply_text("You're already registered! You're good to go.")
@@ -110,12 +113,12 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         try:
             chat_id = str(update.effective_chat.id)
             existing_character = await asyncio.to_thread(
-                character_service.get_character_by_name, chat_id, character_name
+                character_repo.get_character_by_name, chat_id, character_name
             )
 
             if existing_character:
                 updated = await asyncio.to_thread(
-                    character_service.update_character_image, existing_character.id, image_b64
+                    character_manager.update_character_image, existing_character.id, image_b64
                 )
 
                 if updated:
@@ -128,7 +131,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                     )
             else:
                 character_id = await asyncio.to_thread(
-                    character_service.add_character, chat_id, character_name, image_b64
+                    character_manager.add_character, chat_id, character_name, image_b64
                 )
 
                 await message.reply_text(
@@ -153,7 +156,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("Please set a Telegram username before updating your profile.")
         return
 
-    exists = await asyncio.to_thread(user_service.user_exists, user.id)
+    exists = await asyncio.to_thread(user_repo.user_exists, user.id)
     if not exists:
         await message.reply_text("Please send /start first so I can register you.")
         return
@@ -164,9 +167,15 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Handle /profile with no arguments - show current profile
     if len(parts) < 2 or not parts[1].strip():
         # Get user's current profile data
-        user_data = await asyncio.to_thread(user_service.get_user, user.id)
+        user_data = await asyncio.to_thread(user_repo.get_user, user.id)
 
-        if not user_data or not user_data.display_name:
+        if not user_data:
+            await message.reply_text(
+                "You don't have a profile set up yet.\nUsage: /profile <display_name> (attach a photo with the command)."
+            )
+            return
+
+        if not user_data.display_name:
             await message.reply_text(
                 "You don't have a profile set up yet.\nUsage: /profile <display_name> (attach a photo with the command)."
             )
@@ -223,8 +232,8 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
     try:
-        await asyncio.to_thread(user_service.upsert_user, user.id, user.username, None, None)
-        await asyncio.to_thread(user_service.update_user_profile, user.id, display_name, image_b64)
+        await asyncio.to_thread(user_repo.upsert_user, user.id, user.username, None, None)
+        await asyncio.to_thread(user_manager.update_user_profile, user.id, display_name, image_b64)
 
         await message.reply_text("Profile updated! Your new display name and image are saved.")
     finally:
@@ -263,7 +272,7 @@ async def delete_character(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     deleted_count = await asyncio.to_thread(
-        character_service.delete_characters_by_name, character_name
+        character_repo.delete_characters_by_name, character_name
     )
 
     if deleted_count == 0:
@@ -293,13 +302,13 @@ async def enroll(
         return
 
     chat_id = str(chat.id)
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user.user_id)
+    is_member = await asyncio.to_thread(user_repo.is_user_in_chat, chat_id, user.user_id)
 
     if is_member:
         await message.reply_text("You're already enrolled in this chat.")
         return
 
-    inserted = await asyncio.to_thread(user_service.add_user_to_chat, chat_id, user.user_id)
+    inserted = await asyncio.to_thread(user_repo.add_user_to_chat, chat_id, user.user_id)
 
     if inserted:
         await message.reply_text("You're enrolled! Have fun out there.")
@@ -340,13 +349,13 @@ async def unenroll(
         return
 
     chat_id = str(chat.id)
-    is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, user.user_id)
+    is_member = await asyncio.to_thread(user_repo.is_user_in_chat, chat_id, user.user_id)
 
     if not is_member:
         await message.reply_text("You're not enrolled in this chat.")
         return
 
-    removed = await asyncio.to_thread(user_service.remove_user_from_chat, chat_id, user.user_id)
+    removed = await asyncio.to_thread(user_repo.remove_user_from_chat, chat_id, user.user_id)
 
     if removed:
         await message.reply_text(
