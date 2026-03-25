@@ -39,13 +39,13 @@ from settings.constants import (
     ASPECT_STATUS_PRE_CLAIM_MESSAGES,
     get_claim_cost,
 )
-from utils.services import (
-    card_service,
-    claim_service,
-    rolled_card_service,
-    rolled_aspect_service,
-    aspect_service,
-)
+from repos import card_repo
+from repos import claim_repo
+from repos import rolled_card_repo
+from repos import rolled_aspect_repo
+from repos import aspect_repo
+from managers import card_manager
+from managers import aspect_manager
 from utils.schemas import CardWithImage, OwnedAspect, RolledCard, RolledAspect
 
 logger = logging.getLogger(__name__)
@@ -114,8 +114,8 @@ class RollManager:
 
     def _get_rolled(self) -> Optional[RolledCard | RolledAspect]:
         if self.roll_type == "card":
-            return rolled_card_service.get_rolled_card_by_roll_id(self.roll_id)
-        return rolled_aspect_service.get_rolled_aspect_by_roll_id(self.roll_id)
+            return rolled_card_repo.get_rolled_card_by_roll_id(self.roll_id)
+        return rolled_aspect_repo.get_rolled_aspect_by_roll_id(self.roll_id)
 
     def _get_item(self):
         """Return the active card or aspect schema, or None."""
@@ -123,16 +123,16 @@ class RollManager:
         if rolled is None:
             return None
         if self.roll_type == "card":
-            return card_service.get_card(rolled.current_card_id)
-        return aspect_service.get_aspect_by_id(rolled.current_aspect_id)
+            return card_repo.get_card(rolled.current_card_id)
+        return aspect_repo.get_aspect_by_id(rolled.current_aspect_id)
 
     def _get_original_item(self):
         rolled = self._get_rolled()
         if rolled is None:
             return None
         if self.roll_type == "card":
-            return card_service.get_card(rolled.original_card_id)
-        return aspect_service.get_aspect_by_id(rolled.original_aspect_id)
+            return card_repo.get_card(rolled.original_card_id)
+        return aspect_repo.get_aspect_by_id(rolled.original_aspect_id)
 
     # Callback prefixes
     @property
@@ -195,8 +195,8 @@ class RollManager:
 
     def is_reroll_expired(self) -> bool:
         if self.roll_type == "card":
-            return rolled_card_service.is_rolled_card_reroll_expired(self.roll_id)
-        return rolled_aspect_service.is_rolled_aspect_reroll_expired(self.roll_id)
+            return rolled_card_repo.is_rolled_card_reroll_expired(self.roll_id)
+        return rolled_aspect_repo.is_rolled_aspect_reroll_expired(self.roll_id)
 
     def can_user_reroll(self, user_id: int) -> bool:
         rolled = self._get_rolled()
@@ -249,7 +249,7 @@ class RollManager:
         # Pre-flight: check balance so we can report it to the user
         balance: Optional[int] = None
         if user_id is not None and chat_id is not None:
-            balance = claim_service.get_claim_balance(user_id, chat_id)
+            balance = claim_repo.get_claim_balance(user_id, chat_id)
             if balance < claim_cost:
                 return ClaimAttemptResult(
                     ClaimStatus.INSUFFICIENT_BALANCE,
@@ -258,7 +258,7 @@ class RollManager:
                 )
 
         if self.roll_type == "card":
-            claimed = card_service.try_claim_card(
+            claimed = card_manager.try_claim_card(
                 item.id,
                 owner_username,
                 user_id,
@@ -266,7 +266,7 @@ class RollManager:
                 claim_cost=claim_cost,
             )
         else:
-            claimed = aspect_service.try_claim_aspect(
+            claimed = aspect_manager.try_claim_aspect(
                 item.id,
                 user_id,
                 owner_username,
@@ -294,7 +294,7 @@ class RollManager:
         # Fetch updated balance after successful claim
         remaining_balance = balance
         if user_id is not None and chat_id is not None:
-            remaining_balance = claim_service.get_claim_balance(user_id, chat_id)
+            remaining_balance = claim_repo.get_claim_balance(user_id, chat_id)
 
         return ClaimAttemptResult(
             ClaimStatus.SUCCESS,
@@ -330,11 +330,11 @@ class RollManager:
             if user_id is None or chat_id is None:
                 raise ValueError("User and chat IDs are required to lock with a cost")
 
-            current_balance = claim_service.get_claim_balance(user_id, chat_id)
+            current_balance = claim_repo.get_claim_balance(user_id, chat_id)
             if current_balance < cost:
                 return LockAttemptResult(False, cost, None, current_balance)
 
-            new_balance = claim_service.reduce_claim_points(user_id, chat_id, cost)
+            new_balance = claim_repo.reduce_claim_points(user_id, chat_id, cost)
             if new_balance is None:
                 return LockAttemptResult(False, cost, None, current_balance)
 
@@ -351,9 +351,9 @@ class RollManager:
 
     def set_being_rerolled(self, being_rerolled: bool) -> None:
         if self.roll_type == "card":
-            rolled_card_service.set_rolled_card_being_rerolled(self.roll_id, being_rerolled)
+            rolled_card_repo.set_rolled_card_being_rerolled(self.roll_id, being_rerolled)
         else:
-            rolled_aspect_service.set_rolled_aspect_being_rerolled(self.roll_id, being_rerolled)
+            rolled_aspect_repo.set_rolled_aspect_being_rerolled(self.roll_id, being_rerolled)
 
     def mark_rerolled(
         self,
@@ -361,13 +361,13 @@ class RollManager:
         original_rarity: Optional[str] = None,
     ) -> None:
         if self.roll_type == "card":
-            rolled_card_service.set_rolled_card_rerolled(
+            rolled_card_repo.set_rolled_card_rerolled(
                 self.roll_id,
                 new_item_id,
                 original_rarity,
             )
         else:
-            rolled_aspect_service.set_rolled_aspect_rerolled(
+            rolled_aspect_repo.set_rolled_aspect_rerolled(
                 self.roll_id,
                 new_item_id,
                 original_rarity,
@@ -375,15 +375,15 @@ class RollManager:
 
     def set_locked(self, is_locked: bool) -> None:
         if self.roll_type == "card":
-            rolled_card_service.set_rolled_card_locked(self.roll_id, is_locked)
+            rolled_card_repo.set_rolled_card_locked(self.roll_id, is_locked)
         else:
-            rolled_aspect_service.set_rolled_aspect_locked(self.roll_id, is_locked)
+            rolled_aspect_repo.set_rolled_aspect_locked(self.roll_id, is_locked)
 
     def add_claim_attempt(self, username: str) -> None:
         if self.roll_type == "card":
-            rolled_card_service.update_rolled_card_attempted_by(self.roll_id, username)
+            rolled_card_repo.update_rolled_card_attempted_by(self.roll_id, username)
         else:
-            rolled_aspect_service.update_rolled_aspect_attempted_by(self.roll_id, username)
+            rolled_aspect_repo.update_rolled_aspect_attempted_by(self.roll_id, username)
 
     # ------------------------------------------------------------------
     # Caption generation
@@ -610,8 +610,8 @@ class RollManager:
                 max_retries,
                 chat_id=chat_id,
             )
-            new_item_id = card_service.add_card_from_generated(generated, chat_id)
-            card_service.delete_card(old_item_id)
+            new_item_id = card_repo.add_card_from_generated(generated, chat_id)
+            card_repo.delete_card(old_item_id)
             self.mark_rerolled(new_item_id, original_rarity)
 
             return RerollResult(
@@ -638,7 +638,7 @@ class RollManager:
                 max_retries,
                 source=source,
             )
-            aspect_service.delete_aspect(old_item_id)
+            aspect_repo.delete_aspect(old_item_id)
             self.mark_rerolled(generated.aspect_id, original_rarity)
 
             return RerollResult(

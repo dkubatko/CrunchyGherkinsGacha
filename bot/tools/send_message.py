@@ -54,9 +54,9 @@ async def send_message(chat_id: int, text: str, use_html: bool = False) -> None:
         app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
 
     # Get thread_id if the chat uses topics
-    from utils.services import thread_service
+    from repos.thread_repo import get_thread_id
 
-    thread_id = thread_service.get_thread_id(str(chat_id))
+    thread_id = get_thread_id(str(chat_id))
 
     send_params: dict = {
         "chat_id": chat_id,

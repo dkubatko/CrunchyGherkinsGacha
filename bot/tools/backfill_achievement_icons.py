@@ -32,7 +32,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 # Must import after dotenv loading
 from utils.achievement_icon import generate_achievement_icon, save_icon_preview  # noqa: E402
-from utils.services import (  # noqa: E402
+from repos.achievement_repo import (  # noqa: E402
     get_all_achievements,
     update_achievement_icon,
 )
@@ -76,7 +76,7 @@ def main() -> None:
         return
 
     # Find achievements without icons
-    missing_icons = [a for a in all_achievements if not a.icon_b64]
+    missing_icons = [a for a in all_achievements if not a.icon]
 
     if not missing_icons:
         logger.info("All %d achievements already have icons.", len(all_achievements))

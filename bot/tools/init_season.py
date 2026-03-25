@@ -227,9 +227,9 @@ async def send_season_announcement(chat_id: int) -> None:
         app.bot._base_file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/test"
 
     # Get thread_id if available
-    from utils.services import thread_service
+    from repos.thread_repo import get_thread_id
 
-    thread_id = thread_service.get_thread_id(str(chat_id))
+    thread_id = get_thread_id(str(chat_id))
 
     send_params = {
         "chat_id": chat_id,

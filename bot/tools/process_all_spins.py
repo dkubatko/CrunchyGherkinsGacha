@@ -60,14 +60,12 @@ from utils import database
 from utils.gemini import GeminiUtil
 from utils.miniapp import encode_single_card_token
 from utils.rolling import get_random_rarity
-from utils.services import (
-    card_service,
-    character_service,
-    claim_service,
-    spin_service,
-    thread_service,
-    user_service,
-)
+from repos.card_repo import add_card_from_generated, set_card_owner, update_card_file_id
+from repos.character_repo import get_character_by_id
+from repos.claim_repo import increment_claim_balance
+from repos.spin_repo import get_user_spin_count, consume_user_spin
+from repos.thread_repo import get_thread_id
+from repos.user_repo import get_chat_users_and_characters, get_user, get_user_id_by_username, get_most_frequent_chat_id_for_user, is_user_in_chat
 
 # Initialize database
 database.initialize_database()
@@ -147,7 +145,7 @@ def build_single_card_url(card_id: int) -> str:
 
 def get_eligible_sources(chat_id: str) -> List[dict]:
     """Get all eligible sources (users and characters) for a chat."""
-    sources = user_service.get_chat_users_and_characters(chat_id)
+    sources = get_chat_users_and_characters(chat_id)
     # Filter out sources without slot icons (they can't be used in slots)
     return [s for s in sources if s.get("slot_icon_b64")]
 
@@ -199,11 +197,11 @@ async def process_card_victory(
         from utils import rolling
         from settings.constants import SLOTS_VICTORY_RESULT_MESSAGE, SLOTS_VIEW_IN_APP_LABEL
 
-        thread_id = thread_service.get_thread_id(chat_id)
+        thread_id = get_thread_id(chat_id)
 
         # Get source display name
         if result.source_type == "user":
-            source_user = user_service.get_user(result.source_id)
+            source_user = get_user(result.source_id)
             if not source_user or not source_user.display_name:
                 safe_print(
                     f"  [Spin {result.spin_index}] ERROR: Source user {result.source_id} not found"
@@ -211,7 +209,7 @@ async def process_card_victory(
                 return None
             display_name = source_user.display_name
         else:
-            source_character = character_service.get_character_by_id(result.source_id)
+            source_character = get_character_by_id(result.source_id)
             if not source_character or not source_character.name:
                 safe_print(
                     f"  [Spin {result.spin_index}] ERROR: Source character {result.source_id} not found"
@@ -253,9 +251,9 @@ async def process_card_victory(
 
             # Add card to database and assign to winner
             card_id = await asyncio.to_thread(
-                card_service.add_card_from_generated, generated_card, chat_id
+                add_card_from_generated, generated_card, chat_id
             )
-            await asyncio.to_thread(card_service.set_card_owner, card_id, username, user_id)
+            await asyncio.to_thread(set_card_owner, card_id, username, user_id)
 
             # Create final caption and keyboard
             final_caption = SLOTS_VICTORY_RESULT_MESSAGE.format(
@@ -299,7 +297,7 @@ async def process_card_victory(
             # Save the file_id from the card message
             if card_message.photo:
                 file_id = card_message.photo[-1].file_id
-                await asyncio.to_thread(card_service.update_card_file_id, card_id, file_id)
+                await asyncio.to_thread(update_card_file_id, card_id, file_id)
 
             safe_print(
                 f"  [Spin {result.spin_index}] SUCCESS: Card {card_id} - {generated_card.modifier} {generated_card.base_name}"
@@ -333,13 +331,13 @@ async def process_all_spins(
     stats = ProcessingStats()
 
     # Resolve user
-    user_id = user_service.get_user_id_by_username(username)
+    user_id = get_user_id_by_username(username)
     if not user_id:
         print(f"ERROR: User '{username}' not found")
         return stats
 
     # Get the user's most frequent chat
-    chat_id = user_service.get_most_frequent_chat_id_for_user(user_id)
+    chat_id = get_most_frequent_chat_id_for_user(user_id)
     if not chat_id:
         print(f"ERROR: No chat found for user '{username}'")
         return stats
@@ -347,7 +345,7 @@ async def process_all_spins(
     print(f"Processing spins for user '{username}' (ID: {user_id}) in chat {chat_id}")
 
     # Check if user is enrolled in chat
-    if not user_service.is_user_in_chat(chat_id, user_id):
+    if not is_user_in_chat(chat_id, user_id):
         print(f"ERROR: User '{username}' is not enrolled in chat {chat_id}")
         return stats
 
@@ -360,7 +358,7 @@ async def process_all_spins(
     print(f"Found {len(eligible_sources)} eligible sources for slots")
 
     # Get current spin count
-    current_spins = spin_service.get_user_spin_count(user_id, chat_id)
+    current_spins = get_user_spin_count(user_id, chat_id)
     if current_spins <= 0:
         print(f"User '{username}' has no spins available")
         return stats
@@ -422,7 +420,7 @@ async def process_all_spins(
     print(f"Consuming {current_spins} spins...")
     spins_consumed = 0
     for _ in range(current_spins):
-        if spin_service.consume_user_spin(user_id, chat_id):
+        if consume_user_spin(user_id, chat_id):
             spins_consumed += 1
         else:
             print("WARNING: Failed to consume spin - may have run out")
@@ -432,7 +430,7 @@ async def process_all_spins(
     # Add claim points
     if stats.claim_wins > 0:
         print(f"Adding {stats.claim_wins} claim points...")
-        claim_service.increment_claim_balance(user_id, chat_id, stats.claim_wins)
+        increment_claim_balance(user_id, chat_id, stats.claim_wins)
 
     # Process card wins in parallel with semaphore limiting to NUM_WORKERS
     if card_wins:

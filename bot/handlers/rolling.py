@@ -25,14 +25,13 @@ from settings.constants import (
     get_claim_cost,
 )
 from utils import rolling
-from utils.services import (
-    card_service,
-    claim_service,
-    rolled_card_service,
-    rolled_aspect_service,
-    roll_service,
-    event_service,
-)
+from repos import card_repo
+from repos import claim_repo
+from repos import rolled_card_repo
+from repos import rolled_aspect_repo
+from repos import roll_repo
+from managers import event_manager
+from managers import roll_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat, prevent_concurrency
 from utils.roll_manager import RollManager, ClaimStatus
@@ -80,7 +79,7 @@ async def roll(
                 reaction=[ReactionTypeEmoji(REACTION_IN_PROGRESS)],
             )
         if not DEBUG_MODE:
-            if not await asyncio.to_thread(roll_service.can_roll, user.user_id, chat_id_str):
+            if not await asyncio.to_thread(roll_manager.can_roll, user.user_id, chat_id_str):
                 hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
                 await update.message.reply_text(
                     f"You have already rolled. Next roll in {hours} hours {minutes} minutes.",
@@ -97,7 +96,7 @@ async def roll(
         # --- Determine roll type and generate ---
         # If the user has no cards yet, guarantee a base card of themselves
         user_card_count = await asyncio.to_thread(
-            card_service.get_user_card_count, user.user_id, chat_id_str
+            card_repo.get_user_card_count, user.user_id, chat_id_str
         )
         first_roll = user_card_count == 0
 
@@ -120,7 +119,7 @@ async def roll(
             raise rolling.ImageGenerationError("Roll produced no output")
 
     except rolling.NoEligibleUserError:
-        event_service.log(
+        event_manager.log(
             EventType.ROLL,
             RollOutcome.ERROR,
             user_id=user.user_id,
@@ -134,7 +133,7 @@ async def roll(
         )
         return
     except rolling.ImageGenerationError:
-        event_service.log(
+        event_manager.log(
             EventType.ROLL,
             RollOutcome.ERROR,
             user_id=user.user_id,
@@ -148,7 +147,7 @@ async def roll(
         return
     except Exception as e:
         logger.error(f"Error in /roll: {e}")
-        event_service.log(
+        event_manager.log(
             EventType.ROLL,
             RollOutcome.ERROR,
             user_id=user.user_id,
@@ -179,7 +178,7 @@ async def _handle_card_roll(update, context, user, chat_id_str, generated_card):
     log_card_generation(generated_card, "roll (base card)")
 
     card_id = await asyncio.to_thread(
-        card_service.add_card_from_generated,
+        card_repo.add_card_from_generated,
         generated_card,
         update.effective_chat.id,
     )
@@ -187,14 +186,14 @@ async def _handle_card_roll(update, context, user, chat_id_str, generated_card):
     # Award claim points to the roller
     claim_reward = get_claim_cost(generated_card.rarity)
     await asyncio.to_thread(
-        claim_service.increment_claim_balance,
+        claim_repo.increment_claim_balance,
         user.user_id,
         chat_id_str,
         claim_reward,
     )
 
     # Create rolled card entry
-    roll_id = await asyncio.to_thread(rolled_card_service.create_rolled_card, card_id, user.user_id)
+    roll_id = await asyncio.to_thread(rolled_card_repo.create_rolled_card, card_id, user.user_id)
 
     # Generate pre-claim caption via RollManager
     manager = RollManager("card", roll_id)
@@ -221,9 +220,9 @@ async def _handle_card_roll(update, context, user, chat_id_str, generated_card):
     await save_card_file_id_from_message(message, card_id)
 
     if not DEBUG_MODE:
-        await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
+        await asyncio.to_thread(roll_repo.record_roll, user.user_id, chat_id_str)
 
-    event_service.log(
+    event_manager.log(
         EventType.ROLL,
         RollOutcome.SUCCESS,
         user_id=user.user_id,
@@ -252,7 +251,7 @@ async def _handle_aspect_roll(update, context, user, chat_id_str, generated_aspe
     # Award claim points to the roller
     claim_reward = get_claim_cost(generated_aspect.rarity)
     await asyncio.to_thread(
-        claim_service.increment_claim_balance,
+        claim_repo.increment_claim_balance,
         user.user_id,
         chat_id_str,
         claim_reward,
@@ -260,7 +259,7 @@ async def _handle_aspect_roll(update, context, user, chat_id_str, generated_aspe
 
     # Create rolled aspect entry
     roll_id = await asyncio.to_thread(
-        rolled_aspect_service.create_rolled_aspect,
+        rolled_aspect_repo.create_rolled_aspect,
         generated_aspect.aspect_id,
         user.user_id,
     )
@@ -290,9 +289,9 @@ async def _handle_aspect_roll(update, context, user, chat_id_str, generated_aspe
     await save_aspect_file_id_from_message(message, generated_aspect.aspect_id)
 
     if not DEBUG_MODE:
-        await asyncio.to_thread(roll_service.record_roll, user.user_id, chat_id_str)
+        await asyncio.to_thread(roll_repo.record_roll, user.user_id, chat_id_str)
 
-    event_service.log(
+    event_manager.log(
         EventType.ROLL,
         RollOutcome.SUCCESS,
         user_id=user.user_id,
@@ -374,7 +373,7 @@ async def handle_claim(
         if claim_result.balance is not None:
             message += f"\n\nBalance: {claim_result.balance}"
         await query.answer(message, show_alert=True)
-        event_service.log(
+        event_manager.log(
             EventType.CLAIM,
             ClaimOutcome.INSUFFICIENT,
             user_id=user.user_id,
@@ -400,7 +399,7 @@ async def handle_claim(
 
     if claim_result.status is ClaimStatus.SUCCESS:
         await query.answer(_build_claim_message(claim_result.balance), show_alert=True)
-        event_service.log(
+        event_manager.log(
             EventType.CLAIM,
             ClaimOutcome.SUCCESS,
             user_id=user.user_id,
@@ -416,10 +415,10 @@ async def handle_claim(
         remaining_balance = claim_result.balance
         if remaining_balance is None and chat_id and user.user_id:
             remaining_balance = await asyncio.to_thread(
-                claim_service.get_claim_balance, user.user_id, chat_id
+                claim_repo.get_claim_balance, user.user_id, chat_id
             )
         await query.answer(_build_claim_message(remaining_balance), show_alert=True)
-        event_service.log(
+        event_manager.log(
             EventType.CLAIM,
             ClaimOutcome.ALREADY_OWNED,
             user_id=user.user_id,
@@ -432,7 +431,7 @@ async def handle_claim(
         fresh_item = manager.item
         owner = fresh_item.owner if fresh_item else "someone"
         await query.answer(f"Too late! Already claimed by @{owner}.", show_alert=True)
-        event_service.log(
+        event_manager.log(
             EventType.CLAIM,
             ClaimOutcome.TAKEN,
             user_id=user.user_id,
@@ -500,7 +499,7 @@ async def handle_lock(
         if lock_result.current_balance is not None:
             message += f"\n\nBalance: {lock_result.current_balance}"
         await query.answer(message, show_alert=True)
-        event_service.log(
+        event_manager.log(
             EventType.ROLL_LOCK,
             RollLockOutcome.INSUFFICIENT,
             user_id=user.user_id,
@@ -523,7 +522,7 @@ async def handle_lock(
             lock_message += f"\n\nBalance: {lock_result.remaining_balance}"
     await query.answer(lock_message, show_alert=True)
 
-    event_service.log(
+    event_manager.log(
         EventType.ROLL_LOCK,
         RollLockOutcome.LOCKED,
         user_id=user.user_id,
@@ -637,13 +636,13 @@ async def handle_reroll(
         if original_owner_id is not None and original_claim_chat_id is not None:
             refund_amount = get_claim_cost(active_item.rarity)
             await asyncio.to_thread(
-                claim_service.increment_claim_balance,
+                claim_repo.increment_claim_balance,
                 original_owner_id,
                 original_claim_chat_id,
                 refund_amount,
             )
 
-        event_service.log(
+        event_manager.log(
             EventType.REROLL,
             RerollOutcome.SUCCESS,
             user_id=user.user_id,
@@ -654,7 +653,7 @@ async def handle_reroll(
         )
     except rolling.NoEligibleUserError:
         chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
-        event_service.log(
+        event_manager.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,
@@ -673,7 +672,7 @@ async def handle_reroll(
         )
     except rolling.ImageGenerationError:
         chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
-        event_service.log(
+        event_manager.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,

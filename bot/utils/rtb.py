@@ -5,6 +5,8 @@ This module provides a consistent interface for RTB functionality,
 matching the pattern used by other utils modules like minesweeper.
 """
 
-from utils.services.rtb_service import set_debug_mode
+from managers.casino import rtb_manager
+
+set_debug_mode = rtb_manager.set_debug_mode
 
 __all__ = ["set_debug_mode"]

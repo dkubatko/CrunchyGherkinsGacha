@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from api.dependencies import get_validated_user
 from api.schemas import SlotSymbolSummary
-from utils.services import user_service
+from repos import user_repo
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ async def get_slot_symbols_endpoint(
     """Get all slot symbols (users, characters, and claim) for a specific chat with their display names and icons."""
     try:
         # Get users and characters data from database
-        data = await asyncio.to_thread(user_service.get_chat_users_and_characters, chat_id)
+        data = await asyncio.to_thread(user_repo.get_chat_users_and_characters, chat_id)
 
         # Load claim icon from file
         claim_icon_path = os.path.join(

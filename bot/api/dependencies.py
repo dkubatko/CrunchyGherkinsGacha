@@ -18,7 +18,7 @@ from fastapi import Header, HTTPException
 from api.config import TELEGRAM_TOKEN
 from utils.models import ChatModel
 from utils.session import get_session
-from utils.services import admin_auth_service
+from managers import auth_manager
 
 logger = logging.getLogger(__name__)
 
@@ -218,7 +218,7 @@ async def get_admin_user(
             status_code=401, detail="Invalid authorization format — expected 'Bearer <token>'"
         )
 
-    payload = admin_auth_service.decode_jwt(token)
+    payload = auth_manager.decode_jwt(token)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired admin token")
 

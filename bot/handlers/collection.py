@@ -16,7 +16,11 @@ from telegram.ext import ContextTypes
 from config import DEBUG_MODE, MINIAPP_URL_ENV
 from handlers.helpers import save_card_file_id_from_message
 from settings.constants import COLLECTION_CAPTION
-from utils.services import card_service, user_service, claim_service, spin_service, aspect_service
+from repos import card_repo
+from repos import user_repo
+from repos import claim_repo
+from repos import spin_repo
+from repos import aspect_repo
 from utils.schemas import User
 from utils.decorators import verify_user, verify_user_in_chat
 from utils.miniapp import encode_miniapp_token, encode_casino_token
@@ -84,7 +88,7 @@ async def balance(
     if context.args and len(context.args) > 0:
         target_username = context.args[0].lstrip("@")
         target_user_id = await asyncio.to_thread(
-            user_service.get_user_id_by_username, target_username
+            user_repo.get_user_id_by_username, target_username
         )
         if target_user_id is None:
             if message:
@@ -94,7 +98,7 @@ async def balance(
                 )
             return
 
-        is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, target_user_id)
+        is_member = await asyncio.to_thread(user_repo.is_user_in_chat, chat_id, target_user_id)
         if not is_member:
             if message:
                 await message.reply_text(
@@ -104,7 +108,7 @@ async def balance(
             return
 
         resolved_username = await asyncio.to_thread(
-            user_service.get_username_for_user_id, target_user_id
+            user_repo.get_username_for_user_id, target_user_id
         )
         display_username = resolved_username or target_username
     else:
@@ -112,12 +116,12 @@ async def balance(
         display_username = user.username
 
     balance_value = await asyncio.to_thread(
-        claim_service.get_claim_balance, target_user_id, chat_id
+        claim_repo.get_claim_balance, target_user_id, chat_id
     )
     point_label = "point" if balance_value == 1 else "points"
 
     spin_count = await asyncio.to_thread(
-        spin_service.get_user_spin_count,
+        spin_repo.get_user_spin_count,
         target_user_id,
         chat_id,
     )
@@ -156,7 +160,7 @@ async def collection(
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
         is_member = await asyncio.to_thread(
-            user_service.is_user_in_chat, str(chat.id), user.user_id
+            user_repo.is_user_in_chat, str(chat.id), user.user_id
         )
         if not is_member:
             prompt = "You're not enrolled in this chat yet. Use /enroll in this chat to join."
@@ -179,7 +183,7 @@ async def collection(
 
         target_username = context.args[0].lstrip("@")  # Remove @ if present
         target_user_id = await asyncio.to_thread(
-            user_service.get_user_id_by_username, target_username
+            user_repo.get_user_id_by_username, target_username
         )
         if target_user_id is None:
             await update.message.reply_text(
@@ -190,7 +194,7 @@ async def collection(
 
         # Check if the target user exists by trying to get their collection
         target_cards = await asyncio.to_thread(
-            card_service.get_user_collection, target_user_id, chat_id_filter
+            card_repo.get_user_collection, target_user_id, chat_id_filter
         )
         if not target_cards:
             await update.message.reply_text(
@@ -204,17 +208,17 @@ async def collection(
             return
         cards = target_cards
         resolved_username = await asyncio.to_thread(
-            user_service.get_username_for_user_id, target_user_id
+            user_repo.get_username_for_user_id, target_user_id
         )
         display_username = resolved_username or target_username
         viewed_user_id = target_user_id
     else:
         # Default to current user's collection
         cards = await asyncio.to_thread(
-            card_service.get_user_collection, user.user_id, chat_id_filter
+            card_repo.get_user_collection, user.user_id, chat_id_filter
         )
         resolved_username = await asyncio.to_thread(
-            user_service.get_username_for_user_id, user.user_id
+            user_repo.get_username_for_user_id, user.user_id
         )
         display_username = resolved_username or user.username
         viewed_user_id = user.user_id
@@ -295,7 +299,7 @@ async def handle_collection_show(
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
         is_member = await asyncio.to_thread(
-            user_service.is_user_in_chat, str(chat.id), user.user_id
+            user_repo.is_user_in_chat, str(chat.id), user.user_id
         )
         if not is_member:
             await query.answer(
@@ -317,7 +321,7 @@ async def handle_collection_show(
         return
 
     cards = await asyncio.to_thread(
-        card_service.get_user_collection, viewed_user_id, chat_id_filter
+        card_repo.get_user_collection, viewed_user_id, chat_id_filter
     )
     if not cards:
         await query.answer("No cards found.", show_alert=True)
@@ -328,7 +332,7 @@ async def handle_collection_show(
         return
 
     resolved_username = await asyncio.to_thread(
-        user_service.get_username_for_user_id, viewed_user_id
+        user_repo.get_username_for_user_id, viewed_user_id
     )
     display_username = resolved_username or f"user_{viewed_user_id}"
 
@@ -336,7 +340,7 @@ async def handle_collection_show(
     collection_key = (viewed_user_id, chat_id_filter)
     collection_indices[collection_key] = 0
 
-    card_with_image = await asyncio.to_thread(card_service.get_card, cards[0].id)
+    card_with_image = await asyncio.to_thread(card_repo.get_card, cards[0].id)
     if not card_with_image:
         await query.answer("Card not found.", show_alert=True)
         try:
@@ -449,7 +453,7 @@ async def handle_collection_navigation(
         chat_id_filter = str(chat.id)
     if chat and chat.type != ChatType.PRIVATE:
         is_member = await asyncio.to_thread(
-            user_service.is_user_in_chat, str(chat.id), user.user_id
+            user_repo.is_user_in_chat, str(chat.id), user.user_id
         )
         if not is_member:
             await query.answer(
@@ -482,7 +486,7 @@ async def handle_collection_navigation(
 
     # Re-fetch the correct user's collection for navigation
     cards = await asyncio.to_thread(
-        card_service.get_user_collection, viewed_user_id, chat_id_filter
+        card_repo.get_user_collection, viewed_user_id, chat_id_filter
     )
     if not cards:
         await query.answer("No cards found.", show_alert=True)
@@ -490,7 +494,7 @@ async def handle_collection_navigation(
 
     # Update display_username for the viewed user
     resolved_username = await asyncio.to_thread(
-        user_service.get_username_for_user_id, viewed_user_id
+        user_repo.get_username_for_user_id, viewed_user_id
     )
     display_username = resolved_username or f"user_{viewed_user_id}"
     collection_key = (viewed_user_id, chat_id_filter)
@@ -513,7 +517,7 @@ async def handle_collection_navigation(
     collection_indices[collection_key] = current_index
 
     # Get card details
-    card_with_image = await asyncio.to_thread(card_service.get_card, cards[current_index].id)
+    card_with_image = await asyncio.to_thread(card_repo.get_card, cards[current_index].id)
     if not card_with_image:
         await query.answer("Card not found.", show_alert=True)
         return
@@ -648,13 +652,13 @@ async def _get_user_targets_for_stats(
         # Specific user requested
         target_username = args[0].lstrip("@")
         target_user_id = await asyncio.to_thread(
-            user_service.get_user_id_by_username, target_username
+            user_repo.get_user_id_by_username, target_username
         )
 
         if target_user_id is None:
             raise ValueError(f"@{target_username} doesn't exist or isn't enrolled yet.")
 
-        is_member = await asyncio.to_thread(user_service.is_user_in_chat, chat_id, target_user_id)
+        is_member = await asyncio.to_thread(user_repo.is_user_in_chat, chat_id, target_user_id)
         if not is_member:
             raise ValueError(f"@{target_username} isn't enrolled in this chat.")
 
@@ -662,13 +666,13 @@ async def _get_user_targets_for_stats(
     else:
         # All users in chat
         chat_scope = None if is_private_chat else chat_id
-        usernames = await asyncio.to_thread(card_service.get_all_users_with_cards, chat_scope)
+        usernames = await asyncio.to_thread(card_repo.get_all_users_with_cards, chat_scope)
 
         if not usernames:
             raise ValueError("No users have claimed any cards yet.")
 
         for username in usernames:
-            user_id = await asyncio.to_thread(user_service.get_user_id_by_username, username)
+            user_id = await asyncio.to_thread(user_repo.get_user_id_by_username, username)
             targets.append((username, user_id))
 
     return targets
@@ -676,15 +680,15 @@ async def _get_user_targets_for_stats(
 
 async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str) -> str:
     """Format stats for a single user."""
-    user_stats = await asyncio.to_thread(card_service.get_user_stats, username)
+    user_stats = await asyncio.to_thread(card_repo.get_user_stats, username)
 
     if user_id is not None:
-        balance_value = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
+        balance_value = await asyncio.to_thread(claim_repo.get_claim_balance, user_id, chat_id)
         point_label = "point" if balance_value == 1 else "points"
         balance_line = f"{balance_value} {point_label}"
 
         spin_count = await asyncio.to_thread(
-            spin_service.get_user_spin_count,
+            spin_repo.get_user_spin_count,
             user_id,
             chat_id,
         )
@@ -693,7 +697,7 @@ async def _format_user_stats(username: str, user_id: Optional[int], chat_id: str
 
         # Aspect counts
         user_aspects = await asyncio.to_thread(
-            aspect_service.get_user_aspects,
+            aspect_repo.get_user_aspects,
             user_id,
             None,  # season_id (defaults to CURRENT_SEASON)
             chat_id,
