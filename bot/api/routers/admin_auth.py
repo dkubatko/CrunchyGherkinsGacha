@@ -20,7 +20,8 @@ from api.schemas import (
     AdminOTPRequest,
     AdminTokenResponse,
 )
-from utils.services import admin_auth_service
+from repos import admin_auth_repo
+from managers import auth_manager
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +35,13 @@ async def admin_login(body: AdminLoginRequest):
     Returns 200 with ``{"status": "otp_sent"}`` on success.
     """
     admin = await asyncio.to_thread(
-        admin_auth_service.verify_credentials, body.username, body.password
+        auth_manager.verify_credentials, body.username, body.password
     )
     if admin is None:
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
     # Generate OTP and deliver via Telegram
-    otp_code = admin_auth_service.generate_otp(admin.id)
+    otp_code = admin_auth_repo.generate_otp(admin.id)
 
     try:
         bot = create_bot_instance()
@@ -62,15 +63,15 @@ async def admin_login(body: AdminLoginRequest):
 @router.post("/verify-otp", response_model=AdminTokenResponse)
 async def admin_verify_otp(body: AdminOTPRequest):
     """Step 2: Verify the OTP and return a JWT session token."""
-    admin_row = await asyncio.to_thread(admin_auth_service.get_admin_by_username, body.username)
+    admin_row = await asyncio.to_thread(admin_auth_repo.get_admin_by_username, body.username)
     if admin_row is None:
         raise HTTPException(status_code=401, detail="Invalid username")
 
-    ok = admin_auth_service.consume_otp(admin_row.id, body.code)
+    ok = admin_auth_repo.consume_otp(admin_row.id, body.code)
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid or expired OTP")
 
-    token = admin_auth_service.create_jwt(admin_row.id, admin_row.username)
+    token = auth_manager.create_jwt(admin_row.id, admin_row.username)
     return AdminTokenResponse(token=token)
 
 

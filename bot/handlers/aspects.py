@@ -75,13 +75,12 @@ from settings.constants import (
 from utils import rolling
 from utils.miniapp import encode_single_aspect_token
 from utils.image import ImageUtil
-from utils.services import (
-    aspect_service,
-    claim_service,
-    event_service,
-    spin_service,
-    user_service,
-)
+from repos import aspect_repo
+from repos import claim_repo
+from repos import spin_repo
+from repos import user_repo
+from managers import event_manager
+from managers import aspect_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.events import (
@@ -136,7 +135,7 @@ async def burn(
         )
         return
 
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         await message.reply_text(
             ASPECT_BURN_NOT_FOUND_MESSAGE,
@@ -238,7 +237,7 @@ async def handle_burn_callback(
     if action == "cancel":
         await query.answer(ASPECT_BURN_CANCELLED_MESSAGE)
         if chat_id_str:
-            event_service.log(
+            event_manager.log(
                 EventType.BURN,
                 BurnOutcome.CANCELLED,
                 user_id=user.user_id,
@@ -271,7 +270,7 @@ async def handle_burn_callback(
             return
 
         # Fetch the aspect to get display info before burning
-        aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+        aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
         if not aspect:
             await query.answer(ASPECT_BURN_NOT_FOUND_MESSAGE, show_alert=True)
             try:
@@ -310,7 +309,7 @@ async def handle_burn_callback(
             pass
 
         reward = await asyncio.to_thread(
-            aspect_service.burn_aspect, aspect_id, user.user_id, chat_id_str
+            aspect_manager.burn_aspect, aspect_id, user.user_id, chat_id_str
         )
 
         if reward is None:
@@ -319,19 +318,19 @@ async def handle_burn_callback(
                 await query.edit_message_text(ASPECT_BURN_FAILURE_MESSAGE)
             except Exception:
                 pass
-            event_service.log(
+            event_manager.log(
                 EventType.BURN,
                 BurnOutcome.ERROR,
                 user_id=user.user_id,
                 chat_id=chat_id_str,
                 aspect_id=aspect_id,
-                error_message="burn_aspect returned None",
+                error_message="aspect_manager.burn_aspect returned None",
             )
             return
 
         # Get updated spin balance for the success message
         spins_record = await asyncio.to_thread(
-            spin_service.get_user_spins, user.user_id, chat_id_str
+            spin_repo.get_user_spins, user.user_id, chat_id_str
         )
         new_spin_total = spins_record.count if spins_record else reward
 
@@ -349,7 +348,7 @@ async def handle_burn_callback(
         )
         await query.answer("Burn complete!")
 
-        event_service.log(
+        event_manager.log(
             EventType.BURN,
             BurnOutcome.SUCCESS,
             user_id=user.user_id,
@@ -369,7 +368,7 @@ async def handle_burn_callback(
         )
     except Exception as exc:
         logger.exception("Unexpected error during aspect burn for aspect %s: %s", aspect_id, exc)
-        event_service.log(
+        event_manager.log(
             EventType.BURN,
             BurnOutcome.ERROR,
             user_id=user.user_id,
@@ -421,7 +420,7 @@ async def lock_aspect_command(
         await message.reply_text("Aspect ID must be a number.")
         return
 
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         await message.reply_text(ASPECT_LOCK_NOT_FOUND_MESSAGE)
         return
@@ -438,7 +437,7 @@ async def lock_aspect_command(
         prompt_text = f"Unlock <b>🔮 [{aspect.id}] {aspect_name}</b>?"
     else:
         balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, chat_id_str
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         prompt_text = (
             f"Lock <b>🔮 [{aspect.id}] {aspect_name}</b>?\n\n"
@@ -525,7 +524,7 @@ async def handle_lock_aspect_confirm(
     chat_id_str = str(chat.id)
 
     # Fetch aspect first to know rarity / current lock state
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect or aspect.user_id != user.user_id:
         await query.answer("Aspect not found or not owned by you.", show_alert=True)
         try:
@@ -540,7 +539,7 @@ async def handle_lock_aspect_confirm(
     if not aspect.locked:
         # Locking — charge claim points
         balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, chat_id_str
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         if balance < lock_cost:
             await query.answer("Not enough claim points.", show_alert=True)
@@ -555,13 +554,13 @@ async def handle_lock_aspect_confirm(
             return
 
         remaining = await asyncio.to_thread(
-            claim_service.reduce_claim_points, user.user_id, chat_id_str, lock_cost
+            claim_repo.reduce_claim_points, user.user_id, chat_id_str, lock_cost
         )
         if remaining is None:
             await query.answer("Not enough claim points.", show_alert=True)
             return
 
-    new_lock_state = await asyncio.to_thread(aspect_service.lock_aspect, aspect_id, user.user_id)
+    new_lock_state = await asyncio.to_thread(aspect_repo.lock_aspect, aspect_id, user.user_id)
 
     if new_lock_state is None:
         await query.answer("Aspect not found or not owned by you.", show_alert=True)
@@ -573,14 +572,14 @@ async def handle_lock_aspect_confirm(
 
     if new_lock_state:
         remaining_balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, chat_id_str
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         response_text = (
             f"🔒 <b>🔮 [{aspect_id}] {aspect_name}</b> locked!\n\n"
             f"Remaining balance: <b>{remaining_balance}</b>"
         )
         await query.answer(f"{aspect_name} locked!", show_alert=False)
-        event_service.log(
+        event_manager.log(
             EventType.LOCK,
             LockOutcome.LOCKED,
             user_id=user.user_id,
@@ -592,7 +591,7 @@ async def handle_lock_aspect_confirm(
     else:
         response_text = f"🔓 <b>🔮 [{aspect_id}] {aspect_name}</b> unlocked!"
         await query.answer(f"{aspect_name} unlocked!", show_alert=False)
-        event_service.log(
+        event_manager.log(
             EventType.LOCK,
             LockOutcome.UNLOCKED,
             user_id=user.user_id,
@@ -680,7 +679,7 @@ async def recycle(
 
     # Get unequipped aspects for this user/chat, filter by rarity + unlocked
     aspects = await asyncio.to_thread(
-        aspect_service.get_user_aspects, user.user_id, chat_id=chat_id_str
+        aspect_repo.get_user_aspects, user.user_id, chat_id=chat_id_str
     )
     eligible = [a for a in aspects if a.rarity == rarity_name and not a.locked]
 
@@ -775,7 +774,7 @@ async def handle_recycle_callback(
         chat_id_str = str(chat.id)
 
         aspects = await asyncio.to_thread(
-            aspect_service.get_user_aspects, user.user_id, chat_id=chat_id_str
+            aspect_repo.get_user_aspects, user.user_id, chat_id=chat_id_str
         )
         eligible = [a for a in aspects if a.rarity == rarity_name and not a.locked]
 
@@ -841,7 +840,7 @@ async def handle_recycle_callback(
 
     try:
         aspects = await asyncio.to_thread(
-            aspect_service.get_user_aspects, user.user_id, chat_id=chat_id_str
+            aspect_repo.get_user_aspects, user.user_id, chat_id=chat_id_str
         )
         eligible = [a for a in aspects if a.rarity == rarity_name and not a.locked]
 
@@ -904,7 +903,7 @@ async def handle_recycle_callback(
         try:
             generated_aspect = await generation_task
         except rolling.ImageGenerationError:
-            event_service.log(
+            event_manager.log(
                 EventType.RECYCLE,
                 RecycleOutcome.ERROR,
                 user_id=user.user_id,
@@ -919,7 +918,7 @@ async def handle_recycle_callback(
             return
         except Exception as exc:
             logger.error("Error while generating recycled aspect: %s", exc)
-            event_service.log(
+            event_manager.log(
                 EventType.RECYCLE,
                 RecycleOutcome.ERROR,
                 user_id=user.user_id,
@@ -936,21 +935,21 @@ async def handle_recycle_callback(
         # Delete the burned aspects via the service
         aspect_ids_to_delete = [a.id for a in aspects_to_burn]
         deleted = await asyncio.to_thread(
-            aspect_service.recycle_aspects, aspect_ids_to_delete, user.user_id
+            aspect_manager.recycle_aspects, aspect_ids_to_delete, user.user_id
         )
 
         if not deleted:
             logger.error(
-                "recycle_aspects validation failed for user %s, aspect_ids=%s",
+                "aspect_manager.recycle_aspects validation failed for user %s, aspect_ids=%s",
                 user.user_id,
                 aspect_ids_to_delete,
             )
-            event_service.log(
+            event_manager.log(
                 EventType.RECYCLE,
                 RecycleOutcome.ERROR,
                 user_id=user.user_id,
                 chat_id=chat_id_str,
-                error_message="recycle_aspects validation failed",
+                error_message="aspect_manager.recycle_aspects validation failed",
             )
             await context.bot.edit_message_text(
                 chat_id=chat_id,
@@ -962,7 +961,7 @@ async def handle_recycle_callback(
         # Claim the newly generated aspect for the user
         owner_username = user.username or f"user_{user.user_id}"
         claimed = await asyncio.to_thread(
-            aspect_service.try_claim_aspect,
+            aspect_manager.try_claim_aspect,
             generated_aspect.aspect_id,
             user.user_id,
             owner_username,
@@ -977,7 +976,7 @@ async def handle_recycle_callback(
             )
 
         # Log recycle success
-        event_service.log(
+        event_manager.log(
             EventType.RECYCLE,
             RecycleOutcome.SUCCESS,
             user_id=user.user_id,
@@ -1096,7 +1095,7 @@ async def create_unique_aspect(
 
     # Check if user has enough unlocked, unequipped Legendary aspects
     unlocked_legendaries = await asyncio.to_thread(
-        aspect_service.get_user_aspects,
+        aspect_repo.get_user_aspects,
         user.user_id,
         chat_id=chat_id_str,
         rarity="Legendary",
@@ -1111,7 +1110,7 @@ async def create_unique_aspect(
         return
 
     # Check if name already exists in Unique aspects (disallow duplicates)
-    unique_names = await asyncio.to_thread(aspect_service.get_unique_aspect_names, chat_id_str)
+    unique_names = await asyncio.to_thread(aspect_repo.get_unique_aspect_names, chat_id_str)
     if aspect_name in unique_names:
         await message.reply_text(
             CREATE_DUPLICATE_UNIQUE_NAME_MESSAGE.format(aspect_name=aspect_name),
@@ -1186,10 +1185,10 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
             cost = session["cost"]
             aspect_name = session["aspect_name"]
             description = session.get("description", "")
-            user = await asyncio.to_thread(user_service.get_user, user_id)
+            user = await asyncio.to_thread(user_repo.get_user, user_id)
 
             unlocked_legendaries = await asyncio.to_thread(
-                aspect_service.get_user_aspects,
+                aspect_repo.get_user_aspects,
                 user_id,
                 chat_id=chat_id_str,
                 rarity="Legendary",
@@ -1273,7 +1272,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
 
                 # Create the Unique aspect — assigned to user immediately
                 aspect_id = await asyncio.to_thread(
-                    aspect_service.add_owned_aspect,
+                    aspect_repo.add_owned_aspect,
                     aspect_definition_id=None,
                     chat_id=chat_id_str,
                     season_id=CURRENT_SEASON,
@@ -1288,10 +1287,10 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 # Delete burned aspects (skip in debug mode)
                 if not DEBUG_MODE:
                     burn_ids = [a.id for a in aspects_to_burn]
-                    await asyncio.to_thread(aspect_service.recycle_aspects, burn_ids, user_id)
+                    await asyncio.to_thread(aspect_manager.recycle_aspects, burn_ids, user_id)
 
                 # Log create success event
-                event_service.log(
+                event_manager.log(
                     EventType.CREATE,
                     CreateOutcome.SUCCESS,
                     user_id=user_id,
@@ -1342,7 +1341,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
             except Exception as e:
                 logger.error(f"Error creating unique aspect: {e}", exc_info=True)
                 # Log create error event
-                event_service.log(
+                event_manager.log(
                     EventType.CREATE,
                     CreateOutcome.ERROR,
                     user_id=user_id,

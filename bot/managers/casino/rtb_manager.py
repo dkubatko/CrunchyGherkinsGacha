@@ -1,4 +1,4 @@
-"""Ride the Bus (RTB) service for managing game state and logic.
+"""Ride the Bus (RTB) manager for game logic, validation, and orchestration.
 
 Game Rules:
 - 5 random cards from the chat are selected
@@ -16,16 +16,15 @@ Cooldown:
 
 from __future__ import annotations
 
-import json
 import logging
 import sys
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Tuple
 
-from utils.models import RideTheBusGameModel
 from utils.schemas import RideTheBusGame
 from utils.session import get_session
-from utils.services import card_service
+from repos import card_repo
+from repos import rtb_repo
 from settings.constants import (
     RARITY_ORDER,
     RTB_MIN_BET,
@@ -96,83 +95,44 @@ def get_existing_game(user_id: int, chat_id: str) -> Optional[RideTheBusGame]:
         RideTheBusGame object or None if no game exists or cooldown expired
     """
     with get_session() as session:
-        game_orm = (
-            session.query(RideTheBusGameModel)
-            .filter(
-                RideTheBusGameModel.user_id == user_id,
-                RideTheBusGameModel.chat_id == chat_id,
-            )
-            .order_by(RideTheBusGameModel.started_timestamp.desc())
-            .first()
-        )
+        game = rtb_repo.get_latest_game(user_id, chat_id, session=session)
 
-        if not game_orm:
+        if not game:
             return None
 
-        game = RideTheBusGame.from_orm(game_orm)
-
-        # Active games are always returned
-        if game.status == "active":
-            logger.info(
-                f"Found existing active RTB game {game.id} for user {user_id} in chat {chat_id}"
-            )
-            return game
-
-        # Lost games have no cooldown - user can play again immediately
-        if game.status == "lost":
-            logger.info(f"Last RTB game {game.id} for user {user_id} was lost, no cooldown")
-            return None
-
-        # Won/cashed_out games have cooldown
-        cooldown_end = get_cooldown_end_time(game)
-        if cooldown_end:
-            remaining = (cooldown_end - datetime.now(timezone.utc)).total_seconds()
-            if DEBUG_MODE:
-                logger.info(
-                    f"RTB game {game.id} for user {user_id} in chat {chat_id} "
-                    f"is on cooldown ({remaining:.0f}s remaining)"
-                )
-            else:
-                logger.info(
-                    f"RTB game {game.id} for user {user_id} in chat {chat_id} "
-                    f"is on cooldown ({remaining / 60:.1f}min remaining)"
-                )
-            return game
-
-        # Cooldown has passed
+    # Active games are always returned
+    if game.status == "active":
         logger.info(
-            f"Last RTB game {game.id} for user {user_id} in chat {chat_id} cooldown has passed"
+            f"Found existing active RTB game {game.id} for user {user_id} in chat {chat_id}"
         )
+        return game
+
+    # Lost games have no cooldown - user can play again immediately
+    if game.status == "lost":
+        logger.info(f"Last RTB game {game.id} for user {user_id} was lost, no cooldown")
         return None
 
-
-def get_active_game(user_id: int, chat_id: str) -> Optional[RideTheBusGame]:
-    """Get an active RTB game for a user in a chat.
-
-    DEPRECATED: Use get_existing_game instead to properly handle cooldowns.
-    This function only returns active games, not games in cooldown.
-    """
-    with get_session() as session:
-        game_orm = (
-            session.query(RideTheBusGameModel)
-            .filter(
-                RideTheBusGameModel.user_id == user_id,
-                RideTheBusGameModel.chat_id == chat_id,
-                RideTheBusGameModel.status == "active",
+    # Won/cashed_out games have cooldown
+    cooldown_end = get_cooldown_end_time(game)
+    if cooldown_end:
+        remaining = (cooldown_end - datetime.now(timezone.utc)).total_seconds()
+        if DEBUG_MODE:
+            logger.info(
+                f"RTB game {game.id} for user {user_id} in chat {chat_id} "
+                f"is on cooldown ({remaining:.0f}s remaining)"
             )
-            .order_by(RideTheBusGameModel.started_timestamp.desc())
-            .first()
-        )
-        return RideTheBusGame.from_orm(game_orm) if game_orm else None
+        else:
+            logger.info(
+                f"RTB game {game.id} for user {user_id} in chat {chat_id} "
+                f"is on cooldown ({remaining / 60:.1f}min remaining)"
+            )
+        return game
 
-
-def get_game_by_id(game_id: int) -> Optional[RideTheBusGame]:
-    """Get an RTB game by ID."""
-    with get_session() as session:
-        game_orm = (
-            session.query(RideTheBusGameModel).filter(RideTheBusGameModel.id == game_id).first()
-        )
-        return RideTheBusGame.from_orm(game_orm) if game_orm else None
+    # Cooldown has passed
+    logger.info(
+        f"Last RTB game {game.id} for user {user_id} in chat {chat_id} cooldown has passed"
+    )
+    return None
 
 
 def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
@@ -182,7 +142,7 @@ def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
     Requires at least RTB_NUM_CARDS_TO_UNLOCK cards total and at least 1 card of each
     standard rarity (Common, Rare, Epic, Legendary). Unique cards are not required.
     """
-    rarity_counts = card_service.get_chat_card_rarity_counts(chat_id)
+    rarity_counts = card_repo.get_chat_card_rarity_counts(chat_id)
     total_cards = sum(rarity_counts.values())
 
     if total_cards < RTB_NUM_CARDS_TO_UNLOCK:
@@ -222,14 +182,15 @@ def create_game(
                     return None, f"Please wait {int(remaining)} seconds before playing again"
 
     # Select random cards from chat (lightweight query - only fetches id, rarity, title columns)
-    selected = card_service.get_random_card_summaries(chat_id, RTB_CARDS_PER_GAME)
+    selected = card_repo.get_random_card_summaries(chat_id, RTB_CARDS_PER_GAME)
     if len(selected) < RTB_CARDS_PER_GAME:
         return None, f"Not enough cards in this chat. Need at least {RTB_CARDS_PER_GAME} cards."
 
     now = datetime.now(timezone.utc)
 
     with get_session(commit=True) as session:
-        game_orm = RideTheBusGameModel(
+        game = rtb_repo.create_game(
+            session=session,
             user_id=user_id,
             chat_id=chat_id,
             bet_amount=bet_amount,
@@ -242,11 +203,9 @@ def create_game(
             started_timestamp=now,
             last_updated_timestamp=now,
         )
-        session.add(game_orm)
-        session.flush()
 
-        logger.info(f"Created RTB game {game_orm.id} for user {user_id} with bet {bet_amount}")
-        return RideTheBusGame.from_orm(game_orm), None
+        logger.info(f"Created RTB game {game.id} for user {user_id} with bet {bet_amount}")
+        return game, None
 
 
 def process_guess(game_id: int, guess: str) -> Tuple[Optional[RideTheBusGame], bool, Optional[str]]:
@@ -255,77 +214,109 @@ def process_guess(game_id: int, guess: str) -> Tuple[Optional[RideTheBusGame], b
     if guess not in ("higher", "lower", "equal"):
         return None, False, "Invalid guess. Must be 'higher', 'lower', or 'equal'"
 
-    game = get_game_by_id(game_id)
-    if not game:
-        return None, False, "Game not found"
-    if game.status != "active":
-        return None, False, f"Game is not active (status: {game.status})"
-    if game.current_position >= RTB_CARDS_PER_GAME:
-        return None, False, "Game is already complete"
-
-    # Compare current and next card rarities
-    current_rarity = game.card_rarities[game.current_position - 1]
-    next_rarity = game.card_rarities[game.current_position]
-
-    try:
-        diff = RARITY_ORDER.index(next_rarity) - RARITY_ORDER.index(current_rarity)
-    except ValueError:
-        diff = 0
-
-    if diff > 0:
-        actual = "higher"
-    elif diff < 0:
-        actual = "lower"
-    else:
-        actual = "equal"
-    correct = guess == actual
-    now = datetime.now(timezone.utc)
-
     with get_session(commit=True) as session:
-        game_orm = (
-            session.query(RideTheBusGameModel).filter(RideTheBusGameModel.id == game_id).first()
-        )
-        if not game_orm:
+        game_dto = rtb_repo.get_game_for_update(game_id, session=session)
+        if not game_dto:
             return None, False, "Game not found"
+        if game_dto.status != "active":
+            return None, False, f"Game is not active (status: {game_dto.status})"
+        if game_dto.current_position >= RTB_CARDS_PER_GAME:
+            return None, False, "Game is already complete"
+
+        # Compare current and next card rarities
+        current_rarity = game_dto.card_rarities[game_dto.current_position - 1]
+        next_rarity = game_dto.card_rarities[game_dto.current_position]
+
+        try:
+            diff = RARITY_ORDER.index(next_rarity) - RARITY_ORDER.index(current_rarity)
+        except ValueError:
+            diff = 0
+
+        if diff > 0:
+            actual = "higher"
+        elif diff < 0:
+            actual = "lower"
+        else:
+            actual = "equal"
+        correct = guess == actual
+        now = datetime.now(timezone.utc)
 
         if correct:
-            game_orm.current_position += 1
-            game_orm.current_multiplier = RTB_MULTIPLIER_PROGRESSION.get(
-                game_orm.current_position, game_orm.current_multiplier
+            new_position = game_dto.current_position + 1
+            new_multiplier = RTB_MULTIPLIER_PROGRESSION.get(
+                new_position, game_dto.current_multiplier
             )
-            game_orm.status = "won" if game_orm.current_position >= RTB_CARDS_PER_GAME else "active"
+            new_status = "won" if new_position >= RTB_CARDS_PER_GAME else "active"
         else:
-            game_orm.status = "lost"
+            new_position = game_dto.current_position
+            new_multiplier = game_dto.current_multiplier
+            new_status = "lost"
 
-        game_orm.last_updated_timestamp = now
-        session.flush()
+        rtb_repo.update_game_state(
+            game_id,
+            current_position=new_position,
+            current_multiplier=new_multiplier,
+            status=new_status,
+            last_updated_timestamp=now,
+            session=session,
+        )
+
+        updated_game = RideTheBusGame(
+            id=game_dto.id,
+            user_id=game_dto.user_id,
+            chat_id=game_dto.chat_id,
+            bet_amount=game_dto.bet_amount,
+            card_ids=game_dto.card_ids,
+            card_rarities=game_dto.card_rarities,
+            card_titles=game_dto.card_titles,
+            current_position=new_position,
+            current_multiplier=new_multiplier,
+            status=new_status,
+            started_timestamp=game_dto.started_timestamp,
+            last_updated_timestamp=now,
+        )
 
         logger.info(
-            f"RTB game {game_id}: guess={guess}, actual={actual}, correct={correct}, status={game_orm.status}"
+            f"RTB game {game_id}: guess={guess}, actual={actual}, correct={correct}, status={new_status}"
         )
-        return RideTheBusGame.from_orm(game_orm), correct, None
+        return updated_game, correct, None
 
 
 def cash_out(game_id: int) -> Tuple[Optional[RideTheBusGame], int, Optional[str]]:
     """Cash out of an RTB game. Returns (updated_game, payout, error_message)."""
-    game = get_game_by_id(game_id)
-    if not game:
-        return None, 0, "Game not found"
-    if game.status != "active":
-        return None, 0, f"Game is not active (status: {game.status})"
-    if game.current_position < 2:
-        return None, 0, "Cannot cash out before making at least one correct guess"
-
-    payout = game.bet_amount * game.current_multiplier
-    now = datetime.now(timezone.utc)
-
     with get_session(commit=True) as session:
-        game_orm = (
-            session.query(RideTheBusGameModel).filter(RideTheBusGameModel.id == game_id).first()
-        )
-        if game_orm:
-            game_orm.status = "cashed_out"
-            game_orm.last_updated_timestamp = now
+        game_dto = rtb_repo.get_game_for_update(game_id, session=session)
+        if not game_dto:
+            return None, 0, "Game not found"
+        if game_dto.status != "active":
+            return None, 0, f"Game is not active (status: {game_dto.status})"
+        if game_dto.current_position < 2:
+            return None, 0, "Cannot cash out before making at least one correct guess"
 
-    logger.info(f"RTB game {game_id}: cashed out at {game.current_multiplier}x for {payout} spins")
-    return get_game_by_id(game_id), payout, None
+        payout = game_dto.bet_amount * game_dto.current_multiplier
+        now = datetime.now(timezone.utc)
+
+        rtb_repo.update_game_state(
+            game_id,
+            status="cashed_out",
+            last_updated_timestamp=now,
+            session=session,
+        )
+
+        updated_game = RideTheBusGame(
+            id=game_dto.id,
+            user_id=game_dto.user_id,
+            chat_id=game_dto.chat_id,
+            bet_amount=game_dto.bet_amount,
+            card_ids=game_dto.card_ids,
+            card_rarities=game_dto.card_rarities,
+            card_titles=game_dto.card_titles,
+            current_position=game_dto.current_position,
+            current_multiplier=game_dto.current_multiplier,
+            status="cashed_out",
+            started_timestamp=game_dto.started_timestamp,
+            last_updated_timestamp=now,
+        )
+
+        logger.info(f"RTB game {game_id}: cashed out at {game_dto.current_multiplier}x for {payout} spins")
+        return updated_game, payout, None

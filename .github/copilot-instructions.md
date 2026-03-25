@@ -61,18 +61,28 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 1. **Telegram Bot** (`bot/bot.py`): Handles slash commands in group chats
 2. **REST API** (`bot/api/server.py`): Powers the Mini App + admin dashboard
 
-### Data Flow
+### Data Flow (3-Tier: Handler → Manager → Repository)
 ```
 Telegram Chat                    Mini App (WebView)        Admin Dashboard
      │                                  │                        │
      ▼                                  ▼                        ▼
 Bot Handlers ──────────────────► FastAPI Endpoints ◄──── Admin Routers
      │                                  │                        │
-     └──────────► Service Layer ◄───────┘────────────────────────┘
+     └──────────► Manager Layer ◄───────┘────────────────────────┘
+                  (business logic)
+                       │
+                       ▼
+                Repository Layer
+                 (data access)
                        │
                        ▼
              PostgreSQL Database
 ```
+
+**Layer rules:**
+- **Handlers** (`bot/handlers/`, `bot/api/routers/`): Thin entry points; orchestrate high-level flow via managers. May call repos directly for simple data retrieval.
+- **Managers** (`bot/managers/`): Business logic, validation, game rules, cross-model orchestration. Call repos for data access.
+- **Repositories** (`bot/repos/`): Pure data access — DB queries/mutations only. No business logic. Repos may import from other repos.
 
 ---
 
@@ -115,11 +125,39 @@ bot/
 │       ├── admin_auth.py     # Admin login (OTP + JWT)
 │       ├── admin_sets.py     # Admin season/set management
 │       └── admin_aspects.py  # Admin aspect definition CRUD
+├── repos/                    # Repository layer — pure data access (DB queries only)
+│   ├── card_repo.py              # Card CRUD, collection queries, ownership
+│   ├── aspect_repo.py            # Aspect catalog, owned aspects, definition CRUD
+│   ├── user_repo.py              # User management, chat enrollment, profiles
+│   ├── spin_repo.py              # Spin balances, megaspin tracking
+│   ├── claim_repo.py             # Claim point balances
+│   ├── rolled_card_repo.py       # Rolled card state tracking (rerolls)
+│   ├── rolled_aspect_repo.py     # Rolled aspect state tracking
+│   ├── character_repo.py         # Custom chat characters
+│   ├── set_repo.py               # Season/set management
+│   ├── event_repo.py             # Event log queries
+│   ├── achievement_repo.py       # Achievement data access
+│   ├── rtb_repo.py               # Ride the Bus game record queries
+│   ├── aspect_count_repo.py      # Aspect definition frequency per chat/season
+│   ├── thread_repo.py            # Thread ID storage for topic-based chats
+│   ├── admin_auth_repo.py        # Admin user lookups, OTP storage
+│   └── roll_repo.py              # Roll time tracking
+├── managers/                 # Manager layer — business logic and orchestration
+│   ├── card_manager.py           # Card claiming logic (row locks, point deduction)
+│   ├── aspect_manager.py         # Aspect burn, recycle, equip, claim logic
+│   ├── trade_manager.py          # Card and aspect trade orchestration
+│   ├── spin_manager.py           # Daily bonus streaks, megaspin counter
+│   ├── roll_manager.py           # Roll eligibility (cooldown checking)
+│   ├── event_manager.py          # Event logging + observer pattern
+│   ├── achievement_manager.py    # Achievement granting/syncing logic
+│   ├── auth_manager.py           # Admin JWT + bcrypt authentication
+│   └── casino/
+│       └── rtb_manager.py        # Ride the Bus game state machine
 ├── utils/
 │   ├── models.py             # All SQLAlchemy ORM models (~24 tables)
-│   ├── schemas.py            # Pydantic DTOs for API request/response validation
+│   ├── schemas.py            # Pydantic DTOs — all repo functions return these (Card, OwnedAspect, User, etc.)
 │   ├── database.py           # DB init + Alembic migration runner
-│   ├── session.py            # SQLAlchemy engine/session factory (PostgreSQL via psycopg v3)
+│   ├── session.py            # SQLAlchemy engine/session factory, @with_session decorator, use_session() helper
 │   ├── decorators.py         # @verify_user, @verify_user_in_chat, @verify_admin, @prevent_concurrency
 │   ├── events.py             # EventType enums, outcome enums (ROLL, CLAIM, BURN, SPIN, etc.)
 │   ├── achievements.py       # Achievement system (observer pattern on events)
@@ -128,26 +166,11 @@ bot/
 │   ├── gemini.py             # Google Gemini API integration for AI image generation
 │   ├── image.py              # Image processing (resize, crop, overlay)
 │   ├── minesweeper.py        # Minesweeper game logic
-│   ├── rtb.py                # Ride the Bus game logic
+│   ├── rtb.py                # Ride the Bus game logic (shim → managers.casino.rtb_manager)
 │   ├── miniapp.py            # Mini app utilities (token encoding)
 │   ├── logging_utils.py      # Logging configuration
-│   └── services/             # Business logic layer (ALL DB operations go through here)
-│       ├── card_service.py          # Card CRUD, claiming, locking, ownership
-│       ├── aspect_service.py        # Aspect catalog, burn, lock, recycle, equip
-│       ├── user_service.py          # User management, chat enrollment
-│       ├── spin_service.py          # Spin balances, daily bonus, megaspin tracking
-│       ├── claim_service.py         # Claim point balances
-│       ├── rolled_card_service.py   # Rolled card state tracking (rerolls)
-│       ├── rolled_aspect_service.py # Rolled aspect state tracking
-│       ├── character_service.py     # Custom chat characters
-│       ├── set_service.py           # Season/set management
-│       ├── event_service.py         # Event logging with observer pattern
-│       ├── achievement_service.py   # Achievement granting/checking
-│       ├── trade_service.py         # Card and aspect trades
-│       ├── rtb_service.py           # Ride the Bus game state
-│       ├── aspect_count_service.py  # Aspect definition frequency per chat/season
-│       ├── thread_service.py        # Thread ID storage for topic-based chats
-│       └── admin_auth_service.py    # Admin JWT + OTP authentication
+│   ├── aspect_counts.py      # Aspect count event listener
+│   └── slot_icon.py          # Slot icon generation utilities
 ├── settings/
 │   └── constants.py          # Loads config.json + env vars; rarity helpers, UI strings
 ├── data/                     # Game assets (card images, templates, slot assets, minesweeper assets)
@@ -249,12 +272,13 @@ miniapp/src/
 
 ## Design Principles
 
-### Backend Organization
-- **Handlers** (`bot/handlers/`): Telegram command handlers — thin layer that delegates to services
-- **API Routers** (`bot/api/routers/`): FastAPI endpoints — organized by domain, delegates to services
-- **Services** (`bot/utils/services/`): **All business logic lives here**; handlers/routers never do raw DB queries
-- **Models** (`bot/utils/models.py`): SQLAlchemy ORM models with PostgreSQL-native types (JSONB, bytea, etc.)
-- **Schemas** (`bot/utils/schemas.py`): Pydantic models for API request/response validation
+### Backend Organization (3-Tier: Handler → Manager → Repository)
+- **Handlers** (`bot/handlers/`): Telegram command handlers — thin entry points that delegate to managers. May call repos directly for simple reads.
+- **API Routers** (`bot/api/routers/`): FastAPI endpoints — organized by domain, delegate to managers. May call repos directly for simple reads.
+- **Managers** (`bot/managers/`): Business logic, validation, game rules, cross-model orchestration. Call repos for all data access. **Never** make direct DB queries.
+- **Repositories** (`bot/repos/`): Pure data access — DB queries/mutations only. **No business logic.** All repo functions return **Pydantic DTOs** (not ORM objects), converting inside the session boundary to prevent `DetachedInstanceError`. All repo functions accept an optional `session` keyword argument for transaction sharing.
+- **Models** (`bot/utils/models.py`): SQLAlchemy ORM models with PostgreSQL-native types (JSONB, bytea, etc.) — used only inside repos.
+- **Schemas** (`bot/utils/schemas.py`): Pydantic DTOs used throughout the app. Each schema has a `from_orm()` classmethod for ORM→DTO conversion (called inside repos only).
 
 ### Handler Decorators (`bot/utils/decorators.py`)
 Bot commands use decorators for auth/validation:
@@ -373,10 +397,14 @@ cd miniapp && npm run dev
 
 ## Key Conventions
 
-- **Never bypass the service layer** — all DB operations go through `bot/utils/services/`
+- **Follow the 3-tier layer rules** — Handlers → Managers → Repositories. Each layer only calls the layer below. Handlers may call repos directly for simple reads. Never bypass layers upward.
+- **Repos return Pydantic DTOs** — All repo functions return Pydantic schemas (from `utils/schemas.py`), never raw ORM objects. The ORM→DTO conversion happens inside the repo's `@with_session` boundary to prevent `DetachedInstanceError`.
+- **Session sharing for transactions** — All repo functions accept an optional `session=` keyword argument. Managers that need atomic multi-step operations open a session with `get_session(commit=True)` and pass it to each repo call. When a session is passed, the repo's `@with_session` decorator reuses it instead of creating a new one.
+- **`FOR UPDATE` queries use `noload("*")`** — Queries with `.with_for_update()` must not use `joinedload` or `subqueryload` (PostgreSQL forbids `FOR UPDATE` with outer joins and `DISTINCT`). These queries only return scalar fields for validation; relationship data is not needed.
+- **New code goes in repos/managers** — `bot/repos/` for data access, `bot/managers/` for business logic. The old `utils/services/` directory has been removed.
 - **Use existing decorators** — don't reinvent auth/validation in handlers
 - **Extend the ApiService class** — don't scatter fetch calls in frontend components; all backend calls go through `miniapp/src/services/api.ts`
-- **Use typed events** — use the EventType and outcome enums when logging actions via `event_service.log()`
+- **Use typed events** — use the EventType and outcome enums when logging actions via `event_manager.log()`
 - **Token encoding** — mini app launch params must use the established payload format (`c-`, `u-`, `uc-`, `casino-`)
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
 - **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel) with bytea columns for full images + thumbnails

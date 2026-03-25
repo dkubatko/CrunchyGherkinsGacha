@@ -5,13 +5,12 @@ from dataclasses import dataclass
 from typing import List, Literal, Optional
 
 from settings.constants import CURRENT_SEASON, RARITIES, ROLL_TYPE_WEIGHTS
-from utils.services import (
-    character_service,
-    user_service,
-    aspect_count_service,
-    aspect_service,
-)
+from repos import user_repo
+from repos import character_repo
+from repos import aspect_repo
+from repos import aspect_count_repo
 from utils.schemas import AspectDefinition, Character, User
+from utils.models import UserModel, CharacterModel
 from utils.gemini import GeminiUtil
 
 
@@ -82,7 +81,7 @@ class RollResult:
 def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
     """Pick a random source (user or character) that can be used for card generation."""
     # Get all eligible users from the chat
-    eligible_users = user_service.get_all_chat_users_with_profile(chat_id)
+    eligible_users = user_repo.get_all_chat_users_with_profile(chat_id)
 
     # Create SelectedProfile objects for all eligible users
     user_profiles = []
@@ -102,7 +101,7 @@ def select_random_source_with_image(chat_id: str) -> Optional[SelectedProfile]:
             )
 
     # Get all characters for this chat and create SelectedProfile objects
-    characters = character_service.get_characters_by_chat(chat_id)
+    characters = character_repo.get_characters_by_chat(chat_id)
     character_profiles = [
         SelectedProfile(
             name=char.name,
@@ -176,7 +175,7 @@ def _choose_aspect_definition_for_rarity(
     Raises:
         InvalidSourceError: If no aspect definitions exist for the rarity.
     """
-    defs_by_rarity = aspect_service.get_aspect_definitions_by_rarity(source=source)
+    defs_by_rarity = aspect_repo.get_aspect_definitions_by_rarity(source=source)
     definitions = defs_by_rarity.get(rarity)
     if not definitions:
         raise InvalidSourceError(f"No aspect definitions configured for rarity '{rarity}'")
@@ -186,7 +185,7 @@ def _choose_aspect_definition_for_rarity(
         return random.choice(definitions)
 
     # Weighted selection: 1/(1+count) favoring unseen definitions
-    counts = aspect_count_service.get_counts(chat_id)
+    counts = aspect_count_repo.get_counts(chat_id)
 
     weights: List[float] = []
     for ad in definitions:
@@ -215,7 +214,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
     normalized_type = (source_type or "").strip().lower()
 
     if normalized_type == "user":
-        user = user_service.get_user(source_id)
+        user = user_repo.get_user(source_id)
         if not user:
             raise InvalidSourceError(f"User {source_id} not found")
 
@@ -234,7 +233,7 @@ def get_profile_for_source(source_type: str, source_id: int) -> SelectedProfile:
         )
 
     if normalized_type == "character":
-        character = character_service.get_character_by_id(source_id)
+        character = character_repo.get_character_by_id(source_id)
         if not character:
             raise InvalidSourceError(f"Character {source_id} not found")
 
@@ -399,7 +398,7 @@ def generate_aspect_for_chat(
 
             thumbnail_bytes = ImageUtil.compress_to_fraction(image_bytes)
 
-            aspect_id = aspect_service.add_owned_aspect(
+            aspect_id = aspect_repo.add_owned_aspect(
                 aspect_definition_id=aspect_def.id,
                 chat_id=str(chat_id),
                 season_id=CURRENT_SEASON,

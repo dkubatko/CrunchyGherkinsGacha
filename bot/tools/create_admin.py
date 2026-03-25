@@ -30,7 +30,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 from utils import database  # noqa: E402
 from utils.models import AdminUserModel  # noqa: E402
 from utils.session import get_session  # noqa: E402
-from utils.services.admin_auth_service import hash_password  # noqa: E402
+from managers.auth_manager import hash_password  # noqa: E402
 
 # Initialize database (uses default pool settings)
 database.initialize_database()

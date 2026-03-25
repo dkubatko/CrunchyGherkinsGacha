@@ -13,9 +13,6 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 
-# Forward references for type hints - actual models imported in from_orm methods
-# to avoid circular imports
-
 
 class User(BaseModel):
     """User data transfer object."""
@@ -97,12 +94,13 @@ class Card(BaseModel):
     @classmethod
     def from_orm(cls, card_orm) -> "Card":
         """Convert a CardModel ORM object to a Card schema."""
-        set_name = card_orm.card_set.name if card_orm.card_set else None
+        set_name = card_orm.card_set.name if card_orm.card_set else ""
 
-        # Populate equipped_aspects when eagerly loaded
-        equipped_aspects = []
-        if hasattr(card_orm, "equipped_aspects") and card_orm.equipped_aspects:
-            equipped_aspects = [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+        equipped_aspects = (
+            [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+            if card_orm.equipped_aspects
+            else []
+        )
 
         return cls(
             id=card_orm.id,
@@ -143,12 +141,14 @@ class CardWithImage(Card):
         """Convert a CardModel ORM object (with eager-loaded image) to a CardWithImage schema."""
         image_bytes = card_orm.image.image if card_orm.image else None
         image_b64 = base64.b64encode(image_bytes).decode("utf-8") if image_bytes else ""
-        set_name = card_orm.card_set.name if card_orm.card_set else None
 
-        # Populate equipped_aspects when eagerly loaded
-        equipped_aspects = []
-        if hasattr(card_orm, "equipped_aspects") and card_orm.equipped_aspects:
-            equipped_aspects = [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+        set_name = card_orm.card_set.name if card_orm.card_set else ""
+
+        equipped_aspects = (
+            [CardAspect.from_orm(ca) for ca in card_orm.equipped_aspects]
+            if card_orm.equipped_aspects
+            else []
+        )
 
         return cls(
             id=card_orm.id,
@@ -188,6 +188,29 @@ class Claim(BaseModel):
             user_id=claim_orm.user_id,
             chat_id=claim_orm.chat_id,
             balance=claim_orm.balance,
+        )
+
+
+class Set(BaseModel):
+    """Card set data transfer object."""
+
+    id: int
+    season_id: int
+    name: str
+    source: Optional[str] = None
+    description: Optional[str] = None
+    active: bool
+
+    @classmethod
+    def from_orm(cls, set_orm) -> "Set":
+        """Convert a SetModel ORM object to a Set schema."""
+        return cls(
+            id=set_orm.id,
+            season_id=set_orm.season_id,
+            name=set_orm.name,
+            source=set_orm.source,
+            description=set_orm.description,
+            active=set_orm.active,
         )
 
 
@@ -266,7 +289,7 @@ class Spins(BaseModel):
     chat_id: str
     count: int
     login_streak: int = 0
-    last_bonus_date: Optional[str] = None
+    last_bonus_date: Optional[datetime.date] = None
 
     @classmethod
     def from_orm(cls, spins_orm) -> "Spins":
@@ -276,9 +299,7 @@ class Spins(BaseModel):
             chat_id=spins_orm.chat_id,
             count=spins_orm.count,
             login_streak=spins_orm.login_streak,
-            last_bonus_date=(
-                spins_orm.last_bonus_date.isoformat() if spins_orm.last_bonus_date else None
-            ),
+            last_bonus_date=spins_orm.last_bonus_date,
         )
 
 
@@ -479,11 +500,7 @@ class UserAchievement(BaseModel):
     def from_orm(cls, user_achievement_orm, include_achievement: bool = True) -> "UserAchievement":
         """Convert a UserAchievementModel ORM object to a UserAchievement schema."""
         achievement = None
-        if (
-            include_achievement
-            and hasattr(user_achievement_orm, "achievement")
-            and user_achievement_orm.achievement
-        ):
+        if include_achievement and user_achievement_orm.achievement:
             achievement = Achievement.from_orm(user_achievement_orm.achievement)
 
         return cls(
@@ -555,7 +572,7 @@ class OwnedAspect(BaseModel):
         # Resolve display name: custom override first, then definition name
         display_name = aspect_orm.name or ""
         aspect_def = None
-        if hasattr(aspect_orm, "aspect_definition") and aspect_orm.aspect_definition is not None:
+        if aspect_orm.aspect_definition is not None:
             aspect_def = AspectDefinition.from_orm(aspect_orm.aspect_definition)
             if not display_name:
                 display_name = aspect_orm.aspect_definition.name
@@ -600,7 +617,7 @@ class OwnedAspectWithImage(OwnedAspect):
         # Resolve display name
         display_name = aspect_orm.name or ""
         aspect_def = None
-        if hasattr(aspect_orm, "aspect_definition") and aspect_orm.aspect_definition is not None:
+        if aspect_orm.aspect_definition is not None:
             aspect_def = AspectDefinition.from_orm(aspect_orm.aspect_definition)
             if not display_name:
                 display_name = aspect_orm.aspect_definition.name
@@ -638,7 +655,7 @@ class CardAspect(BaseModel):
     def from_orm(cls, ca_orm) -> "CardAspect":
         """Convert a CardAspectModel ORM object to a CardAspect schema."""
         aspect = None
-        if hasattr(ca_orm, "aspect") and ca_orm.aspect is not None:
+        if ca_orm.aspect is not None:
             aspect = OwnedAspect.from_orm(ca_orm.aspect)
 
         return cls(
@@ -691,4 +708,21 @@ class RolledAspect(BaseModel):
             attempted_by=rolled_orm.attempted_by,
             is_locked=rolled_orm.is_locked,
             original_rarity=rolled_orm.original_rarity,
+        )
+
+
+class AdminUser(BaseModel):
+    """Admin user data transfer object (excludes sensitive fields)."""
+
+    id: int
+    username: str
+    telegram_user_id: int
+
+    @classmethod
+    def from_orm(cls, admin_orm) -> "AdminUser":
+        """Convert an AdminUserModel ORM object to an AdminUser schema."""
+        return cls(
+            id=admin_orm.id,
+            username=admin_orm.username,
+            telegram_user_id=admin_orm.telegram_user_id,
         )

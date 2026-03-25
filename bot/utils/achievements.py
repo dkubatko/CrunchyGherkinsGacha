@@ -27,7 +27,8 @@ from typing import Dict, List, TYPE_CHECKING
 from utils.events import (
     EventType,
 )
-from utils.services import achievement_service, event_service
+from managers import achievement_manager
+from managers import event_manager
 from utils.schemas import Event, UserAchievement
 
 if TYPE_CHECKING:
@@ -132,13 +133,13 @@ def _process_event(event: Event) -> None:
         for achievement in achievements:
             try:
                 # Skip if user already has this achievement
-                if achievement_service.has_achievement(user_id, achievement.name):
+                if achievement_manager.has_achievement(user_id, achievement.name):
                     continue
 
                 # Check if condition is met
                 if achievement.check_condition(user_id, event):
                     # Grant the achievement
-                    user_achievement = achievement_service.grant_achievement(
+                    user_achievement = achievement_manager.grant_achievement(
                         user_id, achievement.name
                     )
 
@@ -221,7 +222,7 @@ def init_achievements() -> None:
             return
 
         # Subscribe to event notifications
-        event_service.subscribe(_process_event)
+        event_manager.subscribe(_process_event)
         _initialized = True
 
 
@@ -252,7 +253,7 @@ def ensure_achievements_registered() -> None:
     created_count = 0
     updated_count = 0
     for achievement in unique_achievements.values():
-        result = achievement_service.sync_achievement(
+        result = achievement_manager.sync_achievement(
             achievement_id=achievement.id,
             name=achievement.name,
             description=achievement.description,

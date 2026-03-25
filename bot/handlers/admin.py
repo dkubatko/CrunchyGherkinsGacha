@@ -13,7 +13,10 @@ from telegram.constants import ChatType
 from telegram.ext import ContextTypes
 
 from config import ADMIN_USERNAME
-from utils.services import user_service, spin_service, card_service, thread_service
+from repos import user_repo
+from repos import spin_repo
+from repos import card_repo
+from repos import thread_repo
 from utils.schemas import User
 from utils.decorators import verify_admin, verify_user_in_chat
 
@@ -104,7 +107,7 @@ async def spins(
         if target_username:
             # Add spins to a specific user
             target_user_id = await asyncio.to_thread(
-                user_service.get_user_id_by_username, target_username
+                user_repo.get_user_id_by_username, target_username
             )
 
             if target_user_id is None:
@@ -116,7 +119,7 @@ async def spins(
 
             # Check if user is enrolled in this chat
             is_member = await asyncio.to_thread(
-                user_service.is_user_in_chat, chat_id, target_user_id
+                user_repo.is_user_in_chat, chat_id, target_user_id
             )
 
             if not is_member:
@@ -128,7 +131,7 @@ async def spins(
 
             # Add spins to the target user
             new_total = await asyncio.to_thread(
-                spin_service.increment_user_spins, target_user_id, chat_id, spins_to_add
+                spin_repo.increment_user_spins, target_user_id, chat_id, spins_to_add
             )
 
             plural = "spin" if spins_to_add == 1 else "spins"
@@ -144,7 +147,7 @@ async def spins(
             )
         else:
             # Add spins to all users in the chat
-            all_user_ids = await asyncio.to_thread(user_service.get_all_chat_users, chat_id)
+            all_user_ids = await asyncio.to_thread(user_repo.get_all_chat_users, chat_id)
 
             if not all_user_ids:
                 await message.reply_text(
@@ -158,7 +161,7 @@ async def spins(
             for user_id in all_user_ids:
                 try:
                     await asyncio.to_thread(
-                        spin_service.increment_user_spins, user_id, chat_id, spins_to_add
+                        spin_repo.increment_user_spins, user_id, chat_id, spins_to_add
                     )
                     successful_count += 1
                 except Exception as e:
@@ -198,7 +201,7 @@ async def reload(
 
     try:
         # Clear all file_ids from database
-        affected_rows = await asyncio.to_thread(card_service.clear_all_file_ids)
+        affected_rows = await asyncio.to_thread(card_repo.clear_all_file_ids)
 
         await update.message.reply_text(
             f"🔄 Reload complete! Cleared file_ids for {affected_rows} cards.\n"
@@ -263,7 +266,7 @@ async def set_thread(
 
         # Handle clear command
         if is_clear:
-            success = await asyncio.to_thread(thread_service.clear_thread_ids, chat_id)
+            success = await asyncio.to_thread(thread_repo.clear_thread_ids, chat_id)
             if success:
                 await message.reply_text(
                     "✅ All thread configurations have been cleared for this chat.\n\n"
@@ -289,7 +292,7 @@ async def set_thread(
             return
 
         success = await asyncio.to_thread(
-            thread_service.set_thread_id, chat_id, thread_id, thread_type
+            thread_repo.set_thread_id, chat_id, thread_id, thread_type
         )
 
         if success:

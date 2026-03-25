@@ -52,9 +52,9 @@ def _on_creation_event(event) -> None:
 
     definition_id = event.payload.get("aspect_definition_id") or event.payload.get("modifier_id")
 
-    from utils.services import aspect_count_service
+    from repos import aspect_count_repo
 
-    aspect_count_service.increment_count(
+    aspect_count_repo.increment_count(
         chat_id=event.chat_id,
         name=name,
         definition_id=definition_id,
@@ -78,13 +78,13 @@ def init_aspect_count_listener() -> None:
     """
     global _aspect_count_initialized
 
-    from utils.services import event_service
+    from managers import event_manager
 
     with _aspect_count_init_lock:
         if _aspect_count_initialized:
             LOGGER.debug("Aspect count listener already initialized")
             return
 
-        event_service.subscribe(_on_creation_event)
+        event_manager.subscribe(_on_creation_event)
         _aspect_count_initialized = True
         LOGGER.info("Aspect count listener initialized")

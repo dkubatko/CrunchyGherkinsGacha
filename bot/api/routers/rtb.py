@@ -23,20 +23,16 @@ from api.schemas import (
     RTBGuessResponse,
     RTBStartRequest,
 )
-from utils.services import (
-    rtb_create_game,
-    rtb_cash_out,
-    rtb_get_existing_game,
-    rtb_get_game_by_id,
-    rtb_get_cooldown_end_time,
-    rtb_process_guess,
-    RTB_MIN_BET,
-    RTB_MAX_BET,
-    RTB_MULTIPLIER_PROGRESSION,
+from repos import spin_repo
+from repos import user_repo
+from managers.casino import rtb_manager
+from managers import event_manager
+from repos import rtb_repo
+from settings.constants import (
     RARITY_ORDER,
-    user_service,
-    spin_service,
-    event_service,
+    RTB_MAX_BET,
+    RTB_MIN_BET,
+    RTB_MULTIPLIER_PROGRESSION,
 )
 from utils.events import EventType, RtbOutcome
 from utils.schemas import RideTheBusGame
@@ -79,7 +75,7 @@ def _build_game_response(
     next_pos = game.current_position + 1
 
     # Calculate cooldown end time for won/cashed_out games
-    cooldown_end = rtb_get_cooldown_end_time(game)
+    cooldown_end = rtb_manager.get_cooldown_end_time(game)
     cooldown_ends_at = format_timestamp(cooldown_end) if cooldown_end else None
 
     return RTBGameResponse(
@@ -109,7 +105,7 @@ async def _verify_user_in_chat(user_id: int, chat_id: str, validated_user: Dict[
 
 
 async def _get_spins_balance(user_id: int, chat_id: str) -> int:
-    return await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
+    return await asyncio.to_thread(spin_repo.get_user_spin_count, user_id, chat_id)
 
 
 @router.get("/game", response_model=Optional[RTBGameResponse])
@@ -125,7 +121,7 @@ async def get_rtb_game(
     """
     chat_id = await _verify_user_in_chat(user_id, chat_id, validated_user)
 
-    game = await asyncio.to_thread(rtb_get_existing_game, user_id, chat_id)
+    game = await asyncio.to_thread(rtb_manager.get_existing_game, user_id, chat_id)
     if not game:
         return None
 
@@ -154,26 +150,26 @@ async def start_rtb_game(
         )
 
     new_balance = await asyncio.to_thread(
-        spin_service.decrement_user_spins, request.user_id, chat_id, request.bet_amount
+        spin_repo.decrement_user_spins, request.user_id, chat_id, request.bet_amount
     )
     if new_balance is None:
         raise HTTPException(status_code=400, detail="Failed to deduct spins")
 
     # Create game
     game, error = await asyncio.to_thread(
-        rtb_create_game, request.user_id, chat_id, request.bet_amount
+        rtb_manager.create_game, request.user_id, chat_id, request.bet_amount
     )
     if error or not game:
         logger.warning(
             f"RTB start failed for user {request.user_id}: {error or 'No game returned'}"
         )
         await asyncio.to_thread(
-            spin_service.increment_user_spins, request.user_id, chat_id, request.bet_amount
+            spin_repo.increment_user_spins, request.user_id, chat_id, request.bet_amount
         )
         raise HTTPException(status_code=400, detail=error or "Failed to create game")
 
     # Log game started
-    event_service.log(
+    event_manager.log(
         EventType.RTB,
         RtbOutcome.STARTED,
         user_id=request.user_id,
@@ -201,7 +197,7 @@ async def make_rtb_guess(
         )
 
     # Validate game ownership
-    game = await asyncio.to_thread(rtb_get_game_by_id, request.game_id)
+    game = await asyncio.to_thread(rtb_repo.get_game_by_id, request.game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
     if game.user_id != request.user_id:
@@ -225,7 +221,7 @@ async def make_rtb_guess(
 
     # Process guess
     updated_game, correct, error = await asyncio.to_thread(
-        rtb_process_guess, request.game_id, guess
+        rtb_manager.process_guess, request.game_id, guess
     )
     if error or not updated_game:
         raise HTTPException(status_code=400, detail=error or "Failed to process guess")
@@ -234,11 +230,11 @@ async def make_rtb_guess(
     if correct and updated_game.status == "won":
         payout = updated_game.bet_amount * updated_game.current_multiplier
         await asyncio.to_thread(
-            spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
+            spin_repo.increment_user_spins, request.user_id, updated_game.chat_id, payout
         )
         message = f"🎉 Correct! You won {payout} spins!"
         # Log win event
-        event_service.log(
+        event_manager.log(
             EventType.RTB,
             RtbOutcome.WON,
             user_id=request.user_id,
@@ -250,7 +246,7 @@ async def make_rtb_guess(
             current_position=updated_game.current_position,
         )
         # Send win notification
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, request.user_id)
         if username:
             asyncio.create_task(
                 process_rtb_result_notification(
@@ -266,7 +262,7 @@ async def make_rtb_guess(
     else:
         message = f"❌ Wrong! Next card was {actual}. You lost {updated_game.bet_amount} spins."
         # Log loss event
-        event_service.log(
+        event_manager.log(
             EventType.RTB,
             RtbOutcome.LOST,
             user_id=request.user_id,
@@ -278,7 +274,7 @@ async def make_rtb_guess(
             current_position=updated_game.current_position,
         )
         # Send loss notification
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, request.user_id)
         if username:
             asyncio.create_task(
                 process_rtb_result_notification(
@@ -309,7 +305,7 @@ async def cash_out_rtb_game(
     await verify_user_match(request.user_id, validated_user)
 
     # Validate game
-    game = await asyncio.to_thread(rtb_get_game_by_id, request.game_id)
+    game = await asyncio.to_thread(rtb_repo.get_game_by_id, request.game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
     if game.user_id != request.user_id:
@@ -322,16 +318,16 @@ async def cash_out_rtb_game(
         )
 
     # Process cash out
-    updated_game, payout, error = await asyncio.to_thread(rtb_cash_out, request.game_id)
+    updated_game, payout, error = await asyncio.to_thread(rtb_manager.cash_out, request.game_id)
     if error or not updated_game:
         raise HTTPException(status_code=400, detail=error or "Failed to cash out")
 
     await asyncio.to_thread(
-        spin_service.increment_user_spins, request.user_id, updated_game.chat_id, payout
+        spin_repo.increment_user_spins, request.user_id, updated_game.chat_id, payout
     )
 
     # Log cash out event
-    event_service.log(
+    event_manager.log(
         EventType.RTB,
         RtbOutcome.CASHED_OUT,
         user_id=request.user_id,
@@ -344,7 +340,7 @@ async def cash_out_rtb_game(
     )
 
     # Send cashout notification
-    username = await asyncio.to_thread(user_service.get_username_for_user_id, request.user_id)
+    username = await asyncio.to_thread(user_repo.get_username_for_user_id, request.user_id)
     if username:
         asyncio.create_task(
             process_rtb_result_notification(
@@ -372,7 +368,7 @@ async def get_rtb_config(
     chat_id: Optional[str] = Query(None),
 ):
     """Get RTB game configuration and availability."""
-    from utils.services import rtb_check_availability
+    from managers.casino import rtb_manager as _rtb_manager
 
     config = {
         "min_bet": RTB_MIN_BET,
@@ -385,7 +381,7 @@ async def get_rtb_config(
     # If chat_id provided, check availability
     if chat_id:
         await validate_chat_exists(chat_id)
-        is_available, reason = await asyncio.to_thread(rtb_check_availability, chat_id)
+        is_available, reason = await asyncio.to_thread(_rtb_manager.check_availability, chat_id)
         config["available"] = is_available
         config["unavailable_reason"] = reason
     else:

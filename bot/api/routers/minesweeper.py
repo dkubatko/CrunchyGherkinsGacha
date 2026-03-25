@@ -28,12 +28,10 @@ from api.schemas import (
     MinesweeperUpdateResponse,
 )
 from utils import minesweeper, rolling
-from utils.services import (
-    card_service,
-    claim_service,
-    user_service,
-    event_service,
-)
+from repos import card_repo
+from repos import claim_repo
+from repos import user_repo
+from managers import event_manager
 from utils.events import EventType, MinesweeperOutcome
 
 logger = logging.getLogger(__name__)
@@ -64,7 +62,7 @@ async def minesweeper_game(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -180,7 +178,7 @@ async def minesweeper_create(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -193,13 +191,12 @@ async def minesweeper_create(
     await validate_user_in_chat(request.user_id, chat_id)
 
     # Verify the bet card exists and is owned by the user
-    card = await asyncio.to_thread(card_service.get_card, request.bet_card_id)
+    card = await asyncio.to_thread(card_repo.get_card, request.bet_card_id)
     if not card:
         logger.warning(
             "Minesweeper start requested with non-existent card_id: %s", request.bet_card_id
         )
         raise HTTPException(status_code=404, detail="Card not found")
-
     if card.owner != username:
         logger.warning(
             "User %s (%s) attempted to bet card %s owned by %s",
@@ -301,7 +298,7 @@ async def minesweeper_create(
             raise HTTPException(status_code=500, detail="Failed to start game")
 
         # Log game created
-        event_service.log(
+        event_manager.log(
             EventType.MINESWEEPER,
             MinesweeperOutcome.CREATED,
             user_id=request.user_id,
@@ -413,7 +410,7 @@ async def minesweeper_update(
     # Get username
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
@@ -451,7 +448,7 @@ async def minesweeper_update(
             )
 
         # Get the bet card info for responses
-        card = await asyncio.to_thread(card_service.get_card, game.bet_card_id)
+        card = await asyncio.to_thread(card_repo.get_card, game.bet_card_id)
         if not card:
             logger.error("Bet card %s not found for game %s", game.bet_card_id, request.game_id)
             raise HTTPException(status_code=500, detail="Game data inconsistent")
@@ -503,7 +500,7 @@ async def minesweeper_update(
         if is_claim_point and request.cell_index not in game.revealed_cells:
             try:
                 new_balance = await asyncio.to_thread(
-                    claim_service.increment_claim_balance,
+                    claim_repo.increment_claim_balance,
                     request.user_id,
                     game.chat_id,
                     1,
@@ -602,7 +599,7 @@ async def minesweeper_update(
                 set(updated_game.revealed_cells) & set(updated_game.claim_point_positions)
             )
             # Log loss event
-            event_service.log(
+            event_manager.log(
                 EventType.MINESWEEPER,
                 MinesweeperOutcome.LOST,
                 user_id=request.user_id,

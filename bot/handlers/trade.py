@@ -24,7 +24,10 @@ from settings.constants import (
     ASPECT_TRADE_REJECTED_MESSAGE,
     ASPECT_TRADE_CANCELLED_MESSAGE,
 )
-from utils.services import card_service, event_service, trade_service, aspect_service
+from repos import card_repo
+from repos import aspect_repo
+from managers import event_manager
+from managers import trade_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.miniapp import encode_single_card_token
@@ -82,8 +85,8 @@ async def _initiate_card_trade(
         await update.message.reply_text("Card IDs must be numbers.")
         return
 
-    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
 
     if not card1 or not card2:
         await update.message.reply_text("One or both card IDs are invalid.")
@@ -137,7 +140,7 @@ async def _initiate_card_trade(
     chat_id_str = str(update.effective_chat.id)
 
     # Log trade created
-    event_service.log(
+    event_manager.log(
         EventType.TRADE,
         TradeOutcome.CREATED,
         user_id=user.user_id,
@@ -178,8 +181,8 @@ async def _initiate_aspect_trade(
         await update.message.reply_text("Aspect IDs must be numbers.")
         return
 
-    aspect1 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id2)
+    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
+    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
 
     if not aspect1 or not aspect2:
         await update.message.reply_text("One or both aspect IDs are invalid.")
@@ -234,7 +237,7 @@ async def _initiate_aspect_trade(
     chat_id_str = str(update.effective_chat.id)
 
     # Log trade created
-    event_service.log(
+    event_manager.log(
         EventType.TRADE,
         TradeOutcome.CREATED,
         user_id=user.user_id,
@@ -272,8 +275,8 @@ async def reject_card_trade(
     card_id1 = int(parts[3])
     card_id2 = int(parts[4])
 
-    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
 
     if not card1 or not card2:
         await query.answer()
@@ -304,7 +307,7 @@ async def reject_card_trade(
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.CANCELLED,
             user_id=user.user_id,
@@ -321,7 +324,7 @@ async def reject_card_trade(
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.REJECTED,
             user_id=user.user_id,
@@ -363,8 +366,8 @@ async def accept_card_trade(
     card_id1 = int(parts[3])
     card_id2 = int(parts[4])
 
-    card1 = await asyncio.to_thread(card_service.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_service.get_card, card_id2)
+    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
+    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
 
     if not card1 or not card2:
         await query.answer()
@@ -379,7 +382,7 @@ async def accept_card_trade(
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(trade_service.trade_cards, card_id1, card_id2)
+    success = await asyncio.to_thread(trade_manager.trade_cards, card_id1, card_id2)
 
     chat_id_str = str(query.message.chat_id)
 
@@ -390,7 +393,7 @@ async def accept_card_trade(
             user2_username=user2_username,
             card2_title=card2.title(include_rarity=True),
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.ACCEPTED,
             user_id=user.user_id,
@@ -402,7 +405,7 @@ async def accept_card_trade(
         )
     else:
         message_text = "Trade failed. Please try again."
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.ERROR,
             user_id=user.user_id,
@@ -410,7 +413,7 @@ async def accept_card_trade(
             card_id=card_id2,
             target_card_id=card_id1,
             target_user=user1_username,
-            error_message="trade_cards failed",
+            error_message="trade_manager.trade_cards failed",
             type="card",
         )
 
@@ -451,8 +454,8 @@ async def reject_aspect_trade(
     aspect_id1 = int(parts[3])
     aspect_id2 = int(parts[4])
 
-    aspect1 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id2)
+    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
+    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
 
     if not aspect1 or not aspect2:
         await query.answer()
@@ -483,7 +486,7 @@ async def reject_aspect_trade(
             user2_username=user2_username,
             aspect2_title=aspect2_title,
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.CANCELLED,
             user_id=user.user_id,
@@ -500,7 +503,7 @@ async def reject_aspect_trade(
             user2_username=user2_username,
             aspect2_title=aspect2_title,
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.REJECTED,
             user_id=user.user_id,
@@ -535,8 +538,8 @@ async def accept_aspect_trade(
     aspect_id1 = int(parts[3])
     aspect_id2 = int(parts[4])
 
-    aspect1 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id2)
+    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
+    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
 
     if not aspect1 or not aspect2:
         await query.answer()
@@ -556,7 +559,7 @@ async def accept_aspect_trade(
         await query.answer("You are not the owner of the aspect being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(trade_service.trade_aspects, aspect_id1, aspect_id2)
+    success = await asyncio.to_thread(trade_manager.trade_aspects, aspect_id1, aspect_id2)
 
     chat_id_str = str(query.message.chat_id)
 
@@ -567,7 +570,7 @@ async def accept_aspect_trade(
             user2_username=user2_username,
             aspect2_title=aspect2_title,
         )
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.ACCEPTED,
             user_id=user.user_id,
@@ -579,7 +582,7 @@ async def accept_aspect_trade(
         )
     else:
         message_text = "Aspect trade failed. Both aspects must be unlocked and unequipped."
-        event_service.log(
+        event_manager.log(
             EventType.TRADE,
             TradeOutcome.ERROR,
             user_id=user.user_id,
@@ -587,7 +590,7 @@ async def accept_aspect_trade(
             aspect_id=aspect_id2,
             target_aspect_id=aspect_id1,
             target_user=user1_username,
-            error_message="trade_aspects failed",
+            error_message="trade_manager.trade_aspects failed",
             type="aspect",
         )
 
