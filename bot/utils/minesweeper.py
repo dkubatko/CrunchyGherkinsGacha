@@ -87,18 +87,21 @@ def get_source_icon(source_type: str, source_id: int) -> Optional[str]:
     Returns:
         Base64-encoded icon or None if not found
     """
-    from utils.services import user_service, character_service
+    from repos import user_repo
+    from repos import character_repo
 
     normalized_type = (source_type or "").strip().lower()
 
     if normalized_type == "user":
-        user = user_service.get_user(source_id)
-        if user and user.slot_icon_b64:
-            return user.slot_icon_b64
+        user = user_repo.get_user(source_id)
+        if user:
+            if user.slot_icon_b64:
+                return user.slot_icon_b64
     elif normalized_type == "character":
-        character = character_service.get_character_by_id(source_id)
-        if character and character.slot_icon_b64:
-            return character.slot_icon_b64
+        character = character_repo.get_character_by_id(source_id)
+        if character:
+            if character.slot_icon_b64:
+                return character.slot_icon_b64
 
     logger.warning(f"No icon found for source {source_type}:{source_id}")
     return None

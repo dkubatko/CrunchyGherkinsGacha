@@ -74,9 +74,9 @@ async def send_notification(
         message = f"<b>{count} spins</b> added to all accounts!\n\nUse /casino -- happy gambling 🎰"
 
     # Get thread_id if available
-    from utils.services import thread_service
+    from repos.thread_repo import get_thread_id
 
-    thread_id = thread_service.get_thread_id(str(chat_id))
+    thread_id = get_thread_id(str(chat_id))
 
     send_params = {
         "chat_id": chat_id,

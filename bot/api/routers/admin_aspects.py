@@ -17,7 +17,8 @@ from api.schemas import (
     AdminBulkAspectDefRequest,
     AdminBulkAspectDefResponse,
 )
-from utils.services import aspect_service
+from repos import aspect_repo
+from repos import set_repo
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,11 @@ async def list_aspect_definitions_for_set(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Return all aspect definitions belonging to a set, with per-definition owned counts."""
-    defs = await asyncio.to_thread(aspect_service.get_aspect_definitions_by_set, set_id, season_id)
+    defs = await asyncio.to_thread(aspect_repo.get_aspect_definitions_by_set, set_id, season_id)
 
     results = []
     for d in defs:
-        count = await asyncio.to_thread(aspect_service.get_owned_count_for_definition, d.id)
+        count = await asyncio.to_thread(aspect_repo.get_owned_count_for_definition, d.id)
         results.append(_definition_to_response(d, count))
 
     return results
@@ -72,10 +73,9 @@ async def create_aspect_definition(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Create a single aspect definition."""
-    from utils.services import set_service
 
     # Validate the target set exists
-    target_set = await asyncio.to_thread(set_service.get_set, body.set_id, body.season_id)
+    target_set = await asyncio.to_thread(set_repo.get_set, body.set_id, body.season_id)
     if target_set is None:
         raise HTTPException(
             status_code=404,
@@ -84,7 +84,7 @@ async def create_aspect_definition(
 
     # Check for duplicate name within the same set+season
     existing = await asyncio.to_thread(
-        aspect_service.get_aspect_definition_by_name_and_set,
+        aspect_repo.get_aspect_definition_by_name_and_set,
         body.name,
         body.set_id,
         body.season_id,
@@ -96,7 +96,7 @@ async def create_aspect_definition(
         )
 
     defn = await asyncio.to_thread(
-        aspect_service.create_aspect_definition,
+        aspect_repo.create_aspect_definition,
         set_id=body.set_id,
         name=body.name,
         rarity=body.rarity,
@@ -113,7 +113,7 @@ async def update_aspect_definition(
 ):
     """Update an existing aspect definition's fields."""
     updated = await asyncio.to_thread(
-        aspect_service.update_aspect_definition,
+        aspect_repo.update_aspect_definition,
         definition_id,
         name=body.name,
         rarity=body.rarity,
@@ -122,7 +122,7 @@ async def update_aspect_definition(
     if updated is None:
         raise HTTPException(status_code=404, detail="Aspect definition not found")
 
-    count = await asyncio.to_thread(aspect_service.get_owned_count_for_definition, definition_id)
+    count = await asyncio.to_thread(aspect_repo.get_owned_count_for_definition, definition_id)
     return _definition_to_response(updated, count)
 
 
@@ -133,7 +133,7 @@ async def delete_aspect_definition_endpoint(
 ):
     """Delete an aspect definition. Fails with 409 if it is linked to owned aspects."""
     success, message = await asyncio.to_thread(
-        aspect_service.delete_aspect_definition, definition_id
+        aspect_repo.delete_aspect_definition, definition_id
     )
     if not success:
         status = 404 if "not found" in message.lower() else 409
@@ -154,7 +154,7 @@ async def bulk_upsert_aspect_definitions(
     """
     items = [item.model_dump() for item in body.definitions]
     count = await asyncio.to_thread(
-        aspect_service.bulk_upsert_aspect_definitions, items, body.season_id
+        aspect_repo.bulk_upsert_aspect_definitions, items, body.season_id
     )
     return AdminBulkAspectDefResponse(upserted=count)
 
@@ -165,12 +165,12 @@ async def aspect_definition_stats(
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
     """Return usage statistics for a single aspect definition."""
-    defn = await asyncio.to_thread(aspect_service.get_aspect_definition_by_id, definition_id)
+    defn = await asyncio.to_thread(aspect_repo.get_aspect_definition_by_id, definition_id)
     if defn is None:
         raise HTTPException(status_code=404, detail="Aspect definition not found")
 
     owned_count = await asyncio.to_thread(
-        aspect_service.get_owned_count_for_definition, definition_id
+        aspect_repo.get_owned_count_for_definition, definition_id
     )
     return {
         "definition_id": defn.id,

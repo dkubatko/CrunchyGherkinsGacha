@@ -66,12 +66,11 @@ from settings.constants import (
 )
 from utils import rolling
 from utils.miniapp import encode_single_card_token
-from utils.services import (
-    card_service,
-    claim_service,
-    event_service,
-    aspect_service,
-)
+from repos import card_repo
+from repos import claim_repo
+from repos import aspect_repo
+from managers import event_manager
+from managers import aspect_manager
 from utils.schemas import User, Card
 from utils.decorators import verify_user_in_chat
 from utils.events import (
@@ -120,7 +119,7 @@ async def refresh(
         )
         return
 
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     if not card:
         await message.reply_text(
             REFRESH_CARD_NOT_FOUND_MESSAGE,
@@ -150,7 +149,7 @@ async def refresh(
 
     # Check claim balance
     refresh_cost = get_refresh_cost(card.rarity)
-    balance = await asyncio.to_thread(claim_service.get_claim_balance, user.user_id, chat_id_str)
+    balance = await asyncio.to_thread(claim_repo.get_claim_balance, user.user_id, chat_id_str)
     if balance < refresh_cost:
         await message.reply_text(
             REFRESH_INSUFFICIENT_BALANCE_MESSAGE.format(balance=balance, cost=refresh_cost),
@@ -230,7 +229,7 @@ async def _handle_refresh_cancel(
     card_id: int,
 ) -> None:
     """Handle refresh cancellation from confirmation screen."""
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     if card:
         card_title = card.title(include_id=True, include_rarity=True)
         cancel_msg = REFRESH_CANCELLED_MESSAGE.format(card_title=card_title)
@@ -265,7 +264,7 @@ async def _handle_refresh_nav(
         return
 
     # Get the card info for caption
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
     remaining_balance = session["remaining_balance"]
 
@@ -326,14 +325,14 @@ async def _handle_refresh_pick(
         await query.answer("Invalid option.", show_alert=True)
         return
 
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     card_title = card.title(include_id=True, include_rarity=True) if card else f"Card {card_id}"
     chat_id_for_balance = session["chat_id"]
 
     # If user selected the original image (option 1), keep the original without updating
     if option_index == 1:
         latest_balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, chat_id_for_balance
+            claim_repo.get_claim_balance, user.user_id, chat_id_for_balance
         )
         success_message = (
             f"<b>{card_title}</b>\n\nKept original image.\n\nBalance: {latest_balance}"
@@ -341,10 +340,10 @@ async def _handle_refresh_pick(
     else:
         # Update the card with the new image
         chosen_image_b64 = options[selection_idx]
-        await asyncio.to_thread(card_service.update_card_image, card_id, chosen_image_b64)
+        await asyncio.to_thread(card_repo.update_card_image, card_id, chosen_image_b64)
 
         latest_balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, chat_id_for_balance
+            claim_repo.get_claim_balance, user.user_id, chat_id_for_balance
         )
         success_message = REFRESH_SUCCESS_MESSAGE.format(
             card_title=card_title,
@@ -384,7 +383,7 @@ async def _handle_refresh_pick(
     )
 
     # Log refresh success event
-    event_service.log(
+    event_manager.log(
         EventType.REFRESH,
         RefreshOutcome.SUCCESS,
         user_id=user.user_id,
@@ -463,11 +462,11 @@ async def _generate_equipped_refresh_options(
     )
 
     # Gather all equipped aspect images
-    equipped = await asyncio.to_thread(aspect_service.get_aspects_for_card, card.id)
+    equipped = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card.id)
     aspects_data: list[tuple[str, bytes]] = []
     for ca in equipped:
         aspect_with_img = await asyncio.to_thread(
-            aspect_service.get_aspect_with_image, ca.aspect_id
+            aspect_repo.get_aspect_with_image, ca.aspect_id
         )
         if aspect_with_img and aspect_with_img.image_b64:
             aspects_data.append(
@@ -563,7 +562,7 @@ async def _handle_refresh_confirm(
     refresh_cost = 0
     active_chat_id = None
     try:
-        card = await asyncio.to_thread(card_service.get_card, card_id)
+        card = await asyncio.to_thread(card_repo.get_card, card_id)
         if not card:
             await query.answer(REFRESH_CARD_NOT_FOUND_MESSAGE, show_alert=True)
             return
@@ -575,7 +574,7 @@ async def _handle_refresh_confirm(
         refresh_cost = get_refresh_cost(card.rarity)
         active_chat_id = card.chat_id or chat_id_str
         balance = await asyncio.to_thread(
-            claim_service.get_claim_balance, user.user_id, active_chat_id
+            claim_repo.get_claim_balance, user.user_id, active_chat_id
         )
 
         if balance < refresh_cost:
@@ -586,7 +585,7 @@ async def _handle_refresh_confirm(
             return
 
         remaining_balance = await asyncio.to_thread(
-            claim_service.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
+            claim_repo.reduce_claim_points, user.user_id, active_chat_id, refresh_cost
         )
         points_deducted = remaining_balance is not None
 
@@ -619,10 +618,10 @@ async def _handle_refresh_confirm(
         ) as exc:
             logger.warning("Image regeneration failed for card %s: %s", card_id, exc)
             await asyncio.to_thread(
-                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+                claim_repo.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
             # Log refresh error event
-            event_service.log(
+            event_manager.log(
                 EventType.REFRESH,
                 RefreshOutcome.ERROR,
                 user_id=user.user_id,
@@ -658,7 +657,7 @@ async def _handle_refresh_confirm(
         except Exception as exc:
             logger.warning("Failed to show refresh options for card %s: %s", card_id, exc)
             await asyncio.to_thread(
-                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+                claim_repo.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
             await query.answer(
                 "Refresh failed. Image generation is unavailable right now.", show_alert=True
@@ -684,7 +683,7 @@ async def _handle_refresh_confirm(
         logger.exception("Unexpected error during refresh for card %s: %s", card_id, exc)
         if points_deducted:
             await asyncio.to_thread(
-                claim_service.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
+                claim_repo.increment_claim_balance, user.user_id, active_chat_id, refresh_cost
             )
             logger.info(
                 "Refunded %d claim points to user %s after unexpected refresh error",
@@ -693,7 +692,7 @@ async def _handle_refresh_confirm(
             )
         await query.answer("Refresh failed due to an unexpected error.", show_alert=True)
         try:
-            error_card = await asyncio.to_thread(card_service.get_card, card_id)
+            error_card = await asyncio.to_thread(card_repo.get_card, card_id)
             if error_card:
                 error_title = error_card.title(include_id=True, include_rarity=True)
                 error_msg = REFRESH_FAILURE_MESSAGE.format(card_title=error_title)
@@ -871,7 +870,7 @@ async def equip(
     chat_id_str = str(chat.id)
 
     # Fetch aspect and card
-    aspect = await asyncio.to_thread(aspect_service.get_aspect_by_id, aspect_id)
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
     if not aspect:
         await message.reply_text(
             EQUIP_ASPECT_NOT_FOUND_MESSAGE,
@@ -879,7 +878,7 @@ async def equip(
         )
         return
 
-    card = await asyncio.to_thread(card_service.get_card, card_id)
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
     if not card:
         await message.reply_text(
             EQUIP_CARD_NOT_FOUND_MESSAGE,
@@ -933,7 +932,7 @@ async def equip(
         return
 
     # Check equipped status
-    equipped_aspects = await asyncio.to_thread(aspect_service.get_aspects_for_card, card_id)
+    equipped_aspects = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card_id)
     is_already_equipped = any(ca.aspect_id == aspect_id for ca in equipped_aspects)
     if is_already_equipped:
         await message.reply_text(
@@ -1077,7 +1076,7 @@ async def handle_equip_callback(
             except Exception:
                 pass
         if chat_id_str:
-            event_service.log(
+            event_manager.log(
                 EventType.EQUIP,
                 EquipOutcome.FAILURE,
                 user_id=user.user_id,
@@ -1128,7 +1127,7 @@ async def handle_equip_callback(
 
         # Execute the atomic equip transaction
         equip_success = await asyncio.to_thread(
-            aspect_service.equip_aspect_on_card,
+            aspect_manager.equip_aspect_on_card,
             aspect_id,
             card_id,
             user.user_id,
@@ -1138,7 +1137,7 @@ async def handle_equip_callback(
 
         if not equip_success:
             await query.edit_message_text(EQUIP_DB_FAILURE_MESSAGE)
-            event_service.log(
+            event_manager.log(
                 EventType.EQUIP,
                 EquipOutcome.FAILURE,
                 user_id=user.user_id,
@@ -1151,7 +1150,7 @@ async def handle_equip_callback(
 
         # --- Image generation phase ---
         # Retrieve the updated card with its image
-        card_with_image = await asyncio.to_thread(card_service.get_card_with_aspects, card_id)
+        card_with_image = await asyncio.to_thread(card_repo.get_card_with_aspects, card_id)
         if not card_with_image:
             logger.error("Card %s not found after successful equip", card_id)
             await query.edit_message_text(
@@ -1166,7 +1165,7 @@ async def handle_equip_callback(
 
         # Gather equipped aspect images for Gemini
         equipped_aspects_data = await asyncio.to_thread(
-            aspect_service.get_aspects_for_card, card_id
+            aspect_repo.get_aspects_for_card, card_id
         )
 
         existing_aspects: list[tuple[str, bytes]] = []
@@ -1174,7 +1173,7 @@ async def handle_equip_callback(
 
         for ca in equipped_aspects_data:
             aspect_with_img = await asyncio.to_thread(
-                aspect_service.get_aspect_with_image, ca.aspect_id
+                aspect_repo.get_aspect_with_image, ca.aspect_id
             )
             if not aspect_with_img or not aspect_with_img.image_b64:
                 continue
@@ -1219,7 +1218,7 @@ async def handle_equip_callback(
 
         if new_image_b64:
             # Update the card image in DB
-            await asyncio.to_thread(card_service.update_card_image, card_id, new_image_b64)
+            await asyncio.to_thread(card_repo.update_card_image, card_id, new_image_b64)
 
             # Send the new card photo
             image_bytes = base64.b64decode(new_image_b64)
@@ -1269,7 +1268,7 @@ async def handle_equip_callback(
 
     except Exception as exc:
         logger.exception("Unexpected error during equip for card %s: %s", card_id, exc)
-        event_service.log(
+        event_manager.log(
             EventType.EQUIP,
             EquipOutcome.FAILURE,
             user_id=user.user_id,

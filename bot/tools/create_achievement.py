@@ -29,7 +29,7 @@ load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
 # Must import after dotenv loading
 from utils.achievement_icon import generate_achievement_icon, save_icon_preview  # noqa: E402
-from utils.services import (  # noqa: E402
+from repos.achievement_repo import (  # noqa: E402
     get_achievement_by_name,
     register_achievement,
     update_achievement_icon,

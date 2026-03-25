@@ -36,11 +36,9 @@ from api.schemas import (
 )
 from utils.miniapp import encode_single_card_token
 from utils.schemas import Card as APICard
-from utils.services import (
-    card_service,
-    thread_service,
-    user_service,
-)
+from repos import card_repo
+from repos import thread_repo
+from repos import user_repo
 from utils.download_token import validate_download_token
 
 # Import limiter for rate limiting
@@ -59,8 +57,8 @@ async def get_all_cards_endpoint(
     """Get all cards that have been claimed."""
     if chat_id:
         await validate_chat_exists(chat_id)
-    cards = await asyncio.to_thread(card_service.get_all_cards, chat_id)
-    return cards
+    card_models = await asyncio.to_thread(card_repo.get_all_cards, chat_id)
+    return card_models
 
 
 @router.get("/{user_id}", response_model=UserCollectionResponse)
@@ -75,13 +73,13 @@ async def get_user_collection(
     """
     if chat_id:
         await validate_chat_exists(chat_id)
-    cards = await asyncio.to_thread(card_service.get_user_collection, user_id, chat_id)
-    user_record = await asyncio.to_thread(user_service.get_user, user_id)
+    cards = await asyncio.to_thread(card_repo.get_user_collection, user_id, chat_id)
+    user_record = await asyncio.to_thread(user_repo.get_user, user_id)
     username = user_record.username if user_record else None
     display_name = user_record.display_name if user_record else None
 
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, user_id)
 
     if not cards and username is None:
         logger.warning(f"No user or cards found for user_id: {user_id}")
@@ -103,7 +101,7 @@ async def get_card_detail(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Fetch metadata for a single card, including equipped aspects."""
-    card = await asyncio.to_thread(card_service.get_card_with_aspects, card_id)
+    card = await asyncio.to_thread(card_repo.get_card_with_aspects, card_id)
     if not card:
         logger.warning("Card detail requested for non-existent card_id: %s", card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -124,7 +122,7 @@ async def share_card(
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
 
-    card = await asyncio.to_thread(card_service.get_card, request.card_id)
+    card = await asyncio.to_thread(card_repo.get_card, request.card_id)
     if not card:
         logger.warning("Share requested for non-existent card_id: %s", request.card_id)
         raise HTTPException(status_code=404, detail="Card not found")
@@ -136,7 +134,7 @@ async def share_card(
 
     username = user_data.get("username")
     if not username:
-        username = await asyncio.to_thread(user_service.get_username_for_user_id, auth_user_id)
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
 
     if not username:
         logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
@@ -169,7 +167,7 @@ async def share_card(
             message += f"\n\n<i>Owned by @{card.owner}</i>"
 
         # Get thread_id if available
-        thread_id = await asyncio.to_thread(thread_service.get_thread_id, card_chat_id)
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, card_chat_id)
 
         send_params = {
             "chat_id": card_chat_id,
@@ -202,7 +200,7 @@ async def get_card_image_route(
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
     """Get the base64 encoded image for a card."""
-    image_b64 = await asyncio.to_thread(card_service.get_card_image, card_id)
+    image_b64 = await asyncio.to_thread(card_repo.get_card_image, card_id)
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
     return image_b64
@@ -218,7 +216,7 @@ async def get_card_thumbnail_route(
     Returns a much smaller image suitable for grid/card views.
     Generates and caches the thumbnail on first request if not yet available.
     """
-    thumb_b64 = await asyncio.to_thread(card_service.get_card_thumbnail, card_id)
+    thumb_b64 = await asyncio.to_thread(card_repo.get_card_thumbnail, card_id)
     if not thumb_b64:
         raise HTTPException(status_code=404, detail="Thumbnail not found")
     return thumb_b64
@@ -247,7 +245,7 @@ async def view_card_image_route(
     if not validate_download_token(token, card_id, TELEGRAM_TOKEN):
         raise HTTPException(status_code=401, detail="Invalid or expired token")
 
-    image_b64 = await asyncio.to_thread(card_service.get_card_image, card_id)
+    image_b64 = await asyncio.to_thread(card_repo.get_card_image, card_id)
     if not image_b64:
         raise HTTPException(status_code=404, detail="Image not found")
 
@@ -279,7 +277,7 @@ async def get_card_images_route(
             status_code=400, detail="A maximum of 3 card IDs can be requested per batch"
         )
 
-    images = await asyncio.to_thread(card_service.get_card_images_batch, unique_card_ids)
+    images = await asyncio.to_thread(card_repo.get_card_images_batch, unique_card_ids)
 
     if not images:
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")

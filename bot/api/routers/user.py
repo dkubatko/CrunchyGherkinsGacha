@@ -12,14 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api.dependencies import get_validated_user, validate_chat_exists
 from api.schemas import UserProfileResponse, UserAchievementResponse
-from utils.services import (
-    card_service,
-    claim_service,
-    spin_service,
-    user_service,
-    get_user_achievements,
-    get_user_card_rarity_counts,
-)
+from repos import card_repo
+from repos import claim_repo
+from repos import spin_repo
+from repos import user_repo
+from repos import achievement_repo
 
 logger = logging.getLogger(__name__)
 
@@ -38,24 +35,24 @@ async def get_user_profile(
         await validate_chat_exists(chat_id)
 
         # Get user info
-        user = await asyncio.to_thread(user_service.get_user, user_id)
+        user = await asyncio.to_thread(user_repo.get_user, user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
 
         # Get claim balance
-        claim_balance = await asyncio.to_thread(claim_service.get_claim_balance, user_id, chat_id)
+        claim_balance = await asyncio.to_thread(claim_repo.get_claim_balance, user_id, chat_id)
 
         # Get spin balance (no auto-grant; daily bonus is claimed explicitly)
-        spin_balance = await asyncio.to_thread(spin_service.get_user_spin_count, user_id, chat_id)
+        spin_balance = await asyncio.to_thread(spin_repo.get_user_spin_count, user_id, chat_id)
 
         # Get card count
-        card_count = await asyncio.to_thread(card_service.get_user_card_count, user_id, chat_id)
+        card_count = await asyncio.to_thread(card_repo.get_user_card_count, user_id, chat_id)
 
         # Get card rarity counts for profile stats
-        rarity_counts = await asyncio.to_thread(get_user_card_rarity_counts, user_id, chat_id)
+        rarity_counts = await asyncio.to_thread(card_repo.get_user_card_rarity_counts, user_id, chat_id)
 
         # Get user achievements
-        user_achievements = await asyncio.to_thread(get_user_achievements, user_id)
+        user_achievements = await asyncio.to_thread(achievement_repo.get_user_achievements, user_id)
         achievements_response = [
             UserAchievementResponse(
                 id=ua.achievement.id if ua.achievement else ua.achievement_id,
