@@ -135,7 +135,7 @@ def recycle_aspects(
 
 
 def _rarity_index(rarity: str) -> int:
-    """Return the index of a rarity in RARITY_ORDER (lower = rarer)."""
+    """Return the index of a rarity in RARITY_ORDER (lower = more common)."""
     try:
         return RARITY_ORDER.index(rarity)
     except ValueError:
@@ -193,8 +193,8 @@ def equip_aspect_on_card(
         if aspect.rarity != "Unique":
             aspect_idx = _rarity_index(aspect.rarity)
             card_idx = _rarity_index(card.rarity)
-            # Lower index = rarer. Aspect must be same or more common than card.
-            if aspect_idx < card_idx:
+            # Lower index = more common. Aspect must be same rarity or lower than card.
+            if aspect_idx > card_idx:
                 return False
 
         # Ensure aspect is not already equipped

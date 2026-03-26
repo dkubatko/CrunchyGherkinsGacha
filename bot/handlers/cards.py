@@ -817,7 +817,7 @@ def _validate_equip_name(name_prefix: str) -> Optional[str]:
 
 
 def _rarity_index(rarity: str) -> int:
-    """Return the index of a rarity in RARITY_ORDER (lower = rarer)."""
+    """Return the index of a rarity in RARITY_ORDER (lower = more common)."""
     try:
         return RARITY_ORDER.index(rarity)
     except ValueError:
@@ -953,7 +953,7 @@ async def equip(
     if aspect.rarity != "Unique":
         aspect_idx = _rarity_index(aspect.rarity)
         card_idx = _rarity_index(card.rarity)
-        if aspect_idx < card_idx:
+        if aspect_idx > card_idx:
             await message.reply_text(
                 EQUIP_RARITY_MISMATCH_MESSAGE.format(
                     aspect_rarity=aspect.rarity,
