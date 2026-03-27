@@ -69,6 +69,7 @@ from utils.miniapp import encode_single_card_token
 from repos import card_repo
 from repos import claim_repo
 from repos import aspect_repo
+from repos import equip_session_repo
 from managers import event_manager
 from managers import aspect_manager
 from utils.schemas import User, Card
@@ -984,7 +985,7 @@ async def equip(
 
     # Build new display title for the confirmation
     new_title = f"{name_prefix} {card.base_name}"
-    card_title = card.title(include_id=True, include_rarity=True)
+    card_title = card.title(include_id=True)
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -1002,16 +1003,18 @@ async def equip(
     )
 
     # Store session data for the callback
-    session_key = f"equip_session_{chat_id_str}_{user.user_id}"
-    context.user_data[session_key] = {
-        "aspect_id": aspect_id,
-        "card_id": card_id,
-        "name_prefix": name_prefix,
-        "aspect_name": aspect.display_name,
-        "aspect_rarity": aspect.rarity,
-        "card_title": card.title(),
-        "new_title": new_title,
-    }
+    await asyncio.to_thread(
+        equip_session_repo.create_or_replace,
+        user_id=user.user_id,
+        chat_id=chat_id_str,
+        aspect_id=aspect_id,
+        card_id=card_id,
+        name_prefix=name_prefix,
+        aspect_name=aspect.display_name or "Unknown",
+        aspect_rarity=aspect.rarity,
+        card_title=card.title(),
+        new_title=new_title,
+    )
 
     await message.reply_text(
         EQUIP_CONFIRM_MESSAGE.format(
@@ -1020,6 +1023,7 @@ async def equip(
             aspect_rarity=aspect.rarity,
             card_id=card_id,
             card_title=card_title,
+            card_rarity=card.rarity,
             new_title=html.escape(new_title),
             aspect_count=card.aspect_count,
         ),
@@ -1062,11 +1066,16 @@ async def handle_equip_callback(
     chat = update.effective_chat
     chat_id_str = str(chat.id) if chat else None
 
-    session_key = f"equip_session_{chat_id_str}_{user.user_id}"
-    session = context.user_data.get(session_key)
+    db_session = await asyncio.to_thread(
+        equip_session_repo.get_session,
+        user.user_id,
+        chat_id_str,
+        aspect_id,
+        card_id,
+    )
 
     if action == "cancel":
-        context.user_data.pop(session_key, None)
+        await asyncio.to_thread(equip_session_repo.delete_session, user.user_id, chat_id_str)
         await query.answer(EQUIP_CANCELLED_MESSAGE)
         try:
             await query.message.delete()
@@ -1091,7 +1100,7 @@ async def handle_equip_callback(
         await query.answer()
         return
 
-    if not session:
+    if not db_session:
         await query.answer("Session expired or invalid.", show_alert=True)
         try:
             await query.edit_message_text("Session expired. Please try /equip again.")
@@ -1105,10 +1114,10 @@ async def handle_equip_callback(
         return
 
     equipping_users.add(user.user_id)
-    name_prefix = session["name_prefix"]
-    aspect_name = session["aspect_name"]
-    card_title = session["card_title"]
-    new_title = session["new_title"]
+    name_prefix = db_session.name_prefix
+    aspect_name = db_session.aspect_name
+    card_title = db_session.card_title
+    new_title = db_session.new_title
 
     try:
         await query.answer()
@@ -1157,7 +1166,7 @@ async def handle_equip_callback(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
                     card_id=card_id,
                     new_title=html.escape(new_title),
-                    rarity=session["aspect_rarity"],
+                    rarity=db_session.aspect_rarity,
                     aspect_count=card_with_image.aspect_count if card_with_image else "?",
                 )
             )
@@ -1285,4 +1294,7 @@ async def handle_equip_callback(
             pass
     finally:
         equipping_users.discard(user.user_id)
-        context.user_data.pop(session_key, None)
+        try:
+            await asyncio.to_thread(equip_session_repo.delete_session, user.user_id, chat_id_str)
+        except Exception:
+            pass

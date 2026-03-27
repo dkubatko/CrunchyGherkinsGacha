@@ -141,6 +141,22 @@ class AspectConfigResponse(BaseModel):
     lock_costs: Dict[str, int]
 
 
+class EquipInitiateRequest(BaseModel):
+    """Request to initiate an equip from the miniapp."""
+
+    card_id: int
+    user_id: int
+    chat_id: str
+    name_prefix: Optional[str] = None
+
+
+class EquipInitiateResponse(BaseModel):
+    """Response after initiating an equip from the miniapp."""
+
+    success: bool
+    message: str
+
+
 # =============================================================================
 # SLOTS SCHEMAS
 # =============================================================================

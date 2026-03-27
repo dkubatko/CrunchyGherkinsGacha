@@ -272,13 +272,13 @@ const CollectionTab = ({
     if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
       buttons.push({
         id: 'trade', text: 'Trade', onClick: handleTradeClick,
-        variant: 'primary'
+        variant: 'trade-blue'
       });
     } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
       modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
       buttons.push({
         id: 'select', text: 'Select', onClick: handleSelectClick,
-        variant: 'primary'
+        variant: 'trade-blue'
       });
     }
 

@@ -762,7 +762,7 @@ EQUIP_NAME_TOO_LONG_MESSAGE = "Name prefix is too long. Please keep it under 30 
 EQUIP_NAME_INVALID_CHARS_MESSAGE = "Name prefix contains invalid characters. Avoid HTML/markdown special characters (<, >, &, *, _, `)."
 EQUIP_CONFIRM_MESSAGE = (
     "Equip <b>🔮 [{aspect_id}] {aspect_name}</b> ({aspect_rarity}) "
-    "onto <b>[{card_id}] {card_title}</b>?\n\n"
+    "onto <b>{card_title}</b> ({card_rarity})?\n\n"
     "Card will be renamed to: <b>{new_title}</b>\n"
     "Aspects on card: {aspect_count}/5"
 )
