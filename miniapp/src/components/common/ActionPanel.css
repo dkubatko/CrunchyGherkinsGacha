@@ -128,6 +128,42 @@
   outline: none;
 }
 
+.action-button.equip-green {
+  background: #34a853;
+  color: #ffffff;
+  border: 1px solid #2d9249;
+}
+
+.action-button.equip-green:hover {
+  background: #2d9249;
+  transform: translateY(-1px);
+}
+
+.action-button.equip-green:active,
+.action-button.equip-green:focus:active {
+  background: #267a3e;
+  transform: translateY(1px);
+  outline: none;
+}
+
+.action-button.trade-blue {
+  background: #3478f6;
+  color: #ffffff;
+  border: 1px solid #2a6ae0;
+}
+
+.action-button.trade-blue:hover {
+  background: #2a6ae0;
+  transform: translateY(-1px);
+}
+
+.action-button.trade-blue:active,
+.action-button.trade-blue:focus:active {
+  background: #2259c4;
+  transform: translateY(1px);
+  outline: none;
+}
+
 /* When only one button is present */
 .action-panel-content:has(:only-child) {
   justify-content: center;

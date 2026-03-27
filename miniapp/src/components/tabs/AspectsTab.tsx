@@ -2,11 +2,11 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 import './AspectsTab.css';
 
 // Components
-import { AspectGrid, AspectModal } from '@/components/aspects';
+import { AspectGrid, AspectModal, EquipCardSelector } from '@/components/aspects';
 import { FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
 import Loading from '@/components/common/Loading';
-import { BurnConfirmDialog, LockConfirmDialog } from '@/components/dialogs';
+import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/components/dialogs';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
@@ -59,6 +59,12 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     balance: null,
     loading: false,
   });
+
+  // Equip flow state
+  const [showEquipSelector, setShowEquipSelector] = useState(false);
+  const [equipSelectedCard, setEquipSelectedCard] = useState<CardData | null>(null);
+  const [showEquipNameDialog, setShowEquipNameDialog] = useState(false);
+  const [equipProcessing, setEquipProcessing] = useState(false);
 
   // Load aspect config once
   useEffect(() => {
@@ -138,6 +144,57 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
 
   const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
 
+  // ── Equip ──
+  const handleEquipClick = useCallback(() => {
+    if (!selectedAspect) return;
+    if (selectedAspect.locked) {
+      TelegramUtils.showAlert('Unlock this aspect before equipping it.');
+      return;
+    }
+    // Close the aspect modal and open card selector
+    setShowModal(false);
+    setShowEquipSelector(true);
+  }, [selectedAspect]);
+
+  const handleEquipCardSelect = useCallback((card: CardData) => {
+    setEquipSelectedCard(card);
+    setShowEquipSelector(false);
+    setShowEquipNameDialog(true);
+  }, []);
+
+  const handleEquipNameConfirm = useCallback(async (namePrefix: string) => {
+    if (!selectedAspect || !equipSelectedCard || !chatId) return;
+    setEquipProcessing(true);
+    try {
+      await ApiService.initiateEquip(
+        selectedAspect.id,
+        equipSelectedCard.id,
+        currentUserId,
+        chatId,
+        initData,
+        namePrefix,
+      );
+      TelegramUtils.closeApp();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to initiate equip';
+      TelegramUtils.showAlert(msg);
+      setEquipProcessing(false);
+    }
+  }, [selectedAspect, equipSelectedCard, chatId, currentUserId, initData]);
+
+  const handleEquipNameCancel = useCallback(() => {
+    setShowEquipNameDialog(false);
+    setEquipSelectedCard(null);
+  }, []);
+
+  const handleEquipSelectorClose = useCallback(() => {
+    setShowEquipSelector(false);
+    // Re-open the aspect modal
+    if (selectedAspect) {
+      setShowModal(true);
+    }
+  }, [selectedAspect]);
+
   // Derive burn reward & lock cost from config
   const burnReward = selectedAspect && config
     ? config.burn_rewards[selectedAspect.rarity] ?? 0
@@ -166,8 +223,17 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
       id: 'lock',
       text: selectedAspect.locked ? 'Unlock' : 'Lock',
       onClick: handleLockClick,
-      variant: 'secondary',
+      variant: 'lock-grey',
     });
+
+    if (!selectedAspect.locked) {
+      buttons.push({
+        id: 'equip',
+        text: 'Equip',
+        onClick: handleEquipClick,
+        variant: 'equip-green',
+      });
+    }
 
     if (!selectedAspect.locked) {
       buttons.push({
@@ -179,7 +245,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     }
 
     return buttons;
-  }, [selectedAspect, showModal, handleLockClick, handleBurnClick]);
+  }, [selectedAspect, showModal, handleLockClick, handleEquipClick, handleBurnClick]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 
@@ -276,6 +342,31 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
         buttons={actionButtons}
         visible={isActionPanelVisible}
       />
+
+      {/* Equip card selector */}
+      {selectedAspect && chatId && (
+        <EquipCardSelector
+          isOpen={showEquipSelector}
+          aspect={selectedAspect}
+          currentUserId={currentUserId}
+          chatId={chatId}
+          initData={initData}
+          onCardSelect={handleEquipCardSelect}
+          onClose={handleEquipSelectorClose}
+        />
+      )}
+
+      {/* Equip name dialog */}
+      {selectedAspect && equipSelectedCard && (
+        <EquipNameDialog
+          isOpen={showEquipNameDialog}
+          aspect={selectedAspect}
+          card={equipSelectedCard}
+          onConfirm={(name) => void handleEquipNameConfirm(name)}
+          onCancel={handleEquipNameCancel}
+          processing={equipProcessing}
+        />
+      )}
     </>
   );
 };

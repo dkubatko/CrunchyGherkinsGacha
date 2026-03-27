@@ -326,6 +326,73 @@ export class ApiService {
     return response.json();
   }
 
+  /**
+   * Fetch cards eligible for equipping a given aspect.
+   */
+  static async getEligibleCards(
+    aspectId: number,
+    userId: number,
+    chatId: string,
+    initData: string,
+  ): Promise<CardData[]> {
+    const params = new URLSearchParams({
+      user_id: String(userId),
+      chat_id: chatId,
+    });
+    const response = await fetch(
+      `${API_BASE_URL}/aspects/${encodeURIComponent(String(aspectId))}/eligible-cards?${params.toString()}`,
+      { headers: this.getHeaders(initData) },
+    );
+    if (!response.ok) {
+      let detail = `Failed to fetch eligible cards (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) detail = payload.detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+    return response.json();
+  }
+
+  /**
+   * Initiate the equip flow from the miniapp.
+   * Sends the equip confirmation message to the group chat.
+   */
+  static async initiateEquip(
+    aspectId: number,
+    cardId: number,
+    userId: number,
+    chatId: string,
+    initData: string,
+    namePrefix?: string,
+  ): Promise<{ success: boolean; message: string }> {
+    const body: Record<string, unknown> = {
+      card_id: cardId,
+      user_id: userId,
+      chat_id: chatId,
+    };
+    if (namePrefix !== undefined && namePrefix !== '') {
+      body.name_prefix = namePrefix;
+    }
+    const response = await fetch(
+      `${API_BASE_URL}/aspects/${encodeURIComponent(String(aspectId))}/equip-initiate`,
+      {
+        method: 'POST',
+        headers: this.getHeaders(initData),
+        body: JSON.stringify(body),
+      },
+    );
+    if (!response.ok) {
+      let detail = `Failed to initiate equip (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) detail = payload.detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+    return response.json();
+  }
+
   static async fetchSlotSymbols(chatId: string, initData: string): Promise<SlotSymbolSummary[]> {
     const response = await fetch(`${API_BASE_URL}/chat/${encodeURIComponent(chatId)}/slot-symbols`, {
       headers: this.getHeaders(initData)

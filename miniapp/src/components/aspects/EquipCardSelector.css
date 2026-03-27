@@ -1,0 +1,28 @@
+.equip-card-selector {
+  position: fixed;
+  inset: 0;
+  background: var(--tg-theme-bg-color, #1c1c1e);
+  z-index: 1002;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.equip-card-selector-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 10px;
+}
+
+.equip-card-selector-content.with-action-panel {
+  padding-bottom: 80px;
+}
+
+/* Portal elements (CardModal, ActionPanel) need to layer above the selector */
+body.equip-selector-open > .modal-overlay {
+  z-index: 1003;
+}
+
+body.equip-selector-open > .action-panel {
+  z-index: 1004;
+}

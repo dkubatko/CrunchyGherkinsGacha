@@ -654,3 +654,33 @@ class AdminUserModel(Base):
     otp_expires_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     __table_args__ = (Index("idx_admin_users_username", "username"),)
+
+
+class EquipSessionModel(Base):
+    """Stores pending equip session data.
+
+    Used by both the /equip chat command and the miniapp equip-initiate API
+    to persist session state across the confirmation flow.  One pending
+    equip per user per chat (unique on user_id + chat_id).
+    """
+
+    __tablename__ = "equip_sessions"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    chat_id: Mapped[str] = mapped_column(Text, nullable=False)
+    aspect_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    card_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    name_prefix: Mapped[str] = mapped_column(Text, nullable=False)
+    aspect_name: Mapped[str] = mapped_column(Text, nullable=False)
+    aspect_rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    card_title: Mapped[str] = mapped_column(Text, nullable=False)
+    new_title: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "chat_id", name="uq_equip_sessions_user_chat"),
+        Index("idx_equip_sessions_user_chat", "user_id", "chat_id"),
+    )

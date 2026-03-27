@@ -21,8 +21,8 @@
   "CLAIM_UNLOCK_DELAY_HIGH": 10,
   "PRE_CLAIM_ROTATION_INTERVAL": 1.5,
   "ROLL_TYPE_WEIGHTS": {
-    "base_card": 10,
-    "aspect": 90
+    "base_card": 20,
+    "aspect": 80
   },
   "RARITIES": {
     "Common": {

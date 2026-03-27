@@ -12,6 +12,7 @@ This module contains endpoints for aspect operations including:
 """
 
 import asyncio
+import html
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -22,6 +23,7 @@ from api.dependencies import (
     validate_user_in_chat,
     verify_user_match,
 )
+from api.config import create_bot_instance
 from api.schemas import (
     AspectBurnRequest,
     AspectBurnResponse,
@@ -30,12 +32,17 @@ from api.schemas import (
     AspectImagesRequest,
     AspectLockRequest,
     AspectLockResponse,
+    EquipInitiateRequest,
+    EquipInitiateResponse,
 )
-from settings.constants import RARITY_ORDER, get_lock_cost, get_spin_reward
-from utils.schemas import OwnedAspect
+from settings.constants import EQUIP_CONFIRM_MESSAGE, RARITY_ORDER, get_lock_cost, get_spin_reward
+from utils.schemas import Card, OwnedAspect
 from repos import aspect_repo
+from repos import card_repo
 from repos import claim_repo
+from repos import equip_session_repo
 from repos import spin_repo
+from repos import thread_repo
 from managers import aspect_manager
 from managers import event_manager
 from utils.events import EventType, BurnOutcome, LockOutcome
@@ -138,6 +145,221 @@ async def get_aspect_thumbnails_batch(
         raise HTTPException(status_code=404, detail="No images found for requested aspect IDs")
 
     return response_payload
+
+
+# =============================================================================
+# EQUIP ENDPOINTS
+# =============================================================================
+
+
+@router.get("/{aspect_id}/eligible-cards", response_model=List[Card])
+async def get_eligible_cards(
+    aspect_id: int,
+    user_id: int = Query(..., alias="user_id"),
+    chat_id: str = Query(..., alias="chat_id"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Return cards eligible for equipping the given aspect.
+
+    Filters:
+    - Owned by the authenticated user
+    - Same chat_id as the aspect
+    - Not locked
+    - aspect_count < 5
+    - Rarity compatible (card rarity >= aspect rarity, or aspect is Unique)
+    """
+    await verify_user_match(user_id, validated_user)
+
+    # Fetch the aspect
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
+    if not aspect:
+        raise HTTPException(status_code=404, detail="Aspect not found")
+
+    # Verify ownership
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+    if aspect.user_id != auth_user_id:
+        raise HTTPException(status_code=403, detail="You do not own this aspect")
+
+    # Verify chat association
+    if aspect.chat_id != chat_id:
+        raise HTTPException(status_code=400, detail="Aspect is not associated with this chat")
+
+    # Fetch user's cards in this chat
+    cards = await asyncio.to_thread(
+        card_repo.get_user_collection, auth_user_id, chat_id
+    )
+
+    # Filter for eligibility
+    aspect_rarity_idx = RARITY_ORDER.index(aspect.rarity) if aspect.rarity in RARITY_ORDER else len(RARITY_ORDER)
+
+    eligible = []
+    for card in cards:
+        # Must not be locked
+        if card.locked:
+            continue
+        # Must have capacity
+        if card.aspect_count >= 5:
+            continue
+        # Rarity check (Unique aspects can go on any card)
+        if aspect.rarity != "Unique":
+            card_rarity_idx = RARITY_ORDER.index(card.rarity) if card.rarity in RARITY_ORDER else -1
+            if aspect_rarity_idx > card_rarity_idx:
+                continue
+        eligible.append(card)
+
+    return eligible
+
+
+@router.post("/{aspect_id}/equip-initiate", response_model=EquipInitiateResponse)
+async def equip_initiate(
+    aspect_id: int,
+    request: EquipInitiateRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Initiate an equip from the miniapp.
+
+    Validates all equip preconditions, stores session in DB, and sends
+    the equip confirmation message with inline keyboard to the group chat.
+    """
+    await verify_user_match(request.user_id, validated_user)
+
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+    chat_id = str(request.chat_id)
+
+    # Fetch aspect
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
+    if not aspect:
+        raise HTTPException(status_code=404, detail="Aspect not found")
+
+    # Fetch card
+    card = await asyncio.to_thread(card_repo.get_card, request.card_id)
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Ownership checks
+    if aspect.user_id != auth_user_id:
+        raise HTTPException(status_code=403, detail="You do not own this aspect")
+    if card.user_id != auth_user_id:
+        raise HTTPException(status_code=403, detail="You do not own this card")
+
+    # Chat match
+    if aspect.chat_id != chat_id:
+        raise HTTPException(status_code=400, detail="Aspect is not in this chat")
+    if not card.chat_id or card.chat_id != chat_id:
+        raise HTTPException(status_code=400, detail="Card is not in this chat")
+
+    # Lock checks
+    if card.locked:
+        raise HTTPException(status_code=400, detail="Cannot equip onto a locked card. Unlock it first.")
+    if aspect.locked:
+        raise HTTPException(status_code=400, detail="Cannot equip a locked aspect. Unlock it first.")
+
+    # Check if aspect is already equipped
+    is_equipped = await asyncio.to_thread(aspect_repo.is_aspect_equipped, aspect_id)
+    if is_equipped:
+        raise HTTPException(status_code=400, detail="This aspect is already equipped on a card.")
+
+    # Capacity
+    if card.aspect_count >= 5:
+        raise HTTPException(status_code=400, detail="This card already has 5 aspects equipped (maximum).")
+
+    # Rarity compatibility
+    if aspect.rarity != "Unique":
+        aspect_idx = RARITY_ORDER.index(aspect.rarity) if aspect.rarity in RARITY_ORDER else len(RARITY_ORDER)
+        card_idx = RARITY_ORDER.index(card.rarity) if card.rarity in RARITY_ORDER else -1
+        if aspect_idx > card_idx:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Rarity mismatch: a {aspect.rarity} aspect cannot be equipped on a {card.rarity} card.",
+            )
+
+    # Validate user in chat
+    await validate_user_in_chat(auth_user_id, chat_id)
+
+    # Resolve name prefix
+    name_prefix = request.name_prefix or aspect.display_name or "Unknown"
+    name_prefix = name_prefix[0].upper() + name_prefix[1:] if name_prefix else name_prefix
+
+    # Validate name
+    if len(name_prefix) > 30:
+        raise HTTPException(status_code=400, detail="Name prefix is too long. Please keep it under 30 characters.")
+    invalid_chars = set("<>&*_`")
+    if any(ch in invalid_chars for ch in name_prefix):
+        raise HTTPException(status_code=400, detail="Name prefix contains invalid characters.")
+
+    # Build new title
+    new_title = f"{name_prefix} {card.base_name}"
+    card_title = card.title(include_id=True)
+
+    # Store equip session in DB
+    await asyncio.to_thread(
+        equip_session_repo.create_or_replace,
+        user_id=auth_user_id,
+        chat_id=chat_id,
+        aspect_id=aspect_id,
+        card_id=request.card_id,
+        name_prefix=name_prefix,
+        aspect_name=aspect.display_name or "Unknown",
+        aspect_rarity=aspect.rarity,
+        card_title=card_title,
+        new_title=new_title,
+    )
+
+    # Build confirmation message + inline keyboard
+    from telegram import InlineKeyboardButton, InlineKeyboardMarkup
+    from telegram.constants import ParseMode
+
+    confirm_text = EQUIP_CONFIRM_MESSAGE.format(
+        aspect_id=aspect_id,
+        aspect_name=html.escape(aspect.display_name or "Unknown"),
+        aspect_rarity=aspect.rarity,
+        card_id=request.card_id,
+        card_title=html.escape(card_title),
+        card_rarity=card.rarity,
+        new_title=html.escape(new_title),
+        aspect_count=card.aspect_count,
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Equip!",
+                    callback_data=f"equip_yes_{aspect_id}_{request.card_id}_{auth_user_id}",
+                ),
+                InlineKeyboardButton(
+                    "Cancel",
+                    callback_data=f"equip_cancel_{aspect_id}_{request.card_id}_{auth_user_id}",
+                ),
+            ]
+        ]
+    )
+
+    # Send to group chat
+    try:
+        bot = create_bot_instance()
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
+
+        send_params: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": confirm_text,
+            "reply_markup": keyboard,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+    except Exception as exc:
+        logger.error("Failed to send equip confirmation to chat %s: %s", chat_id, exc)
+        raise HTTPException(status_code=500, detail="Failed to send confirmation to chat")
+
+    return EquipInitiateResponse(
+        success=True,
+        message="Equip confirmation sent to chat! Head there to confirm.",
+    )
 
 
 # =============================================================================
