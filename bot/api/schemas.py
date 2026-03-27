@@ -6,6 +6,7 @@ They compose or reference the domain DTOs from utils.schemas but are separate
 concerns from the database layer.
 """
 
+import datetime
 from typing import Dict, List, Optional
 
 from pydantic import BaseModel
@@ -33,7 +34,7 @@ class UserAchievementResponse(BaseModel):
     name: str
     description: str
     icon_b64: Optional[str] = None
-    unlocked_at: str  # ISO format datetime string
+    unlocked_at: datetime.datetime
 
 
 class UserProfileResponse(BaseModel):
@@ -324,8 +325,8 @@ class MinesweeperStartResponse(BaseModel):
     card_rarity: str  # Rarity of the bet card
     revealed_cells: List[int]
     moves_count: int
-    started_timestamp: str
-    last_updated_timestamp: str
+    started_timestamp: datetime.datetime
+    last_updated_timestamp: datetime.datetime
     reward_card_id: Optional[int] = None  # Only populated if status is 'won'
     mine_positions: Optional[List[int]] = None  # Only populated if status is 'won' or 'lost'
     claim_point_positions: Optional[List[int]] = (
@@ -334,7 +335,7 @@ class MinesweeperStartResponse(BaseModel):
     card_icon: Optional[str] = None  # Base64 slot icon of the game's selected source
     claim_point_icon: Optional[str] = None  # Base64 icon for claim points
     mine_icon: Optional[str] = None  # Base64 icon for mines
-    next_refresh_time: Optional[str] = None  # When the next game can be started (if game is over)
+    next_refresh_time: Optional[datetime.datetime] = None
 
 
 class MinesweeperUpdateRequest(BaseModel):
@@ -395,10 +396,10 @@ class RTBGameResponse(BaseModel):
     next_multiplier: int  # Multiplier after next correct guess
     potential_payout: int  # Current bet * current multiplier
     cards: List[RTBCardInfo]  # Only revealed cards have full info
-    started_timestamp: str
-    last_updated_timestamp: str
+    started_timestamp: datetime.datetime
+    last_updated_timestamp: datetime.datetime
     spins_balance: Optional[int] = None  # User's current spin balance
-    cooldown_ends_at: Optional[str] = None  # ISO timestamp when cooldown ends (for won/cashed_out)
+    cooldown_ends_at: Optional[datetime.datetime] = None
 
 
 class RTBGuessRequest(BaseModel):
@@ -505,7 +506,7 @@ class AdminAspectDefResponse(BaseModel):
     rarity: str
     set_id: int
     season_id: int
-    created_at: str
+    created_at: Optional[datetime.datetime] = None
     owned_count: int = 0
 
 

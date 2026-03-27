@@ -29,17 +29,17 @@ router = APIRouter(prefix="/admin/aspects", tags=["admin-aspects"])
 
 
 def _definition_to_response(
-    defn,
+    defn: "AspectDefinition",
     owned_count: int = 0,
 ) -> AdminAspectDefResponse:
-    """Convert an ``AspectDefinitionModel`` ORM object to an API response."""
+    """Convert an ``AspectDefinition`` Pydantic DTO to an API response."""
     return AdminAspectDefResponse(
         id=defn.id,
         name=defn.name,
         rarity=defn.rarity,
         set_id=defn.set_id,
         season_id=defn.season_id,
-        created_at=defn.created_at.isoformat() if defn.created_at else "",
+        created_at=defn.created_at,
         owned_count=owned_count,
     )
 

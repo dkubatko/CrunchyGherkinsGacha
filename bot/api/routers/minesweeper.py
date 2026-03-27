@@ -20,7 +20,7 @@ from api.background_tasks import (
 )
 from api.config import DEBUG_MODE, gemini_util
 from api.dependencies import get_validated_user, validate_user_in_chat, verify_user_match
-from api.helpers import ensure_utc, format_timestamp
+from api.helpers import ensure_utc
 from api.schemas import (
     MinesweeperStartRequest,
     MinesweeperStartResponse,
@@ -128,7 +128,7 @@ async def minesweeper_game(
         if game.status in ("won", "lost") and started_timestamp is not None:
             cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
             next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
-            next_refresh_time = format_timestamp(next_refresh)
+            next_refresh_time = ensure_utc(next_refresh)
 
         return MinesweeperStartResponse(
             game_id=game.id,
@@ -137,8 +137,8 @@ async def minesweeper_game(
             card_rarity=card_rarity,
             revealed_cells=game.revealed_cells,
             moves_count=game.moves_count,
-            started_timestamp=format_timestamp(started_timestamp),
-            last_updated_timestamp=format_timestamp(last_updated_timestamp),
+            started_timestamp=started_timestamp,
+            last_updated_timestamp=last_updated_timestamp,
             reward_card_id=game.reward_card_id,
             mine_positions=mine_positions,
             claim_point_positions=visible_claim_points,
@@ -358,7 +358,7 @@ async def minesweeper_create(
         if game.status in ("won", "lost") and started_timestamp is not None:
             cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
             next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
-            next_refresh_time = format_timestamp(next_refresh)
+            next_refresh_time = ensure_utc(next_refresh)
 
         return MinesweeperStartResponse(
             game_id=game.id,
@@ -367,8 +367,8 @@ async def minesweeper_create(
             card_rarity=bet_card_rarity,
             revealed_cells=game.revealed_cells,
             moves_count=game.moves_count,
-            started_timestamp=format_timestamp(started_timestamp),
-            last_updated_timestamp=format_timestamp(last_updated_timestamp),
+            started_timestamp=started_timestamp,
+            last_updated_timestamp=last_updated_timestamp,
             reward_card_id=game.reward_card_id,
             mine_positions=mine_positions,
             claim_point_positions=visible_claim_points,
@@ -567,7 +567,7 @@ async def minesweeper_update(
             if started_timestamp is not None:
                 cooldown_seconds = 60 if DEBUG_MODE else 24 * 60 * 60
                 next_refresh = started_timestamp + timedelta(seconds=cooldown_seconds)
-                next_refresh_time = format_timestamp(next_refresh)
+                next_refresh_time = ensure_utc(next_refresh)
 
         # Spawn background tasks if game ended
         if updated_game.status == "won":

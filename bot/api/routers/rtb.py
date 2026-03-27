@@ -13,7 +13,7 @@ from api.dependencies import (
     validate_user_in_chat,
     verify_user_match,
 )
-from api.helpers import format_timestamp
+
 from api.schemas import (
     RTBCardInfo,
     RTBCashOutRequest,
@@ -76,7 +76,7 @@ def _build_game_response(
 
     # Calculate cooldown end time for won/cashed_out games
     cooldown_end = rtb_manager.get_cooldown_end_time(game)
-    cooldown_ends_at = format_timestamp(cooldown_end) if cooldown_end else None
+    cooldown_ends_at = cooldown_end
 
     return RTBGameResponse(
         game_id=game.id,
@@ -87,8 +87,8 @@ def _build_game_response(
         next_multiplier=RTB_MULTIPLIER_PROGRESSION.get(next_pos, game.current_multiplier),
         potential_payout=game.bet_amount * game.current_multiplier,
         cards=cards,
-        started_timestamp=format_timestamp(game.started_timestamp),
-        last_updated_timestamp=format_timestamp(game.last_updated_timestamp),
+        started_timestamp=game.started_timestamp,
+        last_updated_timestamp=game.last_updated_timestamp,
         spins_balance=spins_balance,
         cooldown_ends_at=cooldown_ends_at,
     )
