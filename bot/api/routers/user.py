@@ -59,7 +59,7 @@ async def get_user_profile(
                 name=ua.achievement.name if ua.achievement else "Unknown",
                 description=ua.achievement.description if ua.achievement else "",
                 icon_b64=ua.achievement.icon_b64 if ua.achievement else None,
-                unlocked_at=ua.unlocked_at.isoformat(),
+                unlocked_at=ua.unlocked_at,
             )
             for ua in user_achievements
         ]

@@ -54,14 +54,14 @@ class Card(BaseModel):
     user_id: Optional[int]
     file_id: Optional[str]
     chat_id: Optional[str]
-    created_at: Optional[str]
+    created_at: Optional[datetime.datetime] = None
     locked: bool = False
     source_type: Optional[str] = None
     source_id: Optional[int] = None
     set_id: Optional[int] = None
     season_id: int = 0
     set_name: Optional[str] = None
-    updated_at: Optional[str] = None
+    updated_at: Optional[datetime.datetime] = None
     description: Optional[str] = None
     aspect_count: int = 0
     equipped_aspects: List["CardAspect"] = []
@@ -111,14 +111,14 @@ class Card(BaseModel):
             user_id=card_orm.user_id,
             file_id=card_orm.file_id,
             chat_id=card_orm.chat_id,
-            created_at=card_orm.created_at.isoformat() if card_orm.created_at else None,
+            created_at=card_orm.created_at,
             locked=card_orm.locked,
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
             set_id=card_orm.set_id,
             season_id=card_orm.season_id,
             set_name=set_name,
-            updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
+            updated_at=card_orm.updated_at,
             description=card_orm.description,
             aspect_count=card_orm.aspect_count,
             equipped_aspects=equipped_aspects,
@@ -159,7 +159,7 @@ class CardWithImage(Card):
             user_id=card_orm.user_id,
             file_id=card_orm.file_id,
             chat_id=card_orm.chat_id,
-            created_at=card_orm.created_at.isoformat() if card_orm.created_at else None,
+            created_at=card_orm.created_at,
             locked=card_orm.locked,
             source_type=card_orm.source_type,
             source_id=card_orm.source_id,
@@ -167,7 +167,7 @@ class CardWithImage(Card):
             season_id=card_orm.season_id,
             set_name=set_name,
             image_b64=image_b64,
-            updated_at=card_orm.updated_at.isoformat() if card_orm.updated_at else None,
+            updated_at=card_orm.updated_at,
             description=card_orm.description,
             aspect_count=card_orm.aspect_count,
             equipped_aspects=equipped_aspects,
@@ -220,7 +220,7 @@ class RolledCard(BaseModel):
     roll_id: int
     original_card_id: int
     rerolled_card_id: Optional[int] = None
-    created_at: str
+    created_at: Optional[datetime.datetime] = None
     original_roller_id: int
     rerolled: bool
     being_rerolled: bool
@@ -247,7 +247,7 @@ class RolledCard(BaseModel):
             roll_id=rolled_orm.roll_id,
             original_card_id=rolled_orm.original_card_id,
             rerolled_card_id=rolled_orm.rerolled_card_id,
-            created_at=rolled_orm.created_at.isoformat() if rolled_orm.created_at else "",
+            created_at=rolled_orm.created_at,
             original_roller_id=rolled_orm.original_roller_id,
             rerolled=rolled_orm.rerolled,
             being_rerolled=rolled_orm.being_rerolled,
@@ -525,7 +525,7 @@ class AspectDefinition(BaseModel):
     season_id: int
     name: str
     rarity: str
-    created_at: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
     set_name: Optional[str] = None
     source: str = "all"
     description: str = ""
@@ -540,9 +540,7 @@ class AspectDefinition(BaseModel):
             season_id=aspect_def_orm.season_id,
             name=aspect_def_orm.name,
             rarity=aspect_def_orm.rarity,
-            created_at=(
-                aspect_def_orm.created_at.isoformat() if aspect_def_orm.created_at else None
-            ),
+            created_at=aspect_def_orm.created_at,
             set_name=asp_set.name if asp_set else None,
             source=asp_set.source if asp_set else "all",
             description=asp_set.description if asp_set else "",
@@ -562,7 +560,7 @@ class OwnedAspect(BaseModel):
     rarity: str
     locked: bool = False
     file_id: Optional[str] = None
-    created_at: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
     display_name: str = ""
     aspect_definition: Optional[AspectDefinition] = None
 
@@ -588,7 +586,7 @@ class OwnedAspect(BaseModel):
             rarity=aspect_orm.rarity,
             locked=aspect_orm.locked,
             file_id=aspect_orm.file_id,
-            created_at=(aspect_orm.created_at.isoformat() if aspect_orm.created_at else None),
+            created_at=aspect_orm.created_at,
             display_name=display_name,
             aspect_definition=aspect_def,
         )
@@ -633,7 +631,7 @@ class OwnedAspectWithImage(OwnedAspect):
             rarity=aspect_orm.rarity,
             locked=aspect_orm.locked,
             file_id=aspect_orm.file_id,
-            created_at=(aspect_orm.created_at.isoformat() if aspect_orm.created_at else None),
+            created_at=aspect_orm.created_at,
             display_name=display_name,
             aspect_definition=aspect_def,
             image_b64=image_b64,
@@ -648,7 +646,7 @@ class CardAspect(BaseModel):
     card_id: int
     aspect_id: int
     order: int
-    equipped_at: str
+    equipped_at: Optional[datetime.datetime] = None
     aspect: Optional[OwnedAspect] = None
 
     @classmethod
@@ -663,7 +661,7 @@ class CardAspect(BaseModel):
             card_id=ca_orm.card_id,
             aspect_id=ca_orm.aspect_id,
             order=ca_orm.order,
-            equipped_at=ca_orm.equipped_at.isoformat() if ca_orm.equipped_at else "",
+            equipped_at=ca_orm.equipped_at,
             aspect=aspect,
         )
 
@@ -674,7 +672,7 @@ class RolledAspect(BaseModel):
     roll_id: int
     original_aspect_id: int
     rerolled_aspect_id: Optional[int] = None
-    created_at: str
+    created_at: Optional[datetime.datetime] = None
     original_roller_id: int
     rerolled: bool
     being_rerolled: bool
@@ -701,7 +699,7 @@ class RolledAspect(BaseModel):
             roll_id=rolled_orm.roll_id,
             original_aspect_id=rolled_orm.original_aspect_id,
             rerolled_aspect_id=rolled_orm.rerolled_aspect_id,
-            created_at=rolled_orm.created_at.isoformat() if rolled_orm.created_at else "",
+            created_at=rolled_orm.created_at,
             original_roller_id=rolled_orm.original_roller_id,
             rerolled=rolled_orm.rerolled,
             being_rerolled=rolled_orm.being_rerolled,
