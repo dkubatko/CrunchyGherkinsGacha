@@ -1,13 +1,13 @@
-"""Card manager — card claiming logic.
+"""Card manager — card claiming and recycling logic.
 
 Handles atomic card claiming with row-locking, claim point deduction,
-and ownership assignment.
+and ownership assignment.  Also handles card recycling (batch deletion).
 """
 
 from __future__ import annotations
 
 import datetime
-from typing import Optional
+from typing import List, Optional
 
 from repos import card_repo, claim_repo
 from utils.session import get_session
@@ -54,3 +54,35 @@ def try_claim_card(
         now = datetime.datetime.now(datetime.timezone.utc)
         card_repo.set_card_owner(card_id, owner, user_id, updated_at=now, session=session)
         return True
+
+
+def recycle_cards(card_ids: List[int], user_id: int) -> bool:
+    """Validate and hard-delete cards for recycling.
+
+    All cards must be owned by ``user_id``, unlocked, and the same rarity.
+    Equipped aspects are destroyed with the cards (cascade).
+
+    Returns ``True`` if all validations pass and deletion succeeds.
+    """
+    if not card_ids:
+        return False
+
+    with get_session(commit=True) as session:
+        cards = []
+        for cid in card_ids:
+            card = card_repo.get_card(cid, session=session)
+            if not card:
+                return False
+            cards.append(card)
+
+        expected_rarity = cards[0].rarity
+        for c in cards:
+            if c.user_id != user_id:
+                return False
+            if c.locked:
+                return False
+            if c.rarity != expected_rarity:
+                return False
+
+        deleted = card_repo.delete_cards(card_ids, session=session)
+        return deleted == len(card_ids)

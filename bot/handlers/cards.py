@@ -825,6 +825,21 @@ def _rarity_index(rarity: str) -> int:
         return len(RARITY_ORDER)
 
 
+def _format_aspect_list(card) -> str:
+    """Format equipped aspects as a bullet list for display in messages."""
+    if not card or not card.equipped_aspects:
+        return ""
+    names = []
+    for ca in card.equipped_aspects:
+        if ca.aspect and ca.aspect.display_name:
+            names.append(f"🔮 {ca.aspect.display_name}")
+        elif ca.aspect and ca.aspect.name:
+            names.append(f"🔮 {ca.aspect.name}")
+    if not names:
+        return ""
+    return "\n" + "\n".join(names)
+
+
 @verify_user_in_chat
 async def equip(
     update: Update,
@@ -1026,6 +1041,7 @@ async def equip(
             card_rarity=card.rarity,
             new_title=html.escape(new_title),
             aspect_count=card.aspect_count,
+            aspect_list=_format_aspect_list(card),
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard,
@@ -1168,6 +1184,7 @@ async def handle_equip_callback(
                     new_title=html.escape(new_title),
                     rarity=db_session.aspect_rarity,
                     aspect_count=card_with_image.aspect_count if card_with_image else "?",
+                    aspect_list="",
                 )
             )
             return
@@ -1205,6 +1222,7 @@ async def handle_equip_callback(
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
                     aspect_count=new_aspect_count,
+                    aspect_list=_format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )
@@ -1237,6 +1255,7 @@ async def handle_equip_callback(
                 new_title=html.escape(new_title),
                 rarity=card_with_image.rarity,
                 aspect_count=new_aspect_count,
+                aspect_list=_format_aspect_list(card_with_image),
             )
 
             reply_markup = None
@@ -1271,6 +1290,7 @@ async def handle_equip_callback(
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
                     aspect_count=new_aspect_count,
+                    aspect_list=_format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )

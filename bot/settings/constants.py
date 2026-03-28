@@ -142,38 +142,46 @@ Create a casino slot machine icon featuring the person's portrait.
 # ---------------------------------------------------------------------------
 
 ASPECT_GENERATION_PROMPT = """
-**Generate a 1:1 square aspect ratio collectible "aspect sphere" image using the provided snow globe sphere template as layout reference.**
+**Generate a 1:1 square aspect ratio collectible "aspect sphere" image using the provided template as layout reference.**
 
 **--- Concept ---**
 The sphere represents the thematic aspect "{aspect_name}".{set_context}
-Your task is to transform the plain glass sphere template into a richly themed, visually striking sphere that embodies the concept of "{aspect_name}".
+Transform the plain template sphere into a richly themed, visually striking sphere that embodies "{aspect_name}".
 
-**1. Sphere Styling:**
-- The output MUST be a single spherical object on a transparent or very simple background.
-- The sphere's interior should be filled with a miniature scene, pattern, or visual motif that directly represents "{aspect_name}".
-- The sphere's glass surface should show reflections, refractions, and lighting effects appropriate to the theme.
-- The base/pedestal of the sphere should be styled to match the theme.
+**1. Composition & Layout (match the template exactly):**
+- **Sphere (main focus, ~75% of image):** A large glass sphere filling most of the frame. Inside the sphere is a miniature scene, pattern, or visual motif that directly represents "{aspect_name}". This is the centerpiece — vivid, detailed, and immediately readable.
+- **Nameplate (below the sphere, ~15% of image):** A small rounded-rectangle label sitting directly below the sphere, containing the text "{aspect_name}" in clean, legible lettering. The nameplate uses a {color} color palette to indicate rarity.
+- **Background (~10%):** Minimal, dark, or subtly gradient. The sphere and nameplate are the sole subjects.
 
-**2. Thematic Interpretation:**
-- **Literal Interpretation:** The visual content inside the sphere MUST be a direct, creative interpretation of "{aspect_name}".
+**2. CRITICAL — What NOT to generate:**
+- **NO pedestal, NO stand, NO base, NO legs, NO platform** under the sphere. The sphere sits directly on or floats just above the nameplate area — there is no ornate base or snow globe stand.
+- **NO snow globe appearance.** This is a clean, floating glass sphere — not a snow globe on a thick mount.
+
+**3. Rarity Color Application:**
+- The nameplate background and any subtle glow or accent around the sphere's rim MUST use a {color} color palette.
+- This color applies ONLY to the nameplate and subtle accents — NOT to the sphere interior.
+- The sphere interior uses whatever colors best represent "{aspect_name}".
+
+**4. Thematic Interpretation:**
+- The visual content inside the sphere MUST be a direct, creative interpretation of "{aspect_name}".
 - **AVOID THEME DEFAULTS:** Do NOT default to generic fantasy, magic, or sci-fi unless the aspect name explicitly calls for it.
-- **Current-Day Grounding:** If "{aspect_name}" is abstract, ground the visual interpretation in a contemporary, real-world context.
+- If "{aspect_name}" is abstract, ground the visual in a contemporary, real-world context.
 
-**3. Visual Quality:**
-- High-quality, detailed digital illustration style.
+**5. Visual Quality:**
+- High-quality, detailed digital illustration.
 - Rich colors and fine details visible even at small sizes.
-- The sphere should look like a premium collectible item — polished, luminous, and desirable.
-- Do NOT include any text, labels, or lettering anywhere in the image.
+- The sphere should look like a premium collectible — polished, luminous, desirable.
 
-**4. Output Constraints:**
-- Output MUST be exactly 1:1 square aspect ratio.
-- The sphere should be centered and fill roughly 80-90% of the image area.
-- Minimal or transparent background — the sphere is the sole subject.
+**6. Output Constraints:**
+- Exactly 1:1 square aspect ratio.
+- Sphere centered, filling roughly 75-85% of the image width.
+- Nameplate centered below the sphere with "{aspect_name}" text clearly readable.
+- Minimal background — sphere + nameplate are the sole subjects.
 
-**5. Creativity Factor: {creativeness_factor}/100**
-- Low (10/100): Clean, simple sphere with a straightforward visual inside.
-- Medium (50/100): Detailed scene inside the sphere with thematic surface effects.
-- High (90/100): Spectacular, intricate miniature world inside the sphere with complex lighting, depth, and mesmerizing details.
+**7. Creativity Factor: {creativeness_factor}/100**
+- Low (10-20): Clean sphere, simple motif inside, plain nameplate.
+- Medium (40-60): Detailed scene inside with thematic surface effects on the glass.
+- High (80-100): Spectacular miniature world inside with complex lighting and extraordinary depth.
 """
 
 ASPECT_SET_CONTEXT = """\n- This aspect belongs to the themed set {set_details}. Interpret the aspect name within that broader thematic context."""
@@ -424,9 +432,9 @@ def get_recycle_cost(rarity_name: str) -> int:
 
 
 RECYCLE_USAGE_MESSAGE = (
-    "Usage: /recycle <rarity> where rarity is one of common, rare, epic.\n"
-    "Burns unlocked cards of that rarity to guarantee the next tier.\n\n"
-    "3C -> 1R\n3R -> 1E\n4E -> 1L"
+    "Usage: /recycle [aspects|cards] [rarity]\n\n"
+    "Aspects: 3C→1R, 3R→1E, 4E→1L\n"
+    "Cards: 3C→1R, 3R→1E, 4E→1L"
 )
 RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling is only available in the group chat."
 RECYCLE_SELECT_RARITY_MESSAGE = "Select <b>card rarity</b> to recycle"
@@ -495,19 +503,25 @@ ASPECT_BURN_SUCCESS_MESSAGE = (
     "New spin balance: <b>{new_spin_total}</b>."
 )
 
-ASPECT_LOCK_USAGE_MESSAGE = (
-    "Usage: /lock <aspect_id>.\n\n"
-    "Lock or unlock an aspect you own.\n\n"
+LOCK_COMBINED_USAGE_MESSAGE = (
+    "Usage:\n"
+    "  /lock <aspect_id> — Lock/unlock an aspect\n"
+    "  /lock card <card_id> — Lock/unlock a card\n\n"
     "Claim points cost varies by rarity:\n"
     f"{LOCK_COST_SUMMARY}"
 )
+ASPECT_LOCK_USAGE_MESSAGE = LOCK_COMBINED_USAGE_MESSAGE
 ASPECT_LOCK_NOT_FOUND_MESSAGE = "Aspect not found. Check the ID and try again."
 ASPECT_LOCK_NOT_YOURS_MESSAGE = "You can only lock aspects you currently own."
 
+CARD_LOCK_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
+CARD_LOCK_NOT_YOURS_MESSAGE = "You can only lock cards you currently own."
+CARD_LOCK_CHAT_MISMATCH_MESSAGE = "This card doesn't belong to this chat."
+
 ASPECT_RECYCLE_USAGE_MESSAGE = (
-    "Usage: /recycle <rarity> where rarity is one of common, rare, epic.\n"
-    "Burns unlocked aspects of that rarity to guarantee the next tier.\n\n"
-    "3C \u2192 1R\n3R \u2192 1E\n4E \u2192 1L"
+    "Usage: /recycle [aspects|cards] [rarity]\n\n"
+    "Aspects: 3C\u21921R, 3R\u21921E, 4E\u21921L\n"
+    "Cards: 3C\u21921R, 3R\u21921E, 4E\u21921L"
 )
 ASPECT_RECYCLE_DM_RESTRICTED_MESSAGE = "Recycling aspects is only available in the group chat."
 ASPECT_RECYCLE_SELECT_RARITY_MESSAGE = "Select <b>aspect rarity</b> to recycle"
@@ -680,12 +694,7 @@ ACHIEVEMENT_NOTIFICATION_MESSAGE = (
     "@{username} received <b>{achievement_name}</b> achievement:\n\n<i>{achievement_desc}</i>"
 )
 
-LOCK_USAGE_MESSAGE = (
-    "Usage: /lock <card_id>.\n\n"
-    "Lock or unlock a card you own.\n\n"
-    "Claim points cost varies by rarity:\n"
-    f"{LOCK_COST_SUMMARY}"
-)
+LOCK_USAGE_MESSAGE = LOCK_COMBINED_USAGE_MESSAGE
 
 REFRESH_USAGE_MESSAGE = (
     "Usage: /refresh <card_id>.\n\n"
@@ -764,7 +773,7 @@ EQUIP_CONFIRM_MESSAGE = (
     "Equip <b>🔮 [{aspect_id}] {aspect_name}</b> ({aspect_rarity}) "
     "onto <b>{card_title}</b> ({card_rarity})?\n\n"
     "Card will be renamed to: <b>{new_title}</b>\n"
-    "Aspects on card: {aspect_count}/5"
+    "Aspects on card: {aspect_count}/5{aspect_list}"
 )
 EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
 EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
@@ -782,12 +791,12 @@ EQUIP_SUCCESS_MESSAGE = (
     "✨ <b>Equip complete!</b>\n\n"
     "<b>[{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>"
+    "Aspects: <b>{aspect_count}/5</b>{aspect_list}"
 )
 EQUIP_IMAGE_FAILURE_MESSAGE = (
     "✨ Aspect equipped successfully, but image generation failed.\n\n"
     "<b>[{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>\n\n"
+    "Aspects: <b>{aspect_count}/5</b>{aspect_list}\n\n"
     "<i>Use /refresh to regenerate the card art.</i>"
 )

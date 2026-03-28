@@ -6,6 +6,7 @@ This module contains all endpoints for card operations including:
 - Card detail retrieval
 - Card sharing
 - Card image retrieval
+- Card locking/unlocking
 """
 
 import asyncio
@@ -25,20 +26,27 @@ from api.config import (
 from api.dependencies import (
     get_validated_user,
     validate_chat_exists,
+    validate_user_in_chat,
     verify_user_match,
 )
 from api.schemas import (
     CardImageResponse,
     CardImagesRequest,
+    CardLockRequest,
+    CardLockResponse,
     ShareCardRequest,
     UserCollectionResponse,
     UserSummary,
 )
+from settings.constants import get_lock_cost
 from utils.miniapp import encode_single_card_token
 from utils.schemas import Card as APICard
 from repos import card_repo
+from repos import claim_repo
 from repos import thread_repo
 from repos import user_repo
+from managers import event_manager
+from utils.events import EventType, LockOutcome
 from utils.download_token import validate_download_token
 
 # Import limiter for rate limiting
@@ -292,3 +300,106 @@ async def get_card_images_route(
         raise HTTPException(status_code=404, detail="No images found for requested card IDs")
 
     return response_payload
+
+
+# =============================================================================
+# CARD LOCK ENDPOINT
+# =============================================================================
+
+
+@router.post("/{card_id}/lock", response_model=CardLockResponse)
+async def lock_card(
+    card_id: int,
+    request: CardLockRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Lock or unlock a card. Locking consumes claim points; unlocking is free."""
+    await verify_user_match(request.user_id, validated_user)
+
+    user_data: Dict[str, Any] = validated_user.get("user") or {}
+    auth_user_id = user_data.get("id")
+
+    # Fetch the card
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
+    if not card:
+        logger.warning("Lock requested for non-existent card_id: %s", card_id)
+        raise HTTPException(status_code=404, detail="Card not found")
+
+    # Verify ownership
+    if card.user_id != auth_user_id:
+        logger.warning(
+            "User %s attempted to lock card %s owned by user %s",
+            auth_user_id,
+            card_id,
+            card.user_id,
+        )
+        raise HTTPException(status_code=403, detail="You do not own this card")
+
+    # Verify user is enrolled in the chat
+    chat_id = str(request.chat_id)
+    await validate_user_in_chat(auth_user_id, chat_id)
+
+    # Validate desired state
+    if request.lock and card.locked:
+        raise HTTPException(status_code=400, detail="Card is already locked")
+    if not request.lock and not card.locked:
+        raise HTTPException(status_code=400, detail="Card is not locked")
+
+    lock_cost = get_lock_cost(card.rarity)
+
+    if request.lock:
+        # Charge claim points for locking
+        current_balance = await asyncio.to_thread(
+            claim_repo.get_claim_balance, auth_user_id, chat_id
+        )
+        if current_balance < lock_cost:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Not enough claim points.\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"
+                ),
+            )
+
+        remaining_balance = await asyncio.to_thread(
+            claim_repo.reduce_claim_points, auth_user_id, chat_id, lock_cost
+        )
+        if remaining_balance is None:
+            current_balance = await asyncio.to_thread(
+                claim_repo.get_claim_balance, auth_user_id, chat_id
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Not enough claim points.\n\n" f"Cost: {lock_cost}\nBalance: {current_balance}"
+                ),
+            )
+
+    # Toggle lock
+    success = await asyncio.to_thread(card_repo.set_card_locked, card_id, request.lock)
+
+    if not success:
+        raise HTTPException(status_code=400, detail="Failed to update card lock status")
+
+    # Get balance for response
+    balance = await asyncio.to_thread(claim_repo.get_claim_balance, auth_user_id, chat_id)
+
+    action = "locked" if request.lock else "unlocked"
+    logger.info("User %s %s card %s", auth_user_id, action, card_id)
+
+    event_manager.log(
+        EventType.LOCK,
+        LockOutcome.LOCKED if request.lock else LockOutcome.UNLOCKED,
+        user_id=auth_user_id,
+        chat_id=chat_id,
+        card_id=card_id,
+        cost=lock_cost if request.lock else 0,
+        via="miniapp",
+    )
+
+    return CardLockResponse(
+        success=True,
+        locked=request.lock,
+        balance=balance,
+        message=f"Card {action} successfully",
+        lock_cost=lock_cost,
+    )

@@ -26,6 +26,7 @@ from settings.constants import (
     ASPECT_STATUS_CLAIMED,
     CURRENT_SEASON,
     RARITIES,
+    CARD_CAPTION_BASE,
     get_spin_reward,
     get_lock_cost,
     get_recycle_cost,
@@ -48,6 +49,10 @@ from settings.constants import (
     ASPECT_LOCK_USAGE_MESSAGE,
     ASPECT_LOCK_NOT_FOUND_MESSAGE,
     ASPECT_LOCK_NOT_YOURS_MESSAGE,
+    # Card Lock constants
+    CARD_LOCK_NOT_FOUND_MESSAGE,
+    CARD_LOCK_NOT_YOURS_MESSAGE,
+    CARD_LOCK_CHAT_MISMATCH_MESSAGE,
     # Aspect Recycle constants
     ASPECT_RECYCLE_USAGE_MESSAGE,
     ASPECT_RECYCLE_DM_RESTRICTED_MESSAGE,
@@ -60,6 +65,19 @@ from settings.constants import (
     ASPECT_RECYCLE_FAILURE_NOT_ENOUGH,
     ASPECT_RECYCLE_FAILURE_IMAGE,
     ASPECT_RECYCLE_FAILURE_UNEXPECTED,
+    # Card Recycle constants
+    RECYCLE_DM_RESTRICTED_MESSAGE,
+    RECYCLE_SELECT_RARITY_MESSAGE,
+    RECYCLE_CONFIRM_MESSAGE,
+    RECYCLE_INSUFFICIENT_CARDS_MESSAGE,
+    RECYCLE_ALREADY_RUNNING_MESSAGE,
+    RECYCLE_NOT_YOURS_MESSAGE,
+    RECYCLE_UNKNOWN_RARITY_MESSAGE,
+    RECYCLE_FAILURE_NOT_ENOUGH_CARDS,
+    RECYCLE_FAILURE_NO_PROFILE,
+    RECYCLE_FAILURE_IMAGE,
+    RECYCLE_FAILURE_UNEXPECTED,
+    RECYCLE_RESULT_APPENDIX,
     # Create unique aspect constants
     CREATE_USAGE_MESSAGE,
     CREATE_DM_RESTRICTED_MESSAGE,
@@ -73,14 +91,16 @@ from settings.constants import (
     CREATE_PROCESSING_MESSAGE,
 )
 from utils import rolling
-from utils.miniapp import encode_single_aspect_token
+from utils.miniapp import encode_single_aspect_token, encode_single_card_token
 from utils.image import ImageUtil
 from repos import aspect_repo
+from repos import card_repo
 from repos import claim_repo
 from repos import spin_repo
 from repos import user_repo
 from managers import event_manager
 from managers import aspect_manager
+from managers import card_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
 from utils.events import (
@@ -391,12 +411,17 @@ async def handle_burn_callback(
 
 
 @verify_user_in_chat
-async def lock_aspect_command(
+async def lock_command(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Initiate lock/unlock for an aspect by ID."""
+    """Initiate lock/unlock for an aspect or card by ID.
+
+    Usage:
+        /lock <aspect_id>       — lock/unlock an aspect (backward compatible)
+        /lock card <card_id>    — lock/unlock a card
+    """
     message = update.message
     chat = update.effective_chat
 
@@ -404,10 +429,24 @@ async def lock_aspect_command(
         return
 
     if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
-        await message.reply_text("Only allowed to lock aspects in the group chat.")
+        await message.reply_text("Only allowed to lock items in the group chat.")
         return
 
-    if len(context.args) != 1:
+    args = context.args or []
+
+    # Route: /lock card <card_id>
+    if args and args[0].lower() == "card":
+        if len(args) < 2:
+            await message.reply_text(
+                ASPECT_LOCK_USAGE_MESSAGE,
+                parse_mode=ParseMode.HTML,
+            )
+            return
+        await _lock_card(update, context, user, args[1])
+        return
+
+    # Route: /lock <aspect_id> (original behavior)
+    if len(args) != 1:
         await message.reply_text(
             ASPECT_LOCK_USAGE_MESSAGE,
             parse_mode=ParseMode.HTML,
@@ -607,7 +646,221 @@ async def handle_lock_aspect_confirm(
 
 
 # =============================================================================
-# Recycle Aspect Handlers
+# Lock Card Handlers
+# =============================================================================
+
+
+async def _lock_card(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+    card_id_str: str,
+) -> None:
+    """Initiate lock/unlock for a card by ID."""
+    message = update.message
+    chat = update.effective_chat
+
+    if not message or not chat:
+        return
+
+    try:
+        card_id = int(card_id_str)
+    except ValueError:
+        await message.reply_text("Card ID must be a number.")
+        return
+
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
+    if not card:
+        await message.reply_text(CARD_LOCK_NOT_FOUND_MESSAGE)
+        return
+
+    if card.user_id != user.user_id:
+        await message.reply_text(CARD_LOCK_NOT_YOURS_MESSAGE)
+        return
+
+    if card.chat_id != str(chat.id):
+        await message.reply_text(CARD_LOCK_CHAT_MISMATCH_MESSAGE)
+        return
+
+    card_title = card.title(include_id=True, include_rarity=True)
+    chat_id_str = str(chat.id)
+    lock_cost = get_lock_cost(card.rarity)
+
+    if card.locked:
+        prompt_text = f"Unlock <b>🃏 {card_title}</b>?"
+    else:
+        balance = await asyncio.to_thread(
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
+        )
+        prompt_text = (
+            f"Lock <b>🃏 {card_title}</b>?\n\n"
+            f"Cost: <b>{lock_cost}</b> claim point{'s' if lock_cost != 1 else ''}\n"
+            f"Balance: <b>{balance}</b>"
+        )
+        if balance < lock_cost:
+            await message.reply_text(
+                f"Not enough claim points to lock this card.\n\n"
+                f"Cost: <b>{lock_cost}</b>\nBalance: <b>{balance}</b>",
+                parse_mode=ParseMode.HTML,
+                reply_to_message_id=message.message_id,
+            )
+            return
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "Yes", callback_data=f"lockcard_yes_{card_id}_{user.user_id}"
+            ),
+            InlineKeyboardButton("No", callback_data=f"lockcard_no_{card_id}_{user.user_id}"),
+        ]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+
+    await message.reply_text(
+        prompt_text,
+        reply_markup=reply_markup,
+        parse_mode=ParseMode.HTML,
+        reply_to_message_id=message.message_id,
+    )
+
+
+@verify_user_in_chat
+async def handle_lock_card_confirm(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle confirmation for locking/unlocking a card."""
+    query = update.callback_query
+    if not query:
+        return
+
+    data_parts = query.data.split("_")
+    # lockcard_yes_{card_id}_{user_id} → ['lockcard', 'yes', '{id}', '{uid}']
+    if len(data_parts) < 4:
+        await query.answer("Invalid request.", show_alert=True)
+        return
+
+    _, action, card_id_str, target_user_id_str = data_parts[:4]
+
+    try:
+        card_id = int(card_id_str)
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Invalid card or user ID.", show_alert=True)
+        return
+
+    if user.user_id != target_user_id:
+        await query.answer("This action is not for you!")
+        return
+
+    if action == "no":
+        await query.answer("Lock action cancelled.")
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text("Lock action cancelled.")
+            except Exception:
+                pass
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    chat = update.effective_chat
+    if not chat:
+        await query.answer("Chat context unavailable.", show_alert=True)
+        return
+
+    chat_id_str = str(chat.id)
+
+    card = await asyncio.to_thread(card_repo.get_card, card_id)
+    if not card or card.user_id != user.user_id:
+        await query.answer("Card not found or not owned by you.", show_alert=True)
+        try:
+            await query.edit_message_text("Card not found or not owned by you.")
+        except Exception:
+            pass
+        return
+
+    card_title = card.title(include_id=True, include_rarity=True)
+    lock_cost = get_lock_cost(card.rarity)
+
+    if not card.locked:
+        # Locking — charge claim points
+        balance = await asyncio.to_thread(
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
+        )
+        if balance < lock_cost:
+            await query.answer("Not enough claim points.", show_alert=True)
+            try:
+                await query.edit_message_text(
+                    f"Not enough claim points to lock this card.\n\n"
+                    f"Cost: <b>{lock_cost}</b>\nBalance: <b>{balance}</b>",
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            return
+
+        remaining = await asyncio.to_thread(
+            claim_repo.reduce_claim_points, user.user_id, chat_id_str, lock_cost
+        )
+        if remaining is None:
+            await query.answer("Not enough claim points.", show_alert=True)
+            return
+
+    new_locked = not card.locked
+    success = await asyncio.to_thread(card_repo.set_card_locked, card_id, new_locked)
+
+    if not success:
+        await query.answer("Failed to update card lock status.", show_alert=True)
+        try:
+            await query.edit_message_text("Failed to update card lock status.")
+        except Exception:
+            pass
+        return
+
+    if new_locked:
+        remaining_balance = await asyncio.to_thread(
+            claim_repo.get_claim_balance, user.user_id, chat_id_str
+        )
+        response_text = (
+            f"🔒 <b>🃏 {card_title}</b> locked!\n\n"
+            f"Remaining balance: <b>{remaining_balance}</b>"
+        )
+        await query.answer(f"Card locked!", show_alert=False)
+        event_manager.log(
+            EventType.LOCK,
+            LockOutcome.LOCKED,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id,
+            cost=lock_cost,
+            via="command",
+        )
+    else:
+        response_text = f"🔓 <b>🃏 {card_title}</b> unlocked!"
+        await query.answer(f"Card unlocked!", show_alert=False)
+        event_manager.log(
+            EventType.LOCK,
+            LockOutcome.UNLOCKED,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=card_id,
+            via="command",
+        )
+
+    try:
+        await query.edit_message_text(response_text, parse_mode=ParseMode.HTML)
+    except Exception:
+        pass
+
+
+# =============================================================================
+# Recycle Handlers (Aspects & Cards)
 # =============================================================================
 
 
@@ -617,7 +870,7 @@ async def recycle(
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Recycle aspects of a given rarity for an upgraded aspect."""
+    """Recycle aspects or cards of a given rarity for an upgraded item."""
     message = update.message
     chat = update.effective_chat
 
@@ -626,12 +879,74 @@ async def recycle(
 
     if chat.type == ChatType.PRIVATE and not DEBUG_MODE:
         await message.reply_text(
-            ASPECT_RECYCLE_DM_RESTRICTED_MESSAGE,
+            RECYCLE_DM_RESTRICTED_MESSAGE,
             reply_to_message_id=message.message_id,
         )
         return
 
-    if not context.args:
+    args = context.args or []
+
+    if not args:
+        # Show type selection: Aspects | Cards
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Aspects",
+                        callback_data=f"recycle_type_aspects_{user.user_id}",
+                    ),
+                    InlineKeyboardButton(
+                        "Cards",
+                        callback_data=f"recycle_type_cards_{user.user_id}",
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Cancel",
+                        callback_data=f"recycle_type_cancel_{user.user_id}",
+                    ),
+                ],
+            ]
+        )
+        await message.reply_text(
+            "What would you like to recycle?",
+            reply_markup=keyboard,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    item_type = args[0].lower()
+
+    if item_type == "aspects":
+        rarity_key = args[1].lower() if len(args) > 1 else None
+        return await _recycle_aspects_flow(update, context, user, rarity_key)
+    elif item_type == "cards":
+        rarity_key = args[1].lower() if len(args) > 1 else None
+        return await _recycle_cards_flow(update, context, user, rarity_key)
+    elif item_type in RECYCLE_ALLOWED_RARITIES:
+        # Backward compatible: /recycle common = /recycle aspects common
+        return await _recycle_aspects_flow(update, context, user, item_type)
+    else:
+        await message.reply_text(
+            "Usage: /recycle [aspects|cards] [rarity]\n"
+            "Or just /recycle to choose interactively.",
+            reply_to_message_id=message.message_id,
+        )
+
+
+async def _recycle_aspects_flow(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+    rarity_key: str | None,
+) -> None:
+    """Handle aspect recycling flow (rarity selection or confirmation)."""
+    message = update.message
+    chat = update.effective_chat
+    if not message or not chat:
+        return
+
+    if rarity_key is None:
         keyboard = InlineKeyboardMarkup(
             [
                 [
@@ -664,7 +979,6 @@ async def recycle(
         )
         return
 
-    rarity_key = context.args[0].lower()
     if rarity_key not in RECYCLE_ALLOWED_RARITIES:
         await message.reply_text(
             ASPECT_RECYCLE_UNKNOWN_RARITY_MESSAGE,
@@ -677,7 +991,6 @@ async def recycle(
     required = get_recycle_cost(rarity_name)
     chat_id_str = str(chat.id)
 
-    # Get unequipped aspects for this user/chat, filter by rarity + unlocked
     aspects = await asyncio.to_thread(
         aspect_repo.get_user_aspects, user.user_id, chat_id=chat_id_str
     )
@@ -716,6 +1029,224 @@ async def recycle(
         reply_to_message_id=message.message_id,
         parse_mode=ParseMode.HTML,
     )
+
+
+async def _recycle_cards_flow(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+    rarity_key: str | None,
+) -> None:
+    """Handle card recycling flow (rarity selection or confirmation)."""
+    message = update.message
+    chat = update.effective_chat
+    if not message or not chat:
+        return
+
+    if rarity_key is None:
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Common", callback_data=f"crecycle_select_common_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Rare", callback_data=f"crecycle_select_rare_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Epic", callback_data=f"crecycle_select_epic_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"crecycle_cancel_none_{user.user_id}"
+                    ),
+                ],
+            ]
+        )
+        await message.reply_text(
+            RECYCLE_SELECT_RARITY_MESSAGE,
+            reply_markup=keyboard,
+            reply_to_message_id=message.message_id,
+            parse_mode=ParseMode.HTML,
+        )
+        return
+
+    if rarity_key not in RECYCLE_ALLOWED_RARITIES:
+        await message.reply_text(
+            RECYCLE_UNKNOWN_RARITY_MESSAGE,
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    rarity_name = RECYCLE_ALLOWED_RARITIES[rarity_key]
+    upgrade_rarity = RECYCLE_UPGRADE_MAP[rarity_name]
+    required = get_recycle_cost(rarity_name)
+    chat_id_str = str(chat.id)
+
+    cards = await asyncio.to_thread(
+        card_repo.get_user_collection, user.user_id, chat_id=chat_id_str
+    )
+    eligible = [c for c in cards if c.rarity == rarity_name and not c.locked]
+
+    if len(eligible) < required:
+        await message.reply_text(
+            RECYCLE_INSUFFICIENT_CARDS_MESSAGE.format(
+                required=required,
+                rarity=rarity_name.lower(),
+            ),
+            reply_to_message_id=message.message_id,
+        )
+        return
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "Yes!", callback_data=f"crecycle_yes_{rarity_key}_{user.user_id}"
+                ),
+                InlineKeyboardButton(
+                    "Cancel", callback_data=f"crecycle_cancel_{rarity_key}_{user.user_id}"
+                ),
+            ]
+        ]
+    )
+
+    await message.reply_text(
+        RECYCLE_CONFIRM_MESSAGE.format(
+            burn_count=required,
+            rarity=rarity_name,
+            upgraded_rarity=upgrade_rarity,
+        ),
+        reply_markup=keyboard,
+        reply_to_message_id=message.message_id,
+        parse_mode=ParseMode.HTML,
+    )
+
+
+# -----------------------------------------------------------------------------
+# Recycle Type Selection Callback
+# -----------------------------------------------------------------------------
+
+
+@verify_user_in_chat
+async def handle_recycle_type_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle the initial Aspects/Cards/Cancel type selection callback."""
+    query = update.callback_query
+    if not query:
+        return
+
+    # Pattern: recycle_type_{type}_{user_id}
+    data_parts = query.data.split("_")
+    # ['recycle', 'type', '<type>', '<user_id>']
+    if len(data_parts) < 4:
+        await query.answer()
+        return
+
+    item_type = data_parts[2]
+    target_user_id_str = data_parts[3]
+
+    try:
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Unable to process this request.", show_alert=True)
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer("This recycle prompt isn't for you!")
+        return
+
+    if item_type == "cancel":
+        await query.answer("Recycle cancelled.")
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text("Recycle cancelled.")
+            except Exception:
+                pass
+        return
+
+    if item_type == "aspects":
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Common", callback_data=f"arecycle_select_common_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Rare", callback_data=f"arecycle_select_rare_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Epic", callback_data=f"arecycle_select_epic_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"arecycle_cancel_none_{user.user_id}"
+                    ),
+                ],
+            ]
+        )
+        await query.edit_message_text(
+            text=ASPECT_RECYCLE_SELECT_RARITY_MESSAGE,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    if item_type == "cards":
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Common", callback_data=f"crecycle_select_common_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Rare", callback_data=f"crecycle_select_rare_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Epic", callback_data=f"crecycle_select_epic_{user.user_id}"
+                    ),
+                ],
+                [
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"crecycle_cancel_none_{user.user_id}"
+                    ),
+                ],
+            ]
+        )
+        await query.edit_message_text(
+            text=RECYCLE_SELECT_RARITY_MESSAGE,
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    await query.answer()
+
+
+# -----------------------------------------------------------------------------
+# Aspect Recycle Callback
+# -----------------------------------------------------------------------------
 
 
 @verify_user_in_chat
@@ -1010,6 +1541,330 @@ async def handle_recycle_callback(
             aspect_url = f"{MINIAPP_URL_ENV}?startapp={aspect_token}"
             reply_markup = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
+            )
+
+        await context.bot.edit_message_media(
+            chat_id=chat_id,
+            message_id=message_id,
+            media=media,
+            reply_markup=reply_markup,
+        )
+
+    finally:
+        recycling_users.discard(user.user_id)
+
+
+# -----------------------------------------------------------------------------
+# Card Recycle Callback
+# -----------------------------------------------------------------------------
+
+
+@verify_user_in_chat
+async def handle_card_recycle_callback(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+) -> None:
+    """Handle card recycle confirmation callback."""
+    query = update.callback_query
+    if not query:
+        return
+
+    # Pattern: crecycle_{action}_{rarity}_{user_id}
+    data_parts = query.data.split("_")
+    if len(data_parts) < 4:
+        await query.answer()
+        return
+
+    _, action, rarity_key, target_user_id_str = data_parts[:4]
+
+    try:
+        target_user_id = int(target_user_id_str)
+    except ValueError:
+        await query.answer("Unable to process this request.", show_alert=True)
+        return
+
+    if target_user_id != user.user_id:
+        await query.answer(RECYCLE_NOT_YOURS_MESSAGE)
+        return
+
+    if action == "cancel":
+        await query.answer("Recycle cancelled.")
+        try:
+            await query.message.delete()
+        except Exception:
+            try:
+                await query.edit_message_text("Recycle cancelled.")
+            except Exception:
+                pass
+        return
+
+    rarity_name = RECYCLE_ALLOWED_RARITIES.get(rarity_key)
+    if not rarity_name:
+        await query.answer(RECYCLE_UNKNOWN_RARITY_MESSAGE, show_alert=True)
+        return
+
+    if action == "select":
+        chat = update.effective_chat
+        if not chat:
+            await query.answer()
+            return
+
+        upgrade_rarity = RECYCLE_UPGRADE_MAP[rarity_name]
+        required = get_recycle_cost(rarity_name)
+        chat_id_str = str(chat.id)
+
+        cards = await asyncio.to_thread(
+            card_repo.get_user_collection, user.user_id, chat_id=chat_id_str
+        )
+        eligible = [c for c in cards if c.rarity == rarity_name and not c.locked]
+
+        if len(eligible) < required:
+            await query.answer(
+                f"You need at least {required} unlocked {rarity_name.lower()} cards to recycle.",
+                show_alert=True,
+            )
+            return
+
+        keyboard = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "Yes!", callback_data=f"crecycle_yes_{rarity_key}_{user.user_id}"
+                    ),
+                    InlineKeyboardButton(
+                        "Cancel", callback_data=f"crecycle_cancel_{rarity_key}_{user.user_id}"
+                    ),
+                ]
+            ]
+        )
+
+        await query.edit_message_text(
+            text=RECYCLE_CONFIRM_MESSAGE.format(
+                burn_count=required,
+                rarity=rarity_name,
+                upgraded_rarity=upgrade_rarity,
+            ),
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML,
+        )
+        await query.answer()
+        return
+
+    if action != "yes":
+        await query.answer()
+        return
+
+    # --- Execute card recycling ---
+    chat = update.effective_chat
+    if not chat:
+        await query.answer()
+        return
+
+    recycling_users = context.bot_data.setdefault("recycling_card_users", set())
+    if user.user_id in recycling_users:
+        await query.answer(RECYCLE_ALREADY_RUNNING_MESSAGE, show_alert=True)
+        return
+
+    recycling_users.add(user.user_id)
+
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+    upgrade_rarity = RECYCLE_UPGRADE_MAP.get(rarity_name)
+
+    if not upgrade_rarity:
+        await query.answer("Unable to upgrade this rarity.", show_alert=True)
+        recycling_users.discard(user.user_id)
+        return
+
+    required = get_recycle_cost(rarity_name)
+    chat_id_str = str(chat_id)
+
+    try:
+        cards = await asyncio.to_thread(
+            card_repo.get_user_collection, user.user_id, chat_id=chat_id_str
+        )
+        eligible = [c for c in cards if c.rarity == rarity_name and not c.locked]
+
+        if len(eligible) < required:
+            await query.answer(RECYCLE_FAILURE_NOT_ENOUGH_CARDS, show_alert=True)
+            try:
+                await query.edit_message_text(RECYCLE_FAILURE_NOT_ENOUGH_CARDS)
+            except Exception:
+                pass
+            return
+
+        cards_to_burn = random.sample(eligible, required)
+        card_titles = [c.title(include_id=True) for c in cards_to_burn]
+
+        await query.answer()
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
+
+        # Start generating the upgraded card in background
+        generation_task = asyncio.create_task(
+            asyncio.to_thread(
+                rolling.generate_base_card,
+                gemini_util,
+                upgrade_rarity,
+                chat_id=chat_id_str,
+                max_retries=MAX_BOT_IMAGE_RETRIES,
+            )
+        )
+
+        # Show burning animation
+        for idx in range(len(cards_to_burn)):
+            text = build_burning_text(card_titles, idx + 1, item_label="cards")
+            try:
+                await context.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                )
+            except Exception:
+                pass
+            await asyncio.sleep(1)
+
+        try:
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=build_burning_text(
+                    card_titles, len(cards_to_burn), strike_all=True, item_label="cards"
+                )
+                + "\n\n♻️ Recycling...",
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception:
+            pass
+
+        try:
+            generated_card = await generation_task
+        except rolling.NoEligibleUserError:
+            event_manager.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                error_message="No eligible profiles for card generation",
+            )
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_NO_PROFILE,
+            )
+            return
+        except rolling.ImageGenerationError:
+            event_manager.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                error_message="Image generation failed",
+            )
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_IMAGE,
+            )
+            return
+        except Exception as exc:
+            logger.error("Error while generating recycled card: %s", exc)
+            event_manager.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                error_message=str(exc),
+            )
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_UNEXPECTED,
+            )
+            return
+
+        # Delete the burned cards
+        card_ids_to_delete = [c.id for c in cards_to_burn]
+        deleted = await asyncio.to_thread(
+            card_manager.recycle_cards, card_ids_to_delete, user.user_id
+        )
+
+        if not deleted:
+            logger.error(
+                "card_manager.recycle_cards validation failed for user %s, card_ids=%s",
+                user.user_id,
+                card_ids_to_delete,
+            )
+            event_manager.log(
+                EventType.RECYCLE,
+                RecycleOutcome.ERROR,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                error_message="card_manager.recycle_cards validation failed",
+            )
+            await context.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=RECYCLE_FAILURE_NOT_ENOUGH_CARDS,
+            )
+            return
+
+        # Save the new card and claim it for the user
+        new_card_id = await asyncio.to_thread(
+            card_repo.add_card_from_generated, generated_card, chat_id_str
+        )
+        owner_username = user.username or f"user_{user.user_id}"
+        claimed = await asyncio.to_thread(
+            card_manager.try_claim_card,
+            new_card_id,
+            owner_username,
+            user_id=user.user_id,
+        )
+        if not claimed:
+            logger.warning(
+                "Failed to assign recycled card %s to user %s (%s)",
+                new_card_id,
+                owner_username,
+                user.user_id,
+            )
+
+        # Log recycle success
+        event_manager.log(
+            EventType.RECYCLE,
+            RecycleOutcome.SUCCESS,
+            user_id=user.user_id,
+            chat_id=chat_id_str,
+            card_id=new_card_id,
+            source_rarity=rarity_name,
+            new_rarity=upgrade_rarity,
+            cards_burned=card_ids_to_delete,
+        )
+
+        burned_block = "\n".join([f"<s>🔥🃏 {name}🔥</s>" for name in card_titles])
+
+        final_caption = CARD_CAPTION_BASE.format(
+            card_id=new_card_id,
+            card_title=html.escape(generated_card.card_title),
+            rarity=generated_card.rarity,
+        )
+        final_caption += RECYCLE_RESULT_APPENDIX.format(burned_block=burned_block)
+
+        media = InputMediaPhoto(
+            media=base64.b64decode(generated_card.image_b64),
+            caption=final_caption,
+            parse_mode=ParseMode.HTML,
+        )
+
+        reply_markup = None
+        if MINIAPP_URL_ENV:
+            card_token = encode_single_card_token(new_card_id)
+            card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
+            reply_markup = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
             )
 
         await context.bot.edit_message_media(

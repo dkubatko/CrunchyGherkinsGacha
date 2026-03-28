@@ -41,10 +41,13 @@ from handlers.cards import (
 from handlers.aspects import (
     burn,
     handle_burn_callback,
-    lock_aspect_command,
+    lock_command,
     handle_lock_aspect_confirm,
+    handle_lock_card_confirm,
     recycle,
     handle_recycle_callback,
+    handle_recycle_type_callback,
+    handle_card_recycle_callback,
     create_unique_aspect,
     handle_create_callback,
 )
@@ -105,10 +108,13 @@ __all__ = [
     # Aspect handlers (burn, lock, recycle, create)
     "burn",
     "handle_burn_callback",
-    "lock_aspect_command",
+    "lock_command",
     "handle_lock_aspect_confirm",
+    "handle_lock_card_confirm",
     "recycle",
     "handle_recycle_callback",
+    "handle_recycle_type_callback",
+    "handle_card_recycle_callback",
     "create_unique_aspect",
     "handle_create_callback",
     # Collection handlers
