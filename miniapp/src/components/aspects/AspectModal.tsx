@@ -15,6 +15,9 @@ interface AspectModalProps {
   isActionPanelVisible?: boolean;
   orientation: OrientationData;
   orientationKey: number;
+  triggerBurn?: boolean;
+  onBurnComplete?: () => void;
+  isBurning?: boolean;
 }
 
 const AspectModal: React.FC<AspectModalProps> = ({
@@ -25,6 +28,9 @@ const AspectModal: React.FC<AspectModalProps> = ({
   isActionPanelVisible = false,
   orientation,
   orientationKey,
+  triggerBurn,
+  onBurnComplete,
+  isBurning = false,
 }) => {
   const [fullImage, setFullImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -59,17 +65,19 @@ const AspectModal: React.FC<AspectModalProps> = ({
   const imageUrl = fullImage ? `data:image/png;base64,${fullImage}` : '';
 
   return createPortal(
-    <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={onClose}>
+    <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={isBurning ? undefined : onClose}>
       <div className="modal-content aspect-modal-content" onClick={(e) => e.stopPropagation()}>
-        <button
-          type="button"
-          className="modal-close"
-          onClick={onClose}
-          aria-label="Close aspect"
-          title="Close"
-        >
-          <span className="modal-close-icon" aria-hidden="true" />
-        </button>
+        {!isBurning && (
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="Close aspect"
+            title="Close"
+          >
+            <span className="modal-close-icon" aria-hidden="true" />
+          </button>
+        )}
 
         {aspect.locked ? (
           <div className="aspect-modal-lock-indicator">
@@ -99,6 +107,8 @@ const AspectModal: React.FC<AspectModalProps> = ({
                 tiltKey={orientationKey}
                 borderRadius="25%"
                 square
+                triggerBurn={triggerBurn}
+                onBurnComplete={onBurnComplete}
               />
             ) : imageLoading ? (
               <div className="aspect-modal-loader">
