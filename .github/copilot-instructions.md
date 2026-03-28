@@ -101,7 +101,7 @@ bot/
 │   ├── user.py               # /start, /profile, /delete, /enroll, /unenroll
 │   ├── rolling.py            # /roll (card/aspect), claim_/lock_/reroll_ callbacks
 │   ├── cards.py              # /refresh, /equip + callbacks
-│   ├── aspects.py            # /burn, /lock, /recycle, /create + callbacks
+│   ├── aspects.py            # /burn, /lock (aspect & card), /recycle, /create + callbacks
 │   ├── collection.py         # /casino, /balance, /collection, /stats + navigation callbacks
 │   ├── trade.py              # /trade, accept/reject callbacks for card & aspect trades
 │   ├── admin.py              # /spins, /reload, /set_thread (admin-only)
@@ -332,8 +332,8 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 | `/refresh` | cards.py | Refresh card modifiers/art |
 | `/equip` | cards.py | Equip aspects onto cards |
 | `/burn` | aspects.py | Burn aspect for spins |
-| `/lock` | aspects.py | Lock/unlock aspect |
-| `/recycle` | aspects.py | Upgrade aspects (3-4 → next tier) |
+| `/lock` | aspects.py | Lock/unlock aspect (`/lock <id>`) or card (`/lock card <id>`) |
+| `/recycle` | aspects.py | Recycle aspects or cards (`/recycle [aspects\|cards] [rarity]`, 3-4 → next tier) |
 | `/create` | aspects.py | Forge unique aspect (5 Legendaries) |
 | `/casino` | collection.py | View spin balance / open casino |
 | `/balance` | collection.py | View claim points |
