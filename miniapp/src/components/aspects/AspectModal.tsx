@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { AspectData } from '@/types';
+import type { AspectData, OrientationData } from '@/types';
 import { ApiService } from '@/services/api';
 import { getRarityGradient } from '@/utils/rarityStyles';
+import { AnimatedImage } from '@/components/common';
 import BeatLoader from 'react-spinners/BeatLoader';
 import './AspectModal.css';
 
@@ -12,6 +13,8 @@ interface AspectModalProps {
   initData: string | null;
   onClose: () => void;
   isActionPanelVisible?: boolean;
+  orientation: OrientationData;
+  orientationKey: number;
 }
 
 const AspectModal: React.FC<AspectModalProps> = ({
@@ -20,13 +23,18 @@ const AspectModal: React.FC<AspectModalProps> = ({
   initData,
   onClose,
   isActionPanelVisible = false,
+  orientation,
+  orientationKey,
 }) => {
   const [fullImage, setFullImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
+  const [effectsEnabled, setEffectsEnabled] = useState(true);
 
   useEffect(() => {
     if (!isOpen || !initData) return;
     let cancelled = false;
+
+    setFullImage(null);
 
     const loadImage = async () => {
       setImageLoading(true);
@@ -48,6 +56,7 @@ const AspectModal: React.FC<AspectModalProps> = ({
 
   const setName = aspect.aspect_definition?.set_name ?? 'Unknown';
   const gradient = getRarityGradient(aspect.rarity);
+  const imageUrl = fullImage ? `data:image/png;base64,${fullImage}` : '';
 
   return createPortal(
     <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={onClose}>
@@ -78,36 +87,43 @@ const AspectModal: React.FC<AspectModalProps> = ({
           <div className="aspect-modal-id">#{aspect.id}</div>
         )}
 
-        <div className="aspect-modal-sphere">
-          {fullImage ? (
-            <img
-              src={`data:image/png;base64,${fullImage}`}
-              alt={aspect.display_name}
-              className="aspect-modal-image"
-            />
-          ) : imageLoading ? (
-            <div className="aspect-modal-loader">
-              <BeatLoader color="#fff" size={10} />
-            </div>
-          ) : (
-            <div className="aspect-modal-placeholder">⬡</div>
-          )}
-        </div>
+        <div className="aspect-modal-shell">
+          <div className="aspect-modal-sphere" onClick={() => setEffectsEnabled(e => !e)}>
+            {fullImage ? (
+              <AnimatedImage
+                imageUrl={imageUrl}
+                alt={aspect.display_name}
+                rarity={aspect.rarity}
+                orientation={orientation}
+                effectsEnabled={effectsEnabled}
+                tiltKey={orientationKey}
+                borderRadius="25%"
+                square
+              />
+            ) : imageLoading ? (
+              <div className="aspect-modal-loader">
+                <BeatLoader color="#fff" size={10} />
+              </div>
+            ) : (
+              <div className="aspect-modal-placeholder">⬡</div>
+            )}
+          </div>
 
-        <div className="aspect-modal-info">
-          <h3
-            className="aspect-modal-name"
-            style={{
-              background: gradient,
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}
-          >
-            {aspect.display_name}
-          </h3>
-          <p className="aspect-modal-rarity">{aspect.rarity}</p>
-          <p className="aspect-modal-set">{setName}</p>
+          <div className="aspect-modal-info">
+            <h3
+              className="aspect-modal-name"
+              style={{
+                background: gradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
+              {aspect.display_name}
+            </h3>
+            <p className="aspect-modal-rarity">{aspect.rarity}</p>
+            <p className="aspect-modal-set">{setName}</p>
+          </div>
         </div>
       </div>
     </div>,

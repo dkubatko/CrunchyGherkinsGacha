@@ -5,7 +5,7 @@
   --card-image-padding: 0.25rem;
   
   /* Modal card width - hard max in px to prevent oversized cards on wide screens */
-  --modal-card-max-width: min(85vw, 400px);
+  --modal-card-max-width: min(75vw, 400px);
 }
 
 .modal-overlay {
@@ -25,9 +25,8 @@
 }
 
 .modal-overlay.with-action-panel {
-  /* When action panel is visible, offset from top instead of centering */
-  align-items: flex-start;
-  padding-top: clamp(0.5rem, 2vh, 1.5rem);
+  /* Center modal in available space above the action panel */
+  align-items: center;
   /* Action panel height = panel-bottom-padding (20px) + content padding (10px) + button (52px) */
   padding-bottom: calc(var(--action-panel-height, 82px));
 }
@@ -256,14 +255,14 @@
 /* Tall screens: allow larger viewport width */
 @media (min-height: 700px) {
   :root {
-    --modal-card-max-width: min(90vw, 350px);
+    --modal-card-max-width: min(80vw, 330px);
   }
 }
 
 /* Shorter screens: cap width to prevent overflow */
 @media (max-height: 699px) {
   :root {
-    --modal-card-max-width: min(75vw, 300px);
+    --modal-card-max-width: min(70vw, 280px);
   }
   
   .modal-overlay {

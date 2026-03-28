@@ -223,8 +223,6 @@ export class TelegramUtils {
         singleCardId,
         singleCardView: singleCardId != null,
         casinoView,
-        collectionDisplayName: null,
-        collectionUsername: null,
       };
     } catch (err) {
       console.error('Error initializing user:', err);
@@ -324,40 +322,135 @@ export class TelegramUtils {
   }
 
   static startOrientationTracking(callback: (data: OrientationData) => void) {
-    if (!WebApp.DeviceOrientation) return () => { };
+    let disposed = false;
+    let telegramStarted = false;
+    let fallbackActive = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    let browserHandler: ((e: DeviceOrientationEvent) => void) | null = null;
 
-    let intervalId: ReturnType<typeof setInterval> | null = null;
+    const DEG_TO_RAD = Math.PI / 180;
 
-    const updateOrientation = () => {
+    // Event-based handler for Telegram DeviceOrientation API
+    const onTelegramOrientation = () => {
+      if (disposed) return;
       callback({
-        alpha: WebApp.DeviceOrientation.alpha || 0,
-        beta: WebApp.DeviceOrientation.beta || 0,
-        gamma: WebApp.DeviceOrientation.gamma || 0,
-        isStarted: WebApp.DeviceOrientation.isStarted || false
+        alpha: WebApp.DeviceOrientation.alpha ?? 0,
+        beta: WebApp.DeviceOrientation.beta ?? 0,
+        gamma: WebApp.DeviceOrientation.gamma ?? 0,
+        isStarted: WebApp.DeviceOrientation.isStarted ?? false
       });
     };
 
-    // Start tracking with 100ms refresh rate for smooth animations
-    WebApp.DeviceOrientation.start({
-      refresh_rate: 100,
-      need_absolute: false
-    }, (started) => {
-      if (started) {
-        updateOrientation();
-        // Start polling for orientation updates
-        intervalId = setInterval(updateOrientation, 100);
-      }
-    });
-
-    // Initial update
-    updateOrientation();
-
-    return () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-      WebApp.DeviceOrientation.stop();
+    const removeTelegramListener = () => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        (WebApp as any).offEvent('deviceOrientationChanged', onTelegramOrientation);
+      } catch { /* ignore */ }
     };
+
+    // Browser DeviceOrientationEvent fallback (values are in degrees → convert to radians)
+    const startBrowserFallback = () => {
+      if (disposed || fallbackActive) return;
+      fallbackActive = true;
+
+      let hasRealData = false;
+
+      browserHandler = (event: DeviceOrientationEvent) => {
+        if (disposed) return;
+
+        const beta = event.beta || 0;
+        const gamma = event.gamma || 0;
+
+        // Only mark as started once we receive meaningful orientation data,
+        // so desktop browsers that fire zero-valued events don't interfere
+        // with react-parallax-tilt's mouse-based tracking.
+        if (!hasRealData && (Math.abs(beta) > 0.1 || Math.abs(gamma) > 0.1)) {
+          hasRealData = true;
+        }
+
+        callback({
+          alpha: (event.alpha || 0) * DEG_TO_RAD,
+          beta: beta * DEG_TO_RAD,
+          gamma: gamma * DEG_TO_RAD,
+          isStarted: hasRealData
+        });
+      };
+
+      // iOS 13+ requires explicit permission request (may be auto-granted inside Telegram WebView)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const DOE = DeviceOrientationEvent as any;
+      if (typeof DOE.requestPermission === 'function') {
+        DOE.requestPermission()
+          .then((permission: string) => {
+            if (permission === 'granted' && !disposed && browserHandler) {
+              window.addEventListener('deviceorientation', browserHandler);
+            }
+          })
+          .catch(() => { /* Permission denied or unavailable */ });
+      } else {
+        window.addEventListener('deviceorientation', browserHandler);
+      }
+    };
+
+    const cleanup = () => {
+      disposed = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (browserHandler) {
+        window.removeEventListener('deviceorientation', browserHandler);
+        browserHandler = null;
+      }
+      removeTelegramListener();
+      if (telegramStarted) {
+        try { WebApp.DeviceOrientation?.stop(); } catch { /* ignore */ }
+      }
+    };
+
+    // Try Telegram's DeviceOrientation API first (event-driven, not polling)
+    if (WebApp.DeviceOrientation) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (WebApp as any).onEvent('deviceOrientationChanged', onTelegramOrientation);
+
+      WebApp.DeviceOrientation.start({
+        refresh_rate: 100,
+        need_absolute: false
+      }, (started: boolean) => {
+        if (disposed) return;
+        if (started) {
+          telegramStarted = true;
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          onTelegramOrientation();
+        } else {
+          // Telegram API failed, fall back to browser
+          removeTelegramListener();
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          startBrowserFallback();
+        }
+      });
+
+      // If Telegram doesn't respond within 2s, fall back to browser API
+      timeoutId = setTimeout(() => {
+        timeoutId = null;
+        if (!disposed && !telegramStarted && !fallbackActive) {
+          removeTelegramListener();
+          startBrowserFallback();
+        }
+      }, 2000);
+
+      return cleanup;
+    }
+
+    // No Telegram DeviceOrientation API available, try browser directly
+    startBrowserFallback();
+    return cleanup;
   }
 
   // Haptic Feedback Methods

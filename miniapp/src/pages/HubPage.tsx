@@ -12,9 +12,10 @@ import AllCardsTab from '@/components/tabs/AllCardsTab';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
+import { ApiService } from '@/services/api';
 
 // Types
-import type { HubTab } from '@/types';
+import type { HubTab, UserProfile } from '@/types';
 
 interface HubPageProps {
   currentUserId: number;
@@ -59,6 +60,43 @@ export const HubPage = ({
     TelegramUtils.expandApp();
   }, []);
 
+  // Profile tab shows the target user (could be self or another user)
+  const profileUserId = isOwnCollection ? currentUserId : targetUserId;
+
+  // Shared profile state — single source of truth for user info
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<string | undefined>();
+  const profileFetchedRef = useRef(false);
+
+  const fetchProfile = useCallback(async () => {
+    if (!chatId) {
+      setProfileLoading(false);
+      setProfileError('Profile is unavailable outside a chat context.');
+      return;
+    }
+    try {
+      const result = await ApiService.fetchUserProfile(profileUserId, chatId, initData);
+      setProfile(result);
+    } catch (err) {
+      setProfileError(err instanceof Error ? err.message : 'Failed to load profile');
+    } finally {
+      setProfileLoading(false);
+    }
+  }, [profileUserId, chatId, initData]);
+
+  useEffect(() => {
+    if (profileFetchedRef.current) return;
+    profileFetchedRef.current = true;
+    void fetchProfile();
+  }, [fetchProfile]);
+
+  const ownerLabel = useMemo(() => {
+    if (profile?.display_name) return profile.display_name;
+    if (profile?.username) return `@${profile.username}`;
+    return null;
+  }, [profile]);
+
   const handleTabChange = useCallback((tab: HubTab) => {
     setActiveTab(tab);
     setMountedTabs(prev => {
@@ -69,9 +107,6 @@ export const HubPage = ({
     });
   }, []);
 
-  // Profile tab shows the target user (could be self or another user)
-  const profileUserId = isOwnCollection ? currentUserId : targetUserId;
-
   return (
     <div className="hub-container">
       <div className="hub-content">
@@ -79,10 +114,11 @@ export const HubPage = ({
         {mountedTabs.has('profile') && (
           <div className={`hub-tab-panel ${activeTab === 'profile' ? 'active' : ''}`}>
             <ProfileTab
-              userId={profileUserId}
-              chatId={chatId}
-              initData={initData}
+              profile={profile}
+              loading={profileLoading}
+              error={profileError}
               isActive={activeTab === 'profile'}
+              onRefresh={fetchProfile}
             />
           </div>
         )}
@@ -97,6 +133,7 @@ export const HubPage = ({
               isOwnCollection={isOwnCollection}
               enableTrade={enableTrade}
               initData={initData}
+              ownerLabel={ownerLabel}
             />
           </div>
         )}
@@ -109,6 +146,7 @@ export const HubPage = ({
               chatId={chatId}
               initData={initData}
               targetUserId={targetUserId}
+              ownerLabel={ownerLabel}
             />
           </div>
         )}

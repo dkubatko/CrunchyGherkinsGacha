@@ -12,6 +12,7 @@ import type { ActionButton } from '@/components/common';
 // Hooks
 import { useAspects } from '@/hooks/useAspects';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
+import { useOrientation } from '@/hooks';
 
 // Services
 import { ApiService } from '@/services/api';
@@ -27,10 +28,13 @@ interface AspectsTabProps {
   chatId: string | null;
   initData: string;
   targetUserId?: number;
+  ownerLabel: string | null;
 }
 
-const AspectsTab = ({ currentUserId, chatId, initData, targetUserId }: AspectsTabProps) => {
+const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel }: AspectsTabProps) => {
   const { aspects, loading, error, refetch } = useAspects(initData, chatId, targetUserId);
+  const { orientation, orientationKey } = useOrientation({ enabled: true });
+  const isOwnCollection = !targetUserId || targetUserId === currentUserId;
 
   // Filtering / sorting
   const {
@@ -215,8 +219,6 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId }: AspectsTa
       }
     : null;
 
-  const isOwnCollection = !targetUserId || targetUserId === currentUserId;
-
   // Action buttons when a modal is open (only for own collection)
   const actionButtons = useMemo<ActionButton[]>(() => {
     if (!selectedAspect || !showModal || !isOwnCollection) return [];
@@ -270,7 +272,7 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId }: AspectsTa
     <>
       <div className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
         <div className="app-content">
-          <Title title="Aspects" />
+          <Title title={`${ownerLabel ? `${ownerLabel}'s` : ''} Aspects`} />
 
           {aspects.length > 0 && (
             <FilterSortControls
@@ -316,6 +318,8 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId }: AspectsTa
           initData={initData}
           onClose={closeModal}
           isActionPanelVisible={isActionPanelVisible}
+          orientation={orientation}
+          orientationKey={orientationKey}
         />
       )}
 

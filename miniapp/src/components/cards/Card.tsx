@@ -247,7 +247,7 @@ const Card: React.FC<CardProps> = ({
               alt={[modifier, base_name].filter(Boolean).join(' ')}
               rarity={rarity}
               orientation={orientation}
-              effectsEnabled={effectsEnabled}
+              effectsEnabled={effectsEnabled && !showAspectsPopup}
               tiltKey={tiltKey}
               triggerBurn={triggerBurn}
               onBurnComplete={onBurnComplete}
@@ -344,7 +344,7 @@ const Card: React.FC<CardProps> = ({
                         return (
                           <li key={ca.id} className="card-aspects-popup-item">
                             <span className="card-aspects-popup-name" style={{ color }}>{name}</span>
-                            <span className="card-aspects-popup-rarity" style={{ color }}>{aspectRarity}</span>
+                            <span className="card-aspects-popup-rarity">{aspectRarity}</span>
                           </li>
                         );
                       })}

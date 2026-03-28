@@ -12,9 +12,6 @@ interface SingleCardViewProps {
   orientationKey: number;
 }
 
-// Fetches card metadata minimally by reusing batch endpoints if necessary in future.
-// Currently we only need the image, but Card component requires some textual fields.
-// We'll display placeholder metadata while focusing on image rendering.
 export const SingleCardView: React.FC<SingleCardViewProps> = ({ cardId, initData, orientation, orientationKey }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -94,22 +91,17 @@ export const SingleCardView: React.FC<SingleCardViewProps> = ({ cardId, initData
     );
   }
 
-  // Use Card component for consistency; provide minimal fake metadata (rarity placeholder)
   return (
     <div className="single-card-layout">
       <div className="card-container single-card">
         <Card
-          id={cardId}
-          rarity={cardData.rarity}
-          modifier={cardData.modifier}
-          base_name={cardData.base_name}
+          {...cardData}
           orientation={orientation}
           tiltKey={orientationKey}
           initData={initData}
           shiny={true}
           showOwner={true}
-          owner={cardData.owner}
-          set_name={cardData.set_name}
+          enableDownload={true}
         />
       </div>
     </div>

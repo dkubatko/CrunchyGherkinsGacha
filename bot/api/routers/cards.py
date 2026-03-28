@@ -36,7 +36,6 @@ from api.schemas import (
     CardLockResponse,
     ShareCardRequest,
     UserCollectionResponse,
-    UserSummary,
 )
 from settings.constants import get_lock_cost
 from utils.miniapp import encode_single_card_token
@@ -83,22 +82,13 @@ async def get_user_collection(
         await validate_chat_exists(chat_id)
     cards = await asyncio.to_thread(card_repo.get_user_collection, user_id, chat_id)
     user_record = await asyncio.to_thread(user_repo.get_user, user_id)
-    username = user_record.username if user_record else None
-    display_name = user_record.display_name if user_record else None
 
-    if not username:
-        username = await asyncio.to_thread(user_repo.get_username_for_user_id, user_id)
-
-    if not cards and username is None:
+    if not cards and user_record is None:
         logger.warning(f"No user or cards found for user_id: {user_id}")
         raise HTTPException(status_code=404, detail="User not found")
 
     return UserCollectionResponse(
-        user=UserSummary(
-            user_id=user_id,
-            username=username,
-            display_name=display_name,
-        ),
+        user_id=user_id,
         cards=cards,
     )
 
