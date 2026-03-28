@@ -595,31 +595,38 @@
 /* ── Rarity Colors ──────────────────────────────────────────────────────── */
 
 .rarity-common {
-  color: #b0b0b0;
+  color: #4A90E2;
 }
 .rarity-common .admin-stat-count {
-  color: #b0b0b0;
+  color: #4A90E2;
 }
 
 .rarity-rare {
-  color: #4fc3f7;
+  color: #4CAF50;
 }
 .rarity-rare .admin-stat-count {
-  color: #4fc3f7;
+  color: #4CAF50;
 }
 
 .rarity-epic {
-  color: #ba68c8;
+  color: #9C27B0;
 }
 .rarity-epic .admin-stat-count {
-  color: #ba68c8;
+  color: #9C27B0;
 }
 
 .rarity-legendary {
-  color: #ffd54f;
+  color: #FFD700;
 }
 .rarity-legendary .admin-stat-count {
-  color: #ffd54f;
+  color: #FFD700;
+}
+
+.rarity-unique {
+  color: #E0E0E0;
+}
+.rarity-unique .admin-stat-count {
+  color: #E0E0E0;
 }
 
 /* ── Aspect List ─────────────────────────────────────────────────────── */
