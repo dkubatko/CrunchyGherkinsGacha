@@ -137,6 +137,7 @@ class GeminiUtil:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
+                    processed_image_bytes = ImageUtil.crop_to_aspect_ratio(processed_image_bytes, 5/7)
                     logger.info(f"Image for '{base_name}' generated and processed successfully.")
                     return base64.b64encode(processed_image_bytes).decode("utf-8")
             logger.warning("No image data found in response.")
@@ -197,6 +198,7 @@ class GeminiUtil:
                     image_bytes = part.inline_data.data
                     logger.info("Processing slot machine icon")
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
+                    processed_image_bytes = ImageUtil.crop_to_aspect_ratio(processed_image_bytes, 1.0)
 
                     # Resize to target size (default 256x256) to reduce payload size
                     resized_image_bytes = ImageUtil.resize_to_dimensions(
@@ -247,11 +249,13 @@ class GeminiUtil:
                 set_context = ""
 
             creativeness = RARITIES.get(rarity, {}).get("creativeness_factor", 50)
+            color = RARITIES.get(rarity, {}).get("color", "blue")
 
             prompt = ASPECT_GENERATION_PROMPT.format(
                 aspect_name=aspect_name,
                 set_context=set_context,
                 creativeness_factor=creativeness,
+                color=color,
             )
 
             # Unique aspects always get the special addendum
@@ -287,7 +291,7 @@ class GeminiUtil:
                     image_bytes = part.inline_data.data
                     # Crop borders, then force 1:1 square
                     processed = ImageUtil.crop_to_content(image_bytes)
-                    processed = ImageUtil.crop_to_square(processed)
+                    processed = ImageUtil.crop_to_aspect_ratio(processed, 1.0)
                     logger.info(
                         f"Aspect sphere for '{aspect_name}' generated and processed successfully."
                     )
@@ -372,6 +376,7 @@ class GeminiUtil:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
                     processed = ImageUtil.crop_to_content(image_bytes)
+                    processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
                     logger.info(f"Equipped card image for '{card_name}' generated successfully.")
                     return base64.b64encode(processed).decode("utf-8")
 
@@ -456,6 +461,7 @@ class GeminiUtil:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
                     processed = ImageUtil.crop_to_content(image_bytes)
+                    processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
                     logger.info(f"Refresh-equipped image for '{card_name}' generated successfully.")
                     return base64.b64encode(processed).decode("utf-8")
 
