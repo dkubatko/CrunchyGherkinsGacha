@@ -363,7 +363,7 @@ export class TelegramUtils {
 
         // Only mark as started once we receive meaningful orientation data,
         // so desktop browsers that fire zero-valued events don't interfere
-        // with react-parallax-tilt's mouse-based tracking.
+        // with mouse-based tilt tracking.
         if (!hasRealData && (Math.abs(beta) > 0.1 || Math.abs(gamma) > 0.1)) {
           hasRealData = true;
         }
