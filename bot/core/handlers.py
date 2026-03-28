@@ -33,10 +33,13 @@ from handlers import (
     # Aspect handlers (burn, lock, recycle, create)
     burn,
     handle_burn_callback,
-    lock_aspect_command,
+    lock_command,
     handle_lock_aspect_confirm,
+    handle_lock_card_confirm,
     recycle,
     handle_recycle_callback,
+    handle_recycle_type_callback,
+    handle_card_recycle_callback,
     create_unique_aspect,
     handle_create_callback,
     # Collection handlers
@@ -109,7 +112,7 @@ def _register_card_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("burn", burn))
     application.add_handler(CommandHandler("create", create_unique_aspect))
     application.add_handler(CommandHandler("refresh", refresh))
-    application.add_handler(CommandHandler("lock", lock_aspect_command))
+    application.add_handler(CommandHandler("lock", lock_command))
     application.add_handler(CommandHandler("equip", equip))
 
 
@@ -137,7 +140,16 @@ def _register_callback_handlers(application: Application) -> None:
     application.add_handler(
         CallbackQueryHandler(handle_lock_aspect_confirm, pattern="^alockaspect_")
     )
+    application.add_handler(
+        CallbackQueryHandler(handle_lock_card_confirm, pattern="^lockcard_")
+    )
+    application.add_handler(
+        CallbackQueryHandler(handle_recycle_type_callback, pattern="^recycle_type_")
+    )
     application.add_handler(CallbackQueryHandler(handle_recycle_callback, pattern="^arecycle_"))
+    application.add_handler(
+        CallbackQueryHandler(handle_card_recycle_callback, pattern="^crecycle_")
+    )
     application.add_handler(CallbackQueryHandler(handle_create_callback, pattern="^create_"))
     application.add_handler(CallbackQueryHandler(handle_refresh_callback, pattern="^refresh_"))
     application.add_handler(CallbackQueryHandler(handle_equip_callback, pattern="^equip_"))

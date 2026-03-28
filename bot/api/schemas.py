@@ -83,6 +83,24 @@ class ShareCardRequest(BaseModel):
     user_id: int
 
 
+class CardLockRequest(BaseModel):
+    """Request to lock or unlock a card."""
+
+    user_id: int
+    chat_id: str
+    lock: bool  # True to lock, False to unlock
+
+
+class CardLockResponse(BaseModel):
+    """Response after locking/unlocking a card."""
+
+    success: bool
+    locked: bool
+    balance: int
+    message: str
+    lock_cost: int
+
+
 # =============================================================================
 # ASPECT SCHEMAS
 # =============================================================================
