@@ -19,14 +19,6 @@ from utils.schemas import Card
 # =============================================================================
 
 
-class UserSummary(BaseModel):
-    """Lightweight user summary for API responses."""
-
-    user_id: int
-    username: Optional[str] = None
-    display_name: Optional[str] = None
-
-
 class UserAchievementResponse(BaseModel):
     """Achievement data for API responses."""
 
@@ -54,7 +46,7 @@ class UserProfileResponse(BaseModel):
 class UserCollectionResponse(BaseModel):
     """User's card collection response."""
 
-    user: UserSummary
+    user_id: int
     cards: List[Card]
 
 

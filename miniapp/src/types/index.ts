@@ -63,14 +63,8 @@ export interface OrientationData {
 
 export type HubTab = 'profile' | 'collection' | 'aspects' | 'casino' | 'allCards';
 
-export interface UserSummary {
-  user_id: number;
-  username?: string | null;
-  display_name?: string | null;
-}
-
 export interface UserCollectionResponse {
-  user: UserSummary;
+  user_id: number;
   cards: CardData[];
 }
 
@@ -92,8 +86,6 @@ export interface UserData {
   isOwnCollection: boolean;
   enableTrade: boolean;
   chatId?: string | null;
-  collectionDisplayName?: string | null;
-  collectionUsername?: string | null;
   // Single card view mode: if singleCardId is set, the app should render only that card
   singleCardId?: number | null;
   singleCardView?: boolean; // Convenience boolean to avoid recomputing

@@ -37,16 +37,12 @@ export const useCards = (): UseCardsResult => {
           return previous;
         }
 
-        const responseUserId = userCardsResponse.user.user_id;
-        const collectionUsername = userCardsResponse.user.username ?? null;
-        const collectionDisplayName = userCardsResponse.user.display_name ?? null;
+        const responseUserId = userCardsResponse.user_id;
         const isOwn = responseUserId === previous.currentUserId;
 
         return {
           ...previous,
           targetUserId: responseUserId,
-          collectionUsername,
-          collectionDisplayName,
           isOwnCollection: isOwn,
           enableTrade: isOwn,
         };

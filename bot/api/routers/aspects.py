@@ -314,6 +314,13 @@ async def equip_initiate(
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
 
+    # Build aspect list for confirmation message
+    aspect_names = []
+    for ca in (card.equipped_aspects or []):
+        if ca.aspect and ca.aspect.display_name:
+            aspect_names.append(f"🔮 {ca.aspect.display_name}")
+    aspect_list = ("\n" + "\n".join(aspect_names)) if aspect_names else ""
+
     confirm_text = EQUIP_CONFIRM_MESSAGE.format(
         aspect_id=aspect_id,
         aspect_name=html.escape(aspect.display_name or "Unknown"),
@@ -323,6 +330,7 @@ async def equip_initiate(
         card_rarity=card.rarity,
         new_title=html.escape(new_title),
         aspect_count=card.aspect_count,
+        aspect_list=aspect_list,
     )
 
     keyboard = InlineKeyboardMarkup(

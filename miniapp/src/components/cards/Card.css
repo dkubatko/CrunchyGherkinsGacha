@@ -240,6 +240,10 @@
   animation: fadeIn 0.15s ease-out;
 }
 
+.with-action-panel .card-aspects-popup-overlay {
+  padding-bottom: var(--action-panel-height);
+}
+
 /* Aspects popup panel */
 .card-aspects-popup {
   background: rgba(28, 28, 30, 0.92);
@@ -257,9 +261,10 @@
 }
 
 .card-aspects-popup-header {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   padding: 0.85rem 1rem 0.6rem;
   font-size: 0.95rem;
   font-weight: 600;
@@ -268,6 +273,8 @@
 }
 
 .card-aspects-popup-close {
+  position: absolute;
+  right: 1rem;
   background: none;
   border: none;
   color: rgba(255, 255, 255, 0.5);
@@ -290,8 +297,7 @@
 
 .card-aspects-popup-item {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
   padding: 0.45rem 0;
   border-bottom: 0.5px solid rgba(255, 255, 255, 0.06);
 }
@@ -302,12 +308,14 @@
 
 .card-aspects-popup-name {
   font-size: 0.9rem;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .card-aspects-popup-rarity {
   font-size: 0.75rem;
-  font-weight: 400;
+  color: #999;
+  text-transform: capitalize;
+  margin-top: 0.1rem;
 }
 
 .card-share-button-inline {
@@ -619,6 +627,49 @@
   }
 
   .lock-id {
+    font-size: 0.8rem;
+  }
+
+  .card-aspects-button {
+    font-size: 0.9rem;
+    padding: 0.35rem 0.7rem;
+    gap: 0.3rem;
+    border-radius: 12px;
+  }
+
+  .card-aspects-arrow {
+    width: 0.85rem;
+    height: 0.85rem;
+  }
+
+  .card-aspects-popup {
+    min-width: 280px;
+    max-width: 85vw;
+  }
+
+  .card-aspects-popup-header {
+    padding: 1rem 1.1rem 0.7rem;
+    font-size: 1.05rem;
+  }
+
+  .card-aspects-popup-close {
+    font-size: 1.15rem;
+    padding: 0.15rem 0.3rem;
+  }
+
+  .card-aspects-popup-list {
+    padding: 0 1.1rem 1rem;
+  }
+
+  .card-aspects-popup-item {
+    padding: 0.55rem 0;
+  }
+
+  .card-aspects-popup-name {
+    font-size: 1rem;
+  }
+
+  .card-aspects-popup-rarity {
     font-size: 0.8rem;
   }
 }

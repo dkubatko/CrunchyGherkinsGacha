@@ -35,6 +35,7 @@ interface CollectionTabProps {
   isOwnCollection: boolean;
   enableTrade: boolean;
   initData: string;
+  ownerLabel: string | null;
 }
 
 const CollectionTab = ({
@@ -44,6 +45,7 @@ const CollectionTab = ({
   isOwnCollection: initialIsOwnCollection,
   enableTrade: initialEnableTrade,
   initData,
+  ownerLabel,
 }: CollectionTabProps) => {
   // Core data hooks
   const {
@@ -52,8 +54,6 @@ const CollectionTab = ({
     error,
     isOwnCollection,
     enableTrade,
-    collectionDisplayName,
-    collectionUsername,
     refetch,
   } = useCollectionCards(initialTargetUserId, chatId, initData, {
     initialIsOwnCollection,
@@ -360,11 +360,7 @@ const CollectionTab = ({
 
   const isActionPanelVisible = actionButtons.length > 0;
 
-  const collectionOwnerLabel = (() => {
-    if (collectionDisplayName && collectionDisplayName.trim().length > 0) return collectionDisplayName;
-    if (collectionUsername && collectionUsername.trim().length > 0) return `@${collectionUsername}`;
-    return 'Collection';
-  })();
+  const collectionOwnerLabel = ownerLabel ?? 'Collection';
 
   // Event handlers
   const swipeHandlers = useSwipeHandlers({

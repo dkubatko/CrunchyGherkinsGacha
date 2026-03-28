@@ -15,8 +15,6 @@ interface UseCollectionCardsResult {
   targetUserId: number;
   isOwnCollection: boolean;
   enableTrade: boolean;
-  collectionDisplayName: string | null;
-  collectionUsername: string | null;
   refetch: () => Promise<void>;
   updateCard: (cardId: number, updates: Partial<CardData>) => void;
 }
@@ -37,8 +35,6 @@ export const useCollectionCards = (
   const [targetUserId, setTargetUserId] = useState(initialTargetUserId);
   const [isOwnCollection, setIsOwnCollection] = useState(options.initialIsOwnCollection);
   const [enableTrade, setEnableTrade] = useState(options.initialEnableTrade);
-  const [collectionDisplayName, setCollectionDisplayName] = useState<string | null>(null);
-  const [collectionUsername, setCollectionUsername] = useState<string | null>(null);
   const initializationStartedRef = useRef(false);
 
   const fetchCards = useCallback(async () => {
@@ -50,14 +46,10 @@ export const useCollectionCards = (
       );
       setCards(userCardsResponse.cards);
 
-      const responseUserId = userCardsResponse.user.user_id;
-      const responseUsername = userCardsResponse.user.username ?? null;
-      const responseDisplayName = userCardsResponse.user.display_name ?? null;
+      const responseUserId = userCardsResponse.user_id;
       const isOwn = responseUserId === options.currentUserId;
 
       setTargetUserId(responseUserId);
-      setCollectionUsername(responseUsername);
-      setCollectionDisplayName(responseDisplayName);
       setIsOwnCollection(isOwn);
       setEnableTrade(isOwn);
     } catch (err) {
@@ -115,8 +107,6 @@ export const useCollectionCards = (
     targetUserId,
     isOwnCollection,
     enableTrade,
-    collectionDisplayName,
-    collectionUsername,
     refetch,
     updateCard
   };

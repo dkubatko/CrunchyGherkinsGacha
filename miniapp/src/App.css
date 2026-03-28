@@ -16,10 +16,9 @@
   --bottom-bar-padding: calc(24px + env(safe-area-inset-bottom, 0px));
   
   /* Action panel height components - used for modal spacing */
-  --action-panel-bottom-padding: 20px;
   --action-panel-content-padding: 10px;
   --action-panel-button-height: 55px;
-  --action-panel-height: calc(var(--action-panel-bottom-padding) + var(--action-panel-content-padding) + var(--action-panel-button-height));
+  --action-panel-height: calc(var(--bottom-bar-padding) + var(--action-panel-content-padding) + var(--action-panel-button-height));
 }
 
 * {

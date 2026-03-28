@@ -1,12 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Tilt from 'react-parallax-tilt';
-
-interface OrientationData {
-  alpha: number;
-  beta: number;
-  gamma: number;
-  isStarted: boolean;
-}
+import type { OrientationData } from '@/types';
 
 interface TiltValues {
   x: number;
@@ -22,13 +16,15 @@ interface AnimatedImageProps {
   tiltKey: number;
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
+  borderRadius?: string;
+  square?: boolean;
 }
 
 // Performance constants
 const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
 const createZeroTilt = (): TiltValues => ({ x: 0, y: 0 });
 const TILT_LIMIT_DEGREES = 15;
-const RAD_TO_DEG = 180 / Math.PI; // Telegram DeviceOrientation returns radians
+const RAD_TO_DEG = 180 / Math.PI; // Orientation values arrive in radians (Telegram API or browser fallback)
 
 // Performance detection
 const detectDevicePerformance = (): 'high' | 'medium' | 'low' => {
@@ -59,7 +55,7 @@ const normalizeAngle = (angle: number): number => {
   return angle;
 };
 
-const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey, triggerBurn = false, onBurnComplete }) => {
+const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, orientation, effectsEnabled, tiltKey, triggerBurn = false, onBurnComplete, borderRadius, square }) => {
   const [animationState, setAnimationState] = useState({ tick: 0, smoothedTilt: createZeroTilt() });
   const [burnProgress, setBurnProgress] = useState<number>(0);
   const [isBurning, setIsBurning] = useState(false);
@@ -97,6 +93,8 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     smoothingFactorRef.current = effectsEnabled ? performanceFactor : 0.1;
     if (!effectsEnabled) {
       tiltTargetRef.current = createZeroTilt();
+      setAnimationState(prev => ({ ...prev, smoothedTilt: createZeroTilt() }));
+      setReferenceOrientation(null);
     }
   }, [effectsEnabled]);
 
@@ -121,7 +119,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
     // Calculate delta from reference position
     // Beta: front-to-back tilt (-180 to 180), positive = device tilted forward
     // Gamma: left-to-right tilt (-90 to 90), positive = device tilted right
-    // Telegram returns values in RADIANS, so convert to degrees first
+    // Orientation values arrive in radians, convert to degrees for tilt mapping
     const deltaBeta = normalizeAngle((orientation.beta - referenceOrientation.beta) * RAD_TO_DEG);
     const deltaGamma = normalizeAngle((orientation.gamma - referenceOrientation.gamma) * RAD_TO_DEG);
 
@@ -266,8 +264,22 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   }), []);
 
   const shadowStyle = useMemo<React.CSSProperties>(() => ({
-    boxShadow: isBurning ? 'none' : `${shadowMetrics.offsetX}px ${shadowMetrics.offsetY}px ${shadowMetrics.blur}px ${shadowMetrics.spread}px rgba(0, 0, 0, ${shadowMetrics.alpha})`
-  }), [shadowMetrics, isBurning]);
+    boxShadow: isBurning ? 'none' : `${shadowMetrics.offsetX}px ${shadowMetrics.offsetY}px ${shadowMetrics.blur}px ${shadowMetrics.spread}px rgba(0, 0, 0, ${shadowMetrics.alpha})`,
+    ...(borderRadius ? { borderRadius } : {})
+  }), [shadowMetrics, isBurning, borderRadius]);
+
+  // Style overrides for non-card shapes (e.g. aspects use square + 25% radius)
+  const contentOverrides = useMemo<React.CSSProperties>(() => {
+    const style: React.CSSProperties = {};
+    if (borderRadius) {
+      style.borderRadius = borderRadius;
+      style.clipPath = `inset(0 round ${borderRadius})`;
+    }
+    if (square) {
+      style.aspectRatio = '1';
+    }
+    return style;
+  }, [borderRadius, square]);
 
   // Memoized shine calculations for better performance
   const shineMetrics = useMemo(() => {
@@ -347,9 +359,9 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
   return (
     <Tilt
       className="card-image-container"
-      tiltEnable={effectsEnabled && !isBurning}
-      tiltAngleXManual={isBurning ? 0 : manualTiltAngles?.x}
-      tiltAngleYManual={isBurning ? 0 : manualTiltAngles?.y}
+      tiltEnable={!isBurning}
+      tiltAngleXManual={isBurning ? 0 : (manualTiltAngles?.x ?? 0)}
+      tiltAngleYManual={isBurning ? 0 : (manualTiltAngles?.y ?? 0)}
       tiltMaxAngleX={15}
       tiltMaxAngleY={15}
       perspective={1000}
@@ -366,7 +378,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
       />
       <div 
         className={`card-image-content ${isBurning ? 'burning' : ''}`}
-        style={isBurning ? { background: 'transparent' } : undefined}
+        style={{ ...contentOverrides, ...(isBurning ? { background: 'transparent' } : {}) }}
       >
         <img 
           src={imageUrl} 
@@ -391,8 +403,9 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({ imageUrl, alt, rarity, or
             transform: 'scale(1.01)',
             imageRendering: 'crisp-edges',
             WebkitBackfaceVisibility: 'hidden',
-            backfaceVisibility: 'hidden'
-          } : undefined}
+            backfaceVisibility: 'hidden',
+            ...(borderRadius ? { borderRadius } : {})
+          } : (borderRadius ? { borderRadius } : undefined)}
         />
         <div 
           className="card-shine"
