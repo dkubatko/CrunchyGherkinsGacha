@@ -210,10 +210,13 @@ export class ApiService {
 
   // ========== Aspect Methods ==========
 
-  static async fetchUserAspects(initData: string, chatId?: string | null): Promise<AspectData[]> {
+  static async fetchUserAspects(initData: string, chatId?: string | null, userId?: number): Promise<AspectData[]> {
     const params = new URLSearchParams();
     if (chatId) {
       params.set('chat_id', chatId);
+    }
+    if (userId !== undefined) {
+      params.set('user_id', String(userId));
     }
 
     const endpoint = `${API_BASE_URL}/aspects`;
@@ -312,6 +315,35 @@ export class ApiService {
 
     if (!response.ok) {
       let detail = `Failed to lock/unlock aspect (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async lockCard(
+    cardId: number,
+    userId: number,
+    chatId: string,
+    lock: boolean,
+    initData: string
+  ): Promise<{ success: boolean; locked: boolean; balance: number; message: string; lock_cost: number }> {
+    const response = await fetch(`${API_BASE_URL}/cards/${cardId}/lock`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ user_id: userId, chat_id: chatId, lock })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to lock/unlock card (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { CardModal, CardGrid, FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
 import Loading from '@/components/common/Loading';
+import { LockConfirmDialog } from '@/components/dialogs';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
@@ -25,7 +26,7 @@ import { TelegramUtils } from '@/utils/telegram';
 import { ApiService } from '@/services/api';
 
 // Types
-import type { CardData, ProfileState, UserProfile } from '@/types';
+import type { CardData, ProfileState, UserProfile, AspectConfigResponse, ClaimBalanceState } from '@/types';
 
 interface CollectionTabProps {
   currentUserId: number;
@@ -53,6 +54,7 @@ const CollectionTab = ({
     enableTrade,
     collectionDisplayName,
     collectionUsername,
+    refetch,
   } = useCollectionCards(initialTargetUserId, chatId, initData, {
     initialIsOwnCollection,
     initialEnableTrade,
@@ -76,6 +78,24 @@ const CollectionTab = ({
     ? selectedCardForTrade.chat_id
     : chatId;
   const shouldFetchAllCards = activeTradeCardId !== null;
+
+  // Lock dialog state
+  const [showLockDialog, setShowLockDialog] = useState(false);
+  const [lockProcessing, setLockProcessing] = useState(false);
+  const [claimState, setClaimState] = useState<ClaimBalanceState>({
+    balance: null,
+    loading: false,
+  });
+
+  // Config (lock costs — shared with aspects)
+  const [config, setConfig] = useState<AspectConfigResponse | null>(null);
+
+  useEffect(() => {
+    if (!initData) return;
+    ApiService.fetchAspectConfig(initData)
+      .then(setConfig)
+      .catch((err) => console.error('Failed to load aspect config:', err));
+  }, [initData]);
 
   const ensureUserProfile = useCallback(async (
     profileChatId: string,
@@ -181,6 +201,10 @@ const CollectionTab = ({
   // Feature hooks
   const { showModal, modalCard, openModal, closeModal } = useModal();
 
+  const lockCost = modalCard && config
+    ? config.lock_costs[modalCard.rarity] ?? 0
+    : 0;
+
   const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
     setSelectedCardForTrade(null);
     setIsTradeView(false);
@@ -253,6 +277,32 @@ const CollectionTab = ({
     }
   }, [initData, currentUserId]);
 
+  // ── Lock / Unlock ──
+  const handleLockClick = useCallback(() => {
+    if (!modalCard) return;
+    setShowLockDialog(true);
+  }, [modalCard]);
+
+  const handleLockConfirm = useCallback(async () => {
+    if (!modalCard || !chatId) return;
+    setLockProcessing(true);
+    try {
+      const wantLock = !modalCard.locked;
+      const result = await ApiService.lockCard(modalCard.id, currentUserId, chatId, wantLock, initData);
+      setClaimState({ balance: result.balance, loading: false });
+      TelegramUtils.showAlert(result.message || (result.locked ? 'Locked!' : 'Unlocked!'));
+      setShowLockDialog(false);
+      await refetch();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Lock/unlock failed';
+      TelegramUtils.showAlert(msg);
+    } finally {
+      setLockProcessing(false);
+    }
+  }, [modalCard, chatId, currentUserId, initData, refetch]);
+
+  const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
+
   useEffect(() => {
     if (!isTradeView) {
       TelegramUtils.hideBackButton();
@@ -269,11 +319,22 @@ const CollectionTab = ({
     if (loading || error) return [];
     const buttons: ActionButton[] = [];
 
-    if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
+    if (isOwnCollection && !isTradeView && !selectedCardForTrade && modalCard) {
       buttons.push({
-        id: 'trade', text: 'Trade', onClick: handleTradeClick,
-        variant: 'trade-blue'
+        id: 'lock',
+        text: modalCard.locked ? 'Unlock' : 'Lock',
+        onClick: handleLockClick,
+        variant: 'lock-grey',
       });
+    }
+
+    if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
+      if (!modalCard.locked) {
+        buttons.push({
+          id: 'trade', text: 'Trade', onClick: handleTradeClick,
+          variant: 'trade-blue'
+        });
+      }
     } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
       modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
       buttons.push({
@@ -292,6 +353,7 @@ const CollectionTab = ({
     selectedCardForTrade,
     modalCard,
     enableTrade,
+    handleLockClick,
     handleTradeClick,
     handleSelectClick
   ]);
@@ -436,6 +498,17 @@ const CollectionTab = ({
           isActionPanelVisible={isActionPanelVisible}
         />
       )}
+
+      {/* Lock confirmation */}
+      <LockConfirmDialog
+        isOpen={showLockDialog}
+        locking={lockProcessing}
+        card={modalCard}
+        lockCost={lockCost}
+        claimState={claimState}
+        onConfirm={() => void handleLockConfirm()}
+        onCancel={handleLockCancel}
+      />
 
       {/* Action Panel */}
       <ActionPanel

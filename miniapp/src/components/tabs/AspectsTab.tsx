@@ -26,10 +26,11 @@ interface AspectsTabProps {
   currentUserId: number;
   chatId: string | null;
   initData: string;
+  targetUserId?: number;
 }
 
-const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
-  const { aspects, loading, error, refetch } = useAspects(initData, chatId);
+const AspectsTab = ({ currentUserId, chatId, initData, targetUserId }: AspectsTabProps) => {
+  const { aspects, loading, error, refetch } = useAspects(initData, chatId, targetUserId);
 
   // Filtering / sorting
   const {
@@ -214,9 +215,11 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
       }
     : null;
 
-  // Action buttons when a modal is open
+  const isOwnCollection = !targetUserId || targetUserId === currentUserId;
+
+  // Action buttons when a modal is open (only for own collection)
   const actionButtons = useMemo<ActionButton[]>(() => {
-    if (!selectedAspect || !showModal) return [];
+    if (!selectedAspect || !showModal || !isOwnCollection) return [];
     const buttons: ActionButton[] = [];
 
     buttons.push({
@@ -245,7 +248,7 @@ const AspectsTab = ({ currentUserId, chatId, initData }: AspectsTabProps) => {
     }
 
     return buttons;
-  }, [selectedAspect, showModal, handleLockClick, handleEquipClick, handleBurnClick]);
+  }, [selectedAspect, showModal, isOwnCollection, handleLockClick, handleEquipClick, handleBurnClick]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 

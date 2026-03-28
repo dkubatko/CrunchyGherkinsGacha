@@ -59,16 +59,19 @@ router = APIRouter(prefix="/aspects", tags=["aspects"])
 
 @router.get("", response_model=List[OwnedAspect])
 async def get_user_aspects(
+    user_id: Optional[int] = Query(None),
     chat_id: Optional[str] = Query(None, alias="chat_id"),
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get all unequipped aspects owned by the authenticated user."""
+    """Get all unequipped aspects owned by the specified (or authenticated) user."""
     user_data: Dict[str, Any] = validated_user.get("user") or {}
     auth_user_id = user_data.get("id")
 
+    target_user_id = user_id if user_id is not None else auth_user_id
+
     aspect_models = await asyncio.to_thread(
         aspect_repo.get_user_aspects,
-        auth_user_id,
+        target_user_id,
         chat_id=chat_id,
     )
     return aspect_models
