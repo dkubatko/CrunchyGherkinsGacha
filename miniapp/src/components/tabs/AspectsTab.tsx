@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import './AspectsTab.css';
 
 // Components
@@ -71,6 +71,11 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
   const [showEquipNameDialog, setShowEquipNameDialog] = useState(false);
   const [equipProcessing, setEquipProcessing] = useState(false);
 
+  // Burn animation state
+  const [triggerBurn, setTriggerBurn] = useState(false);
+  const [isBurning, setIsBurning] = useState(false);
+  const burnResultRef = useRef<string>('');
+
   // Load aspect config once
   useEffect(() => {
     if (!initData) return;
@@ -105,17 +110,25 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
     setBurnProcessing(true);
     try {
       const result = await ApiService.burnAspect(selectedAspect.id, currentUserId, chatId, initData);
-      TelegramUtils.showAlert(result.message || 'Aspect burned!');
-      closeModal();
+      burnResultRef.current = result.message || 'Aspect burned!';
       setShowBurnDialog(false);
-      await refetch();
+      setIsBurning(true);
+      setTriggerBurn(true);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Burn failed';
       TelegramUtils.showAlert(msg);
     } finally {
       setBurnProcessing(false);
     }
-  }, [selectedAspect, chatId, currentUserId, initData, closeModal, refetch]);
+  }, [selectedAspect, chatId, currentUserId, initData]);
+
+  const handleBurnComplete = useCallback(() => {
+    setTriggerBurn(false);
+    setIsBurning(false);
+    closeModal();
+    TelegramUtils.showAlert(burnResultRef.current);
+    void refetch();
+  }, [closeModal, refetch]);
 
   const handleBurnCancel = useCallback(() => setShowBurnDialog(false), []);
 
@@ -320,6 +333,9 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
           isActionPanelVisible={isActionPanelVisible}
           orientation={orientation}
           orientationKey={orientationKey}
+          triggerBurn={triggerBurn}
+          onBurnComplete={handleBurnComplete}
+          isBurning={isBurning}
         />
       )}
 
