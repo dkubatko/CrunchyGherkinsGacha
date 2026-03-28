@@ -19,13 +19,15 @@ const LockIndicator = () => (
 );
 
 const MiniCard: React.FC<MiniCardProps> = ({ card, imageB64, isLoading, hasFailed, onClick }) => {
-  const setName = card.rarity === 'Unique' ? 'UNIQUE' : card.set_name ? card.set_name.toUpperCase() : null;
+  const aspectOverlay = card.aspect_count && card.aspect_count > 0 ? `✦ ${card.aspect_count}` : null;
+  const setName = !aspectOverlay ? (card.rarity === 'Unique' ? 'UNIQUE' : card.set_name ? card.set_name.toUpperCase() : null) : null;
   const hasImage = imageB64 && !hasFailed;
 
   const overlays = (
     <>
       {!card.locked && <div className="grid-card-number-overlay">#{card.id}</div>}
-      {setName && <div className="grid-card-set-overlay">{setName}</div>}
+      {aspectOverlay && <div className="grid-card-set-overlay">{aspectOverlay}</div>}
+      {!aspectOverlay && setName && <div className="grid-card-set-overlay">{setName}</div>}
     </>
   );
 
@@ -61,6 +63,7 @@ MiniCard.displayName = 'MiniCard';
 export default memo(MiniCard, (prev, next) => (
   prev.card.id === next.card.id &&
   prev.card.locked === next.card.locked &&
+  prev.card.aspect_count === next.card.aspect_count &&
   prev.imageB64 === next.imageB64 &&
   prev.isLoading === next.isLoading &&
   prev.hasFailed === next.hasFailed

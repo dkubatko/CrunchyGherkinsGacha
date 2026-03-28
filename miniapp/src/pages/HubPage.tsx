@@ -108,6 +108,7 @@ export const HubPage = ({
               currentUserId={currentUserId}
               chatId={chatId}
               initData={initData}
+              targetUserId={targetUserId}
             />
           </div>
         )}

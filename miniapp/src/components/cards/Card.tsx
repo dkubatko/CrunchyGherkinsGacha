@@ -3,10 +3,10 @@ import WebApp from '@twa-dev/sdk';
 import BeatLoader from 'react-spinners/BeatLoader';
 import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import { imageCache } from '@/lib/imageCache';
-import { getRarityGradient } from '@/utils/rarityStyles';
+import { getRarityGradient, getRarityColors } from '@/utils/rarityStyles';
 import { useLongPress } from '@/hooks';
 import { ApiService } from '@/services/api';
-import type { OrientationData, CardData } from '@/types';
+import type { OrientationData, CardData, CardAspectData } from '@/types';
 import './Card.css';
 
 const inFlightFullImageRequests = new Map<number, Promise<string>>();
@@ -33,6 +33,7 @@ interface CardProps {
   updated_at?: string | null;
   enableDownload?: boolean;
   aspect_count?: number;
+  equipped_aspects?: CardAspectData[];
 }
 
 const Card: React.FC<CardProps> = ({
@@ -56,7 +57,8 @@ const Card: React.FC<CardProps> = ({
   set_name,
   updated_at,
   enableDownload = false,
-  aspect_count = 0
+  aspect_count = 0,
+  equipped_aspects
 }) => {
   const [imageB64, setImageB64] = useState<string | null>(null);
   const [loadingImage, setLoadingImage] = useState(true);
@@ -64,6 +66,7 @@ const Card: React.FC<CardProps> = ({
   const [sharing, setSharing] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [lockExpanded, setLockExpanded] = useState(false);
+  const [showAspectsPopup, setShowAspectsPopup] = useState(false);
   const showInlineShareButton = Boolean(showShareButton && onShare);
 
   useEffect(() => {
@@ -299,7 +302,57 @@ const Card: React.FC<CardProps> = ({
           <p className="card-set">{rarity === 'Unique' ? 'Unique' : set_name}</p>
         )}
         {aspect_count > 0 && (
-          <p className="card-aspects">⬡ {aspect_count} aspect{aspect_count !== 1 ? 's' : ''}</p>
+          <>
+            <button
+              className="card-aspects-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAspectsPopup(true);
+              }}
+            >
+              <span>{aspect_count} aspect{aspect_count !== 1 ? 's' : ''}</span>
+              <svg className="card-aspects-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
+            {showAspectsPopup && equipped_aspects && equipped_aspects.length > 0 && (
+              <div
+                className="card-aspects-popup-overlay"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setShowAspectsPopup(false);
+                }}
+              >
+                <div className="card-aspects-popup" onClick={(e) => e.stopPropagation()}>
+                  <div className="card-aspects-popup-header">
+                    <span>Equipped Aspects</span>
+                    <button
+                      className="card-aspects-popup-close"
+                      onClick={() => setShowAspectsPopup(false)}
+                      aria-label="Close"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <ul className="card-aspects-popup-list">
+                    {equipped_aspects
+                      .sort((a, b) => a.order - b.order)
+                      .map((ca) => {
+                        const name = ca.aspect?.display_name || ca.aspect?.name || 'Unknown';
+                        const aspectRarity = ca.aspect?.rarity || 'Common';
+                        const [color] = getRarityColors(aspectRarity);
+                        return (
+                          <li key={ca.id} className="card-aspects-popup-item">
+                            <span className="card-aspects-popup-name" style={{ color }}>{name}</span>
+                            <span className="card-aspects-popup-rarity" style={{ color }}>{aspectRarity}</span>
+                          </li>
+                        );
+                      })}
+                  </ul>
+                </div>
+              </div>
+            )}
+          </>
         )}
         {showOwner && owner && (
           <p className="card-owner">

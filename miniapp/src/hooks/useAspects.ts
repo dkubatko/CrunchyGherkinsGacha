@@ -12,6 +12,7 @@ interface UseAspectsResult {
 export const useAspects = (
   initData: string,
   chatId: string | null,
+  userId?: number,
 ): UseAspectsResult => {
   const [aspects, setAspects] = useState<AspectData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -22,7 +23,7 @@ export const useAspects = (
     try {
       setLoading(true);
       setError(null);
-      const data = await ApiService.fetchUserAspects(initData, chatId);
+      const data = await ApiService.fetchUserAspects(initData, chatId, userId);
       setAspects(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch aspects';
@@ -31,7 +32,7 @@ export const useAspects = (
     } finally {
       setLoading(false);
     }
-  }, [initData, chatId]);
+  }, [initData, chatId, userId]);
 
   useEffect(() => {
     if (fetchedRef.current) return;
