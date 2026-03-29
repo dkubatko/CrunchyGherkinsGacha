@@ -125,6 +125,7 @@ class GeminiUtil:
                 temperature=temperature,
                 safety_settings=self.safety_settings,
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(image_size="1K"),
             )
 
             response = self.client.models.generate_content(
@@ -136,6 +137,7 @@ class GeminiUtil:
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
                     processed_image_bytes = ImageUtil.crop_to_aspect_ratio(processed_image_bytes, 5/7)
                     logger.info(f"Image for '{base_name}' generated and processed successfully.")
@@ -182,6 +184,10 @@ class GeminiUtil:
             config = types.GenerateContentConfig(
                 safety_settings=self.safety_settings,
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="1:1",
+                    image_size="1K",
+                ),
             )
 
             response = self.client.models.generate_content(
@@ -196,6 +202,7 @@ class GeminiUtil:
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
                     logger.info("Processing slot machine icon")
                     processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
                     processed_image_bytes = ImageUtil.crop_to_aspect_ratio(processed_image_bytes, 1.0)
@@ -278,6 +285,10 @@ class GeminiUtil:
                 temperature=temperature,
                 safety_settings=self.safety_settings,
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="1:1",
+                    image_size="1K",
+                ),
             )
 
             response = self.client.models.generate_content(
@@ -289,6 +300,7 @@ class GeminiUtil:
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
                     # Crop borders, then force 1:1 square
                     processed = ImageUtil.crop_to_content(image_bytes)
                     processed = ImageUtil.crop_to_aspect_ratio(processed, 1.0)
@@ -364,6 +376,7 @@ class GeminiUtil:
                 temperature=temperature,
                 safety_settings=self.safety_settings,
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(image_size="1K"),
             )
 
             response = self.client.models.generate_content(
@@ -375,6 +388,7 @@ class GeminiUtil:
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
                     processed = ImageUtil.crop_to_content(image_bytes)
                     processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
                     logger.info(f"Equipped card image for '{card_name}' generated successfully.")
@@ -449,6 +463,7 @@ class GeminiUtil:
                 temperature=temperature,
                 safety_settings=self.safety_settings,
                 response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(image_size="1K"),
             )
 
             response = self.client.models.generate_content(
@@ -460,6 +475,7 @@ class GeminiUtil:
             for part in response.candidates[0].content.parts:
                 if part.inline_data:
                     image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
                     processed = ImageUtil.crop_to_content(image_bytes)
                     processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
                     logger.info(f"Refresh-equipped image for '{card_name}' generated successfully.")

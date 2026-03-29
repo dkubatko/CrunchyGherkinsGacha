@@ -73,7 +73,7 @@
   border-radius: 32px;
   pointer-events: none;
   z-index: 0;
-  transition: box-shadow 0.12s ease-out;
+  will-change: box-shadow;
 }
 
 .card-image-content::before {
@@ -81,11 +81,8 @@
   position: absolute;
   inset: 0;
   border-radius: 30px;
-  background: rgba(0, 0, 0, 0.08);
-  opacity: 0.25;
-  mix-blend-mode: multiply;
+  background: rgba(0, 0, 0, 0.02);
   pointer-events: none;
-  transition: opacity 0.18s ease-out;
 }
 
 /* Hide the overlay when card is burning */
