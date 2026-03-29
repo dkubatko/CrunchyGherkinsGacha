@@ -365,11 +365,14 @@ class GeminiUtil:
                 f"({len(existing_aspects)} existing aspects) (temperature {temperature})"
             )
 
-            # Prepare image parts: current card + existing aspect spheres + new aspect sphere
+            # Prepare image parts: current card + labeled aspect references
             contents: list = [prompt]
+            contents.append("Card image:")
             contents.append(self._prepare_image_part(image_b64=card_image_b64))
             for aspect_name, aspect_bytes in existing_aspects:
+                contents.append(f'Equipped aspect "{aspect_name}" reference:')
                 contents.append(self._prepare_image_part(image_bytes=aspect_bytes))
+            contents.append(f'New aspect "{new_aspect_name}" reference:')
             contents.append(self._prepare_image_part(image_bytes=new_aspect_image_bytes))
 
             config = types.GenerateContentConfig(
@@ -449,14 +452,17 @@ class GeminiUtil:
                 f"rarity '{rarity}', {len(aspects)} aspects (temperature {temperature})"
             )
 
-            # Prepare image parts: rarity template + character photo + aspect spheres
+            # Prepare image parts: rarity template + character photo + labeled aspect references
             template_image_path = os.path.join(CARD_TEMPLATES_PATH, f"{rarity.lower()}.png")
             contents: list = [prompt]
+            contents.append("Card template:")
             contents.append(self._prepare_image_part(image_path=template_image_path))
+            contents.append("Character photo:")
             contents.append(
                 self._prepare_image_part(image_path=base_image_path, image_b64=base_image_b64)
             )
             for aspect_name, aspect_bytes in aspects:
+                contents.append(f'Aspect "{aspect_name}" reference:')
                 contents.append(self._prepare_image_part(image_bytes=aspect_bytes))
 
             config = types.GenerateContentConfig(

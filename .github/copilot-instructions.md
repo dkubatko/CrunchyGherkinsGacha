@@ -94,6 +94,13 @@ bot/
 ├── bot.py                    # Entry point — init, create app, register handlers, run polling
 ├── config.py                 # Bot startup config, initializes utilities
 ├── config.json               # All tunable game constants (rarities, odds, rewards, cooldowns)
+├── prompts/                  # Markdown prompt templates for Gemini image generation
+│   ├── aspect_sphere.md      # Aspect sphere generation prompt
+│   ├── base_card.md          # Base character card generation prompt
+│   ├── equip_card.md         # Equip aspect onto existing card prompt
+│   ├── refresh_card.md       # Full card regeneration with aspects prompt
+│   ├── unique_aspect.md      # Addendum for Unique rarity aspects
+│   └── slot_icon.md          # Slot machine icon generation prompt
 ├── core/
 │   ├── application.py        # Factory: create_application() — debug vs production Telegram endpoints
 │   └── handlers.py           # register_handlers() — wires all command & callback handlers
@@ -409,5 +416,6 @@ cd miniapp && npm run dev
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
 - **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
 - **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image)
+- **Prompt templates** — Gemini image generation prompts live in `bot/prompts/*.md` as Markdown files with `{placeholder}` parameters. Loaded at import time via `_load_prompt()` in `constants.py` and formatted with `.format()` in `gemini.py`. Edit prompts by modifying the `.md` files directly.
 - **Virtual scrolling** — use `@tanstack/react-virtual` for any grid that may contain many items
 - **Keep this file up to date** — after any structural change, new feature, or refactor, update this `copilot-instructions.md` to reflect the current project state
