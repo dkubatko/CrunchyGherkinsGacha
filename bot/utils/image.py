@@ -5,8 +5,36 @@ from PIL import Image
 
 logger = logging.getLogger(__name__)
 
+JPEG_QUALITY = 95
+
 
 class ImageUtil:
+    @staticmethod
+    def to_jpeg(image_bytes: bytes, quality: int = JPEG_QUALITY) -> bytes:
+        """Convert any image to JPEG at consistent quality.
+
+        Strips alpha channel (RGBA → RGB) since JPEG doesn't support
+        transparency.  Already-valid JPEGs are returned unchanged to
+        avoid generational quality loss.
+        """
+        try:
+            image = Image.open(io.BytesIO(image_bytes))
+            if image.format == "JPEG" and image.mode == "RGB":
+                return image_bytes
+            if image.mode != "RGB":
+                image = image.convert("RGB")
+            buf = io.BytesIO()
+            image.save(buf, format="JPEG", quality=quality)
+            result = buf.getvalue()
+            logger.info(
+                "Converted image to JPEG (%dx%d, %d bytes)",
+                image.size[0], image.size[1], len(result),
+            )
+            return result
+        except Exception as e:
+            logger.error("Error converting to JPEG: %s", e)
+            return image_bytes
+
     @staticmethod
     def crop_to_content(image_bytes: bytes, force_radius_px: int = 0) -> bytes:
         """
@@ -74,8 +102,15 @@ class ImageUtil:
             # Crop the original image (preserve alpha if present)
             cropped = image.crop((left, top, right + 1, bottom + 1))
 
+            output_format = image.format or "JPEG"
+            if output_format.upper() in ("JPEG", "JPG") and cropped.mode == "RGBA":
+                cropped = cropped.convert("RGB")
+
             output_buffer = io.BytesIO()
-            cropped.save(output_buffer, format="PNG")
+            save_kwargs: dict = {"format": output_format}
+            if output_format.upper() in ("JPEG", "JPG"):
+                save_kwargs["quality"] = JPEG_QUALITY
+            cropped.save(output_buffer, **save_kwargs)
 
             logger.info(
                 f"Image cropped from {width}x{height} to {cropped.size[0]}x{cropped.size[1]}"
@@ -106,11 +141,19 @@ class ImageUtil:
             resized_image = image.resize((target_width, target_height), Image.LANCZOS)
 
             # Ensure consistent mode for saving while preserving alpha where possible
-            if resized_image.mode not in ("RGB", "RGBA"):
+            if original_format.upper() in ("JPEG", "JPG"):
+                if resized_image.mode != "RGB":
+                    resized_image = resized_image.convert("RGB")
+            elif resized_image.mode not in ("RGB", "RGBA"):
                 resized_image = resized_image.convert("RGBA" if image.mode == "RGBA" else "RGB")
 
             output_buffer = io.BytesIO()
-            resized_image.save(output_buffer, format=original_format, optimize=True)
+            save_kwargs: dict = {"format": original_format}
+            if original_format.upper() in ("JPEG", "JPG"):
+                save_kwargs["quality"] = JPEG_QUALITY
+            else:
+                save_kwargs["optimize"] = True
+            resized_image.save(output_buffer, **save_kwargs)
             logger.info(
                 "Image compressed from %dx%d to %dx%d",
                 width,
@@ -156,8 +199,14 @@ class ImageUtil:
 
             cropped = image.crop(crop_box)
 
+            if original_format.upper() in ("JPEG", "JPG") and cropped.mode == "RGBA":
+                cropped = cropped.convert("RGB")
+
             output_buffer = io.BytesIO()
-            cropped.save(output_buffer, format=original_format)
+            save_kwargs: dict = {"format": original_format}
+            if original_format.upper() in ("JPEG", "JPG"):
+                save_kwargs["quality"] = JPEG_QUALITY
+            cropped.save(output_buffer, **save_kwargs)
 
             logger.info(
                 f"Image cropped to ratio {target_ratio:.2f} from {width}x{height} to {cropped.size[0]}x{cropped.size[1]}"
@@ -193,9 +242,15 @@ class ImageUtil:
             # Crop to square
             cropped_image = image.crop((left, top, right, bottom))
 
+            if original_format.upper() in ("JPEG", "JPG") and cropped_image.mode == "RGBA":
+                cropped_image = cropped_image.convert("RGB")
+
             # Convert back to bytes
             output_buffer = io.BytesIO()
-            cropped_image.save(output_buffer, format=original_format)
+            save_kwargs: dict = {"format": original_format}
+            if original_format.upper() in ("JPEG", "JPG"):
+                save_kwargs["quality"] = JPEG_QUALITY
+            cropped_image.save(output_buffer, **save_kwargs)
             processed_bytes = output_buffer.getvalue()
 
             logger.info(
@@ -234,9 +289,17 @@ class ImageUtil:
             # Resize using high-quality LANCZOS resampling
             resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
+            if original_format.upper() in ("JPEG", "JPG") and resized_image.mode == "RGBA":
+                resized_image = resized_image.convert("RGB")
+
             # Convert back to bytes
             output_buffer = io.BytesIO()
-            resized_image.save(output_buffer, format=original_format, optimize=True)
+            save_kwargs: dict = {"format": original_format}
+            if original_format.upper() in ("JPEG", "JPG"):
+                save_kwargs["quality"] = JPEG_QUALITY
+            else:
+                save_kwargs["optimize"] = True
+            resized_image.save(output_buffer, **save_kwargs)
             processed_bytes = output_buffer.getvalue()
 
             logger.info(f"Image resized from {width}x{height} to {target_width}x{target_height}")

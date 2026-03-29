@@ -220,14 +220,14 @@ async def get_card_thumbnail_route(
     return thumb_b64
 
 
-@router.get("/view/{card_id}.png")
+@router.get("/view/{card_id}.jpg")
 @limiter.limit("5/minute")
 async def view_card_image_route(
     request: Request,
     card_id: int,
     token: Optional[str] = Query(None, description="Short-lived download token"),
 ):
-    """View the card image directly as PNG.
+    """View the card image directly as JPEG.
 
     This endpoint serves the raw image for viewing/saving in external browsers.
     Requires a short-lived signed token obtained from POST /downloads/token/card/{card_id}.
@@ -251,7 +251,7 @@ async def view_card_image_route(
 
     return Response(
         content=image_bytes,
-        media_type="image/png",
+        media_type="image/jpeg",
         headers={
             "Cache-Control": "private, max-age=300",
         },

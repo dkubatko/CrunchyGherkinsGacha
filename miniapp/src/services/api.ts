@@ -205,7 +205,7 @@ export class ApiService {
    * Requires a token from getDownloadToken().
    */
   static getCardViewUrl(cardId: number, token: string): string {
-    return `${API_BASE_URL}/cards/view/${cardId}.png?token=${encodeURIComponent(token)}`;
+    return `${API_BASE_URL}/cards/view/${cardId}.jpg?token=${encodeURIComponent(token)}`;
   }
 
   // ========== Aspect Methods ==========

@@ -307,7 +307,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 - All v1 achievements were cleared during Gacha 2.0 migration; infrastructure is preserved for future achievements
 
 ### Image Storage & Caching
-- **Backend**: Card/aspect images stored as `bytea` in separate image tables; thumbnails auto-generated at 1/4 scale
+- **Backend**: Card/aspect images stored as `bytea` in separate image tables; all images normalized to JPEG (quality 95) before storage; thumbnails auto-generated at 1/4 scale
 - **Frontend**: 4-layer cache system: Memory Map → IndexedDB (30MB LRU) → API request
 - **Virtualized rendering**: `@tanstack/react-virtual` for efficient grid display of large collections
 
@@ -407,6 +407,7 @@ cd miniapp && npm run dev
 - **Use typed events** — use the EventType and outcome enums when logging actions via `event_manager.log()`
 - **Token encoding** — mini app launch params must use the established payload format (`c-`, `u-`, `uc-`, `casino-`)
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
-- **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel) with bytea columns for full images + thumbnails
+- **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
+- **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image)
 - **Virtual scrolling** — use `@tanstack/react-virtual` for any grid that may contain many items
 - **Keep this file up to date** — after any structural change, new feature, or refactor, update this `copilot-instructions.md` to reflect the current project state
