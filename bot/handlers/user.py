@@ -182,7 +182,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             return
 
         # Build response message
-        profile_text = f"👤 <b>Your Profile</b>\n\n"
+        profile_text = f"<b>Your Profile</b>\n\n"
         profile_text += f"Display Name: <b>{user_data.display_name}</b>\n"
         profile_text += f"Username: @{user_data.username}"
 
@@ -196,7 +196,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if user_data.slot_icon_b64:
             slot_icon_data = base64.b64decode(user_data.slot_icon_b64)
-            slot_media = InputMediaPhoto(media=slot_icon_data, caption="🎰 Slot Machine Icon")
+            slot_media = InputMediaPhoto(media=slot_icon_data, caption="Slot Machine Icon")
             media_group.append(slot_media)
 
         # Send response
@@ -206,7 +206,7 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             # Then send images
             await context.bot.send_media_group(chat_id=update.effective_chat.id, media=media_group)
         else:
-            profile_text += "\n\n📷 No profile image available"
+            profile_text += "\n\nNo profile image available"
             await message.reply_text(profile_text, parse_mode=ParseMode.HTML)
 
         return

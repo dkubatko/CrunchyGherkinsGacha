@@ -72,7 +72,7 @@ export interface SlotSymbolSummary {
   id: number;
   display_name?: string | null;
   slot_icon_b64?: string | null;
-  type: 'user' | 'character' | 'claim';
+  type: 'user' | 'character' | 'claim' | 'set';
 }
 
 export interface SlotSymbolInfo {
@@ -98,6 +98,8 @@ export interface SlotVerifyResponse {
   slot_results: SlotSymbolInfo[];
   rarity?: string | null;
   win_type?: string | null;
+  set_id?: number | null;
+  set_name?: string | null;
 }
 
 export interface MegaspinInfo {

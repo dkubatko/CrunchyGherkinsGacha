@@ -315,6 +315,25 @@
   margin-bottom: 0.3rem;
 }
 
+.admin-set-card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.admin-set-card-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.admin-set-card-icon--placeholder {
+  background: rgba(255, 255, 255, 0.08);
+}
+
 .admin-set-card-header h3 {
   margin: 0;
   font-size: 0.95rem;
@@ -476,9 +495,57 @@
   margin-bottom: 0.25rem;
 }
 
+.admin-set-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-set-hero-icon-wrapper {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.admin-set-hero-icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 12px;
+  object-fit: cover;
+  display: block;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.admin-set-hero-icon:hover {
+  opacity: 0.85;
+}
+
+.admin-set-hero-icon--placeholder {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.admin-set-hero-regen {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 24px;
+  text-align: center;
+  border-radius: 50%;
+  min-width: unset;
+}
+
+.admin-set-hero-info {
+  min-width: 0;
+  flex: 1;
+}
+
 .admin-set-hero-title {
   margin: 0;
-  font-size: 1.15rem;
+  font-size: 1.27rem;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--tg-theme-text-color, #fff);
@@ -489,7 +556,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
-  font-size: 0.76rem;
+  font-size: 0.84rem;
   color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.5));
 }
 
@@ -1038,4 +1105,32 @@
   .admin-inline-input {
     flex-basis: 100%;
   }
+}
+
+/* ============ Icon Preview Modal ============ */
+
+.icon-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  animation: icon-preview-fade-in 0.15s ease;
+}
+
+@keyframes icon-preview-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.icon-preview-image {
+  width: 240px;
+  height: 240px;
+  border-radius: 20px;
+  object-fit: cover;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
 }

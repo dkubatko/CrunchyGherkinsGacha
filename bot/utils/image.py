@@ -264,7 +264,12 @@ class ImageUtil:
             return image_bytes
 
     @staticmethod
-    def resize_to_dimensions(image_bytes: bytes, target_width: int, target_height: int) -> bytes:
+    def resize_to_dimensions(
+        image_bytes: bytes,
+        target_width: int,
+        target_height: int,
+        output_format: str | None = None,
+    ) -> bytes:
         """
         Resize image to specific dimensions.
 
@@ -272,30 +277,37 @@ class ImageUtil:
             image_bytes: The image data as bytes
             target_width: Target width in pixels
             target_height: Target height in pixels
+            output_format: Explicit output format (e.g. ``"JPEG"``).
+                           If ``None``, preserves the input format (falls back to PNG).
 
         Returns:
             Resized image as bytes
         """
         try:
             image = Image.open(io.BytesIO(image_bytes))
-            original_format = image.format or "PNG"
+            fmt = output_format or image.format or "PNG"
 
             width, height = image.size
 
             # If already the target size, return as is
             if width == target_width and height == target_height:
-                return image_bytes
+                if output_format is None:
+                    return image_bytes
+                # Still need to re-encode if caller requested a specific format
+                # and the image might not be in that format already
+                if image.format and image.format.upper() == fmt.upper():
+                    return image_bytes
 
             # Resize using high-quality LANCZOS resampling
             resized_image = image.resize((target_width, target_height), Image.Resampling.LANCZOS)
 
-            if original_format.upper() in ("JPEG", "JPG") and resized_image.mode == "RGBA":
+            if fmt.upper() in ("JPEG", "JPG") and resized_image.mode != "RGB":
                 resized_image = resized_image.convert("RGB")
 
             # Convert back to bytes
             output_buffer = io.BytesIO()
-            save_kwargs: dict = {"format": original_format}
-            if original_format.upper() in ("JPEG", "JPG"):
+            save_kwargs: dict = {"format": fmt}
+            if fmt.upper() in ("JPEG", "JPG"):
                 save_kwargs["quality"] = JPEG_QUALITY
             else:
                 save_kwargs["optimize"] = True

@@ -209,7 +209,8 @@ class GeminiUtil:
 
                     # Resize to target size (default 256x256) to reduce payload size
                     resized_image_bytes = ImageUtil.resize_to_dimensions(
-                        processed_image_bytes, target_size, target_size
+                        processed_image_bytes, target_size, target_size,
+                        output_format="JPEG",
                     )
                     logger.info(
                         f"Slot machine icon generated and resized to {target_size}x{target_size}."
@@ -220,6 +221,84 @@ class GeminiUtil:
             return None
         except Exception as e:
             logger.error(f"Error generating slot machine icon: {e}")
+            return None
+
+    def generate_set_slot_icon(
+        self,
+        set_name: str,
+        set_description: str | None = None,
+        target_size: int = 256,
+    ) -> str | None:
+        """Generate a casino-styled slot icon for an aspect set from its theme.
+
+        Unlike ``generate_slot_machine_icon`` which transforms a portrait image,
+        this generates an icon purely from a text description of the set's theme.
+
+        Args:
+            set_name: The set's display name (used as the theme).
+            set_description: Optional description for additional thematic context.
+            target_size: Target size for the output icon (default 256×256).
+
+        Returns:
+            Base64-encoded 1:1 JPEG icon, or ``None`` on failure.
+        """
+        try:
+            from settings.constants import SET_SLOT_ICON_PROMPT
+
+            description_block = (
+                f'Theme description: "{set_description}"'
+                if set_description
+                else "No additional description — infer imagery from the theme name."
+            )
+            prompt = SET_SLOT_ICON_PROMPT.format(
+                set_name=set_name,
+                description_block=description_block,
+            )
+
+            logger.info("Requesting set slot icon generation for set '%s'", set_name)
+
+            config = types.GenerateContentConfig(
+                safety_settings=self.safety_settings,
+                response_modalities=["IMAGE"],
+                image_config=types.ImageConfig(
+                    aspect_ratio="1:1",
+                    image_size="1K",
+                ),
+            )
+
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=[prompt],
+                config=config,
+            )
+
+            if response.usage_metadata:
+                logger.info("Usage metadata for set slot icon:\n%s", response.usage_metadata)
+
+            for part in response.candidates[0].content.parts:
+                if part.inline_data:
+                    image_bytes = part.inline_data.data
+                    image_bytes = ImageUtil.to_jpeg(image_bytes)
+                    processed_image_bytes = ImageUtil.crop_to_content(image_bytes)
+                    processed_image_bytes = ImageUtil.crop_to_aspect_ratio(
+                        processed_image_bytes, 1.0
+                    )
+                    resized_image_bytes = ImageUtil.resize_to_dimensions(
+                        processed_image_bytes, target_size, target_size,
+                        output_format="JPEG",
+                    )
+                    logger.info(
+                        "Set slot icon for '%s' generated and resized to %dx%d.",
+                        set_name,
+                        target_size,
+                        target_size,
+                    )
+                    return base64.b64encode(resized_image_bytes).decode("utf-8")
+
+            logger.warning("No image data found in set slot icon response.")
+            return None
+        except Exception as e:
+            logger.error("Error generating set slot icon for '%s': %s", set_name, e)
             return None
 
     def generate_aspect_image(

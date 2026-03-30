@@ -62,7 +62,7 @@ interface SlotSymbol {
   id: number;
   iconb64?: string;
   displayName?: string;
-  type: 'user' | 'character' | 'claim';
+  type: 'user' | 'character' | 'claim' | 'set';
 }
 
 type ReelState = 'idle' | 'spinning' | 'stopped';
@@ -70,8 +70,9 @@ type ReelState = 'idle' | 'spinning' | 'stopped';
 interface PendingWin {
   symbol: SlotSymbol;
   rarity: RarityName;
-  isMegaspin?: boolean;
-  winType?: string | null;
+  winType: 'card' | 'aspect' | 'claim';
+  setId?: number | null;
+  setName?: string | null;
 }
 
 const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
@@ -164,6 +165,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   
   // Autospin win tracking
   const autospinCardsWonRef = useRef(0);
+  const autospinAspectsWonRef = useRef(0);
   const autospinClaimPointsWonRef = useRef(0);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
@@ -354,36 +356,34 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     setStripTransforms(transforms);
   }, [results, symbols.length, spinning]);
 
-  const generateServerVerifiedResults = useCallback(async (): Promise<{ 
+  const generateVerifyResults = useCallback(async (megaspin: boolean): Promise<{ 
     isWin: boolean;
     slotResults: SlotSymbolInfo[];
     rarity: string | null;
     winType: string | null;
+    setId: number | null;
+    setName: string | null;
   }> => {
     const availableSymbols = symbols.length;
 
     if (availableSymbols === 0) {
-      return { isWin: false, slotResults: [], rarity: null, winType: null };
+      return { isWin: false, slotResults: [], rarity: null, winType: null, setId: null, setName: null };
     }
 
     const randomNumber = Math.floor(Math.random() * availableSymbols);
-
-    // Send the full symbol list to the server
     const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
 
-    const verifyResult = await ApiService.verifySlotSpin(
-      userId,
-      chatId,
-      randomNumber,
-      symbolsInfo,
-      initData
-    );
+    const verifyResult = megaspin
+      ? await ApiService.verifyMegaspin(userId, chatId, randomNumber, symbolsInfo, initData)
+      : await ApiService.verifySlotSpin(userId, chatId, randomNumber, symbolsInfo, initData);
 
     return {
       isWin: verifyResult.is_win,
       slotResults: verifyResult.slot_results,
       rarity: verifyResult.rarity ?? null,
-      winType: verifyResult.win_type ?? null
+      winType: verifyResult.win_type ?? null,
+      setId: verifyResult.set_id ?? null,
+      setName: verifyResult.set_name ?? null,
     };
   }, [userId, chatId, initData, symbols]);
 
@@ -407,39 +407,27 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    const { symbol, rarity, isMegaspin, winType } = pendingWin;
-    
-    // Check if this is a claim win (special handling)
-    if (symbol.type === 'claim') {
-      TelegramUtils.triggerHapticNotification('success');
-      
+    const { symbol, rarity, winType, setId, setName } = pendingWin;
+
+    TelegramUtils.triggerHapticNotification('success');
+
+    // Claim wins are synchronous — no rarity wheel animation
+    if (winType === 'claim') {
       const processClaimWin = async () => {
         try {
-          // Delay before processing win
-          if (currentlyAutospinning) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 800));
-          } else {
-            await new Promise<void>((resolve) => setTimeout(resolve, 500));
-          }
+          const delay = currentlyAutospinning ? 800 : 500;
+          await new Promise<void>((resolve) => setTimeout(resolve, delay));
           
-          const claimAmount = 1;
-          const result = await ApiService.processClaimWin(userId, chatId, claimAmount, initData);
+          const result = await ApiService.processClaimWin(userId, chatId, initData);
           
-          // Update claim points badge in real time
           if (onClaimPointsUpdate) {
             onClaimPointsUpdate(result.balance);
           }
           
-          // Track claim points won during autospin
           if (currentlyAutospinning) {
-            autospinClaimPointsWonRef.current += claimAmount;
-          }
-          
-          // Skip alert during autospin
-          if (!currentlyAutospinning) {
-            const pointsText = claimAmount === 1 ? 'claim point' : 'claim points';
-            const message = `Won ${claimAmount} ${pointsText}!\n\nBalance: ${result.balance}`;
-            TelegramUtils.showAlert(message);
+            autospinClaimPointsWonRef.current += 1;
+          } else {
+            TelegramUtils.showAlert(`Won 1 claim point!\n\nBalance: ${result.balance}`);
             TelegramUtils.triggerHapticNotification('success');
           }
         } catch (error) {
@@ -457,82 +445,35 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    // Aspect win
-    if (winType === 'aspect') {
-      TelegramUtils.triggerHapticNotification('success');
-
-      const processAspectWin = async () => {
-        try {
-          if (currentlyAutospinning) {
-            await new Promise<void>((resolve) => setTimeout(resolve, 800));
-          } else {
-            await new Promise<void>((resolve) => setTimeout(resolve, 500));
-          }
-
-          await ApiService.processAspectVictory(
-            userId,
-            chatId,
-            rarity.toLowerCase(),
-            initData
-          );
-
-          if (currentlyAutospinning) {
-            autospinCardsWonRef.current += 1;
-          }
-
-          if (!currentlyAutospinning) {
-            TelegramUtils.showAlert(`Won a ${rarity} Aspect Sphere!\n\nGenerating sphere...`);
-          }
-        } catch (error) {
-          console.error('Failed to process aspect victory:', error);
-          if (!currentlyAutospinning) {
-            const errorMessage = error instanceof Error ? error.message : 'Failed to process aspect victory';
-            TelegramUtils.showAlert(`Error: ${errorMessage}`);
-          }
-        } finally {
-          resetReels();
-        }
-      };
-
-      const animation = startRarityWheelAnimation(rarity);
-      if (animation) {
-        animation.then(processAspectWin).catch(() => {
-          processAspectWin();
-        });
-      } else {
-        processAspectWin();
-      }
-      return;
-    }
-
-    // Card win - existing logic
-    TelegramUtils.triggerHapticNotification('success');
-
-    const completeVictory = async () => {
+    // Card and aspect wins — fire-and-forget via unified victory endpoint
+    const processVictory = async () => {
       try {
-        // Delay before processing win
-        if (currentlyAutospinning) {
-          await new Promise<void>((resolve) => setTimeout(resolve, 800));
-        } else {
-          await new Promise<void>((resolve) => setTimeout(resolve, 500));
-        }
-        await ApiService.processSlotsVictory(
+        const delay = currentlyAutospinning ? 800 : 500;
+        await new Promise<void>((resolve) => setTimeout(resolve, delay));
+
+        await ApiService.processVictory(
           userId,
           chatId,
+          winType,
           rarity.toLowerCase(),
-          symbol.id,
-          symbol.type,
           initData,
-          isMegaspin ?? false
+          {
+            sourceId: winType === 'card' ? symbol.id : undefined,
+            sourceType: winType === 'card' ? symbol.type : undefined,
+            isMegaspin: isMegaspinning,
+            setId: winType === 'aspect' ? setId : undefined,
+          }
         );
 
-        // Track cards won during autospin
         if (currentlyAutospinning) {
-          autospinCardsWonRef.current += 1;
-        }
-
-        // Skip alert during autospin
-        if (!currentlyAutospinning) {
+          if (winType === 'aspect') {
+            autospinAspectsWonRef.current += 1;
+          } else {
+            autospinCardsWonRef.current += 1;
+          }
+        } else if (winType === 'aspect') {
+          TelegramUtils.showAlert(`Won a ${rarity} ${setName ? setName + ' ' : ''}Aspect!\n\nGenerating sphere...`);
+        } else {
           TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
         }
       } catch (error) {
@@ -546,16 +487,13 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       }
     };
 
-    // Show rarity wheel animation for all wins
     const animation = startRarityWheelAnimation(rarity);
     if (animation) {
-      animation.then(completeVictory).catch(() => {
-        completeVictory();
-      });
+      animation.then(processVictory).catch(() => processVictory());
     } else {
-      completeVictory();
+      processVictory();
     }
-  }, [chatId, initData, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
+  }, [chatId, initData, isMegaspinning, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
 
   const handleSpin = useCallback(async (): Promise<boolean> => {
     // Ignore click if it was a long press that just completed
@@ -618,7 +556,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         onMegaspinUpdate(consumeResult.megaspin);
       }
 
-      const { isWin, slotResults, rarity: serverRarity, winType } = await generateServerVerifiedResults();
+      const { isWin, slotResults, rarity: serverRarity, winType, setId, setName } = await generateVerifyResults(false);
       
       // Convert server-provided symbol results to indices
       const normalizedResults = slotResults.map(symbolInfo => {
@@ -671,37 +609,23 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       });
 
       if (isWin && slotResults.length > 0) {
-        const winningSymbolInfo = slotResults[0];
-        
-        if (winningSymbolInfo.type === 'claim') {
-          // Claim win - find the claim symbol and set it with a dummy rarity
-          const winningIndex = normalizedResults[0];
-          const winningSymbolFromArray = symbols[winningIndex];
+        const winningIndex = normalizedResults[0];
+        const winningSymbolFromArray = symbols[winningIndex];
 
-          if (!winningSymbolFromArray) {
-            console.warn('Winning claim symbol not found for index:', winningIndex);
+        if (!winningSymbolFromArray) {
+          console.warn('Winning symbol not found for index:', winningIndex);
+        } else if (winType === 'claim') {
+          pendingWinRef.current = { 
+            symbol: winningSymbolFromArray, 
+            rarity: 'Common' as RarityName,
+            winType: 'claim'
+          };
+        } else if (winType && serverRarity) {
+          const normalizedRarity = normalizeRarityName(serverRarity);
+          if (!normalizedRarity) {
+            console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
           } else {
-            // Use 'Common' as a placeholder rarity for claim wins (won't be used)
-            pendingWinRef.current = { 
-              symbol: winningSymbolFromArray, 
-              rarity: 'Common' as RarityName,
-              winType: winType
-            };
-          }
-        } else if (serverRarity) {
-          // Card or aspect win - process victory
-          const winningIndex = normalizedResults[0];
-          const winningSymbolFromArray = symbols[winningIndex];
-
-          if (!winningSymbolFromArray) {
-            console.warn('Winning symbol not found for index:', winningIndex);
-          } else {
-            const normalizedRarity = normalizeRarityName(serverRarity);
-            if (!normalizedRarity) {
-              console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
-            } else {
-              pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, winType: winType };
-            }
+            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, winType: winType as 'card' | 'aspect', setId, setName };
           }
         }
       }
@@ -730,7 +654,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
-    generateServerVerifiedResults,
+    generateVerifyResults,
     setResults,
     addReelTimeout,
     finalizeSpin,
@@ -809,6 +733,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     
     // Reset autospin win counters
     autospinCardsWonRef.current = 0;
+    autospinAspectsWonRef.current = 0;
     autospinClaimPointsWonRef.current = 0;
     
     TelegramUtils.triggerHapticImpact('heavy');
@@ -839,12 +764,16 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
       // Autospin ended - show summary if anything was won
       const cardsWon = autospinCardsWonRef.current;
+      const aspectsWon = autospinAspectsWonRef.current;
       const claimPointsWon = autospinClaimPointsWonRef.current;
       
-      if (cardsWon > 0 || claimPointsWon > 0) {
+      if (cardsWon > 0 || aspectsWon > 0 || claimPointsWon > 0) {
         const lines: string[] = ['Autospin results:', ''];
         if (cardsWon > 0) {
           lines.push(`Cards won: ${cardsWon}`);
+        }
+        if (aspectsWon > 0) {
+          lines.push(`Aspects won: ${aspectsWon}`);
         }
         if (claimPointsWon > 0) {
           lines.push(`Claim points: ${claimPointsWon}`);
@@ -869,37 +798,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     TelegramUtils.triggerHapticImpact('medium');
   }, []);
 
-  // Generate megaspin results (guaranteed card win)
-  const generateMegaspinResults = useCallback(async (): Promise<{ 
-    isWin: boolean;
-    slotResults: SlotSymbolInfo[];
-    rarity: string | null;
-  }> => {
-    const availableSymbols = symbols.length;
 
-    if (availableSymbols === 0) {
-      return { isWin: false, slotResults: [], rarity: null };
-    }
-
-    const randomNumber = Math.floor(Math.random() * availableSymbols);
-
-    // Send the full symbol list to the server for megaspin verification
-    const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
-
-    const verifyResult = await ApiService.verifyMegaspin(
-      userId,
-      chatId,
-      randomNumber,
-      symbolsInfo,
-      initData
-    );
-
-    return {
-      isWin: verifyResult.is_win,
-      slotResults: verifyResult.slot_results,
-      rarity: verifyResult.rarity ?? null
-    };
-  }, [userId, chatId, initData, symbols]);
 
   const handleMegaspin = useCallback(async () => {
     if (spinning || symbols.length === 0 || megaspinData.loading) {
@@ -942,7 +841,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       }
 
       // Megaspin verification - guaranteed win
-      const { slotResults, rarity: serverRarity } = await generateMegaspinResults();
+      const { slotResults, rarity: serverRarity, winType, setId, setName } = await generateVerifyResults(true);
       
       // Convert server-provided symbol results to indices
       const normalizedResults = slotResults.map(symbolInfo => {
@@ -1001,7 +900,13 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         if (winningSymbolFromArray) {
           const normalizedRarity = normalizeRarityName(serverRarity);
           if (normalizedRarity) {
-            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, isMegaspin: true };
+            pendingWinRef.current = {
+              symbol: winningSymbolFromArray,
+              rarity: normalizedRarity,
+              winType: winType as 'card' | 'aspect',
+              setId,
+              setName,
+            };
           }
         }
       }
@@ -1025,7 +930,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
-    generateMegaspinResults,
+    generateVerifyResults,
     setResults,
     addReelTimeout,
     finalizeSpin,

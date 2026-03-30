@@ -6,7 +6,7 @@ interface SlotSymbol {
   id: number;
   iconb64?: string;
   displayName?: string;
-  type: 'user' | 'character' | 'claim';
+  type: 'user' | 'character' | 'claim' | 'set';
 }
 
 interface UserSpinsData {
@@ -128,14 +128,16 @@ export const useSlots = (chatId?: string, userId?: number, initData?: string | n
           throw new Error('No Telegram init data found');
         }
 
-        // Fetch symbols and spins in parallel
-        const [symbolsData] = await Promise.all([
+        // Fetch symbols, set symbols, and spins in parallel
+        const [symbolsData, setSymbolsData] = await Promise.all([
           ApiService.fetchSlotSymbols(chatId, initData),
+          ApiService.getSetSymbols(chatId, initData),
           userId ? fetchSpins() : Promise.resolve()
         ]);
         
         // Convert to symbols and ensure we have at least 3 for the slot machine
-        const convertedSymbols: SlotSymbol[] = symbolsData
+        const allSymbolsData = [...symbolsData, ...setSymbolsData];
+        const convertedSymbols: SlotSymbol[] = allSymbolsData
           .filter(item => item.slot_icon_b64) // Only use items with icons
           .map(item => ({
             id: item.id,

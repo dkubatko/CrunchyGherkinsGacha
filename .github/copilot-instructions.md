@@ -37,7 +37,7 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 - **Formatting**: Title case is typical, with occasional numerals/symbols; mixed languages are allowed.
 
 ### Casino Games
-- **Slots**: Spin 3 reels to win cards or aspects; symbols are user avatars + character icons. Megaspins (guaranteed win) occur every ~100 regular spins
+- **Slots**: Spin 3 reels to win cards or aspects; symbols are user avatars, character icons, claim point icons, and **aspect set icons**. Each aspect set has a generated slot icon reflecting its theme. When an aspect is won, the server pre-picks the exact set + aspect definition and shows the set's icon on the winning reels. Megaspins (guaranteed win) occur every ~100 regular spins
 - **Minesweeper**: Bet a card, reveal tiles on a 3×3 grid without hitting mines to win an aspect
 - **Ride the Bus (RTB)**: Bet spins (10–50) and guess card rarities (higher/lower) through a progression of multipliers (2x → 3x → 5x → 10x); cash out anytime or risk it all. 9-hour cooldown after completion
 
@@ -100,7 +100,8 @@ bot/
 │   ├── equip_card.md         # Equip aspect onto existing card prompt
 │   ├── refresh_card.md       # Full card regeneration with aspects prompt
 │   ├── unique_aspect.md      # Addendum for Unique rarity aspects
-│   └── slot_icon.md          # Slot machine icon generation prompt
+│   ├── slot_icon.md          # Slot machine icon generation prompt (profile-based)
+│   └── set_slot_icon.md      # Set slot icon generation prompt (text-to-image, theme-based)
 ├── core/
 │   ├── application.py        # Factory: create_application() — debug vs production Telegram endpoints
 │   └── handlers.py           # register_handlers() — wires all command & callback handlers
@@ -148,6 +149,7 @@ bot/
 │   ├── aspect_count_repo.py      # Aspect definition frequency per chat/season
 │   ├── thread_repo.py            # Thread ID storage for topic-based chats
 │   ├── admin_auth_repo.py        # Admin user lookups, OTP storage
+│   ├── set_icon_repo.py          # Set slot icon CRUD (get, upsert, delete, bulk load)
 │   └── roll_repo.py              # Roll time tracking
 ├── managers/                 # Manager layer — business logic and orchestration
 │   ├── card_manager.py           # Card claiming logic (row locks, point deduction)
@@ -161,7 +163,7 @@ bot/
 │   └── casino/
 │       └── rtb_manager.py        # Ride the Bus game state machine
 ├── utils/
-│   ├── models.py             # All SQLAlchemy ORM models (~24 tables)
+│   ├── models.py             # All SQLAlchemy ORM models (~25 tables)
 │   ├── schemas.py            # Pydantic DTOs — all repo functions return these (Card, OwnedAspect, User, etc.)
 │   ├── database.py           # DB init + Alembic migration runner
 │   ├── session.py            # SQLAlchemy engine/session factory, @with_session decorator, use_session() helper
@@ -182,6 +184,7 @@ bot/
 │   └── constants.py          # Loads config.json + env vars; rarity helpers, UI strings
 ├── data/                     # Game assets (card images, templates, slot assets, minesweeper assets)
 ├── tools/                    # Admin/maintenance scripts (backfills, exports, seed data)
+│   └── backfill_set_icons.py     # One-time backfill of slot icons for existing sets
 └── alembic/                  # Database migration versions
 ```
 
@@ -233,7 +236,7 @@ miniapp/src/
 
 ---
 
-## Database Models (~24 tables)
+## Database Models (~25 tables)
 
 ### Core Models
 | Model | Purpose |
@@ -254,6 +257,7 @@ miniapp/src/
 | **CardAspectModel** | Junction table: equipped aspects on cards (card_id, aspect_id, order 1-5) |
 | **RolledAspectModel** | Rolled aspect tracking (reroll state) |
 | **AspectCountModel** | Aspect definition frequency per chat/season |
+| **SetIconModel** | Set slot icons (bytea) for casino reels; composite PK (set_id, season_id), FK to sets |
 
 ### Games
 | Model | Purpose |
@@ -315,6 +319,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 
 ### Image Storage & Caching
 - **Backend**: Card/aspect images stored as `bytea` in separate image tables; all images normalized to JPEG (quality 95) before storage; thumbnails auto-generated at 1/4 scale
+- **Set slot icons**: Stored in `set_icons` table (bytea, 256×256 JPEG). Generated via text-to-image Gemini call using set name/description (no input portrait). Auto-generated on set creation; backfillable via `bot/tools/backfill_set_icons.py`
 - **Frontend**: 4-layer cache system: Memory Map → IndexedDB (30MB LRU) → API request
 - **Virtualized rendering**: `@tanstack/react-virtual` for efficient grid display of large collections
 
@@ -414,8 +419,8 @@ cd miniapp && npm run dev
 - **Use typed events** — use the EventType and outcome enums when logging actions via `event_manager.log()`
 - **Token encoding** — mini app launch params must use the established payload format (`c-`, `u-`, `uc-`, `casino-`)
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
-- **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
-- **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image)
+- **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel, SetIconModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
+- **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot/set-icon generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image). Set slot icons use text-to-image generation (no input portrait)
 - **Prompt templates** — Gemini image generation prompts live in `bot/prompts/*.md` as Markdown files with `{placeholder}` parameters. Loaded at import time via `_load_prompt()` in `constants.py` and formatted with `.format()` in `gemini.py`. Edit prompts by modifying the `.md` files directly.
 - **Virtual scrolling** — use `@tanstack/react-virtual` for any grid that may contain many items
 - **Keep this file up to date** — after any structural change, new feature, or refactor, update this `copilot-instructions.md` to reflect the current project state

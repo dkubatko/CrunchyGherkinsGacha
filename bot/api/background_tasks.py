@@ -108,10 +108,10 @@ async def process_slots_victory_background(
                 logger.info("NO_GENERATION mode: Skipping card generation for slots victory")
                 # Edit the pending message to indicate skipped generation
                 skip_caption = (
-                    f"🎰 <b>SLOTS WIN!</b> (Generation Disabled)\n\n"
-                    f"👤 Winner: @{username}\n"
-                    f"⭐ Rarity: <b>{normalized_rarity}</b>\n"
-                    f"🎭 Source: {display_name}\n\n"
+                    f"<b>SLOTS WIN!</b> (Generation Disabled)\n\n"
+                    f"Winner: @{username}\n"
+                    f"Rarity: <b>{normalized_rarity}</b>\n"
+                    f"Source: {display_name}\n\n"
                     f"<i>Card generation is disabled in debug mode.</i>"
                 )
                 await bot.edit_message_text(
@@ -637,12 +637,14 @@ async def process_slot_aspect_victory_background(
     chat_id: str,
     user_id: int,
     gemini_util_instance,
+    set_id: Optional[int] = None,
 ):
     """Process slots aspect victory in background after responding to client.
 
     Generates an aspect sphere image, creates an OwnedAspectModel assigned to
     the winner, and sends the result image to chat.  On failure the user is
-    refunded spins.
+    refunded spins.  If ``set_id`` is provided, constrains aspect selection
+    to that set.
     """
     from settings.constants import (
         SLOTS_ASPECT_VICTORY_PENDING_MESSAGE,
@@ -650,7 +652,17 @@ async def process_slot_aspect_victory_background(
         SLOTS_ASPECT_VICTORY_FAILURE_MESSAGE,
         get_spin_reward,
     )
-    from repos import aspect_repo
+    from repos import aspect_repo, set_repo
+
+    # Look up set name for display in messages
+    set_name = "Unknown"
+    if set_id is not None:
+        try:
+            set_obj = await asyncio.to_thread(set_repo.get_set, set_id)
+            if set_obj:
+                set_name = set_obj.name.title() if set_obj.name else "Unknown"
+        except Exception as e:
+            logger.warning("Failed to look up set name for set_id=%s: %s", set_id, e)
 
     spin_refund_amount = get_spin_reward(normalized_rarity)
     bot = None
@@ -667,6 +679,7 @@ async def process_slot_aspect_victory_background(
         pending_caption = SLOTS_ASPECT_VICTORY_PENDING_MESSAGE.format(
             username=username,
             rarity=normalized_rarity,
+            set_name=set_name,
         )
 
         thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
@@ -685,9 +698,9 @@ async def process_slot_aspect_victory_background(
             if NO_GENERATION:
                 logger.info("NO_GENERATION mode: Skipping aspect generation for slots victory")
                 skip_caption = (
-                    f"🎰 <b>SLOTS ASPECT WIN!</b> (Generation Disabled)\n\n"
-                    f"👤 Winner: @{username}\n"
-                    f"⭐ Rarity: <b>{normalized_rarity}</b>\n\n"
+                    f"<b>SLOTS ASPECT WIN!</b> (Generation Disabled)\n\n"
+                    f"Winner: @{username}\n"
+                    f"Rarity: <b>{normalized_rarity}</b>\n\n"
                     f"<i>Aspect generation is disabled in debug mode.</i>"
                 )
                 await bot.edit_message_text(
@@ -702,8 +715,7 @@ async def process_slot_aspect_victory_background(
                 refund_processed = True
                 return
 
-            # Generate aspect using the normal pipeline (picks a random
-            # aspect definition of the given rarity and generates a sphere)
+            # Generate aspect — constrain to pre-picked set if available
             generated_aspect = await asyncio.to_thread(
                 rolling.generate_aspect_for_chat,
                 chat_id,
@@ -711,6 +723,7 @@ async def process_slot_aspect_victory_background(
                 normalized_rarity,
                 max_retries=MAX_SLOT_VICTORY_IMAGE_RETRIES,
                 source="slots",
+                set_id=set_id,
             )
 
             # Assign to winner immediately (slot wins are auto-assigned)
@@ -741,7 +754,7 @@ async def process_slot_aspect_victory_background(
                 username=username,
                 rarity=normalized_rarity,
                 aspect_name=generated_aspect.aspect_name,
-                set_name=(generated_aspect.set_name or "").title(),
+                set_name=generated_aspect.set_name or "",
             )
 
             aspect_image = base64.b64decode(generated_aspect.image_b64)

@@ -179,39 +179,29 @@ class SlotSymbolSummary(BaseModel):
     id: int
     display_name: Optional[str] = None
     slot_icon_b64: Optional[str] = None
-    type: str  # "user", "character", or "claim"
+    type: str  # "user", "character", "claim", or "set"
 
 
 class SlotSymbolInfo(BaseModel):
     """Minimal slot symbol info for verification."""
 
     id: int
-    type: str  # "user", "character", or "claim"
-
-
-class SlotsVictorySource(BaseModel):
-    """Source of a slots victory (user or character)."""
-
-    id: int
-    type: str
+    type: str  # "user", "character", "claim", or "set"
 
 
 class SlotsVictoryRequest(BaseModel):
-    """Request to process a slots victory."""
+    """Unified request to process a slots card or aspect victory."""
 
     user_id: int
     chat_id: str
+    win_type: str  # "card" or "aspect"
     rarity: str
-    source: SlotsVictorySource
+    # Card wins
+    source_id: Optional[int] = None
+    source_type: Optional[str] = None  # "user" or "character"
     is_megaspin: bool = False
-
-
-class SlotsAspectVictoryRequest(BaseModel):
-    """Request to process a slots aspect victory."""
-
-    user_id: int
-    chat_id: str
-    rarity: str
+    # Aspect wins
+    set_id: Optional[int] = None
 
 
 class SlotsClaimWinRequest(BaseModel):
@@ -219,7 +209,6 @@ class SlotsClaimWinRequest(BaseModel):
 
     user_id: int
     chat_id: str
-    amount: int
 
 
 class SlotsClaimWinResponse(BaseModel):
@@ -227,6 +216,13 @@ class SlotsClaimWinResponse(BaseModel):
 
     success: bool
     balance: int
+
+
+class SlotsVictoryResponse(BaseModel):
+    """Response after initiating async card/aspect generation."""
+
+    status: str
+    message: str
 
 
 class SpinsRequest(BaseModel):
@@ -303,7 +299,9 @@ class SlotVerifyResponse(BaseModel):
     is_win: bool
     slot_results: List[SlotSymbolInfo]
     rarity: Optional[str] = None
-    win_type: Optional[str] = None  # "card", "aspect", or None (for losses/claim wins)
+    win_type: Optional[str] = None  # "card", "aspect", "claim", or None (loss)
+    set_id: Optional[int] = None  # Set ID for aspect wins (pre-picked)
+    set_name: Optional[str] = None  # Set name for aspect wins (display)
 
 
 # =============================================================================
@@ -488,6 +486,7 @@ class AdminSetResponse(BaseModel):
     description: str
     active: bool
     aspect_count: int = 0
+    slot_icon_b64: Optional[str] = None
 
 
 class AdminSetCreateRequest(BaseModel):

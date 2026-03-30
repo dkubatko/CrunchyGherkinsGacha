@@ -445,28 +445,38 @@ export class ApiService {
     return response.json();
   }
 
-  static async processSlotsVictory(
-    userId: number, 
-    chatId: string, 
-    rarity: string, 
-    sourceId: number, 
-    sourceType: 'user' | 'character' | 'claim', 
+  /**
+   * Process a card or aspect victory from slots.
+   * Unified endpoint — server dispatches based on win_type.
+   */
+  static async processVictory(
+    userId: number,
+    chatId: string,
+    winType: 'card' | 'aspect',
+    rarity: string,
     initData: string,
-    isMegaspin: boolean = false
+    opts: {
+      sourceId?: number;
+      sourceType?: string;
+      isMegaspin?: boolean;
+      setId?: number | null;
+    } = {}
   ): Promise<{ status: string; message: string }> {
+    const body: Record<string, unknown> = {
+      user_id: userId,
+      chat_id: chatId,
+      win_type: winType,
+      rarity: rarity,
+    };
+    if (opts.sourceId != null) body.source_id = opts.sourceId;
+    if (opts.sourceType) body.source_type = opts.sourceType;
+    if (opts.isMegaspin) body.is_megaspin = true;
+    if (opts.setId != null) body.set_id = opts.setId;
+
     const response = await fetch(`${API_BASE_URL}/slots/victory`, {
       method: 'POST',
       headers: this.getHeaders(initData),
-      body: JSON.stringify({
-        user_id: userId,
-        chat_id: chatId,
-        rarity: rarity,
-        source: {
-          id: sourceId,
-          type: sourceType
-        },
-        is_megaspin: isMegaspin
-      })
+      body: JSON.stringify(body)
     });
 
     if (!response.ok) {
@@ -485,35 +495,15 @@ export class ApiService {
     return response.json();
   }
 
-  static async processAspectVictory(
-    userId: number,
-    chatId: string,
-    rarity: string,
-    initData: string
-  ): Promise<{ status: string; message: string }> {
-    const response = await fetch(`${API_BASE_URL}/slots/aspect-victory`, {
-      method: 'POST',
+  static async getSetSymbols(chatId: string, initData: string): Promise<SlotSymbolSummary[]> {
+    const params = new URLSearchParams({ chat_id: chatId });
+    const response = await fetch(`${API_BASE_URL}/slots/set-symbols?${params.toString()}`, {
       headers: this.getHeaders(initData),
-      body: JSON.stringify({
-        user_id: userId,
-        chat_id: chatId,
-        rarity: rarity
-      })
     });
-
     if (!response.ok) {
-      let detail = `Failed to process aspect victory (Error ${response.status})`;
-      try {
-        const payload = await response.json();
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail);
+      console.warn('Failed to load set symbols, continuing without them');
+      return [];
     }
-
     return response.json();
   }
 
@@ -718,7 +708,6 @@ export class ApiService {
   static async processClaimWin(
     userId: number,
     chatId: string,
-    amount: number,
     initData: string
   ): Promise<{ success: boolean; balance: number }> {
     const response = await fetch(`${API_BASE_URL}/slots/claim-win`, {
@@ -727,7 +716,6 @@ export class ApiService {
       body: JSON.stringify({
         user_id: userId,
         chat_id: chatId,
-        amount: amount
       })
     });
 

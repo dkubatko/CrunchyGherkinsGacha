@@ -299,6 +299,37 @@ class SetModel(Base):
         primaryjoin="and_(SetModel.id == CardModel.set_id, SetModel.season_id == CardModel.season_id)",
     )
 
+    # Relationship to slot icon (separate table to avoid overhead on set queries)
+    icon: Mapped[Optional["SetIconModel"]] = relationship(
+        "SetIconModel",
+        back_populates="aspect_set",
+        uselist=False,
+        lazy="noload",
+    )
+
+
+class SetIconModel(Base):
+    """Stores slot machine icon for an aspect set, separate from the main sets
+    table to avoid overhead on large queries."""
+
+    __tablename__ = "set_icons"
+
+    set_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    season_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=0)
+    icon: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+    aspect_set: Mapped[Optional["SetModel"]] = relationship(
+        "SetModel", back_populates="icon"
+    )
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["set_id", "season_id"],
+            ["sets.id", "sets.season_id"],
+            name="fk_set_icons_set_season",
+        ),
+    )
+
 
 class MinesweeperGameModel(Base):
     """Represents a minesweeper game state."""

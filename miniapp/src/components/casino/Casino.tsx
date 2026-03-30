@@ -13,7 +13,7 @@ interface SlotSymbol {
   id: number;
   display_name?: string | null;
   slot_icon_b64?: string | null;
-  type: 'user' | 'character' | 'claim';
+  type: 'user' | 'character' | 'claim' | 'set';
 }
 
 interface UserSpinsData {

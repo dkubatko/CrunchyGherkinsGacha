@@ -74,6 +74,8 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
   const [editingDescription, setEditingDescription] = useState(false);
   const [descriptionDraft, setDescriptionDraft] = useState(set.description ?? '');
   const [savingDescription, setSavingDescription] = useState(false);
+  const [regeneratingIcon, setRegeneratingIcon] = useState(false);
+  const [showIconPreview, setShowIconPreview] = useState(false);
   const [draggedDefId, setDraggedDefId] = useState<number | null>(null);
   const [dragOverRarity, setDragOverRarity] = useState<string | null>(null);
 
@@ -241,25 +243,62 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
     }
   };
 
+  const handleRegenerateIcon = async () => {
+    setRegeneratingIcon(true);
+    setError('');
+    try {
+      const updated = await AdminApiService.regenerateSetIcon(set.season_id, set.id);
+      onSetUpdated(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to regenerate icon');
+    } finally {
+      setRegeneratingIcon(false);
+    }
+  };
+
   const getRarityClass = (rarity: string) => `rarity-${rarity.toLowerCase()}`;
 
   return (
     <div className="admin-content">
       <div className="admin-set-hero">
-        <h2 className="admin-set-hero-title">{set.name}</h2>
+        <div className="admin-set-hero-top">
+          <div className="admin-set-hero-icon-wrapper">
+            {set.slot_icon_b64 ? (
+              <img
+                className="admin-set-hero-icon"
+                src={`data:image/jpeg;base64,${set.slot_icon_b64}`}
+                alt={set.name}
+                onClick={() => setShowIconPreview(true)}
+              />
+            ) : (
+              <div className="admin-set-hero-icon admin-set-hero-icon--placeholder" />
+            )}
+            <button
+              className="admin-btn admin-btn-secondary admin-btn-sm admin-set-hero-regen"
+              onClick={handleRegenerateIcon}
+              disabled={regeneratingIcon}
+              title="Regenerate slot icon"
+            >
+              {regeneratingIcon ? '⟳' : '↻'}
+            </button>
+          </div>
+          <div className="admin-set-hero-info">
+            <h2 className="admin-set-hero-title">{set.name}</h2>
 
-        <div className="admin-set-hero-meta">
-          <span className={`admin-set-status ${set.active ? 'admin-set-status--active' : 'admin-set-status--inactive'}`}>
-            {set.active ? 'Active' : 'Inactive'}
-          </span>
-          <span className="admin-set-meta-sep">·</span>
-          <span>Set #{set.id}</span>
-          <span className="admin-set-meta-sep">·</span>
-          <span>Season {set.season_id}</span>
-          <span className="admin-set-meta-sep">·</span>
-          <span>{aspectDefs.length} aspects</span>
-          <span className="admin-set-meta-sep">·</span>
-          <span>{set.source}</span>
+            <div className="admin-set-hero-meta">
+              <span className={`admin-set-status ${set.active ? 'admin-set-status--active' : 'admin-set-status--inactive'}`}>
+                {set.active ? 'Active' : 'Inactive'}
+              </span>
+              <span className="admin-set-meta-sep">·</span>
+              <span>Set #{set.id}</span>
+              <span className="admin-set-meta-sep">·</span>
+              <span>Season {set.season_id}</span>
+              <span className="admin-set-meta-sep">·</span>
+              <span>{aspectDefs.length} aspects</span>
+              <span className="admin-set-meta-sep">·</span>
+              <span>{set.source}</span>
+            </div>
+          </div>
         </div>
 
         <div className="admin-set-description">
@@ -461,6 +500,15 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
               );
             })}
           </div>
+        </div>
+      )}
+      {showIconPreview && set.slot_icon_b64 && (
+        <div className="icon-preview-overlay" onClick={() => setShowIconPreview(false)}>
+          <img
+            className="icon-preview-image"
+            src={`data:image/jpeg;base64,${set.slot_icon_b64}`}
+            alt={set.name}
+          />
         </div>
       )}
     </div>

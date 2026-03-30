@@ -93,7 +93,7 @@ def build_burning_text(
 
     lines = []
     for idx in range(revealed):
-        line = f"🔥{card_titles[idx]}🔥"
+        line = f"{card_titles[idx]}"
         if strike_all or idx < revealed - 1:
             line = f"<s>{line}</s>"
         lines.append(line)
