@@ -472,7 +472,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
             autospinCardsWonRef.current += 1;
           }
         } else if (winType === 'aspect') {
-          TelegramUtils.showAlert(`Won a ${rarity} ${setName ? setName + ' ' : ''}Aspect!\n\nGenerating sphere...`);
+          TelegramUtils.showAlert(`Won a ${rarity} ${setName ? setName + ' ' : ''}aspect!\n\nGenerating sphere...`);
         } else {
           TelegramUtils.showAlert(`Won ${rarity} ${symbol.displayName || 'Unknown'}!\n\nGenerating card...`);
         }

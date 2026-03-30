@@ -79,23 +79,32 @@ def build_burning_text(
     strike_all: bool = False,
     item_label: str = "cards",
 ) -> str:
-    """Build the burning animation text for card/aspect recycling/burning.
-
-    Args:
-        card_titles: List of HTML-escaped display names for the items being burned.
-        revealed: Number of items revealed so far in the animation.
-        strike_all: If True, strike through all revealed items.
-        item_label: Label for the item type (e.g. "cards", "aspects").
-    """
+    """Build the burning animation text for card/aspect recycling/burning."""
     header = f"Burning {item_label}..."
     if revealed <= 0:
         return header
 
+    emoji = "🔮" if item_label == "aspects" else "🃏"
     lines = []
     for idx in range(revealed):
-        line = f"{card_titles[idx]}"
+        line = f"{emoji} {card_titles[idx]}"
         if strike_all or idx < revealed - 1:
-            line = f"<s>{line}</s>"
+            line = f"<s>🔥{line}🔥</s>"
         lines.append(line)
 
     return f"{header}\n\n" + "\n".join(lines)
+
+
+def format_aspect_list(card) -> str:
+    """Format equipped aspects as a bullet list for display in messages."""
+    if not card or not card.equipped_aspects:
+        return ""
+    names = []
+    for ca in card.equipped_aspects:
+        if ca.aspect and ca.aspect.display_name:
+            names.append(f"🔮 {ca.aspect.display_name}")
+        elif ca.aspect and ca.aspect.name:
+            names.append(f"🔮 {ca.aspect.name}")
+    if not names:
+        return ""
+    return "\n\n" + "\n".join(names)

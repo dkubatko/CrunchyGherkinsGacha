@@ -379,7 +379,7 @@ async def verify_slot_spin(
                         winning_symbol = random.choice(eligible)
                         chosen_set_id = winning_symbol.id
                         chosen_set_name = next(
-                            (d.set_name.title() for d in defs_by_rarity.get(rarity, []) if d.set_id == chosen_set_id),
+                            (d.set_name for d in defs_by_rarity.get(rarity, []) if d.set_id == chosen_set_id),
                             None,
                         )
                         win_type = "aspect"
@@ -430,7 +430,7 @@ async def verify_slot_spin(
             rarity=rarity,
             win_type=win_type,
             set_id=chosen_set_id,
-            set_name=chosen_set_name,
+            set_name=chosen_set_name.title() if chosen_set_name else None,
         )
 
     except Exception as e:
@@ -491,7 +491,7 @@ async def verify_megaspin(
             try:
                 set_obj = await asyncio.to_thread(set_repo.get_set, chosen_set_id)
                 if set_obj:
-                    chosen_set_name = set_obj.name.title() if set_obj.name else None
+                    chosen_set_name = set_obj.name if set_obj.name else None
             except Exception as e:
                 logger.warning("Megaspin set name lookup failed: %s", e)
 
@@ -508,7 +508,7 @@ async def verify_megaspin(
             rarity=rarity,
             win_type=win_type,
             set_id=chosen_set_id,
-            set_name=chosen_set_name,
+            set_name=chosen_set_name.title() if chosen_set_name else None,
         )
 
     except HTTPException:

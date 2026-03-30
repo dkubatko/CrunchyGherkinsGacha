@@ -1518,7 +1518,7 @@ async def handle_recycle_callback(
             aspects_burned=aspect_ids_to_delete,
         )
 
-        burned_block = "\n".join([f"<s>🔮 {name}</s>" for name in aspect_names])
+        burned_block = "\n".join([f"<s>🔥🔮 {name}🔥</s>" for name in aspect_names])
 
         final_caption = ASPECT_CAPTION_BASE.format(
             aspect_id=generated_aspect.aspect_id,
@@ -1844,7 +1844,7 @@ async def handle_card_recycle_callback(
             cards_burned=card_ids_to_delete,
         )
 
-        burned_block = "\n".join([f"<s>🃏 {name}</s>" for name in card_titles])
+        burned_block = "\n".join([f"<s>🔥🃏 {name}🔥</s>" for name in card_titles])
 
         final_caption = CARD_CAPTION_BASE.format(
             card_id=new_card_id,
@@ -2159,7 +2159,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 del context.user_data[session_key]
 
                 # Build caption
-                burned_block = "\n".join([f"<s>{t}</s>" for t in aspect_titles])
+                burned_block = "\n".join([f"<s>🔥{t}🔥</s>" for t in aspect_titles])
 
                 caption = (
                     ASPECT_CAPTION_BASE.format(

@@ -24,6 +24,7 @@ from api.dependencies import (
     verify_user_match,
 )
 from api.config import create_bot_instance
+from handlers.helpers import format_aspect_list
 from api.schemas import (
     AspectBurnRequest,
     AspectBurnResponse,
@@ -189,12 +190,12 @@ async def get_eligible_cards(
         raise HTTPException(status_code=400, detail="Aspect is not associated with this chat")
 
     # Fetch user's cards in this chat
-    cards = await asyncio.to_thread(
-        card_repo.get_user_collection, auth_user_id, chat_id
-    )
+    cards = await asyncio.to_thread(card_repo.get_user_collection, auth_user_id, chat_id)
 
     # Filter for eligibility
-    aspect_rarity_idx = RARITY_ORDER.index(aspect.rarity) if aspect.rarity in RARITY_ORDER else len(RARITY_ORDER)
+    aspect_rarity_idx = (
+        RARITY_ORDER.index(aspect.rarity) if aspect.rarity in RARITY_ORDER else len(RARITY_ORDER)
+    )
 
     eligible = []
     for card in cards:
@@ -255,9 +256,13 @@ async def equip_initiate(
 
     # Lock checks
     if card.locked:
-        raise HTTPException(status_code=400, detail="Cannot equip onto a locked card. Unlock it first.")
+        raise HTTPException(
+            status_code=400, detail="Cannot equip onto a locked card. Unlock it first."
+        )
     if aspect.locked:
-        raise HTTPException(status_code=400, detail="Cannot equip a locked aspect. Unlock it first.")
+        raise HTTPException(
+            status_code=400, detail="Cannot equip a locked aspect. Unlock it first."
+        )
 
     # Check if aspect is already equipped
     is_equipped = await asyncio.to_thread(aspect_repo.is_aspect_equipped, aspect_id)
@@ -266,11 +271,17 @@ async def equip_initiate(
 
     # Capacity
     if card.aspect_count >= 5:
-        raise HTTPException(status_code=400, detail="This card already has 5 aspects equipped (maximum).")
+        raise HTTPException(
+            status_code=400, detail="This card already has 5 aspects equipped (maximum)."
+        )
 
     # Rarity compatibility
     if aspect.rarity != "Unique":
-        aspect_idx = RARITY_ORDER.index(aspect.rarity) if aspect.rarity in RARITY_ORDER else len(RARITY_ORDER)
+        aspect_idx = (
+            RARITY_ORDER.index(aspect.rarity)
+            if aspect.rarity in RARITY_ORDER
+            else len(RARITY_ORDER)
+        )
         card_idx = RARITY_ORDER.index(card.rarity) if card.rarity in RARITY_ORDER else -1
         if aspect_idx > card_idx:
             raise HTTPException(
@@ -287,14 +298,16 @@ async def equip_initiate(
 
     # Validate name
     if len(name_prefix) > 30:
-        raise HTTPException(status_code=400, detail="Name prefix is too long. Please keep it under 30 characters.")
+        raise HTTPException(
+            status_code=400, detail="Name prefix is too long. Please keep it under 30 characters."
+        )
     invalid_chars = set("<>&*_`")
     if any(ch in invalid_chars for ch in name_prefix):
         raise HTTPException(status_code=400, detail="Name prefix contains invalid characters.")
 
     # Build new title
     new_title = f"{name_prefix} {card.base_name}"
-    card_title = card.title(include_id=True)
+    card_title = card.title()
 
     # Store equip session in DB
     await asyncio.to_thread(
@@ -314,12 +327,7 @@ async def equip_initiate(
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
 
-    # Build aspect list for confirmation message
-    aspect_names = []
-    for ca in (card.equipped_aspects or []):
-        if ca.aspect and ca.aspect.display_name:
-            aspect_names.append(f"🔮 {ca.aspect.display_name}")
-    aspect_list = ("\n" + "\n".join(aspect_names)) if aspect_names else ""
+    aspect_list = format_aspect_list(card)
 
     confirm_text = EQUIP_CONFIRM_MESSAGE.format(
         aspect_id=aspect_id,
