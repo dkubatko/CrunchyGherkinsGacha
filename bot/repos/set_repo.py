@@ -211,3 +211,32 @@ def get_available_seasons(*, session: Session) -> List[int]:
     seasons = {row[0] for row in rows}
     seasons.add(CURRENT_SEASON)
     return sorted(seasons)
+
+
+@with_session
+def get_eligible_sets_for_slots(
+    season_id: Optional[int] = None,
+    *,
+    session: Session,
+) -> List[Set]:
+    """Return active sets eligible for slots (source 'all' or 'slots').
+
+    Args:
+        season_id: Season to query. Defaults to ``CURRENT_SEASON``.
+
+    Returns:
+        List of eligible ``Set`` objects.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    query = (
+        session.query(SetModel)
+        .filter(
+            SetModel.season_id == season_id,
+            SetModel.active.is_(True),
+            SetModel.source.in_(["all", "slots"]),
+        )
+        .order_by(SetModel.id)
+    )
+    return [Set.from_orm(r) for r in query.all()]

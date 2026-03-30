@@ -158,6 +158,7 @@ def _choose_aspect_definition_for_rarity(
     rarity: str,
     chat_id: Optional[str] = None,
     source: Optional[str] = None,
+    set_id: Optional[int] = None,
 ) -> AspectDefinition:
     """Choose a random aspect definition for the given rarity using weighted selection.
 
@@ -168,6 +169,7 @@ def _choose_aspect_definition_for_rarity(
         rarity: The rarity level to choose an aspect definition for.
         chat_id: The chat ID to check for existing usage (optional).
         source: Filter definitions by source ("roll" or "slots").
+        set_id: If provided, only consider definitions from this set.
 
     Returns:
         An ``AspectDefinition`` schema instance.
@@ -179,6 +181,14 @@ def _choose_aspect_definition_for_rarity(
     definitions = defs_by_rarity.get(rarity)
     if not definitions:
         raise InvalidSourceError(f"No aspect definitions configured for rarity '{rarity}'")
+
+    # Filter to specific set if requested
+    if set_id is not None:
+        definitions = [d for d in definitions if d.set_id == set_id]
+        if not definitions:
+            raise InvalidSourceError(
+                f"No aspect definitions for rarity '{rarity}' in set {set_id}"
+            )
 
     # Uniform selection when no chat context
     if chat_id is None:
@@ -365,6 +375,7 @@ def generate_aspect_for_chat(
     rarity: str,
     max_retries: int = 0,
     source: Optional[str] = None,
+    set_id: Optional[int] = None,
 ) -> GeneratedAspect:
     """Generate an aspect sphere for a chat.
 
@@ -373,8 +384,18 @@ def generate_aspect_for_chat(
     ``GeneratedAspect``.
 
     Used by the main roll pipeline and the recycle-aspect flow.
+
+    Args:
+        chat_id: The chat ID.
+        gemini_util: GeminiUtil instance.
+        rarity: The rarity level.
+        max_retries: Extra generation attempts on failure.
+        source: Source filter for definitions ("roll", "slots", etc.).
+        set_id: If provided, constrain selection to this set.
     """
-    aspect_def = _choose_aspect_definition_for_rarity(rarity, chat_id, source=source)
+    aspect_def = _choose_aspect_definition_for_rarity(
+        rarity, chat_id, source=source, set_id=set_id
+    )
 
     total_attempts = max(1, max_retries + 1)
     last_error: Optional[Exception] = None

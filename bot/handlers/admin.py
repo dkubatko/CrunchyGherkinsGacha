@@ -136,9 +136,9 @@ async def spins(
 
             plural = "spin" if spins_to_add == 1 else "spins"
             await message.reply_text(
-                f"✅ Successfully added {spins_to_add} {plural} to @{target_username}!\n\n"
+                f"Successfully added {spins_to_add} {plural} to @{target_username}!\n\n"
                 f"New balance: {new_total} {plural}\n\n"
-                f"Use /casino -- happy gambling! 🎰",
+                f"Use /casino — happy gambling!",
                 reply_to_message_id=message.message_id,
             )
 
@@ -172,7 +172,7 @@ async def spins(
             user_plural = "user" if successful_count == 1 else "users"
 
             await message.reply_text(
-                f"✅ Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!\n\nUse /casino -- happy gambling! 🎰",
+                f"Successfully added {spins_to_add} {plural} to {successful_count} {user_plural} in this chat!\n\nUse /casino — happy gambling!",
                 reply_to_message_id=message.message_id,
             )
 
@@ -183,7 +183,7 @@ async def spins(
     except Exception as e:
         logger.error(f"Error in /spins command: {e}")
         await message.reply_text(
-            "❌ An error occurred while adding spins. Please try again.",
+            "An error occurred while adding spins. Please try again.",
             reply_to_message_id=message.message_id,
         )
 
@@ -204,7 +204,7 @@ async def reload(
         affected_rows = await asyncio.to_thread(card_repo.clear_all_file_ids)
 
         await update.message.reply_text(
-            f"🔄 Reload complete! Cleared file_ids for {affected_rows} cards.\n"
+            f"Reload complete! Cleared file_ids for {affected_rows} cards.\n"
             f"All cards will be re-uploaded on next display.",
             reply_to_message_id=update.message.message_id,
         )
@@ -214,7 +214,7 @@ async def reload(
     except Exception as e:
         logger.error(f"Error in /reload: {e}")
         await update.message.reply_text(
-            "❌ An error occurred while executing the reload command.",
+            "An error occurred while executing the reload command.",
             reply_to_message_id=update.message.message_id,
         )
 
@@ -256,7 +256,7 @@ async def set_thread(
             thread_type = arg
         else:
             await message.reply_text(
-                "❌ Invalid thread type. Use 'main', 'trade', or 'clear'.\n\nUsage: /set_thread [main|trade|clear]",
+                "Invalid thread type. Use 'main', 'trade', or 'clear'.\n\nUsage: /set_thread [main|trade|clear]",
                 reply_to_message_id=message.message_id,
             )
             return
@@ -269,7 +269,7 @@ async def set_thread(
             success = await asyncio.to_thread(thread_repo.clear_thread_ids, chat_id)
             if success:
                 await message.reply_text(
-                    "✅ All thread configurations have been cleared for this chat.\n\n"
+                    "All thread configurations have been cleared for this chat.\n\n"
                     "Bot notifications will now be posted to the main chat.",
                     reply_to_message_id=message.message_id,
                 )
@@ -286,7 +286,7 @@ async def set_thread(
 
         if thread_id is None:
             await message.reply_text(
-                "❌ No thread detected. This command must be used within a forum topic/thread.",
+                "No thread detected. This command must be used within a forum topic/thread.",
                 reply_to_message_id=message.message_id,
             )
             return
@@ -298,7 +298,7 @@ async def set_thread(
         if success:
             type_label = "main" if thread_type == "main" else "trade"
             await message.reply_text(
-                f"✅ Thread ID {thread_id} has been set as the '{type_label}' thread for this chat.\n\n"
+                f"Thread ID {thread_id} has been set as the '{type_label}' thread for this chat.\n\n"
                 f"Bot notifications for {type_label} activities will now be posted to this thread.",
                 reply_to_message_id=message.message_id,
             )
@@ -307,13 +307,13 @@ async def set_thread(
             )
         else:
             await message.reply_text(
-                "❌ Failed to set thread ID. Please try again.",
+                "Failed to set thread ID. Please try again.",
                 reply_to_message_id=message.message_id,
             )
 
     except Exception as e:
         logger.error(f"Error in /thread command: {e}")
         await message.reply_text(
-            "❌ An error occurred while setting the thread ID.",
+            "An error occurred while setting the thread ID.",
             reply_to_message_id=message.message_id,
         )

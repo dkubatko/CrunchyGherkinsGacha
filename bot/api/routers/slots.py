@@ -28,10 +28,11 @@ from api.schemas import (
     DailyBonusStatusResponse,
     MegaspinInfo,
     SlotSymbolInfo,
-    SlotsAspectVictoryRequest,
+    SlotSymbolSummary,
     SlotsClaimWinRequest,
     SlotsClaimWinResponse,
     SlotsVictoryRequest,
+    SlotsVictoryResponse,
     SlotVerifyRequest,
     SlotVerifyResponse,
     SpinsRequest,
@@ -41,6 +42,9 @@ from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_W
 from utils.rolling import get_random_rarity
 from repos import character_repo
 from repos import claim_repo
+from repos import aspect_repo
+from repos import set_icon_repo
+from repos import set_repo
 from repos import spin_repo
 from repos import user_repo
 from managers import event_manager
@@ -276,6 +280,42 @@ async def consume_megaspin(
         raise HTTPException(status_code=500, detail="Failed to consume megaspin")
 
 
+@router.get("/set-symbols", response_model=List[SlotSymbolSummary])
+async def get_set_symbols(
+    chat_id: str = Query(..., description="Chat ID"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Return set icons for the slot reel symbol strip.
+
+    Returns active sets (source "all" or "slots") that have a generated slot
+    icon, formatted as SlotSymbolSummary with type="set".
+    """
+    try:
+        eligible_sets = await asyncio.to_thread(set_repo.get_eligible_sets_for_slots)
+        if not eligible_sets:
+            return []
+
+        icons = await asyncio.to_thread(set_icon_repo.get_all_icons_b64)
+
+        symbols: List[SlotSymbolSummary] = []
+        for s in eligible_sets:
+            icon_b64 = icons.get(s.id)
+            if not icon_b64:
+                continue
+            symbols.append(
+                SlotSymbolSummary(
+                    id=s.id,
+                    display_name=s.name,
+                    slot_icon_b64=icon_b64,
+                    type="set",
+                )
+            )
+        return symbols
+    except Exception as e:
+        logger.error(f"Error loading set symbols for chat {chat_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to load set symbols")
+
+
 @router.post("/verify", response_model=SlotVerifyResponse)
 async def verify_slot_spin(
     request: SlotVerifyRequest,
@@ -298,116 +338,99 @@ async def verify_slot_spin(
         )
 
     try:
-        # Use current time and client random number for better entropy
-        # Don't set a deterministic seed - let Python use system randomness
-        random.seed()  # Reset to system randomness
-
-        # Add some entropy from the request for security
+        random.seed()
         entropy_source = hash(
             f"{request.user_id}_{request.chat_id}_{request.random_number}_{time.time()}"
         )
         random.seed(entropy_source)
 
-        # Server-side win rate from config (boosted in debug mode)
-        win_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
-        is_card_win = random.random() < win_chance
-        rarity: Optional[str] = None
+        # Partition symbols by type — each win branch picks only from its own pool
+        card_symbols = [s for s in request.symbols if s.type in ("user", "character")]
+        set_symbols = [s for s in request.symbols if s.type == "set"]
+        claim_symbols = [s for s in request.symbols if s.type == "claim"]
+
         winning_symbol: Optional[SlotSymbolInfo] = None
         slot_results: List[SlotSymbolInfo] = []
-        is_win = False
+        rarity: Optional[str] = None
         win_type: Optional[str] = None
+        chosen_set_id: Optional[int] = None
+        chosen_set_name: Optional[str] = None
 
-        if is_card_win:
-            # Player wins a card - select a random user or character symbol
-            # Filter out claim symbols for card wins
-            eligible_symbols = [s for s in request.symbols if s.type != "claim"]
+        # Roll 1: Card win
+        card_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
+        if random.random() < card_chance and card_symbols:
+            winning_symbol = random.choice(card_symbols)
+            rarity = get_random_rarity(source="slots")
+            win_type = "card"
 
-            if not eligible_symbols:
-                # Fallback: no eligible symbols, treat as loss
-                is_card_win = False
-            else:
-                # Pick a random eligible symbol
-                winning_symbol = random.choice(eligible_symbols)
-                rarity = get_random_rarity(source="slots")
-                # All three reels show the winning symbol
-                slot_results = [winning_symbol, winning_symbol, winning_symbol]
-                is_win = True
-                win_type = "card"
-
-        if not is_card_win:
-            # Check for aspect win (between card win and claim win)
+        # Roll 2: Aspect win (only if card didn't win)
+        if not win_type:
             aspect_chance = 0.3 if DEBUG_MODE else SLOT_ASPECT_WIN_CHANCE
-            is_aspect_win = random.random() < aspect_chance
+            if random.random() < aspect_chance and set_symbols:
+                rarity = get_random_rarity(source="slots")
+                try:
+                    defs_by_rarity = await asyncio.to_thread(
+                        aspect_repo.get_aspect_definitions_by_rarity,
+                        source="slots",
+                    )
+                    eligible_ids = {d.set_id for d in defs_by_rarity.get(rarity, [])}
+                    eligible = [s for s in set_symbols if s.id in eligible_ids]
+                    if eligible:
+                        winning_symbol = random.choice(eligible)
+                        chosen_set_id = winning_symbol.id
+                        chosen_set_name = next(
+                            (d.set_name.title() for d in defs_by_rarity.get(rarity, []) if d.set_id == chosen_set_id),
+                            None,
+                        )
+                        win_type = "aspect"
+                    else:
+                        rarity = None  # No eligible sets for this rarity — fall through
+                except Exception as e:
+                    logger.warning("Failed to pick set for aspect win: %s", e)
+                    rarity = None
 
-            if is_aspect_win:
-                # Aspect win — pick a random eligible (non-claim) symbol for reel display
-                eligible_symbols = [s for s in request.symbols if s.type != "claim"]
-
-                if eligible_symbols:
-                    winning_symbol = random.choice(eligible_symbols)
-                    rarity = get_random_rarity(source="slots")
-                    slot_results = [winning_symbol, winning_symbol, winning_symbol]
-                    is_win = True
-                    win_type = "aspect"
-
-        if not is_win:
-            # Check for claim win (only if they didn't win a card or aspect)
+        # Roll 3: Claim win (only if no card/aspect win)
+        if not win_type:
             claim_chance = 0.5 if DEBUG_MODE else SLOT_CLAIM_CHANCE
-            claim_win = random.random() < claim_chance
+            if random.random() < claim_chance and claim_symbols:
+                winning_symbol = claim_symbols[0]
+                win_type = "claim"
 
-            if claim_win:
-                # Find the claim symbol
-                claim_symbols = [s for s in request.symbols if s.type == "claim"]
-                if claim_symbols:
-                    winning_symbol = claim_symbols[0]  # Should only be one claim symbol
-                    # All three reels show the claim symbol
-                    slot_results = [winning_symbol, winning_symbol, winning_symbol]
-                    is_win = True  # Claim win is still a win!
-
-        # Generate loss pattern if no win
-        if not slot_results:
+        # Build results
+        if winning_symbol:
+            slot_results = [winning_symbol, winning_symbol, winning_symbol]
+        else:
             slot_results = generate_slot_loss_pattern(random, request.symbols)
 
-        # Build descriptive log message
-        if win_type == "card" and rarity:
-            win_type_log = f"card ({rarity})"
-        elif win_type == "aspect" and rarity:
-            win_type_log = f"aspect ({rarity})"
-        elif winning_symbol and winning_symbol.type == "claim":
-            win_type_log = "claim point"
-        else:
-            win_type_log = "loss"
-
+        # Logging
+        win_type_log = (
+            f"{win_type} ({rarity})" if win_type in ("card", "aspect") and rarity
+            else win_type or "loss"
+        )
         logger.info(
-            f"Slot verification for user {request.user_id} in chat {request.chat_id}: "
-            f"result={win_type_log}, win_chance={win_chance:.3f}, "
-            f"winning_symbol={winning_symbol}, slot_results={[f'{s.type}:{s.id}' for s in slot_results]}"
+            "Slot verification for user %s in chat %s: result=%s",
+            request.user_id, request.chat_id, win_type_log,
         )
 
-        # Log spin event (card/aspect wins are logged after successful generation in background task)
-        if win_type == "card" and rarity:
-            # Card win events are logged in process_slots_victory_background after card generation
-            pass
-        elif win_type == "aspect" and rarity:
-            # Aspect win events are logged in process_slot_aspect_victory_background after aspect generation
-            pass
-        elif winning_symbol and winning_symbol.type == "claim":
+        # Event logging (card/aspect wins logged after generation in background task)
+        if win_type == "claim":
             event_manager.log(
-                EventType.SPIN,
-                SpinOutcome.CLAIM_WIN,
-                user_id=request.user_id,
-                chat_id=request.chat_id,
+                EventType.SPIN, SpinOutcome.CLAIM_WIN,
+                user_id=request.user_id, chat_id=request.chat_id,
             )
-        else:
+        elif not win_type:
             event_manager.log(
-                EventType.SPIN,
-                SpinOutcome.LOSS,
-                user_id=request.user_id,
-                chat_id=request.chat_id,
+                EventType.SPIN, SpinOutcome.LOSS,
+                user_id=request.user_id, chat_id=request.chat_id,
             )
 
         return SlotVerifyResponse(
-            is_win=is_win, slot_results=slot_results, rarity=rarity, win_type=win_type
+            is_win=win_type is not None,
+            slot_results=slot_results,
+            rarity=rarity,
+            win_type=win_type,
+            set_id=chosen_set_id,
+            set_name=chosen_set_name,
         )
 
     except Exception as e:
@@ -442,7 +465,7 @@ async def verify_megaspin(
     try:
         random.seed()  # Reset to system randomness
 
-        # Filter out claim symbols - megaspins only give cards
+        # Filter out claim symbols - megaspins don't give claim points
         eligible_symbols = [s for s in request.symbols if s.type != "claim"]
 
         if not eligible_symbols:
@@ -455,15 +478,37 @@ async def verify_megaspin(
         # All three reels show the winning symbol
         slot_results = [winning_symbol, winning_symbol, winning_symbol]
 
+        # Determine win type based on the symbol picked
+        win_type: str = "card"
+        chosen_set_id: Optional[int] = None
+        chosen_set_name: Optional[str] = None
+
+        if winning_symbol.type == "set":
+            win_type = "aspect"
+            chosen_set_id = winning_symbol.id
+            # Simple name lookup — rarity/definition validation
+            # happens downstream in the background task, same as cards
+            try:
+                set_obj = await asyncio.to_thread(set_repo.get_set, chosen_set_id)
+                if set_obj:
+                    chosen_set_name = set_obj.name.title() if set_obj.name else None
+            except Exception as e:
+                logger.warning("Megaspin set name lookup failed: %s", e)
+
         logger.info(
             f"Megaspin verification for user {request.user_id} in chat {request.chat_id}: "
-            f"rarity={rarity}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
+            f"rarity={rarity}, win_type={win_type}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
         )
 
-        # Megaspin success event is logged in process_slots_victory_background after card generation
+        # Megaspin success event is logged in background after generation
 
         return SlotVerifyResponse(
-            is_win=True, slot_results=slot_results, rarity=rarity, win_type="card"
+            is_win=True,
+            slot_results=slot_results,
+            rarity=rarity,
+            win_type=win_type,
+            set_id=chosen_set_id,
+            set_name=chosen_set_name,
         )
 
     except HTTPException:
@@ -483,155 +528,95 @@ async def verify_megaspin(
         raise HTTPException(status_code=500, detail="Failed to verify megaspin")
 
 
-@router.post("/victory")
+@router.post("/victory", response_model=SlotsVictoryResponse)
 async def slots_victory(
     request: SlotsVictoryRequest,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Handle a slot victory by generating a card and sharing it in the chat."""
-    # Verify the authenticated user matches the requested user_id
+    """Handle a slot card or aspect victory.
+
+    Dispatches to the appropriate background task based on ``win_type``.
+    """
     await verify_user_match(request.user_id, validated_user)
 
-    # Extract user data from validated data
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
 
-    # Get username
+    # --- shared validation ---------------------------------------------------
     username = user_data.get("username")
     if not username:
         username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
-        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
 
-    # Validate request parameters
     normalized_rarity = normalize_rarity(request.rarity)
     if not normalized_rarity:
-        logger.warning("Unsupported rarity '%s' provided", request.rarity)
         raise HTTPException(status_code=400, detail="Unsupported rarity value")
 
     chat_id = str(request.chat_id).strip()
     if not chat_id:
-        logger.warning("Empty chat_id provided for slots victory")
         raise HTTPException(status_code=400, detail="chat_id is required")
 
-    source_type = (request.source.type or "").strip().lower()
-    if source_type not in ("user", "character"):
-        logger.warning("Unsupported source type '%s'", request.source.type)
-        raise HTTPException(status_code=400, detail="Invalid source type")
-
     if not TELEGRAM_TOKEN:
-        logger.error("Bot token not available for slots victory")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
-    # Validate chat exists and user is enrolled
     await validate_user_in_chat(request.user_id, chat_id)
 
-    # Get source display name for validation
-    if source_type == "user":
-        source_user = await asyncio.to_thread(user_repo.get_user, request.source.id)
-        if not source_user:
-            raise HTTPException(status_code=404, detail="Source user not found or incomplete")
-        if not source_user.display_name:
-            raise HTTPException(status_code=404, detail="Source user not found or incomplete")
-        display_name = source_user.display_name
+    # --- dispatch by win_type ------------------------------------------------
+    if request.win_type == "card":
+        source_type = (request.source_type or "").strip().lower()
+        if source_type not in ("user", "character"):
+            raise HTTPException(status_code=400, detail="Invalid source type")
+
+        if source_type == "user":
+            source_user = await asyncio.to_thread(user_repo.get_user, request.source_id)
+            if not source_user or not source_user.display_name:
+                raise HTTPException(status_code=404, detail="Source user not found or incomplete")
+            display_name = source_user.display_name
+        else:
+            source_character = await asyncio.to_thread(
+                character_repo.get_character_by_id, request.source_id
+            )
+            if not source_character or not source_character.name:
+                raise HTTPException(status_code=404, detail="Source character not found")
+            if str(source_character.chat_id) != chat_id:
+                raise HTTPException(status_code=400, detail="Character does not belong to chat")
+            display_name = source_character.name
+
+        asyncio.create_task(
+            process_slots_victory_background(
+                bot_token=TELEGRAM_TOKEN,
+                debug_mode=DEBUG_MODE,
+                username=username,
+                normalized_rarity=normalized_rarity,
+                display_name=display_name,
+                chat_id=chat_id,
+                source_type=source_type,
+                source_id=request.source_id,
+                user_id=request.user_id,
+                gemini_util_instance=gemini_util,
+                is_megaspin=request.is_megaspin,
+            )
+        )
+        return SlotsVictoryResponse(status="processing", message="Card generation started")
+
+    elif request.win_type == "aspect":
+        asyncio.create_task(
+            process_slot_aspect_victory_background(
+                bot_token=TELEGRAM_TOKEN,
+                debug_mode=DEBUG_MODE,
+                username=username,
+                normalized_rarity=normalized_rarity,
+                chat_id=chat_id,
+                user_id=request.user_id,
+                gemini_util_instance=gemini_util,
+                set_id=request.set_id,
+            )
+        )
+        return SlotsVictoryResponse(status="processing", message="Aspect generation started")
+
     else:
-        source_character = await asyncio.to_thread(
-            character_repo.get_character_by_id, request.source.id
-        )
-        if not source_character:
-            raise HTTPException(status_code=404, detail="Source character not found")
-        if not source_character.name:
-            raise HTTPException(status_code=404, detail="Source character not found")
-        if str(source_character.chat_id) != chat_id:
-            raise HTTPException(status_code=400, detail="Character does not belong to chat")
-        display_name = source_character.name
-
-    # All validation passed - respond immediately with success
-    response_data = {
-        "status": "processing",
-        "message": "Slots victory accepted, processing card...",
-    }
-
-    # Process card generation in background task (fire-and-forget)
-    asyncio.create_task(
-        process_slots_victory_background(
-            bot_token=TELEGRAM_TOKEN,
-            debug_mode=DEBUG_MODE,
-            username=username,
-            normalized_rarity=normalized_rarity,
-            display_name=display_name,
-            chat_id=chat_id,
-            source_type=source_type,
-            source_id=request.source.id,
-            user_id=request.user_id,
-            gemini_util_instance=gemini_util,
-            is_megaspin=request.is_megaspin,
-        )
-    )
-
-    return response_data
-
-
-@router.post("/aspect-victory")
-async def slots_aspect_victory(
-    request: SlotsAspectVictoryRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Handle a slot aspect victory by generating an aspect and sharing it in the chat."""
-    # Verify the authenticated user matches the requested user_id
-    await verify_user_match(request.user_id, validated_user)
-
-    # Extract user data from validated data
-    user_data: Dict[str, Any] = validated_user["user"] or {}
-    auth_user_id = user_data.get("id")
-
-    # Get username
-    username = user_data.get("username")
-    if not username:
-        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
-    if not username:
-        logger.warning("Unable to resolve username for user_id %s", auth_user_id)
-        raise HTTPException(status_code=400, detail="Username not found for user")
-
-    # Validate request parameters
-    normalized_rarity = normalize_rarity(request.rarity)
-    if not normalized_rarity:
-        logger.warning("Unsupported rarity '%s' provided for aspect victory", request.rarity)
-        raise HTTPException(status_code=400, detail="Unsupported rarity value")
-
-    chat_id = str(request.chat_id).strip()
-    if not chat_id:
-        logger.warning("Empty chat_id provided for slots aspect victory")
-        raise HTTPException(status_code=400, detail="chat_id is required")
-
-    if not TELEGRAM_TOKEN:
-        logger.error("Bot token not available for slots aspect victory")
-        raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-    # Validate chat exists and user is enrolled
-    await validate_user_in_chat(request.user_id, chat_id)
-
-    # All validation passed - respond immediately with success
-    response_data = {
-        "status": "processing",
-        "message": "Slots aspect victory accepted, processing aspect...",
-    }
-
-    # Process aspect generation in background task (fire-and-forget)
-    asyncio.create_task(
-        process_slot_aspect_victory_background(
-            bot_token=TELEGRAM_TOKEN,
-            debug_mode=DEBUG_MODE,
-            username=username,
-            normalized_rarity=normalized_rarity,
-            chat_id=chat_id,
-            user_id=request.user_id,
-            gemini_util_instance=gemini_util,
-        )
-    )
-
-    return response_data
+        raise HTTPException(status_code=400, detail="Invalid win_type; expected 'card' or 'aspect'")
 
 
 @router.post("/claim-win", response_model=SlotsClaimWinResponse)
@@ -652,16 +637,13 @@ async def slots_claim_win(
     await validate_user_in_chat(request.user_id, chat_id)
 
     try:
-        # Add claim points to the user's balance
-        amount = max(1, request.amount)  # Ensure at least 1 point is added
         new_balance = await asyncio.to_thread(
-            claim_repo.increment_claim_balance, request.user_id, chat_id, amount
+            claim_repo.increment_claim_balance, request.user_id, chat_id, 1
         )
 
         logger.info(
-            "User %s won %s claim point(s) in chat %s. New balance: %s",
+            "User %s won 1 claim point in chat %s. New balance: %s",
             request.user_id,
-            amount,
             chat_id,
             new_balance,
         )

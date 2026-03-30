@@ -4,8 +4,9 @@ All routes require a valid admin JWT (``Depends(get_admin_user)``).
 """
 
 import asyncio
+import base64
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -17,6 +18,7 @@ from api.schemas import (
 )
 from repos import aspect_repo
 from repos import set_repo
+from repos import set_icon_repo
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,9 @@ router = APIRouter(prefix="/admin/sets", tags=["admin-sets"])
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _set_to_response(set_dto, aspect_count: int = 0) -> AdminSetResponse:
+def _set_to_response(
+    set_dto, aspect_count: int = 0, slot_icon_b64: Optional[str] = None
+) -> AdminSetResponse:
     """Convert a ``Set`` DTO to an API response."""
     return AdminSetResponse(
         id=set_dto.id,
@@ -36,6 +40,7 @@ def _set_to_response(set_dto, aspect_count: int = 0) -> AdminSetResponse:
         description=set_dto.description,
         active=set_dto.active,
         aspect_count=aspect_count,
+        slot_icon_b64=slot_icon_b64,
     )
 
 
@@ -55,11 +60,15 @@ async def list_sets(
     season_id: int,
     _admin: Dict[str, Any] = Depends(get_admin_user),
 ):
-    """Return all sets for a season, with modifier counts."""
+    """Return all sets for a season, with aspect counts and slot icons."""
     sets = await asyncio.to_thread(set_repo.get_sets_by_season, season_id, False)
     counts = await asyncio.to_thread(aspect_repo.get_aspect_definition_count_per_set, season_id)
+    icons = await asyncio.to_thread(set_icon_repo.get_all_icons_b64, season_id)
 
-    return [_set_to_response(s, counts.get(s.id, 0)) for s in sets]
+    return [
+        _set_to_response(s, counts.get(s.id, 0), icons.get(s.id))
+        for s in sets
+    ]
 
 
 @router.post("/seasons/{season_id}", response_model=AdminSetResponse, status_code=201)
@@ -71,6 +80,7 @@ async def create_set(
     """Create a new set within a season.
 
     The set ID is auto-assigned as ``max(existing IDs) + 1`` for the season.
+    A slot icon is generated synchronously via Gemini before returning.
     """
 
     def _do_create():
@@ -96,7 +106,13 @@ async def create_set(
     if new_set is None:
         raise HTTPException(status_code=500, detail="Failed to create set")
 
-    return _set_to_response(new_set)
+    # Generate slot icon synchronously (frontend waits with a spinner)
+    slot_icon_b64 = await asyncio.to_thread(
+        _generate_and_store_icon, new_set.id, new_set.season_id,
+        new_set.name, body.description or None,
+    )
+
+    return _set_to_response(new_set, slot_icon_b64=slot_icon_b64)
 
 
 @router.put("/seasons/{season_id}/{set_id}", response_model=AdminSetResponse)
@@ -123,4 +139,43 @@ async def update_set(
         raise HTTPException(status_code=404, detail="Set not found")
 
     counts = await asyncio.to_thread(aspect_repo.get_aspect_definition_count_per_set, season_id)
-    return _set_to_response(updated, counts.get(set_id, 0))
+    icon_b64 = await asyncio.to_thread(set_icon_repo.get_icon_b64, set_id, season_id)
+    return _set_to_response(updated, counts.get(set_id, 0), icon_b64)
+
+
+@router.post("/seasons/{season_id}/{set_id}/regenerate-icon", response_model=AdminSetResponse)
+async def regenerate_set_icon(
+    season_id: int,
+    set_id: int,
+    _admin: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Regenerate the slot icon for an existing set."""
+    set_dto = await asyncio.to_thread(set_repo.get_set, set_id, season_id)
+    if set_dto is None:
+        raise HTTPException(status_code=404, detail="Set not found")
+
+    slot_icon_b64 = await asyncio.to_thread(
+        _generate_and_store_icon, set_id, season_id,
+        set_dto.name, set_dto.description or None,
+    )
+
+    counts = await asyncio.to_thread(aspect_repo.get_aspect_definition_count_per_set, season_id)
+    return _set_to_response(set_dto, counts.get(set_id, 0), slot_icon_b64)
+
+
+# ── Internal ─────────────────────────────────────────────────────────────────
+
+
+def _generate_and_store_icon(
+    set_id: int,
+    season_id: int,
+    set_name: str,
+    set_description: Optional[str],
+) -> Optional[str]:
+    """Generate a set slot icon and persist it. Returns base64 or ``None``."""
+    from utils.slot_icon import generate_set_slot_icon
+
+    icon_b64 = generate_set_slot_icon(set_name, set_description)
+    if icon_b64:
+        set_icon_repo.upsert_icon(set_id, season_id, base64.b64decode(icon_b64))
+    return icon_b64

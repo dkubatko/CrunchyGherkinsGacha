@@ -133,6 +133,7 @@ def _load_prompt(filename: str) -> str:
 
 UNIQUE_ASPECT_ADDENDUM = _load_prompt("unique_aspect.md")
 SLOT_MACHINE_INSTRUCTION = _load_prompt("slot_icon.md")
+SET_SLOT_ICON_PROMPT = _load_prompt("set_slot_icon.md")
 ASPECT_GENERATION_PROMPT = _load_prompt("aspect_sphere.md")
 BASE_CARD_GENERATION_PROMPT = _load_prompt("base_card.md")
 EQUIP_GENERATION_PROMPT = _load_prompt("equip_card.md")
@@ -392,28 +393,28 @@ CREATE_PROCESSING_MESSAGE = "Creating <b>Unique</b> aspect..."
 TRADE_REQUEST_MESSAGE = (
     "Trade requested:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
-    "🔄\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
 
 TRADE_COMPLETE_MESSAGE = (
     "Trade completed:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
-    "🤝\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
 
 TRADE_REJECTED_MESSAGE = (
     "Trade rejected:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
-    "🚫\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
 
 TRADE_CANCELLED_MESSAGE = (
     "Trade cancelled:\n\n"
     "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
-    "❌\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{card2_title}</b>"
 )
 
@@ -421,38 +422,38 @@ TRADE_CANCELLED_MESSAGE = (
 ASPECT_TRADE_REQUEST_MESSAGE = (
     "Aspect trade requested:\n\n"
     "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🔄\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{aspect2_title}</b>"
 )
 
 ASPECT_TRADE_COMPLETE_MESSAGE = (
     "Aspect trade completed:\n\n"
     "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🤝\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{aspect2_title}</b>"
 )
 
 ASPECT_TRADE_REJECTED_MESSAGE = (
     "Aspect trade rejected:\n\n"
     "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🚫\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{aspect2_title}</b>"
 )
 
 ASPECT_TRADE_CANCELLED_MESSAGE = (
     "Aspect trade cancelled:\n\n"
     "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "❌\n\n"
+    "→\n\n"
     "@{user2_username}'s\n<b>{aspect2_title}</b>"
 )
 
 # Slots aspect victory messages
 SLOTS_ASPECT_VICTORY_PENDING_MESSAGE = (
-    "@{username} won a <b>{rarity}</b> aspect in slots!\n\nGenerating aspect..."
+    "@{username} won a <b>{rarity} {set_name}</b> aspect in slots!\n\nGenerating aspect..."
 )
 
 SLOTS_ASPECT_VICTORY_RESULT_MESSAGE = (
-    "@{username} won a <b>{rarity}</b> aspect in slots!\n\n"
+    "@{username} won a <b>{rarity} {set_name}</b> aspect in slots!\n\n"
     "<b>🔮 {aspect_name}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
     "Set: <b>{set_name}</b>"
@@ -511,7 +512,7 @@ MINESWEEPER_VICTORY_FAILURE_MESSAGE = (
     "@{username} won a {rarity} {display_name} in Minesweeper!\n\n" "Card generation failed."
 )
 
-MINESWEEPER_LOSS_MESSAGE = "@{username} lost 💥 <b>{card_title}</b> 💥 in Minesweeper!"
+MINESWEEPER_LOSS_MESSAGE = "@{username} lost <b>{card_title}</b> in Minesweeper!"
 
 MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
 
@@ -606,7 +607,7 @@ EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
 EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
 EQUIP_NOT_YOURS_MESSAGE = "This equip prompt isn't for you!"
 EQUIP_CRAFTING_MESSAGE = (
-    "⚙️ <b>Crafting...</b>\n\n"
+    "<b>Crafting...</b>\n\n"
     "Equipping <b>🔮 {aspect_name}</b> onto <b>{card_title}</b>...\n\n"
     "<i>Generating new card art — this may take a moment.</i>"
 )
@@ -615,13 +616,13 @@ EQUIP_DB_FAILURE_MESSAGE = (
     "Please check and try again."
 )
 EQUIP_SUCCESS_MESSAGE = (
-    "✨ <b>Equip complete!</b>\n\n"
+    "<b>Equip complete!</b>\n\n"
     "<b>[{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
     "Aspects: <b>{aspect_count}/5</b>{aspect_list}"
 )
 EQUIP_IMAGE_FAILURE_MESSAGE = (
-    "✨ Aspect equipped successfully, but image generation failed.\n\n"
+    "Aspect equipped successfully, but image generation failed.\n\n"
     "<b>[{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
     "Aspects: <b>{aspect_count}/5</b>{aspect_list}\n\n"

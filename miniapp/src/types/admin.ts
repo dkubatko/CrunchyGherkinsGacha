@@ -6,6 +6,7 @@ export interface AdminSet {
   description: string;
   active: boolean;
   aspect_count: number;
+  slot_icon_b64?: string | null;
 }
 
 export interface AdminAspectDef {

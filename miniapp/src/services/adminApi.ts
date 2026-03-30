@@ -105,6 +105,14 @@ export class AdminApiService {
     return this.handleResponse(res);
   }
 
+  static async regenerateSetIcon(seasonId: number, setId: number): Promise<AdminSet> {
+    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}/${setId}/regenerate-icon`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(res);
+  }
+
   // ── Aspect Definitions ────────────────────────────────────────────────
 
   static async getAspectDefs(setId: number, seasonId: number): Promise<AdminAspectDef[]> {

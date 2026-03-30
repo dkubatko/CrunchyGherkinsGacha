@@ -354,7 +354,7 @@ async def handle_burn_callback(
         )
         new_spin_total = spins_record.count if spins_record else reward
 
-        header = f"<b><s>🔥🔮 [{aspect_id}] {aspect.rarity} {aspect_name}🔥</s></b>"
+        header = f"<b><s>🔮 [{aspect_id}] {aspect.rarity} {aspect_name}</s></b>"
         success_block = ASPECT_BURN_SUCCESS_MESSAGE.format(
             spin_reward=reward,
             new_spin_total=new_spin_total,
@@ -1425,7 +1425,7 @@ async def handle_recycle_callback(
                 text=build_burning_text(
                     aspect_names, len(aspects_to_burn), strike_all=True, item_label="aspects"
                 )
-                + "\n\n♻️ Recycling...",
+                + "\n\n<b>Recycling...</b>",
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
@@ -1518,7 +1518,7 @@ async def handle_recycle_callback(
             aspects_burned=aspect_ids_to_delete,
         )
 
-        burned_block = "\n".join([f"<s>🔥🔮 {name}🔥</s>" for name in aspect_names])
+        burned_block = "\n".join([f"<s>🔮 {name}</s>" for name in aspect_names])
 
         final_caption = ASPECT_CAPTION_BASE.format(
             aspect_id=generated_aspect.aspect_id,
@@ -1735,7 +1735,7 @@ async def handle_card_recycle_callback(
                 text=build_burning_text(
                     card_titles, len(cards_to_burn), strike_all=True, item_label="cards"
                 )
-                + "\n\n♻️ Recycling...",
+                + "\n\n<b>Recycling...</b>",
                 parse_mode=ParseMode.HTML,
             )
         except Exception:
@@ -1844,7 +1844,7 @@ async def handle_card_recycle_callback(
             cards_burned=card_ids_to_delete,
         )
 
-        burned_block = "\n".join([f"<s>🔥🃏 {name}🔥</s>" for name in card_titles])
+        burned_block = "\n".join([f"<s>🃏 {name}</s>" for name in card_titles])
 
         final_caption = CARD_CAPTION_BASE.format(
             card_id=new_card_id,
@@ -2159,7 +2159,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 del context.user_data[session_key]
 
                 # Build caption
-                burned_block = "\n".join([f"<s>🔥{t}🔥</s>" for t in aspect_titles])
+                burned_block = "\n".join([f"<s>{t}</s>" for t in aspect_titles])
 
                 caption = (
                     ASPECT_CAPTION_BASE.format(

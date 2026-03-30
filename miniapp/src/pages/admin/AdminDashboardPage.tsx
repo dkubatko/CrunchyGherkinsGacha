@@ -125,7 +125,7 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
               className="admin-btn admin-btn-primary admin-btn-sm"
               disabled={creating}
             >
-              {creating ? 'Creating…' : 'Create'}
+              {creating ? 'Creating (generating icon…)' : 'Create'}
             </button>
           </div>
           <input
@@ -155,7 +155,18 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
                 onClick={() => onSelectSet(set)}
               >
                 <div className="admin-set-card-header">
-                  <h3>{set.name}</h3>
+                  <div className="admin-set-card-title-row">
+                    {set.slot_icon_b64 ? (
+                      <img
+                        className="admin-set-card-icon"
+                        src={`data:image/jpeg;base64,${set.slot_icon_b64}`}
+                        alt={set.name}
+                      />
+                    ) : (
+                      <div className="admin-set-card-icon admin-set-card-icon--placeholder" />
+                    )}
+                    <h3>{set.name}</h3>
+                  </div>
                   <button
                     className={`admin-toggle ${set.active ? 'admin-toggle--on' : ''}`}
                     onClick={(e) => {
