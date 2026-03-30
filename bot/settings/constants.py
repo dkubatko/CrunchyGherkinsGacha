@@ -119,9 +119,7 @@ REFRESH_COST_SUMMARY = _build_cost_summary(get_refresh_cost)
 # ---------------------------------------------------------------------------
 # Prompt template loading — prompts live in bot/prompts/*.md
 # ---------------------------------------------------------------------------
-_PROMPTS_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts"
-)
+_PROMPTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts")
 
 
 @lru_cache(maxsize=None)
@@ -147,12 +145,12 @@ ASPECT_SET_CONTEXT = (
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (
-    "<b>{lock_icon}[{card_id}] {card_title}</b>\n"
+    "<b>{lock_icon}🃏 [{card_id}] {card_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n\n"
     "<i>Showing {current_index}/{total_cards} owned by @{username}</i>"
 )
 
-CARD_CAPTION_BASE = "<b>[{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
+CARD_CAPTION_BASE = "<b>🃏 [{card_id}] {card_title}</b>\nRarity: <b>{rarity}</b>"
 CARD_STATUS_UNCLAIMED = "\n\n<i>Unclaimed</i>"
 CARD_STATUS_CLAIMED = "\n\n<i>Claimed by @{username}</i>"
 CARD_STATUS_LOCKED = "\n\n<i>Locked from re-rolling</i>"
@@ -293,7 +291,7 @@ BURN_CARD_NOT_FOUND_MESSAGE = "Card not found. Check the ID and try again."
 BURN_NOT_YOURS_MESSAGE = "You can only burn cards you currently own."
 BURN_CHAT_MISMATCH_MESSAGE = "This card doesn't belong to this chat."
 BURN_CONFIRM_MESSAGE = (
-    "Burn <b>[{card_id}] {rarity} {card_title}</b> for <b>{spin_reward} spins</b>?"
+    "Burn <b>🃏 [{card_id}] {rarity} {card_title}</b> for <b>{spin_reward} spins</b>?"
 )
 BURN_CANCELLED_MESSAGE = "Burn cancelled."
 BURN_ALREADY_RUNNING_MESSAGE = "You already have a burn in progress."
@@ -454,7 +452,7 @@ SLOTS_ASPECT_VICTORY_PENDING_MESSAGE = (
 
 SLOTS_ASPECT_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {set_name}</b> aspect in slots!\n\n"
-    "<b>🔮 {aspect_name}</b>\n"
+    "<b>🔮 [{aspect_id}] {aspect_name}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
     "Set: <b>{set_name}</b>"
 )
@@ -469,7 +467,7 @@ SLOTS_VICTORY_PENDING_MESSAGE = (
 
 SLOTS_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in slots!\n\n"
-    "<b>[{card_id}] {base_name}</b>\n"
+    "<b>🃏 [{card_id}] {base_name}</b>\n"
     "Rarity: <b>{rarity}</b>"
 )
 
@@ -481,7 +479,7 @@ MEGASPIN_VICTORY_PENDING_MESSAGE = "@{username} used a <b>megaspin</b> and won a
 
 MEGASPIN_VICTORY_RESULT_MESSAGE = (
     "@{username} used a <b>megaspin</b> and won a <b>{rarity} {display_name}</b>!\n\n"
-    "<b>[{card_id}] {base_name}</b>\n"
+    "<b>🃏 [{card_id}] {base_name}</b>\n"
     "Rarity: <b>{rarity}</b>"
 )
 
@@ -504,7 +502,7 @@ MINESWEEPER_VICTORY_PENDING_MESSAGE = (
 
 MINESWEEPER_VICTORY_RESULT_MESSAGE = (
     "@{username} won a <b>{rarity} {display_name}</b> in Minesweeper!\n\n"
-    "<b>[{card_id}] {base_name}</b>\n"
+    "<b>🃏 [{card_id}] {base_name}</b>\n"
     "Rarity: <b>{rarity}</b>"
 )
 
@@ -599,16 +597,16 @@ EQUIP_NAME_TOO_LONG_MESSAGE = "Name prefix is too long. Please keep it under 30 
 EQUIP_NAME_INVALID_CHARS_MESSAGE = "Name prefix contains invalid characters. Avoid HTML/markdown special characters (<, >, &, *, _, `)."
 EQUIP_CONFIRM_MESSAGE = (
     "Equip <b>🔮 [{aspect_id}] {aspect_name}</b> ({aspect_rarity}) "
-    "onto <b>{card_title}</b> ({card_rarity})?\n\n"
+    "onto <b>🃏 [{card_id}] {card_title}</b> ({card_rarity})?\n\n"
     "Card will be renamed to: <b>{new_title}</b>\n"
-    "Aspects on card: {aspect_count}/5{aspect_list}"
+    "Aspects on card: {aspect_count}/5:{aspect_list}"
 )
 EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
 EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
 EQUIP_NOT_YOURS_MESSAGE = "This equip prompt isn't for you!"
 EQUIP_CRAFTING_MESSAGE = (
     "<b>Crafting...</b>\n\n"
-    "Equipping <b>🔮 {aspect_name}</b> onto <b>{card_title}</b>...\n\n"
+    "Equipping <b>🔮 [{aspect_id}] {aspect_name}</b> onto <b>🃏 [{card_id}] {card_title}</b>...\n\n"
     "<i>Generating new card art — this may take a moment.</i>"
 )
 EQUIP_DB_FAILURE_MESSAGE = (
@@ -617,14 +615,14 @@ EQUIP_DB_FAILURE_MESSAGE = (
 )
 EQUIP_SUCCESS_MESSAGE = (
     "<b>Equip complete!</b>\n\n"
-    "<b>[{card_id}] {new_title}</b>\n"
+    "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>{aspect_list}"
+    "Aspects: <b>{aspect_count}/5</b>:{aspect_list}"
 )
 EQUIP_IMAGE_FAILURE_MESSAGE = (
     "Aspect equipped successfully, but image generation failed.\n\n"
-    "<b>[{card_id}] {new_title}</b>\n"
+    "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>{aspect_list}\n\n"
+    "Aspects: <b>{aspect_count}/5</b>:{aspect_list}\n\n"
     "<i>Use /refresh to regenerate the card art.</i>"
 )

@@ -660,7 +660,7 @@ async def process_slot_aspect_victory_background(
         try:
             set_obj = await asyncio.to_thread(set_repo.get_set, set_id)
             if set_obj:
-                set_name = set_obj.name.title() if set_obj.name else "Unknown"
+                set_name = set_obj.name if set_obj.name else "Unknown"
         except Exception as e:
             logger.warning("Failed to look up set name for set_id=%s: %s", set_id, e)
 
@@ -679,7 +679,7 @@ async def process_slot_aspect_victory_background(
         pending_caption = SLOTS_ASPECT_VICTORY_PENDING_MESSAGE.format(
             username=username,
             rarity=normalized_rarity,
-            set_name=set_name,
+            set_name=set_name.title(),
         )
 
         thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
@@ -753,8 +753,9 @@ async def process_slot_aspect_victory_background(
             final_caption = SLOTS_ASPECT_VICTORY_RESULT_MESSAGE.format(
                 username=username,
                 rarity=normalized_rarity,
+                aspect_id=generated_aspect.aspect_id,
                 aspect_name=generated_aspect.aspect_name,
-                set_name=generated_aspect.set_name or "",
+                set_name=set_name.title(),
             )
 
             aspect_image = base64.b64decode(generated_aspect.image_b64)

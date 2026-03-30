@@ -18,6 +18,7 @@ from telegram.ext import ContextTypes
 
 from config import DEBUG_MODE, MAX_BOT_IMAGE_RETRIES, MINIAPP_URL_ENV, gemini_util
 from handlers.helpers import (
+    format_aspect_list,
     log_card_generation,
     save_card_file_id_from_message,
 )
@@ -466,9 +467,7 @@ async def _generate_equipped_refresh_options(
     equipped = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card.id)
     aspects_data: list[tuple[str, bytes]] = []
     for ca in equipped:
-        aspect_with_img = await asyncio.to_thread(
-            aspect_repo.get_aspect_with_image, ca.aspect_id
-        )
+        aspect_with_img = await asyncio.to_thread(aspect_repo.get_aspect_with_image, ca.aspect_id)
         if aspect_with_img and aspect_with_img.image_b64:
             aspects_data.append(
                 (aspect_with_img.display_name, base64.b64decode(aspect_with_img.image_b64))
@@ -825,21 +824,6 @@ def _rarity_index(rarity: str) -> int:
         return len(RARITY_ORDER)
 
 
-def _format_aspect_list(card) -> str:
-    """Format equipped aspects as a bullet list for display in messages."""
-    if not card or not card.equipped_aspects:
-        return ""
-    names = []
-    for ca in card.equipped_aspects:
-        if ca.aspect and ca.aspect.display_name:
-            names.append(f"🔮 {ca.aspect.display_name}")
-        elif ca.aspect and ca.aspect.name:
-            names.append(f"🔮 {ca.aspect.name}")
-    if not names:
-        return ""
-    return "\n" + "\n".join(names)
-
-
 @verify_user_in_chat
 async def equip(
     update: Update,
@@ -1000,7 +984,7 @@ async def equip(
 
     # Build new display title for the confirmation
     new_title = f"{name_prefix} {card.base_name}"
-    card_title = card.title(include_id=True)
+    card_title = card.title()
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -1041,7 +1025,7 @@ async def equip(
             card_rarity=card.rarity,
             new_title=html.escape(new_title),
             aspect_count=card.aspect_count,
-            aspect_list=_format_aspect_list(card),
+            aspect_list=format_aspect_list(card),
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard,
@@ -1142,7 +1126,9 @@ async def handle_equip_callback(
         try:
             await query.edit_message_text(
                 EQUIP_CRAFTING_MESSAGE.format(
+                    aspect_id=aspect_id,
                     aspect_name=html.escape(aspect_name),
+                    card_id=card_id,
                     card_title=html.escape(card_title),
                 ),
                 parse_mode=ParseMode.HTML,
@@ -1190,9 +1176,7 @@ async def handle_equip_callback(
             return
 
         # Gather equipped aspect images for Gemini
-        equipped_aspects_data = await asyncio.to_thread(
-            aspect_repo.get_aspects_for_card, card_id
-        )
+        equipped_aspects_data = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card_id)
 
         existing_aspects: list[tuple[str, bytes]] = []
         new_aspect_image_bytes: Optional[bytes] = None
@@ -1222,7 +1206,7 @@ async def handle_equip_callback(
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
                     aspect_count=new_aspect_count,
-                    aspect_list=_format_aspect_list(card_with_image),
+                    aspect_list=format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )
@@ -1255,7 +1239,7 @@ async def handle_equip_callback(
                 new_title=html.escape(new_title),
                 rarity=card_with_image.rarity,
                 aspect_count=new_aspect_count,
-                aspect_list=_format_aspect_list(card_with_image),
+                aspect_list=format_aspect_list(card_with_image),
             )
 
             reply_markup = None
@@ -1290,7 +1274,7 @@ async def handle_equip_callback(
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
                     aspect_count=new_aspect_count,
-                    aspect_list=_format_aspect_list(card_with_image),
+                    aspect_list=format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )

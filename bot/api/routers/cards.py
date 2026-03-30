@@ -157,8 +157,8 @@ async def share_card(
         bot = create_bot_instance()
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
 
-        set_name = (card.set_name or "Unknown").title()
-        message = f"@{username} shared card:\n\n<b>{card_title}</b>\nSet: <b>{set_name}</b>"
+        set_name = card.set_name or "Unknown"
+        message = f"@{username} shared card:\n\n<b>{card_title}</b>\nSet: <b>{set_name.title()}</b>"
 
         # Add ownership info if the sharer is not the owner
         if card.owner and card.owner != username:
