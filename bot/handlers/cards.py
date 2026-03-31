@@ -1017,15 +1017,10 @@ async def equip(
 
     await message.reply_text(
         EQUIP_CONFIRM_MESSAGE.format(
-            aspect_id=aspect_id,
-            aspect_name=html.escape(aspect.display_name),
-            aspect_rarity=aspect.rarity,
-            card_id=card_id,
-            card_title=card_title,
-            card_rarity=card.rarity,
+            aspect_title=aspect.title(include_id=True, include_rarity=True),
+            card_title=card.title(include_id=True, include_rarity=True),
             new_title=html.escape(new_title),
-            aspect_count=card.aspect_count,
-            aspect_list=format_aspect_list(card),
+            equipped_aspects=format_aspect_list(card),
         ),
         parse_mode=ParseMode.HTML,
         reply_markup=keyboard,
@@ -1119,6 +1114,9 @@ async def handle_equip_callback(
     card_title = db_session.card_title
     new_title = db_session.new_title
 
+    aspect_title_fmt = f"[{aspect_id}] {db_session.aspect_rarity.capitalize()} {html.escape(aspect_name)}"
+    card_title_fmt = html.escape(card_title)
+
     try:
         await query.answer()
 
@@ -1126,10 +1124,8 @@ async def handle_equip_callback(
         try:
             await query.edit_message_text(
                 EQUIP_CRAFTING_MESSAGE.format(
-                    aspect_id=aspect_id,
-                    aspect_name=html.escape(aspect_name),
-                    card_id=card_id,
-                    card_title=html.escape(card_title),
+                    aspect_title=aspect_title_fmt,
+                    card_title=card_title_fmt,
                 ),
                 parse_mode=ParseMode.HTML,
             )
@@ -1169,8 +1165,7 @@ async def handle_equip_callback(
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=db_session.aspect_rarity,
-                    aspect_count=card_with_image.aspect_count if card_with_image else "?",
-                    aspect_list="",
+                    equipped_aspects=format_aspect_list(card_with_image) if card_with_image else "Equipped aspects (?/5)",
                 )
             )
             return
@@ -1196,8 +1191,6 @@ async def handle_equip_callback(
                 # Previously equipped aspect
                 existing_aspects.append((aspect_with_img.display_name, img_bytes))
 
-        new_aspect_count = card_with_image.aspect_count
-
         if new_aspect_image_bytes is None:
             logger.warning("Could not load image for newly equipped aspect %s", aspect_id)
             await query.edit_message_text(
@@ -1205,8 +1198,7 @@ async def handle_equip_callback(
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
-                    aspect_count=new_aspect_count,
-                    aspect_list=format_aspect_list(card_with_image),
+                    equipped_aspects=format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )
@@ -1238,8 +1230,7 @@ async def handle_equip_callback(
                 card_id=card_id,
                 new_title=html.escape(new_title),
                 rarity=card_with_image.rarity,
-                aspect_count=new_aspect_count,
-                aspect_list=format_aspect_list(card_with_image),
+                equipped_aspects=format_aspect_list(card_with_image),
             )
 
             reply_markup = None
@@ -1273,8 +1264,7 @@ async def handle_equip_callback(
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
-                    aspect_count=new_aspect_count,
-                    aspect_list=format_aspect_list(card_with_image),
+                    equipped_aspects=format_aspect_list(card_with_image),
                 ),
                 parse_mode=ParseMode.HTML,
             )

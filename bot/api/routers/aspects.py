@@ -327,18 +327,11 @@ async def equip_initiate(
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
 
-    aspect_list = format_aspect_list(card)
-
     confirm_text = EQUIP_CONFIRM_MESSAGE.format(
-        aspect_id=aspect_id,
-        aspect_name=html.escape(aspect.display_name or "Unknown"),
-        aspect_rarity=aspect.rarity,
-        card_id=request.card_id,
-        card_title=html.escape(card_title),
-        card_rarity=card.rarity,
+        aspect_title=aspect.title(include_id=True, include_rarity=True),
+        card_title=card.title(include_id=True, include_rarity=True),
         new_title=html.escape(new_title),
-        aspect_count=card.aspect_count,
-        aspect_list=aspect_list,
+        equipped_aspects=format_aspect_list(card),
     )
 
     keyboard = InlineKeyboardMarkup(

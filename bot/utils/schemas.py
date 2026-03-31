@@ -82,7 +82,7 @@ class Card(BaseModel):
             parts.append(f"[{self.id}]")
 
         if include_rarity:
-            parts.append(self.rarity)
+            parts.append(self.rarity.capitalize())
 
         if self.modifier:
             parts.append(self.modifier)
@@ -530,6 +530,16 @@ class AspectDefinition(BaseModel):
     source: str = "all"
     description: str = ""
 
+    def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
+        """Return ``[id] Rarity Name`` (HTML-escaped)."""
+        parts: list[str] = []
+        if include_id:
+            parts.append(f"[{self.id}]")
+        if include_rarity:
+            parts.append(self.rarity.capitalize())
+        parts.append(self.name)
+        return html.escape(" ".join(parts))
+
     @classmethod
     def from_orm(cls, aspect_def_orm) -> "AspectDefinition":
         """Convert an AspectDefinitionModel ORM object to an AspectDefinition schema."""
@@ -563,6 +573,16 @@ class OwnedAspect(BaseModel):
     created_at: Optional[datetime.datetime] = None
     display_name: str = ""
     aspect_definition: Optional[AspectDefinition] = None
+
+    def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
+        """Return ``[id] Rarity Name`` (HTML-escaped)."""
+        parts: list[str] = []
+        if include_id:
+            parts.append(f"[{self.id}]")
+        if include_rarity:
+            parts.append(self.rarity.capitalize())
+        parts.append(self.display_name)
+        return html.escape(" ".join(parts))
 
     @classmethod
     def from_orm(cls, aspect_orm) -> "OwnedAspect":
