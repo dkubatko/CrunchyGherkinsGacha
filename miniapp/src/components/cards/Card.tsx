@@ -13,7 +13,7 @@ const inFlightFullImageRequests = new Map<number, Promise<string>>();
 
 interface CardProps {
   rarity: string;
-  modifier: string | null;
+  modifier?: string | null;
   base_name: string;
   orientation: OrientationData;
   tiltKey: number;
