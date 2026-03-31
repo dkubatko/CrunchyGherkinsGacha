@@ -75,7 +75,6 @@ interface PendingWin {
   setName?: string | null;
 }
 
-const INITIAL_RESULTS = Array.from({ length: SLOT_REEL_COUNT }, (_, index) => index);
 const INITIAL_REEL_STATES: ReelState[] = Array.from(
   { length: SLOT_REEL_COUNT },
   () => 'idle' as ReelState
@@ -236,7 +235,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     setSymbols(providedSymbols);
     const initialResults =
       providedSymbols.length >= SLOT_REEL_COUNT
-        ? [...INITIAL_RESULTS]
+        ? Array.from({ length: SLOT_REEL_COUNT }, () =>
+            Math.floor(Math.random() * providedSymbols.length)
+          )
         : Array(SLOT_REEL_COUNT).fill(0);
     setResults(initialResults);
     setReelStates([...INITIAL_REEL_STATES]);

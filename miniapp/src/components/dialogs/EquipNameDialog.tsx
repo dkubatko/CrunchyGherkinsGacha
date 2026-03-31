@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { ConfirmDialog } from '@/components/common';
+import { getRarityGradient } from '@/utils/rarityStyles';
 import type { AspectData, CardData } from '@/types';
 import './EquipNameDialog.css';
 
@@ -15,6 +16,13 @@ interface EquipNameDialogProps {
 const INVALID_CHARS = new Set(['<', '>', '&', '*', '_', '`']);
 const MAX_NAME_LENGTH = 30;
 
+const gradientStyle = (gradient: string) => ({
+  background: gradient,
+  WebkitBackgroundClip: 'text' as const,
+  WebkitTextFillColor: 'transparent' as const,
+  backgroundClip: 'text' as const,
+});
+
 const EquipNameDialog = ({
   isOpen,
   aspect,
@@ -23,16 +31,16 @@ const EquipNameDialog = ({
   onCancel,
   processing = false,
 }: EquipNameDialogProps) => {
-  const defaultName = aspect.display_name || '';
+  const defaultName = card.modifier || aspect.display_name || '';
   const [namePrefix, setNamePrefix] = useState(defaultName);
   const [validationError, setValidationError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
-      setNamePrefix(aspect.display_name || '');
+      setNamePrefix(card.modifier || aspect.display_name || '');
       setValidationError(null);
     }
-  }, [isOpen, aspect.display_name]);
+  }, [isOpen, card.modifier, aspect.display_name]);
 
   const validate = useCallback((value: string): string | null => {
     if (value.length === 0) return 'Name is required';
@@ -65,6 +73,8 @@ const EquipNameDialog = ({
     ? `${namePrefix.trim()} ${card.base_name}`
     : card.base_name;
 
+  const cardDisplayName = [card.modifier, card.base_name].filter(Boolean).join(' ');
+
   return (
     <ConfirmDialog
       isOpen={isOpen}
@@ -78,8 +88,16 @@ const EquipNameDialog = ({
       disableClose={processing}
     >
       <div className="equip-name-dialog">
-        <p className="equip-name-prompt">
-          Equip <strong>{aspect.display_name}</strong> on <strong>{[card.modifier, card.base_name].filter(Boolean).join(' ')}</strong>
+        <p className="equip-name-header">
+          Equip{' '}
+          <strong style={gradientStyle(getRarityGradient(aspect.rarity))}>
+            {aspect.display_name}
+          </strong>
+          {' '}onto{' '}
+          <strong style={gradientStyle(getRarityGradient(card.rarity))}>
+            {cardDisplayName}
+          </strong>
+          ?
         </p>
 
         <div className="equip-name-field">
@@ -88,7 +106,7 @@ const EquipNameDialog = ({
             type="text"
             value={namePrefix}
             onChange={handleChange}
-            placeholder="Card name prefix"
+            placeholder="Card name"
             maxLength={MAX_NAME_LENGTH}
             disabled={processing}
             autoComplete="off"

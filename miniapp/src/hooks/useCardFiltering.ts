@@ -8,7 +8,8 @@ export const DEFAULT_FILTER_OPTIONS: FilterOptions = {
   rarity: '',
   locked: '',
   characterName: '',
-  setName: ''
+  setName: '',
+  aspectStatus: ''
 };
 
 export const DEFAULT_SORT_OPTIONS: SortOptions = {
@@ -46,6 +47,13 @@ const applyFilteringAndSorting = (
   if (filterOptions.setName) {
     filtered = filtered.filter(card => card.set_name === filterOptions.setName);
   }
+  if (filterOptions.aspectStatus) {
+    if (filterOptions.aspectStatus === 'base') {
+      filtered = filtered.filter(card => !card.aspect_count || card.aspect_count === 0);
+    } else if (filterOptions.aspectStatus === 'equipped') {
+      filtered = filtered.filter(card => (card.aspect_count ?? 0) > 0);
+    }
+  }
 
   return [...filtered].sort((a, b) => {
     let aValue: string | number;
@@ -67,6 +75,10 @@ const applyFilteringAndSorting = (
       case 'name':
         aValue = [a.modifier, a.base_name].filter(Boolean).join(' ').toLowerCase();
         bValue = [b.modifier, b.base_name].filter(Boolean).join(' ').toLowerCase();
+        break;
+      case 'aspects':
+        aValue = a.aspect_count ?? 0;
+        bValue = b.aspect_count ?? 0;
         break;
       default:
         aValue = a.id;

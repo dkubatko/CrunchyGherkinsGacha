@@ -40,8 +40,9 @@ const CasinoIcon = () => (
 const AspectsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="9" />
-    <path d="M12 3a9 9 0 0 1 0 18" fill="currentColor" opacity="0.15" />
-    <path d="M8 12l3 3 5-5" />
+    <ellipse cx="12" cy="12" rx="9" ry="4" />
+    <path d="M12 3c0 0-4.5 3-4.5 9s4.5 9 4.5 9" />
+    <path d="M12 3c0 0 4.5 3 4.5 9s-4.5 9-4.5 9" />
   </svg>
 );
 

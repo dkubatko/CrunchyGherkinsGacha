@@ -98,10 +98,6 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
   // ── Burn ──
   const handleBurnClick = useCallback(() => {
     if (!selectedAspect) return;
-    if (selectedAspect.locked) {
-      TelegramUtils.showAlert('Unlock this aspect before burning it.');
-      return;
-    }
     setShowBurnDialog(true);
   }, [selectedAspect]);
 
@@ -165,11 +161,6 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
   // ── Equip ──
   const handleEquipClick = useCallback(() => {
     if (!selectedAspect) return;
-    if (selectedAspect.locked) {
-      TelegramUtils.showAlert('Unlock this aspect before equipping it.');
-      return;
-    }
-    // Close the aspect modal and open card selector
     setShowModal(false);
     setShowEquipSelector(true);
   }, [selectedAspect]);
@@ -244,23 +235,19 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
       variant: 'lock-grey',
     });
 
-    if (!selectedAspect.locked) {
-      buttons.push({
-        id: 'equip',
-        text: 'Equip',
-        onClick: handleEquipClick,
-        variant: 'equip-green',
-      });
-    }
+    buttons.push({
+      id: 'equip',
+      text: 'Equip',
+      onClick: handleEquipClick,
+      variant: 'equip-green',
+    });
 
-    if (!selectedAspect.locked) {
-      buttons.push({
-        id: 'burn',
-        text: 'Burn',
-        onClick: handleBurnClick,
-        variant: 'burn-red',
-      });
-    }
+    buttons.push({
+      id: 'burn',
+      text: 'Burn',
+      onClick: handleBurnClick,
+      variant: 'burn-red',
+    });
 
     return buttons;
   }, [selectedAspect, showModal, isOwnCollection, handleLockClick, handleEquipClick, handleBurnClick]);

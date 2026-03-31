@@ -9,10 +9,11 @@ export interface FilterOptions {
   locked: '' | 'locked' | 'unlocked';
   characterName: string;
   setName: string;
+  aspectStatus: '' | 'base' | 'equipped';
 }
 
 export interface SortOptions {
-  field: 'rarity' | 'id' | 'name';
+  field: 'rarity' | 'id' | 'name' | 'aspects';
   direction: 'asc' | 'desc';
 }
 
@@ -51,7 +52,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
 }) => {
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
-  const [expandedFilter, setExpandedFilter] = useState<'owner' | 'rarity' | 'locked' | 'characterName' | 'setName' | null>(null);
+  const [expandedFilter, setExpandedFilter] = useState<'owner' | 'rarity' | 'locked' | 'characterName' | 'setName' | 'aspectStatus' | null>(null);
   
   const filterRef = useRef<HTMLDivElement>(null);
   const sortRef = useRef<HTMLDivElement>(null);
@@ -144,7 +145,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     }
   };
 
-  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || (showCharacterFilter && filterOptions.characterName) || filterOptions.setName;
+  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || (showCharacterFilter && filterOptions.characterName) || filterOptions.setName || filterOptions.aspectStatus;
   const isActiveSortField = (field: string) => sortOptions.field === field;
 
   const handleFilterToggle = () => {
@@ -161,7 +162,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     hasScrolledToActiveRef.current = null;
   };
 
-  const handleFilterOptionClick = (type: 'owner' | 'rarity' | 'locked' | 'characterName' | 'setName') => {
+  const handleFilterOptionClick = (type: 'owner' | 'rarity' | 'locked' | 'characterName' | 'setName' | 'aspectStatus') => {
     if (expandedFilter === type) {
       setExpandedFilter(null);
       hasScrolledToActiveRef.current = null;
@@ -184,14 +185,15 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
       rarity: '',
       locked: '',
       characterName: '',
-      setName: ''
+      setName: '',
+      aspectStatus: ''
     });
     setFilterOpen(false);
     setExpandedFilter(null);
     hasScrolledToActiveRef.current = null;
   };
 
-  const handleSortSelect = (field: 'rarity' | 'id' | 'name', direction: 'asc' | 'desc') => {
+  const handleSortSelect = (field: 'rarity' | 'id' | 'name' | 'aspects', direction: 'asc' | 'desc') => {
     onSortChange({
       field,
       direction
@@ -284,6 +286,18 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                       </button>
                     </div>
                   )}
+
+                  <div className="dropdown-item" ref={el => { categoryItemRefs.current['aspectStatus'] = el; }}>
+                    <button 
+                      className={`dropdown-main-option ${expandedFilter === 'aspectStatus' ? 'selected' : ''} ${filterOptions.aspectStatus ? 'has-filter' : ''}`}
+                      onClick={() => handleFilterOptionClick('aspectStatus')}
+                    >
+                      <span>Aspects</span>
+                      <svg className={`expand-icon ${expandedFilter === 'aspectStatus' ? 'rotated' : ''}`} viewBox="0 0 24 24">
+                        <path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/>
+                      </svg>
+                    </button>
+                  </div>
 
                   {hasActiveFilters && (
                     <div className="dropdown-item">
@@ -411,6 +425,31 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                   </div>
                 </div>
               )}
+
+              {expandedFilter === 'aspectStatus' && (
+                <div className="dropdown-submenu" style={{ '--submenu-offset': `${getSubmenuOffset()}px` } as React.CSSProperties}>
+                  <div className="dropdown-submenu-content" ref={submenuContentRef}>
+                    <button 
+                      className={`dropdown-subitem ${!filterOptions.aspectStatus ? 'active' : ''}`}
+                      onClick={() => handleFilterSelect('aspectStatus', '')}
+                    >
+                      Any
+                    </button>
+                    <button
+                      className={`dropdown-subitem ${filterOptions.aspectStatus === 'base' ? 'active' : ''}`}
+                      onClick={() => handleFilterSelect('aspectStatus', 'base')}
+                    >
+                      Base
+                    </button>
+                    <button
+                      className={`dropdown-subitem ${filterOptions.aspectStatus === 'equipped' ? 'active' : ''}`}
+                      onClick={() => handleFilterSelect('aspectStatus', 'equipped')}
+                    >
+                      Equipped
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -490,6 +529,28 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                         className={`sort-direction ${isActiveSortField('name') && sortOptions.direction === 'desc' ? 'active' : ''}`}
                         onClick={() => handleSortSelect('name', 'desc')}
                         aria-label="Sort name descending"
+                      >
+                        ↓
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="dropdown-item">
+                  <div className="sort-option">
+                    <span className="sort-label">Aspects</span>
+                    <div className="sort-directions">
+                      <button 
+                        className={`sort-direction ${isActiveSortField('aspects') && sortOptions.direction === 'asc' ? 'active' : ''}`}
+                        onClick={() => handleSortSelect('aspects', 'asc')}
+                        aria-label="Sort aspects ascending"
+                      >
+                        ↑
+                      </button>
+                      <button 
+                        className={`sort-direction ${isActiveSortField('aspects') && sortOptions.direction === 'desc' ? 'active' : ''}`}
+                        onClick={() => handleSortSelect('aspects', 'desc')}
+                        aria-label="Sort aspects descending"
                       >
                         ↓
                       </button>

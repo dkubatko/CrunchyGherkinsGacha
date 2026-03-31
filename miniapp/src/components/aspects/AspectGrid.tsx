@@ -12,7 +12,7 @@ interface AspectGridProps {
 }
 
 const COLUMNS = 3;
-const GAP = 10;
+const GAP = 6;
 const PADDING = 10;
 const INFO_HEIGHT = 36;
 
