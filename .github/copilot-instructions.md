@@ -183,6 +183,9 @@ bot/
 ├── settings/
 │   └── constants.py          # Loads config.json + env vars; rarity helpers, UI strings
 ├── data/                     # Game assets (card images, templates, slot assets, minesweeper assets)
+├── schema_baseline.sql       # pg_dump snapshot for fresh DB init (used by database.py)
+├── Dockerfile                # Backend image (shared by bot + api, different CMD)
+├── .dockerignore             # Excludes __pycache__, .env, legacy SQLite, etc.
 ├── tools/                    # Admin/maintenance scripts (backfills, exports, seed data)
 │   └── backfill_set_icons.py     # One-time backfill of slot icons for existing sets
 └── alembic/                  # Database migration versions
@@ -222,11 +225,9 @@ miniapp/src/
 
 ### Top-Level Directories
 ```
-├── cards/       # (empty placeholder)
-├── casino/      # Placeholder subdirs: minesweeper/, rtb/, slots/
-├── common/      # (empty placeholder)
-├── dialogs/     # (empty placeholder)
-├── profile/     # (empty placeholder)
+├── docker-compose.yml               # Docker Compose (prod profiles for Cloud SQL proxy)
+├── deploy.sh                        # One-command deploy to GCP VM
+├── .env.example              # Docker env var template (copy to .env)
 ├── tools/
 │   └── process_achievement_icon.py  # Achievement icon processing utility
 └── .github/
@@ -363,12 +364,15 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 ### Environment Variables (`.env`)
 - `DATABASE_URL` — PostgreSQL connection string
 - `TELEGRAM_AUTH_TOKEN` / debug token — Bot API tokens
+- `TELEGRAM_BOT_API_URL` — Local Telegram Bot API server URL (default: `http://localhost:8081`; Docker: `http://tg-bot-api:8081`)
+- `CORS_ORIGINS` — Comma-separated allowed CORS origins (default: production + localhost)
 - `GOOGLE_API_KEY` — Gemini API key
 - `IMAGE_GEN_MODEL` — Gemini model name
 - `BOT_ADMIN` — Admin username
 - `CURRENT_SEASON` — Active season ID
 - `SHADOW_STAGGERED_USERNAMES` — Users with artificial concurrency delays
 - Mini App URLs, API base URLs, etc.
+- See `.env.example` for the full list with descriptions
 
 ### Game Constants (`bot/config.json`)
 All tunable game values including:
@@ -383,7 +387,7 @@ All tunable game values including:
 
 ## Development
 
-### Running Locally
+### Running Locally (without Docker)
 ```bash
 # Bot with debug mode (uses test bot token + api.telegram.org)
 python bot/bot.py --debug
@@ -395,10 +399,34 @@ uvicorn bot.api.server:app --reload
 cd miniapp && npm run dev
 ```
 
-### Database Changes
-1. Modify models in `bot/utils/models.py`
-2. Create Alembic migration: `cd bot && alembic revision -m "description"`
-3. Migrations auto-run on startup via `database.py`
+### Running with Docker
+```bash
+# Build and run entire stack (test locally before deploying)
+docker compose up --build
+
+# Production with Cloud SQL proxy
+docker compose --profile prod up -d --build
+
+# View logs
+docker compose logs -f bot api
+
+# Stop everything
+docker compose down
+```
+
+### Docker Architecture
+- **bot + api** share one Docker image (`bot/Dockerfile`), different `CMD`
+- **frontend**: multi-stage build (Node → Nginx) via `miniapp/Dockerfile`, serves SPA and proxies `/api/` to api service
+- **tg-bot-api** uses the official `aiogram/telegram-bot-api` image
+- **cloud-sql-proxy** only runs with `--profile prod` (production Cloud SQL)
+- Config: `.env` (from `.env.example`)
+- Docker is for deployment/testing only; local dev runs natively without Docker
+
+### Database Setup
+- **Fresh DB detection**: `database.py` auto-detects empty databases, applies `schema_baseline.sql` (pg_dump snapshot), and stamps Alembic at head
+- **Existing DB**: normal Alembic migrations run incrementally
+- **New migrations**: modify `bot/utils/models.py`, then `cd bot && alembic revision -m "description"`
+- Migrations auto-run on startup via `database.py`
 
 ### Admin Dashboard
 - Accessible at `/admin` path in the Mini App

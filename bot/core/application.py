@@ -6,6 +6,7 @@ the Telegram bot application with the appropriate API endpoints.
 """
 
 import logging
+import os
 
 from telegram.ext import Application
 
@@ -41,7 +42,7 @@ def create_application() -> Application:
         logger.info(f"🔗 API Base URL: {application.bot._base_url}")
     else:
         # Use local Telegram Bot API server in production
-        api_base_url = "http://localhost:8081"
+        api_base_url = os.getenv("TELEGRAM_BOT_API_URL", "http://localhost:8081")
         application = (
             Application.builder()
             .token(TELEGRAM_TOKEN)

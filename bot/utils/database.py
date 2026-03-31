@@ -95,15 +95,38 @@ def _has_table(table_name: str) -> bool:
     return insp.has_table(table_name)
 
 
+def _create_schema_from_models():
+    """Create all tables from current ORM models on a fresh database."""
+    from utils.models import Base
+    engine = get_engine()
+    Base.metadata.create_all(engine)
+    logger.info("Schema created from ORM models")
+
+
 def run_migrations():
     """Apply Alembic migrations to bring the database schema up to date."""
     config = _get_alembic_config()
+
+    # CASE 1: Completely fresh database — no tables at all.
+    # Create schema directly from ORM models (always up-to-date) and stamp
+    # at head so Alembic considers all historical migrations as already applied.
+    if not _has_table("alembic_version") and not _has_table("cards") and not _has_table("user_rolls"):
+        logger.info("Fresh database detected; creating schema from models and stamping at head")
+        _create_schema_from_models()
+        command.stamp(config, "head")
+        return
+
+    # CASE 2: Existing schema without Alembic tracking (legacy path from
+    # pre-Alembic era). Stamp at the initial revision so the remaining
+    # migrations can run incrementally.
     if not _has_table("alembic_version") and (_has_table("cards") or _has_table("user_rolls")):
         logger.info(
             "Existing schema detected without Alembic metadata; stamping baseline revision %s",
             INITIAL_ALEMBIC_REVISION,
         )
         command.stamp(config, INITIAL_ALEMBIC_REVISION)
+
+    # CASE 3: Normal path — run any pending migrations.
     try:
         command.upgrade(config, "head")
     except Exception:

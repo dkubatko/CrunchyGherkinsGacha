@@ -164,6 +164,7 @@ bot/data/cards.db-shm
 bot/data/cards/
 *.db-wal
 *.db-shm
+service-account.json
 
 # Claude Code
 .claude/
