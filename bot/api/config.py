@@ -89,7 +89,7 @@ def create_bot_instance():
         return bot
     else:
         # Use local Telegram Bot API server in production
-        api_base_url = "http://localhost:8081"
+        api_base_url = os.getenv("TELEGRAM_BOT_API_URL", "http://localhost:8081")
         return Bot(
             token=TELEGRAM_TOKEN,
             base_url=f"{api_base_url}/bot",

@@ -6,6 +6,7 @@ configures middleware, and includes all routers from the modular router files.
 """
 
 import logging
+import os
 import traceback
 import uvicorn
 
@@ -70,17 +71,16 @@ if DEBUG_MODE:
     # Allow any origin in debug mode for easier local development
     allowed_origins = ["*"]
 else:
-    allowed_origins = [
-        "https://app.crunchygherkins.com",
-        "https://admin.crunchygherkins.com",
-        "http://localhost:5173",
-        "http://localhost:5174",
-    ]
+    cors_env = os.getenv(
+        "CORS_ORIGINS",
+        "https://app.crunchygherkins.com,https://admin.crunchygherkins.com,http://localhost:5173,http://localhost:5174",
+    )
+    allowed_origins = ["*"] if cors_env.strip() == "*" else [o.strip() for o in cors_env.split(",")]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=not DEBUG_MODE,  # credentials not supported with wildcard origin
+    allow_credentials=allowed_origins != ["*"],  # credentials not supported with wildcard origin
     allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )

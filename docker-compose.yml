@@ -1,0 +1,118 @@
+# Crunchy Gherkins Gacha Bot — Docker Compose
+#
+# Usage:
+#   Local test:  docker compose up --build        (all services, local PostgreSQL)
+#   Production:  docker compose --profile prod up -d --build  (adds cloud-sql-proxy)
+#   Stop:        docker compose down
+#   Logs:        docker compose logs -f bot api
+#
+# For local development WITHOUT Docker, run directly:
+#   python bot/bot.py --debug
+#   uvicorn bot.api.server:app --reload
+#   cd miniapp && npm run dev
+
+services:
+  # ── Telegram Bot API Server ────────────────────────────────────────
+  # Local server for large file uploads (up to 2GB vs 50MB with api.telegram.org).
+  # Both bot and api services connect to this instead of api.telegram.org.
+  tg-bot-api:
+    image: aiogram/telegram-bot-api:latest
+    env_file: .env
+    environment:
+      TELEGRAM_LOCAL: 1
+    volumes:
+      - tg_api_data:/var/lib/telegram-bot-api
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+
+  # ── Bot (Telegram polling) ─────────────────────────────────────────
+  # Long-running process that polls Telegram for messages and handles commands.
+  bot:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    command: ["python", "bot.py"]
+    env_file: .env
+    environment:
+      TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
+    depends_on:
+      - tg-bot-api
+    volumes:
+      - bot_data:/app/bot/data
+      - tg_api_data:/var/lib/telegram-bot-api
+    restart: unless-stopped
+
+  # ── API (FastAPI + Gunicorn) ───────────────────────────────────────
+  # HTTP server powering the Mini App and admin dashboard.
+  # Same Docker image as bot, different entrypoint command.
+  api:
+    build:
+      context: ./bot
+      dockerfile: Dockerfile
+    command:
+      - gunicorn
+      - api.server:app
+      - --workers=5
+      - --worker-class=uvicorn.workers.UvicornWorker
+      - --bind=0.0.0.0:8000
+      - --timeout=120
+      - --keep-alive=5
+      - --max-requests=1000
+      - --max-requests-jitter=100
+      - --preload
+      - --log-level=info
+      - --access-logfile=-
+      - --error-logfile=-
+    env_file: .env
+    environment:
+      TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
+    depends_on:
+      - tg-bot-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - bot_data:/app/bot/data
+      - tg_api_data:/var/lib/telegram-bot-api
+    restart: unless-stopped
+
+  # ── Frontend (Nginx serving built React SPA) ───────────────────────
+  # Multi-stage build; Nginx reverse-proxies /api/ to the api service.
+  frontend:
+    build:
+      context: ./miniapp
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    restart: unless-stopped
+
+  # ── Cloud SQL Auth Proxy (production only) ─────────────────────────
+  # Encrypted tunnel to Cloud SQL. Only runs with: --profile prod
+  cloud-sql-proxy:
+    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
+    command:
+      - ${CLOUD_SQL_CONNECTION_NAME:-placeholder}
+      - --address=0.0.0.0
+      - --port=5432
+    volumes:
+      - ./service-account.json:/credentials.json:ro
+    environment:
+      GOOGLE_APPLICATION_CREDENTIALS: /credentials.json
+    ports:
+      - "5433:5432"
+    profiles:
+      - prod
+    restart: unless-stopped
+
+volumes:
+  bot_data:
+    driver: local
+  tg_api_data:
+    driver: local
