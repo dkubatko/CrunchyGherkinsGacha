@@ -56,7 +56,15 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("You're already registered! You're good to go.")
     else:
         await message.reply_text(
-            "Welcome! You're registered and ready to play. Use /profile with a photo to personalize your card."
+            "🎉 <b>Welcome to Crunchy Gherkins!</b>\n\n"
+            "Here's how to get started:\n\n"
+            "1️⃣ <b>Set up your profile</b> — send me:\n"
+            "   <code>/profile YourName</code> with a photo attached\n\n"
+            "2️⃣ <b>Join a group chat</b> — use /enroll in any group where the bot is active\n\n"
+            "3️⃣ <b>Start rolling!</b> — use /roll to get your first card\n\n"
+            "Your profile photo will be used to generate your cards and casino icon. "
+            "Use /help to see all available commands.",
+            parse_mode=ParseMode.HTML,
         )
 
 
@@ -217,11 +225,19 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("Please attach a profile image when using /profile.")
         return
 
-    photo = message.photo[-1]
-    telegram_file = await context.bot.get_file(photo.file_id)
-    buffer = BytesIO()
-    await telegram_file.download_to_memory(out=buffer)
-    image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    # Download the uploaded photo
+    try:
+        photo = message.photo[-1]
+        telegram_file = await context.bot.get_file(photo.file_id)
+        buffer = BytesIO()
+        await telegram_file.download_to_memory(out=buffer)
+        image_b64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    except Exception:
+        logger.exception("Failed to download profile photo for user %s", user.id)
+        await message.reply_text(
+            "Something went wrong downloading your photo. Please try again."
+        )
+        return
 
     # Set thinking reaction while processing
     if not DEBUG_MODE:
@@ -233,9 +249,49 @@ async def profile(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     try:
         await asyncio.to_thread(user_repo.upsert_user, user.id, user.username, None, None)
-        await asyncio.to_thread(user_manager.update_user_profile, user.id, display_name, image_b64)
+        result = await asyncio.to_thread(user_manager.update_user_profile, user.id, display_name, image_b64)
 
-        await message.reply_text("Profile updated! Your new display name and image are saved.")
+        if not result.profile_saved:
+            await message.reply_text(
+                "Something went wrong saving your profile. Please try again."
+            )
+            return
+
+        # Build success message depending on slot icon outcome
+        if result.slot_icon_generated:
+            await message.reply_text(
+                "✅ Profile updated! Your display name, photo, and casino icon are all set."
+            )
+        else:
+            await message.reply_text(
+                "✅ Profile photo and name saved!\n\n"
+                "⚠️ I couldn't generate your casino icon right now — "
+                "try updating your profile again later with /profile."
+            )
+
+        # Send profile preview
+        user_data = await asyncio.to_thread(user_repo.get_user, user.id)
+        if user_data:
+            media_group = []
+            if user_data.profile_image_b64:
+                profile_image_data = base64.b64decode(user_data.profile_image_b64)
+                media_group.append(
+                    InputMediaPhoto(media=profile_image_data, caption="🖼️ Profile Image")
+                )
+            if user_data.slot_icon_b64:
+                slot_icon_data = base64.b64decode(user_data.slot_icon_b64)
+                media_group.append(
+                    InputMediaPhoto(media=slot_icon_data, caption="🎰 Casino Icon")
+                )
+            if media_group:
+                await context.bot.send_media_group(
+                    chat_id=update.effective_chat.id, media=media_group
+                )
+    except Exception:
+        logger.exception("Failed to update profile for user %s", user.id)
+        await message.reply_text(
+            "Something went wrong saving your profile. Please try again."
+        )
     finally:
         # Remove thinking reaction
         if not DEBUG_MODE:
@@ -301,6 +357,14 @@ async def enroll(
         await message.reply_text("/enroll can only be used in group chats.")
         return
 
+    # Require a complete profile before enrolling
+    if not user.display_name or not user.profile_image_b64:
+        await message.reply_text(
+            "You need to set up your profile before enrolling.\n"
+            "DM me with /profile <your_name> and attach a photo to get started!"
+        )
+        return
+
     chat_id = str(chat.id)
     is_member = await asyncio.to_thread(user_repo.is_user_in_chat, chat_id, user.user_id)
 
@@ -314,20 +378,6 @@ async def enroll(
         await message.reply_text("You're enrolled! Have fun out there.")
     else:
         await message.reply_text("You're now marked as part of this chat.")
-
-    missing_parts = []
-    if not user.display_name:
-        missing_parts.append("display name")
-    if not user.profile_image_b64:
-        missing_parts.append("profile photo")
-
-    if missing_parts:
-        prompt = (
-            "Heads up: I don't have your "
-            + " and ".join(missing_parts)
-            + ". DM me with /profile <display_name> and a photo to complete your profile."
-        )
-        await message.reply_text(prompt)
 
 
 @verify_user
@@ -363,3 +413,35 @@ async def unenroll(
         )
     else:
         await message.reply_text("You're no longer marked as part of this chat.")
+
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Show available commands and basic gameplay instructions."""
+    message = update.message
+    if not message:
+        return
+
+    help_text = (
+        "🥒 <b>Crunchy Gherkins — Command Reference</b>\n\n"
+        "<b>Getting Started</b>\n"
+        "  /start — Register with the bot (DM only)\n"
+        "  /profile &lt;name&gt; + photo — Set your display name and photo (DM only)\n"
+        "  /enroll — Join the current group chat\n"
+        "  /unenroll — Leave the current group chat\n\n"
+        "<b>Gameplay</b>\n"
+        "  /roll — Roll for a card or aspect\n"
+        "  /equip — Equip aspects onto a card\n"
+        "  /refresh — Regenerate a card's art\n"
+        "  /burn — Burn an aspect for spins\n"
+        "  /recycle — Combine aspects/cards into higher rarities\n"
+        "  /create — Forge a unique aspect (costs 5 Legendaries)\n"
+        "  /lock &lt;id&gt; — Lock/unlock an aspect or card\n\n"
+        "<b>Info</b>\n"
+        "  /collection — Browse your card collection\n"
+        "  /balance — Check your claim points\n"
+        "  /stats — View your stats\n"
+        "  /casino — Open the casino\n"
+        "  /trade — Trade cards or aspects with another player\n"
+        "  /help — Show this message"
+    )
+    await message.reply_text(help_text, parse_mode=ParseMode.HTML)

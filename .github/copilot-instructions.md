@@ -295,7 +295,7 @@ miniapp/src/
 ### Handler Decorators (`bot/utils/decorators.py`)
 Bot commands use decorators for auth/validation:
 - `@verify_user` — user must be registered (via `/start`)
-- `@verify_user_in_chat` — user must be enrolled in the current chat
+- `@verify_user_in_chat` — user must be enrolled in the current chat (enrollment requires a complete profile: display name + photo)
 - `@verify_admin` — user must be the configured admin
 - `@prevent_concurrency(bot_data_key, cross_user=False)` — prevents race conditions on user actions via composite locking keys
 
@@ -339,8 +339,9 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 | `/start` | user.py | Register user |
 | `/profile` | user.py | View/upload profile |
 | `/delete` | user.py | Remove character |
-| `/enroll` | user.py | Join current chat |
+| `/enroll` | user.py | Join current chat (requires complete profile) |
 | `/unenroll` | user.py | Leave current chat |
+| `/help` | user.py | Show command reference |
 | `/roll` | rolling.py | Roll a card or aspect |
 | `/refresh` | cards.py | Refresh card modifiers/art |
 | `/equip` | cards.py | Equip aspects onto cards |

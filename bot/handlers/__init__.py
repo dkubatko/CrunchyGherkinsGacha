@@ -19,6 +19,7 @@ from handlers.user import (
     delete_character,
     enroll,
     unenroll,
+    help_command,
 )
 
 # Rolling handlers
@@ -95,6 +96,7 @@ __all__ = [
     "delete_character",
     "enroll",
     "unenroll",
+    "help_command",
     # Rolling handlers
     "roll",
     "handle_claim",
