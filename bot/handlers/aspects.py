@@ -194,7 +194,7 @@ async def burn(
         )
         return
 
-    aspect_name = html.escape(aspect.display_name)
+    aspect_name = aspect.title()
 
     keyboard = InlineKeyboardMarkup(
         [
@@ -211,9 +211,7 @@ async def burn(
 
     await message.reply_text(
         ASPECT_BURN_CONFIRM_MESSAGE.format(
-            aspect_id=aspect.id,
-            rarity=aspect.rarity,
-            aspect_name=aspect_name,
+            aspect_title=aspect.title(include_id=True, include_rarity=True),
             spin_reward=spin_reward,
         ),
         parse_mode=ParseMode.HTML,
@@ -315,7 +313,7 @@ async def handle_burn_callback(
                 pass
             return
 
-        aspect_name = html.escape(aspect.display_name)
+        aspect_name = aspect.title()
         spin_reward = get_spin_reward(aspect.rarity)
 
         try:
@@ -354,7 +352,7 @@ async def handle_burn_callback(
         )
         new_spin_total = spins_record.count if spins_record else reward
 
-        header = f"<b><s>🔮 [{aspect_id}] {aspect.rarity} {aspect_name}</s></b>"
+        header = f"<b><s>🔮 {aspect.title(include_id=True, include_rarity=True)}</s></b>"
         success_block = ASPECT_BURN_SUCCESS_MESSAGE.format(
             spin_reward=reward,
             new_spin_total=new_spin_total,
@@ -468,18 +466,17 @@ async def lock_command(
         await message.reply_text(ASPECT_LOCK_NOT_YOURS_MESSAGE)
         return
 
-    aspect_name = html.escape(aspect.display_name)
     chat_id_str = str(chat.id)
     lock_cost = get_lock_cost(aspect.rarity)
 
     if aspect.locked:
-        prompt_text = f"Unlock <b>🔮 [{aspect.id}] {aspect_name}</b>?"
+        prompt_text = f"Unlock <b>🔮 {aspect.title(include_id=True)}</b>?"
     else:
         balance = await asyncio.to_thread(
             claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         prompt_text = (
-            f"Lock <b>🔮 [{aspect.id}] {aspect_name}</b>?\n\n"
+            f"Lock <b>🔮 {aspect.title(include_id=True)}</b>?\n\n"
             f"Cost: <b>{lock_cost}</b> claim point{'s' if lock_cost != 1 else ''}\n"
             f"Balance: <b>{balance}</b>"
         )
@@ -572,7 +569,7 @@ async def handle_lock_aspect_confirm(
             pass
         return
 
-    aspect_name = html.escape(aspect.display_name)
+    aspect_name = aspect.title()
     lock_cost = get_lock_cost(aspect.rarity)
 
     if not aspect.locked:
@@ -609,12 +606,13 @@ async def handle_lock_aspect_confirm(
             pass
         return
 
+    aspect_title = aspect.title(include_id=True)
     if new_lock_state:
         remaining_balance = await asyncio.to_thread(
             claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         response_text = (
-            f"🔒 <b>🔮 [{aspect_id}] {aspect_name}</b> locked!\n\n"
+            f"🔒 <b>🔮 {aspect_title}</b> locked!\n\n"
             f"Remaining balance: <b>{remaining_balance}</b>"
         )
         await query.answer(f"{aspect_name} locked!", show_alert=False)
@@ -628,7 +626,7 @@ async def handle_lock_aspect_confirm(
             via="command",
         )
     else:
-        response_text = f"🔓 <b>🔮 [{aspect_id}] {aspect_name}</b> unlocked!"
+        response_text = f"🔓 <b>🔮 {aspect_title}</b> unlocked!"
         await query.answer(f"{aspect_name} unlocked!", show_alert=False)
         event_manager.log(
             EventType.LOCK,
@@ -1384,7 +1382,7 @@ async def handle_recycle_callback(
             return
 
         aspects_to_burn = random.sample(eligible, required)
-        aspect_names = [html.escape(a.display_name) for a in aspects_to_burn]
+        aspect_names = [a.title() for a in aspects_to_burn]
 
         await query.answer()
         try:
@@ -2060,7 +2058,7 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
             # Select aspects to burn (first N unlocked unequipped legendaries)
             aspects_to_burn = unlocked_legendaries[:cost]
             aspect_titles = [
-                html.escape(f"🔮 {a.display_name} ({a.rarity})") for a in aspects_to_burn
+                f"🔮 {a.title(include_rarity=True)}" for a in aspects_to_burn
             ]
 
             # Remove keyboard

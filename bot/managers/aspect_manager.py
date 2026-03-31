@@ -54,9 +54,9 @@ def try_claim_aspect(
 
 
 def burn_aspect(aspect_id: int, user_id: int, chat_id: str) -> Optional[int]:
-    """Burn an owned, unequipped, unlocked aspect and award spins.
+    """Burn an owned, unequipped aspect and award spins.
 
-    Validates ownership, equipped-status, and lock before deleting.  Awards
+    Validates ownership and equipped-status before deleting.  Awards
     spins via the spin service (inline import to avoid circular deps).
 
     Returns the spin reward on success, or ``None`` on failure.
@@ -65,9 +65,6 @@ def burn_aspect(aspect_id: int, user_id: int, chat_id: str) -> Optional[int]:
         aspect = aspect_repo.get_owned_aspect(aspect_id, user_id, session=session)
 
         if aspect is None:
-            return None
-
-        if aspect.locked:
             return None
 
         if aspect_repo.is_aspect_equipped(aspect_id, session=session):
@@ -155,7 +152,7 @@ def equip_aspect_on_card(
     - Ownership match (both belong to ``user_id``)
     - Rarity compatibility (aspect rarity ≤ card rarity; Unique exempt)
     - ``aspect_count < 5``
-    - Neither item is locked
+    - Card is not locked
     - Aspect is not already equipped
 
     On success, creates a ``CardAspectModel`` row, increments the card's
@@ -181,8 +178,8 @@ def equip_aspect_on_card(
         if card.user_id != user_id or aspect.user_id != user_id:
             return False
 
-        # Lock checks
-        if card.locked or aspect.locked:
+        # Lock check (only card lock prevents equip)
+        if card.locked:
             return False
 
         # Capacity check

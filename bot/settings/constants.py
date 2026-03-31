@@ -318,7 +318,7 @@ ASPECT_BURN_CHAT_MISMATCH_MESSAGE = "This aspect doesn't belong to this chat."
 ASPECT_BURN_LOCKED_MESSAGE = "This aspect is locked. Unlock it first before burning."
 ASPECT_BURN_EQUIPPED_MESSAGE = "This aspect is equipped on a card. Unequip it first before burning."
 ASPECT_BURN_CONFIRM_MESSAGE = (
-    "Burn <b>🔮 [{aspect_id}] {rarity} {aspect_name}</b> for <b>{spin_reward} spins</b>?"
+    "Burn <b>🔮 {aspect_title}</b> for <b>{spin_reward} spins</b>?"
 )
 ASPECT_BURN_CANCELLED_MESSAGE = "Burn cancelled."
 ASPECT_BURN_ALREADY_RUNNING_MESSAGE = "You already have a burn in progress."
@@ -596,17 +596,17 @@ EQUIP_RARITY_MISMATCH_MESSAGE = (
 EQUIP_NAME_TOO_LONG_MESSAGE = "Name prefix is too long. Please keep it under 30 characters."
 EQUIP_NAME_INVALID_CHARS_MESSAGE = "Name prefix contains invalid characters. Avoid HTML/markdown special characters (<, >, &, *, _, `)."
 EQUIP_CONFIRM_MESSAGE = (
-    "Equip <b>🔮 [{aspect_id}] {aspect_name}</b> ({aspect_rarity}) "
-    "onto <b>🃏 [{card_id}] {card_title}</b> ({card_rarity})?\n\n"
+    "Equip <b>🔮 {aspect_title}</b> "
+    "onto <b>🃏 {card_title}</b>?\n\n"
     "Card will be renamed to: <b>{new_title}</b>\n"
-    "Aspects on card: {aspect_count}/5:{aspect_list}"
+    "{equipped_aspects}"
 )
 EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
 EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
 EQUIP_NOT_YOURS_MESSAGE = "This equip prompt isn't for you!"
 EQUIP_CRAFTING_MESSAGE = (
     "<b>Crafting...</b>\n\n"
-    "Equipping <b>🔮 [{aspect_id}] {aspect_name}</b> onto <b>🃏 [{card_id}] {card_title}</b>...\n\n"
+    "Equipping <b>🔮 {aspect_title}</b> onto <b>🃏 {card_title}</b>...\n\n"
     "<i>Generating new card art — this may take a moment.</i>"
 )
 EQUIP_DB_FAILURE_MESSAGE = (
@@ -617,12 +617,12 @@ EQUIP_SUCCESS_MESSAGE = (
     "<b>Equip complete!</b>\n\n"
     "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>:{aspect_list}"
+    "{equipped_aspects}"
 )
 EQUIP_IMAGE_FAILURE_MESSAGE = (
     "Aspect equipped successfully, but image generation failed.\n\n"
     "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "Aspects: <b>{aspect_count}/5</b>:{aspect_list}\n\n"
+    "{equipped_aspects}\n\n"
     "<i>Use /refresh to regenerate the card art.</i>"
 )

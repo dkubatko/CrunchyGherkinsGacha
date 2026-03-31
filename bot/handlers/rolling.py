@@ -388,7 +388,7 @@ async def handle_claim(
 
     # Refresh item after claim
     item = manager.item
-    item_title = item.title() if roll_type == "card" else item.display_name
+    item_title = item.title()
     spent_line = f"Spent: {cost_to_spend} claim point{'s' if cost_to_spend != 1 else ''}"
 
     def _build_claim_message(balance):

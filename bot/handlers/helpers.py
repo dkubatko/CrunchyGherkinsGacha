@@ -95,16 +95,19 @@ def build_burning_text(
     return f"{header}\n\n" + "\n".join(lines)
 
 
-def format_aspect_list(card) -> str:
-    """Format equipped aspects as a bullet list for display in messages."""
-    if not card or not card.equipped_aspects:
-        return ""
-    names = []
-    for ca in card.equipped_aspects:
-        if ca.aspect and ca.aspect.display_name:
-            names.append(f"🔮 {ca.aspect.display_name}")
-        elif ca.aspect and ca.aspect.name:
-            names.append(f"🔮 {ca.aspect.name}")
+def format_aspect_list(card, total_slots: int = 5) -> str:
+    """Format equipped aspects block: 'Equipped aspects (x/N):' + bullet list.
+
+    Returns empty string when the card has no aspects equipped.
+    """
+    names: list[str] = []
+    if card and card.equipped_aspects:
+        for ca in card.equipped_aspects:
+            if ca.aspect and ca.aspect.display_name:
+                names.append(f"🔮 {ca.aspect.display_name}")
+            elif ca.aspect and ca.aspect.name:
+                names.append(f"🔮 {ca.aspect.name}")
     if not names:
         return ""
-    return "\n\n" + "\n".join(names)
+    count = card.aspect_count if card else len(names)
+    return f"Equipped aspects ({count}/{total_slots}):\n\n" + "\n".join(names)
