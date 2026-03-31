@@ -8,7 +8,8 @@ export const DEFAULT_ASPECT_FILTER_OPTIONS: FilterOptions = {
   rarity: '',
   locked: '',
   characterName: '',
-  setName: ''
+  setName: '',
+  aspectStatus: ''
 };
 
 export const DEFAULT_ASPECT_SORT_OPTIONS: SortOptions = {

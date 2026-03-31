@@ -35,6 +35,17 @@ const AspectModal: React.FC<AspectModalProps> = ({
   const [fullImage, setFullImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
+  const [lockExpanded, setLockExpanded] = useState(false);
+  const [animating, setAnimating] = useState(true);
+
+  // Entry animation: play on each modal open, not on re-renders (e.g. lock toggle)
+  useEffect(() => {
+    if (isOpen) {
+      setAnimating(true);
+      const timer = setTimeout(() => setAnimating(false), 350);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || !initData) return;
@@ -65,8 +76,8 @@ const AspectModal: React.FC<AspectModalProps> = ({
   const imageUrl = fullImage ? `data:image/png;base64,${fullImage}` : '';
 
   return createPortal(
-    <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={isBurning ? undefined : onClose}>
-      <div className="modal-content aspect-modal-content" onClick={(e) => e.stopPropagation()}>
+    <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''} ${animating ? '' : 'no-animate'}`} onClick={isBurning ? undefined : onClose}>
+      <div className={`modal-content aspect-modal-content ${animating ? '' : 'no-animate'}`} onClick={(e) => e.stopPropagation()}>
         {!isBurning && (
           <button
             type="button"
@@ -80,7 +91,19 @@ const AspectModal: React.FC<AspectModalProps> = ({
         )}
 
         {aspect.locked ? (
-          <div className="aspect-modal-lock-indicator">
+          <div
+            className={`aspect-modal-lock-indicator ${lockExpanded ? 'expanded' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              setLockExpanded(!lockExpanded);
+            }}
+            onMouseEnter={() => {
+              if (window.matchMedia('(hover: hover)').matches) setLockExpanded(true);
+            }}
+            onMouseLeave={() => {
+              if (window.matchMedia('(hover: hover)').matches) setLockExpanded(false);
+            }}
+          >
             <svg
               className="aspect-modal-lock-icon"
               xmlns="http://www.w3.org/2000/svg"
