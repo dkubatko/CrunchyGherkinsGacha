@@ -20,6 +20,7 @@ from handlers import (
     delete_character,
     enroll,
     unenroll,
+    help_command,
     # Rolling handlers
     roll,
     handle_claim,
@@ -95,6 +96,7 @@ def _register_user_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("delete", delete_character))
     application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("unenroll", unenroll))
+    application.add_handler(CommandHandler("help", help_command))
 
 
 def _register_collection_handlers(application: Application) -> None:
