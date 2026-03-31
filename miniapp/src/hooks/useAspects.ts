@@ -19,9 +19,9 @@ export const useAspects = (
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
-  const fetchAspects = useCallback(async () => {
+  const fetchAspects = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
       const data = await ApiService.fetchUserAspects(initData, chatId, userId);
       setAspects(data);
@@ -30,7 +30,7 @@ export const useAspects = (
       setError(message);
       console.error('Failed to fetch aspects:', err);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [initData, chatId, userId]);
 
@@ -40,8 +40,9 @@ export const useAspects = (
     void fetchAspects();
   }, [fetchAspects]);
 
+  // Silent refetch — doesn't trigger loading state, so modals stay mounted
   const refetch = useCallback(async () => {
-    await fetchAspects();
+    await fetchAspects(true);
   }, [fetchAspects]);
 
   return { aspects, loading, error, refetch };

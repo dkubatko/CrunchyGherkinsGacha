@@ -8,6 +8,13 @@
   width: 90%;
 }
 
+/* Inset ID / lock badges further into the modal (no card padding to offset) */
+.aspect-modal-content .card-id,
+.aspect-modal-content .card-lock-indicator {
+  top: 16px;
+  left: 16px;
+}
+
 /* Inner shell — matches .modal-card-shell > .card background */
 .aspect-modal-shell {
   width: 100%;
@@ -61,85 +68,6 @@
 .aspect-modal-placeholder {
   font-size: 64px;
   opacity: 0.3;
-}
-
-/* ID badge — mirrors .card-id styling */
-.aspect-modal-id {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  background: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 4px 8px;
-  border-radius: 6px;
-  z-index: 10;
-}
-
-/* Lock indicator — expand/collapse on tap/hover, matching Card.tsx */
-.aspect-modal-lock-indicator {
-  position: absolute;
-  top: clamp(0.35rem, 1.2vw, 0.5rem);
-  left: clamp(0.35rem, 1.2vw, 0.5rem);
-  display: flex;
-  align-items: center;
-  gap: 0;
-  padding: 0.2rem 0.35rem;
-  border-radius: 0.5rem;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(6px);
-  cursor: pointer;
-  z-index: 2;
-  transition: gap 0.25s ease, padding 0.25s ease;
-  overflow: hidden;
-}
-
-.aspect-modal-lock-indicator.expanded {
-  gap: 0.15rem;
-  padding: 0.2rem 0.45rem;
-}
-
-.aspect-modal-lock-icon {
-  width: 1rem;
-  height: 1rem;
-  flex-shrink: 0;
-  filter: drop-shadow(0 0 3px rgba(255, 215, 0, 0.6));
-  animation: aspectLockShake 6s ease-in-out infinite;
-}
-
-.aspect-modal-lock-id {
-  font-size: 0.65rem;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
-  white-space: nowrap;
-  opacity: 0;
-  max-width: 0;
-  overflow: hidden;
-  transition: opacity 0.25s ease, max-width 0.3s ease;
-}
-
-.aspect-modal-lock-indicator.expanded .aspect-modal-lock-id {
-  opacity: 1;
-  max-width: 5rem;
-}
-
-@keyframes aspectLockShake {
-  0%, 12%, 100% { transform: rotate(0deg); }
-  2% { transform: rotate(-6deg); }
-  4% { transform: rotate(5deg); }
-  6% { transform: rotate(-4deg); }
-  8% { transform: rotate(3deg); }
-  10% { transform: rotate(-2deg); }
-}
-
-/* Prevent entry animations from replaying on re-renders (e.g. lock toggle) */
-.modal-overlay.no-animate {
-  animation: none;
-}
-.modal-content.no-animate {
-  animation: none;
 }
 
 /* Info section — mirrors .card-info styling */

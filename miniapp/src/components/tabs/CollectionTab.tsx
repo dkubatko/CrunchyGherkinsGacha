@@ -199,7 +199,7 @@ const CollectionTab = ({
   const shareEnabled = Boolean(initData);
 
   // Feature hooks
-  const { showModal, modalCard, openModal, closeModal } = useModal();
+  const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
 
   const lockCost = modalCard && config
     ? config.lock_costs[modalCard.rarity] ?? 0
@@ -290,6 +290,7 @@ const CollectionTab = ({
       const wantLock = !modalCard.locked;
       const result = await ApiService.lockCard(modalCard.id, currentUserId, chatId, wantLock, initData);
       setClaimState({ balance: result.balance, loading: false });
+      updateModalCard({ locked: result.locked });
       TelegramUtils.showAlert(result.message || (result.locked ? 'Locked!' : 'Unlocked!'));
       setShowLockDialog(false);
       await refetch();
@@ -299,7 +300,7 @@ const CollectionTab = ({
     } finally {
       setLockProcessing(false);
     }
-  }, [modalCard, chatId, currentUserId, initData, refetch]);
+  }, [modalCard, chatId, currentUserId, initData, refetch, updateModalCard]);
 
   const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
 
