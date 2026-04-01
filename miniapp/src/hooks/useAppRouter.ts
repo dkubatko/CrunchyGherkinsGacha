@@ -8,6 +8,7 @@ export type AppRoute =
   | { type: 'landing' }
   | { type: 'admin' }
   | { type: 'singleCard'; currentUserId: number; cardId: number; initData: string }
+  | { type: 'singleAspect'; currentUserId: number; aspectId: number; initData: string }
   | { type: 'hub'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string; initialTab: HubTab };
 
 interface UseAppRouterResult {
@@ -68,6 +69,13 @@ export const useAppRouter = (): UseAppRouterResult => {
             type: 'singleCard',
             currentUserId: userData.currentUserId,
             cardId: userData.singleCardId,
+            initData
+          });
+        } else if (userData.singleAspectView && userData.singleAspectId) {
+          setRoute({
+            type: 'singleAspect',
+            currentUserId: userData.currentUserId,
+            aspectId: userData.singleAspectId,
             initData
           });
         } else {

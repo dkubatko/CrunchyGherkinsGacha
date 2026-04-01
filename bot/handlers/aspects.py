@@ -352,7 +352,7 @@ async def handle_burn_callback(
         )
         new_spin_total = spins_record.count if spins_record else reward
 
-        header = f"<b><s>🔮 {aspect.title(include_id=True, include_rarity=True)}</s></b>"
+        header = f"<b><s>{aspect.title(include_id=True, include_rarity=True, include_emoji=True)}</s></b>"
         success_block = ASPECT_BURN_SUCCESS_MESSAGE.format(
             spin_reward=reward,
             new_spin_total=new_spin_total,
@@ -470,13 +470,13 @@ async def lock_command(
     lock_cost = get_lock_cost(aspect.rarity)
 
     if aspect.locked:
-        prompt_text = f"Unlock <b>🔮 {aspect.title(include_id=True)}</b>?"
+        prompt_text = f"Unlock <b>{aspect.title(include_id=True, include_emoji=True)}</b>?"
     else:
         balance = await asyncio.to_thread(
             claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         prompt_text = (
-            f"Lock <b>🔮 {aspect.title(include_id=True)}</b>?\n\n"
+            f"Lock <b>{aspect.title(include_id=True, include_emoji=True)}</b>?\n\n"
             f"Cost: <b>{lock_cost}</b> claim point{'s' if lock_cost != 1 else ''}\n"
             f"Balance: <b>{balance}</b>"
         )
@@ -680,18 +680,18 @@ async def _lock_card(
         await message.reply_text(CARD_LOCK_CHAT_MISMATCH_MESSAGE)
         return
 
-    card_title = card.title(include_id=True, include_rarity=True)
+    card_title = card.title(include_id=True, include_rarity=True, include_emoji=True)
     chat_id_str = str(chat.id)
     lock_cost = get_lock_cost(card.rarity)
 
     if card.locked:
-        prompt_text = f"Unlock <b>🃏 {card_title}</b>?"
+        prompt_text = f"Unlock <b>{card_title}</b>?"
     else:
         balance = await asyncio.to_thread(
             claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         prompt_text = (
-            f"Lock <b>🃏 {card_title}</b>?\n\n"
+            f"Lock <b>{card_title}</b>?\n\n"
             f"Cost: <b>{lock_cost}</b> claim point{'s' if lock_cost != 1 else ''}\n"
             f"Balance: <b>{balance}</b>"
         )
@@ -783,7 +783,7 @@ async def handle_lock_card_confirm(
             pass
         return
 
-    card_title = card.title(include_id=True, include_rarity=True)
+    card_title = card.title(include_id=True, include_rarity=True, include_emoji=True)
     lock_cost = get_lock_cost(card.rarity)
 
     if not card.locked:
@@ -826,7 +826,7 @@ async def handle_lock_card_confirm(
             claim_repo.get_claim_balance, user.user_id, chat_id_str
         )
         response_text = (
-            f"🔒 <b>🃏 {card_title}</b> locked!\n\n"
+            f"🔒 <b>{card_title}</b> locked!\n\n"
             f"Remaining balance: <b>{remaining_balance}</b>"
         )
         await query.answer(f"Card locked!", show_alert=False)
@@ -840,7 +840,7 @@ async def handle_lock_card_confirm(
             via="command",
         )
     else:
-        response_text = f"🔓 <b>🃏 {card_title}</b> unlocked!"
+        response_text = f"🔓 <b>{card_title}</b> unlocked!"
         await query.answer(f"Card unlocked!", show_alert=False)
         event_manager.log(
             EventType.LOCK,

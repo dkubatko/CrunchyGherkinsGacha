@@ -16,7 +16,7 @@ from fastapi import HTTPException
 from api.config import MINIAPP_URL
 from api.schemas import SlotSymbolInfo
 from settings.constants import RARITIES
-from utils.miniapp import encode_single_card_token
+from utils.miniapp import encode_single_aspect_token, encode_single_card_token
 
 logger = logging.getLogger(__name__)
 
@@ -81,6 +81,17 @@ def build_single_card_url(card_id: int) -> str:
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
 
     share_token = encode_single_card_token(card_id)
+    separator = "&" if "?" in MINIAPP_URL else "?"
+    return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
+
+
+def build_single_aspect_url(aspect_id: int) -> str:
+    """Build a URL for viewing a single aspect in the mini app."""
+    if not MINIAPP_URL:
+        logger.error("MINIAPP_URL not configured; cannot build aspect link")
+        raise HTTPException(status_code=500, detail="Mini app URL not configured")
+
+    share_token = encode_single_aspect_token(aspect_id)
     separator = "&" if "?" in MINIAPP_URL else "?"
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 

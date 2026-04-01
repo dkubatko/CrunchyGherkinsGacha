@@ -10,7 +10,7 @@ import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/compone
 import type { ActionButton } from '@/components/common';
 
 // Hooks
-import { useAspects } from '@/hooks/useAspects';
+import { useAspects, useAllChatAspects } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 import { useOrientation } from '@/hooks';
 
@@ -35,6 +35,19 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
   const { aspects, loading, error, refetch } = useAspects(initData, chatId, targetUserId);
   const { orientation, orientationKey } = useOrientation({ enabled: true });
   const isOwnCollection = !targetUserId || targetUserId === currentUserId;
+
+  // Trade state
+  const [selectedAspectForTrade, setSelectedAspectForTrade] = useState<AspectData | null>(null);
+  const [isTradeView, setIsTradeView] = useState(false);
+  const isTradeMode = Boolean(selectedAspectForTrade);
+
+  // Fetch all other users' tradeable aspects when in trade mode
+  const {
+    allAspects: tradeAspects,
+    loading: tradeAspectsLoading,
+  } = useAllChatAspects(initData, selectedAspectForTrade?.id ?? null, {
+    enabled: isTradeMode,
+  });
 
   // Filtering / sorting
   const {
@@ -204,6 +217,70 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
     }
   }, [selectedAspect]);
 
+  // ── Share ──
+  const handleShareAspect = useCallback(async (aspectId: number) => {
+    try {
+      await ApiService.shareAspect(aspectId, currentUserId, initData);
+      TelegramUtils.showAlert('Shared to chat!');
+    } catch (err) {
+      console.error('Share aspect error:', err);
+      const message = err instanceof Error ? err.message : 'Failed to share aspect.';
+      TelegramUtils.showAlert(message);
+    }
+  }, [currentUserId, initData]);
+
+  const shareEnabled = Boolean(initData);
+
+  // ── Trade ──
+  const switchToNormalView = useCallback(() => {
+    setSelectedAspectForTrade(null);
+    setIsTradeView(false);
+    closeModal();
+    TelegramUtils.hideBackButton();
+  }, [closeModal]);
+
+  const switchToNormalViewRef = useRef(switchToNormalView);
+  useEffect(() => {
+    switchToNormalViewRef.current = switchToNormalView;
+  }, [switchToNormalView]);
+
+  useEffect(() => {
+    if (!isTradeView) {
+      TelegramUtils.hideBackButton();
+      return;
+    }
+    const cleanup = TelegramUtils.setupBackButton(() => {
+      switchToNormalViewRef.current();
+    });
+    return cleanup;
+  }, [isTradeView]);
+
+  const handleTradeClick = useCallback(() => {
+    if (!selectedAspect || !isOwnCollection) return;
+    if (selectedAspect.locked) {
+      TelegramUtils.showAlert('Unlock this aspect before trading it.');
+      return;
+    }
+    setSelectedAspectForTrade(selectedAspect);
+    setIsTradeView(true);
+    closeModal();
+  }, [selectedAspect, isOwnCollection, closeModal]);
+
+  const handleSelectClick = useCallback(() => {
+    if (!selectedAspectForTrade || !selectedAspect) return;
+    const executeAspectTrade = async () => {
+      try {
+        await ApiService.executeAspectTrade(selectedAspectForTrade.id, selectedAspect.id, initData);
+        TelegramUtils.closeApp();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Trade request failed';
+        TelegramUtils.showAlert(msg);
+      }
+    };
+    executeAspectTrade();
+    switchToNormalView();
+  }, [selectedAspectForTrade, selectedAspect, initData, switchToNormalView]);
+
   // Derive burn reward & lock cost from config
   const burnReward = selectedAspect && config
     ? config.burn_rewards[selectedAspect.rarity] ?? 0
@@ -228,29 +305,49 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
     if (!selectedAspect || !showModal || !isOwnCollection) return [];
     const buttons: ActionButton[] = [];
 
-    buttons.push({
-      id: 'lock',
-      text: selectedAspect.locked ? 'Unlock' : 'Lock',
-      onClick: handleLockClick,
-      variant: 'lock-grey',
-    });
+    if (isTradeView && selectedAspect.user_id !== currentUserId) {
+      // In trade view: only show Select button for other users' aspects
+      buttons.push({
+        id: 'select',
+        text: 'Select',
+        onClick: () => void handleSelectClick(),
+        variant: 'trade-blue',
+      });
+      return buttons;
+    }
 
-    buttons.push({
-      id: 'equip',
-      text: 'Equip',
-      onClick: handleEquipClick,
-      variant: 'equip-green',
-    });
+    if (!isTradeView) {
+      buttons.push({
+        id: 'lock',
+        text: selectedAspect.locked ? 'Unlock' : 'Lock',
+        onClick: handleLockClick,
+        variant: 'lock-grey',
+      });
 
-    buttons.push({
-      id: 'burn',
-      text: 'Burn',
-      onClick: handleBurnClick,
-      variant: 'burn-red',
-    });
+      buttons.push({
+        id: 'equip',
+        text: 'Equip',
+        onClick: handleEquipClick,
+        variant: 'equip-green',
+      });
+
+      buttons.push({
+        id: 'trade',
+        text: 'Trade',
+        onClick: handleTradeClick,
+        variant: 'trade-blue',
+      });
+
+      buttons.push({
+        id: 'burn',
+        text: 'Burn',
+        onClick: handleBurnClick,
+        variant: 'burn-red',
+      });
+    }
 
     return buttons;
-  }, [selectedAspect, showModal, isOwnCollection, handleLockClick, handleEquipClick, handleBurnClick]);
+  }, [selectedAspect, showModal, isOwnCollection, isTradeView, currentUserId, handleLockClick, handleEquipClick, handleTradeClick, handleBurnClick, handleSelectClick]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 
@@ -272,40 +369,62 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
     <>
       <div className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
         <div className="app-content">
-          <Title title={`${ownerLabel ? `${ownerLabel}'s` : ''} Aspects`} />
-
-          {aspects.length > 0 && (
-            <FilterSortControls
-              filterOptions={filterOptions}
-              sortOptions={sortOptions}
-              onFilterChange={onFilterChange}
-              onSortChange={onSortChange}
-              showOwnerFilter={false}
-              showCharacterFilter={false}
-              filterValues={filterValues}
-              counter={{
-                current: displayedAspects.length,
-                total: aspects.length,
-              }}
-            />
-          )}
-
-          {aspects.length === 0 ? (
-            <div className="no-cards-container">
-              <h2>No aspects yet</h2>
-              <p>Roll aspects in the chat to start collecting!</p>
-            </div>
-          ) : displayedAspects.length === 0 ? (
-            <div className="no-cards-container">
-              <h2>No aspects match your filters</h2>
-              <p>Try adjusting your filter settings.</p>
-            </div>
+          {isTradeView && selectedAspectForTrade ? (
+            <>
+              <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
+              {tradeAspectsLoading ? (
+                <Loading message="Loading aspects..." />
+              ) : tradeAspects.length === 0 ? (
+                <div className="no-cards-container">
+                  <h2>No tradeable aspects</h2>
+                  <p>No other users have tradeable aspects in this chat.</p>
+                </div>
+              ) : (
+                <AspectGrid
+                  aspects={tradeAspects}
+                  onAspectClick={openModal}
+                  initData={initData}
+                />
+              )}
+            </>
           ) : (
-            <AspectGrid
-              aspects={displayedAspects}
-              onAspectClick={openModal}
-              initData={initData}
-            />
+            <>
+              <Title title={`${ownerLabel ? `${ownerLabel}'s` : ''} Aspects`} />
+
+              {aspects.length > 0 && (
+                <FilterSortControls
+                  filterOptions={filterOptions}
+                  sortOptions={sortOptions}
+                  onFilterChange={onFilterChange}
+                  onSortChange={onSortChange}
+                  showOwnerFilter={false}
+                  showCharacterFilter={false}
+                  filterValues={filterValues}
+                  counter={{
+                    current: displayedAspects.length,
+                    total: aspects.length,
+                  }}
+                />
+              )}
+
+              {aspects.length === 0 ? (
+                <div className="no-cards-container">
+                  <h2>No aspects yet</h2>
+                  <p>Roll aspects in the chat to start collecting!</p>
+                </div>
+              ) : displayedAspects.length === 0 ? (
+                <div className="no-cards-container">
+                  <h2>No aspects match your filters</h2>
+                  <p>Try adjusting your filter settings.</p>
+                </div>
+              ) : (
+                <AspectGrid
+                  aspects={displayedAspects}
+                  onAspectClick={openModal}
+                  initData={initData}
+                />
+              )}
+            </>
           )}
         </div>
       </div>
@@ -323,6 +442,8 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
           triggerBurn={triggerBurn}
           onBurnComplete={handleBurnComplete}
           isBurning={isBurning}
+          onShare={shareEnabled ? handleShareAspect : undefined}
+          showShareButton={isOwnCollection}
         />
       )}
 

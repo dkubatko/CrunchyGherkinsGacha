@@ -3,6 +3,7 @@ import type { UserData, OrientationData } from '../types';
 
 type ParsedPayload =
   | { kind: 'card'; cardId: number }
+  | { kind: 'aspect'; aspectId: number }
   | { kind: 'user'; userId: number }
   | { kind: 'userChat'; userId: number; chatId: string }
   | { kind: 'casino'; chatId: string };
@@ -13,6 +14,7 @@ export class TelegramUtils {
   // Token format documentation:
   // Supported external payload (start_param) values after the optional tg1_ base64 wrapper:
   //   c-<cardId>                     => Single card view (display only this card)
+  //   a-<aspectId>                   => Single aspect view (display only this aspect)
   //   u-<userId>                     => View user collection
   //   uc-<userId>-<chatId>           => View user collection scoped to chat
   //   casino-<chatId>                 => Open casino catalog with game selection
@@ -55,6 +57,14 @@ export class TelegramUtils {
       const maybeCardId = Number(trimmed.slice(2));
       if (Number.isInteger(maybeCardId) && maybeCardId > 0) {
         return { kind: 'card', cardId: maybeCardId };
+      }
+      return null;
+    }
+
+    if (lower.startsWith('a-')) {
+      const maybeAspectId = Number(trimmed.slice(2));
+      if (Number.isInteger(maybeAspectId) && maybeAspectId > 0) {
+        return { kind: 'aspect', aspectId: maybeAspectId };
       }
       return null;
     }
@@ -120,8 +130,9 @@ export class TelegramUtils {
       let targetUserId: number = currentUserId;
       let chatId: string | null = null;
       let singleCardId: number | null = null;
+      let singleAspectId: number | null = null;
 
-      let payloadType: 'card' | 'user' | 'userChat' | 'casino' | null = null;
+      let payloadType: 'card' | 'aspect' | 'user' | 'userChat' | 'casino' | null = null;
       let payloadSource: string | null = null;
 
       const applyExternalPayload = (rawValue: string, source: string): boolean => {
@@ -149,6 +160,11 @@ export class TelegramUtils {
           case 'card':
             singleCardId = parsed.cardId;
             payloadType = 'card';
+            payloadSource = source;
+            return true;
+          case 'aspect':
+            singleAspectId = parsed.aspectId;
+            payloadType = 'aspect';
             payloadSource = source;
             return true;
           case 'user':
@@ -188,6 +204,11 @@ export class TelegramUtils {
               source: payloadSource
             });
             break;
+          case 'aspect':
+            console.info('Start parameter requested single aspect view', {
+              source: payloadSource
+            });
+            break;
           case 'user':
             console.info('Start parameter requested user collection', {
               source: payloadSource
@@ -211,8 +232,8 @@ export class TelegramUtils {
       }
 
       const casinoView = payloadType === 'casino';
-      const isOwnCollection = singleCardId == null && targetUserId === currentUserId; // In single card mode collection semantics disabled
-      const enableTrade = isOwnCollection && singleCardId == null;
+      const isOwnCollection = singleCardId == null && singleAspectId == null && targetUserId === currentUserId;
+      const enableTrade = isOwnCollection && singleCardId == null && singleAspectId == null;
 
       return {
         currentUserId,
@@ -222,6 +243,8 @@ export class TelegramUtils {
         chatId,
         singleCardId,
         singleCardView: singleCardId != null,
+        singleAspectId,
+        singleAspectView: singleAspectId != null,
         casinoView,
       };
     } catch (err) {

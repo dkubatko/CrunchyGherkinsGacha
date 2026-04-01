@@ -89,6 +89,9 @@ export interface UserData {
   // Single card view mode: if singleCardId is set, the app should render only that card
   singleCardId?: number | null;
   singleCardView?: boolean; // Convenience boolean to avoid recomputing
+  // Single aspect view mode: if singleAspectId is set, the app should render only that aspect
+  singleAspectId?: number | null;
+  singleAspectView?: boolean; // Convenience boolean to avoid recomputing
   // Casino view mode: if casinoView is true, the app should render the casino catalog
   casinoView?: boolean;
 }

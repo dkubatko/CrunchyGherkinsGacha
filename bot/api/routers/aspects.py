@@ -23,8 +23,9 @@ from api.dependencies import (
     validate_user_in_chat,
     verify_user_match,
 )
-from api.config import create_bot_instance
+from api.config import create_bot_instance, MINIAPP_URL
 from handlers.helpers import format_aspect_list
+from api.helpers import build_single_aspect_url
 from api.schemas import (
     AspectBurnRequest,
     AspectBurnResponse,
@@ -35,6 +36,7 @@ from api.schemas import (
     AspectLockResponse,
     EquipInitiateRequest,
     EquipInitiateResponse,
+    ShareAspectRequest,
 )
 from settings.constants import EQUIP_CONFIRM_MESSAGE, RARITY_ORDER, get_lock_cost, get_spin_reward
 from utils.schemas import Card, OwnedAspect
@@ -44,6 +46,7 @@ from repos import claim_repo
 from repos import equip_session_repo
 from repos import spin_repo
 from repos import thread_repo
+from repos import user_repo
 from managers import aspect_manager
 from managers import event_manager
 from utils.events import EventType, BurnOutcome, LockOutcome
@@ -372,6 +375,74 @@ async def equip_initiate(
         success=True,
         message="Equip confirmation sent to chat! Head there to confirm.",
     )
+
+
+# =============================================================================
+# SHARE ENDPOINT
+# =============================================================================
+
+
+@router.post("/share")
+async def share_aspect(
+    request: ShareAspectRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Share an aspect to its chat via the Telegram bot."""
+    await verify_user_match(request.user_id, validated_user)
+
+    user_data: Dict[str, Any] = validated_user["user"] or {}
+    auth_user_id = user_data.get("id")
+
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, request.aspect_id)
+    if not aspect:
+        raise HTTPException(status_code=404, detail="Aspect not found")
+
+    aspect_chat_id = aspect.chat_id
+    if not aspect_chat_id:
+        raise HTTPException(status_code=500, detail="Aspect chat not configured")
+
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
+    if not username:
+        raise HTTPException(status_code=400, detail="Username not found for user")
+
+    aspect_title = aspect.title(include_id=True, include_rarity=True, include_emoji=True)
+
+    try:
+        from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
+        from telegram.constants import ParseMode
+
+        aspect_url = build_single_aspect_url(request.aspect_id)
+
+        bot = create_bot_instance()
+        keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=aspect_url)]])
+
+        set_name = aspect.aspect_definition.set_name if aspect.aspect_definition else "Unknown"
+        message = f"@{username} shared aspect:\n\n<b>{aspect_title}</b>\nSet: <b>{set_name.title()}</b>"
+
+        if aspect.owner and aspect.owner != username:
+            message += f"\n\n<i>Owned by @{aspect.owner}</i>"
+
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, aspect_chat_id)
+
+        send_params = {
+            "chat_id": aspect_chat_id,
+            "text": message,
+            "reply_markup": keyboard,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+        return {"success": True}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to share aspect %s: %s", request.aspect_id, e)
+        raise HTTPException(status_code=500, detail="Failed to share aspect")
 
 
 # =============================================================================
