@@ -208,6 +208,11 @@ const AspectModal: React.FC<AspectModalProps> = ({
             </div>
             <p className="aspect-modal-rarity">{aspect.rarity}</p>
             <p className="aspect-modal-set">{setName}</p>
+            {aspect.owner && (
+              <p className="aspect-modal-owner">
+                Owned by <span className="aspect-modal-owner-username">@{aspect.owner}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>

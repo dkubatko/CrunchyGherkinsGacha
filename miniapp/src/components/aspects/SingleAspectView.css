@@ -89,9 +89,15 @@
 }
 
 .single-aspect-owner {
-  font-size: 0.85rem;
-  color: #aaa;
-  margin: 0.4rem 0 0 0;
+  font-size: 0.75rem;
+  color: #ccc;
+  margin: 0.2rem 0 0 0;
+  font-weight: 400;
+}
+
+.single-aspect-owner-username {
+  color: #4A90E2;
+  font-weight: 500;
 }
 
 @media (max-width: 480px) {

@@ -103,7 +103,7 @@ export const SingleAspectView: React.FC<SingleAspectViewProps> = ({ aspectId, in
           <p className="single-aspect-rarity">{aspectData.rarity}</p>
           <span className="single-aspect-set">{setName.toUpperCase()}</span>
           {aspectData.owner && (
-            <p className="single-aspect-owner">Owned by @{aspectData.owner}</p>
+            <p className="single-aspect-owner">Owned by <span className="single-aspect-owner-username">@{aspectData.owner}</span></p>
           )}
         </div>
       </div>
