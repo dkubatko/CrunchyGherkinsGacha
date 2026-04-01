@@ -61,7 +61,7 @@ export interface OrientationData {
   isStarted: boolean;
 }
 
-export type HubTab = 'profile' | 'collection' | 'aspects' | 'casino' | 'allCards';
+export type HubTab = 'profile' | 'collection' | 'casino' | 'allCards';
 
 export interface UserCollectionResponse {
   user_id: number;

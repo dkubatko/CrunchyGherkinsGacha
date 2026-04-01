@@ -37,15 +37,6 @@ const CasinoIcon = () => (
   </svg>
 );
 
-const AspectsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="9" />
-    <ellipse cx="12" cy="12" rx="9" ry="4" />
-    <path d="M12 3c0 0-4.5 3-4.5 9s4.5 9 4.5 9" />
-    <path d="M12 3c0 0 4.5 3 4.5 9s-4.5 9-4.5 9" />
-  </svg>
-);
-
 const AllCardsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <rect x="4" y="1" width="16" height="18" rx="2" />
@@ -57,9 +48,8 @@ const AllCardsIcon = () => (
 const TAB_CONFIG: { key: HubTab; label: string; Icon: React.FC }[] = [
   { key: 'profile', label: 'Profile', Icon: ProfileIcon },
   { key: 'collection', label: 'Collection', Icon: CollectionIcon },
-  { key: 'aspects', label: 'Aspects', Icon: AspectsIcon },
   { key: 'casino', label: 'Casino', Icon: CasinoIcon },
-  { key: 'allCards', label: 'All Cards', Icon: AllCardsIcon },
+  { key: 'allCards', label: 'All', Icon: AllCardsIcon },
 ];
 
 const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onTabChange, disabledTabs }) => {

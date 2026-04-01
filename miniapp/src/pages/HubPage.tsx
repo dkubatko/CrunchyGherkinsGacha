@@ -6,9 +6,8 @@ import './HubPage.css';
 import BottomNav from '@/components/common/BottomNav';
 import ProfileTab from '@/components/tabs/ProfileTab';
 import CollectionTab from '@/components/tabs/CollectionTab';
-import AspectsTab from '@/components/tabs/AspectsTab';
 import CasinoTab from '@/components/tabs/CasinoTab';
-import AllCardsTab from '@/components/tabs/AllCardsTab';
+import AllTab from '@/components/tabs/AllCardsTab';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
@@ -46,7 +45,6 @@ export const HubPage = ({
     const disabled = new Set<HubTab>();
     if (!chatId) {
       disabled.add('profile');
-      disabled.add('aspects');
       disabled.add('casino');
       disabled.add('allCards');
     }
@@ -138,19 +136,6 @@ export const HubPage = ({
           </div>
         )}
 
-        {/* Aspects Tab */}
-        {mountedTabs.has('aspects') && chatId && (
-          <div className={`hub-tab-panel ${activeTab === 'aspects' ? 'active' : ''}`}>
-            <AspectsTab
-              currentUserId={currentUserId}
-              chatId={chatId}
-              initData={initData}
-              targetUserId={targetUserId}
-              ownerLabel={ownerLabel}
-            />
-          </div>
-        )}
-
         {/* Casino Tab */}
         {mountedTabs.has('casino') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'casino' ? 'active' : ''}`}>
@@ -162,10 +147,10 @@ export const HubPage = ({
           </div>
         )}
 
-        {/* All Cards Tab */}
+        {/* All Tab */}
         {mountedTabs.has('allCards') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'allCards' ? 'active' : ''}`}>
-            <AllCardsTab
+            <AllTab
               chatId={chatId}
               initData={initData}
             />

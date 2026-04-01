@@ -1,0 +1,38 @@
+.subtab-toggle {
+  display: flex;
+  width: calc(100% + 0.5rem);
+  margin: 0 -0.25rem 12px;
+}
+
+.subtab-toggle-item {
+  flex: 1;
+  padding: 12px 0;
+  background: transparent;
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.5));
+  font-size: 1rem;
+  font-weight: 500;
+  border: none;
+  border-radius: 0 0 8px 8px;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.subtab-toggle-item:active {
+  opacity: 0.8;
+}
+
+.subtab-toggle-item:hover {
+  background: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.06));
+}
+
+.subtab-toggle-item.active {
+  color: var(--tg-theme-text-color, #ffffff);
+  font-weight: 600;
+  background: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.06));
+  box-shadow: 0 2px 0 0 var(--tg-theme-button-color, #007aff);
+}
