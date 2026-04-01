@@ -1514,6 +1514,8 @@ async def handle_recycle_callback(
             source_rarity=rarity_name,
             new_rarity=upgrade_rarity,
             aspects_burned=aspect_ids_to_delete,
+            aspect_name=generated_aspect.aspect_name,
+            aspect_definition_id=generated_aspect.aspect_definition_id,
         )
 
         burned_block = "\n".join([f"<s>🔥🔮 {name}🔥</s>" for name in aspect_names])

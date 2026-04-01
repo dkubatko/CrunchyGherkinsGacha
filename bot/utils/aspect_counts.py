@@ -1,8 +1,8 @@
 """Aspect count event listener.
 
-Subscribes to the event service and increments aspect-definition usage
-counts whenever a card or aspect is created.  This replaces the legacy
-modifier count listener in ``utils.modifiers``.
+Subscribes to the event manager and increments aspect-definition usage
+counts whenever a new aspect is created (rolled, rerolled, recycled,
+forged, or won from casino).  Card-only events are ignored.
 
 Start-up entry point: ``init_aspect_count_listener()`` — safe to call
 more than once.
@@ -21,36 +21,53 @@ LOGGER = logging.getLogger(__name__)
 _aspect_count_initialized = False
 _aspect_count_init_lock = threading.Lock()
 
-# Events that represent successful card/aspect creation
-CREATION_EVENTS = {
+# Events that represent successful aspect creation (NOT card creation)
+ASPECT_CREATION_EVENTS = {
     ("ROLL", "SUCCESS"),
     ("REROLL", "SUCCESS"),
     ("RECYCLE", "SUCCESS"),
     ("CREATE", "SUCCESS"),
-    ("SPIN", "CARD_WIN"),
-    ("MEGASPIN", "SUCCESS"),
+    ("SPIN", "ASPECT_WIN"),
+    ("MEGASPIN", "ASPECT_WIN"),
     ("MINESWEEPER", "WON"),
 }
 
 
-def _on_creation_event(event) -> None:
-    """Handle card/aspect creation events by incrementing counts.
+def _on_aspect_creation(event) -> None:
+    """Increment aspect-definition usage count when a new aspect is created.
 
-    Works for both legacy modifier-based card creations (``payload.modifier``)
-    and new aspect-based rolls (``payload.aspect_name``).
+    Extracts the aspect name from ``payload.aspect_name``.  Falls back to
+    looking up the aspect by ``event.aspect_id`` when the payload lacks an
+    explicit name.  Events without an identifiable aspect (e.g. card-only
+    rolls) are silently skipped.
     """
-    if (event.event_type, event.outcome) not in CREATION_EVENTS:
+    if (event.event_type, event.outcome) not in ASPECT_CREATION_EVENTS:
         return
 
-    if not event.payload:
-        return
+    payload = event.payload or {}
 
-    # Determine the name to count — prefer new aspect_name, fall back to modifier
-    name = event.payload.get("aspect_name") or event.payload.get("modifier")
+    name = payload.get("aspect_name")
+    definition_id = payload.get("aspect_definition_id")
+
+    # Fallback: look up the owned aspect by event.aspect_id when name is missing
+    if not name and getattr(event, "aspect_id", None):
+        try:
+            from repos import aspect_repo
+
+            aspect = aspect_repo.get_aspect_by_id(event.aspect_id)
+            if aspect:
+                name = aspect.display_name
+                if not definition_id and aspect.aspect_definition_id:
+                    definition_id = aspect.aspect_definition_id
+        except Exception as exc:
+            LOGGER.warning(
+                "Failed to look up aspect %s for count tracking: %s",
+                event.aspect_id,
+                exc,
+            )
+
     if not name:
         return
-
-    definition_id = event.payload.get("aspect_definition_id") or event.payload.get("modifier_id")
 
     from repos import aspect_count_repo
 
@@ -72,7 +89,7 @@ def _on_creation_event(event) -> None:
 
 
 def init_aspect_count_listener() -> None:
-    """Subscribe the aspect-count listener to the event service.
+    """Subscribe the aspect-count listener to the event manager.
 
     Safe to call multiple times — subsequent calls are no-ops.
     """
@@ -85,6 +102,6 @@ def init_aspect_count_listener() -> None:
             LOGGER.debug("Aspect count listener already initialized")
             return
 
-        event_manager.subscribe(_on_creation_event)
+        event_manager.subscribe(_on_aspect_creation)
         _aspect_count_initialized = True
         LOGGER.info("Aspect count listener initialized")

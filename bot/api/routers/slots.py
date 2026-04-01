@@ -623,6 +623,7 @@ async def slots_victory(
                 user_id=request.user_id,
                 gemini_util_instance=gemini_util,
                 set_id=request.set_id,
+                is_megaspin=request.is_megaspin,
             )
         )
         return SlotsVictoryResponse(status="processing", message="Aspect generation started")

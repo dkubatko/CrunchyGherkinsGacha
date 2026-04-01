@@ -316,8 +316,11 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 ### Event System (`bot/utils/events.py`, `bot/utils/achievements.py`)
 - **EventType** enum: ROLL, REROLL, CLAIM, TRADE, LOCK, BURN, REFRESH, RECYCLE, CREATE, SPIN, MEGASPIN, MINESWEEPER, RTB, DAILY_BONUS, EQUIP
 - Each event type has its own outcome enum (e.g., ClaimOutcome: SUCCESS, ALREADY_OWNED, TAKEN, INSUFFICIENT, ERROR)
-- Events are logged to the EventModel table and notify observers via `event_service.subscribe()`
+- **SpinOutcome**: CARD_WIN, ASPECT_WIN, CLAIM_WIN, LOSS, NO_SPINS, ERROR
+- **MegaspinOutcome**: SUCCESS (legacy), CARD_WIN, ASPECT_WIN, UNAVAILABLE, ERROR
+- Events are logged to the EventModel table and notify observers via `event_manager.subscribe()`
 - Achievement system uses observer pattern: event → check conditions → grant achievement if met
+- **Aspect count tracking** (`bot/utils/aspect_counts.py`): Observer listens for aspect-creation events and increments per-chat, per-season usage counts in the `aspect_counts` table. The `ASPECT_CREATION_EVENTS` set defines which (event_type, outcome) tuples trigger counting. When logging new aspect-creation events, **always include `aspect_name` and `aspect_definition_id`** in the payload to ensure counts are tracked; the listener has a fallback to look up by `event.aspect_id` but explicit payload fields are preferred. Card-only events are ignored.
 - All v1 achievements were cleared during Gacha 2.0 migration; infrastructure is preserved for future achievements
 
 ### Image Storage & Caching
