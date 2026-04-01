@@ -12,7 +12,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from settings.constants import CURRENT_SEASON
-from utils.models import SetModel
+from utils.models import AspectDefinitionModel, SetModel
 from utils.schemas import Set
 from utils.session import with_session
 
@@ -236,6 +236,12 @@ def get_eligible_sets_for_slots(
             SetModel.season_id == season_id,
             SetModel.active.is_(True),
             SetModel.source.in_(["all", "slots"]),
+            session.query(AspectDefinitionModel)
+            .filter(
+                AspectDefinitionModel.set_id == SetModel.id,
+                AspectDefinitionModel.season_id == season_id,
+            )
+            .exists(),
         )
         .order_by(SetModel.id)
     )
