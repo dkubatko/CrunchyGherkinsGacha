@@ -24,7 +24,7 @@ config = load_config()
 RARITIES = config["RARITIES"]
 BASE_IMAGE_PATH = config["BASE_IMAGE_PATH"]
 CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
-SLOT_WIN_CHANCE = config["SLOT_WIN_CHANCE"]
+SLOT_CARD_WIN_CHANCE = config["SLOT_CARD_WIN_CHANCE"]
 SLOT_ASPECT_WIN_CHANCE = config.get("SLOT_ASPECT_WIN_CHANCE", 0.04)
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
 MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
@@ -317,9 +317,7 @@ ASPECT_BURN_NOT_YOURS_MESSAGE = "You can only burn aspects you currently own."
 ASPECT_BURN_CHAT_MISMATCH_MESSAGE = "This aspect doesn't belong to this chat."
 ASPECT_BURN_LOCKED_MESSAGE = "This aspect is locked. Unlock it first before burning."
 ASPECT_BURN_EQUIPPED_MESSAGE = "This aspect is equipped on a card. Unequip it first before burning."
-ASPECT_BURN_CONFIRM_MESSAGE = (
-    "Burn <b>🔮 {aspect_title}</b> for <b>{spin_reward} spins</b>?"
-)
+ASPECT_BURN_CONFIRM_MESSAGE = "Burn <b>🔮 {aspect_title}</b> for <b>{spin_reward} spins</b>?"
 ASPECT_BURN_CANCELLED_MESSAGE = "Burn cancelled."
 ASPECT_BURN_ALREADY_RUNNING_MESSAGE = "You already have a burn in progress."
 ASPECT_BURN_PROCESSING_MESSAGE = "Burning aspect..."

@@ -38,7 +38,7 @@ from api.schemas import (
     SpinsRequest,
     SpinsResponse,
 )
-from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_WIN_CHANCE
+from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_CARD_WIN_CHANCE
 from utils.rolling import get_random_rarity
 from repos import character_repo
 from repos import claim_repo
@@ -50,7 +50,6 @@ from repos import user_repo
 from managers import event_manager
 from managers import spin_manager
 from utils.events import EventType, SpinOutcome, MegaspinOutcome
-
 
 logger = logging.getLogger(__name__)
 
@@ -356,45 +355,51 @@ async def verify_slot_spin(
         chosen_set_id: Optional[int] = None
         chosen_set_name: Optional[str] = None
 
-        # Roll 1: Card win
-        card_chance = 0.2 if DEBUG_MODE else SLOT_WIN_CHANCE
-        if random.random() < card_chance and card_symbols:
+        # Single weighted draw — all win types determined simultaneously
+        card_chance = 0.1 if DEBUG_MODE else SLOT_CARD_WIN_CHANCE
+        aspect_chance = 0.4 if DEBUG_MODE else SLOT_ASPECT_WIN_CHANCE
+        claim_chance = 0.2 if DEBUG_MODE else SLOT_CLAIM_CHANCE
+        loss_chance = max(0.0, 1.0 - card_chance - aspect_chance - claim_chance)
+
+        outcome = random.choices(
+            ["card", "aspect", "claim", "loss"],
+            weights=[card_chance, aspect_chance, claim_chance, loss_chance],
+            k=1,
+        )[0]
+
+        if outcome == "card" and card_symbols:
             winning_symbol = random.choice(card_symbols)
             rarity = get_random_rarity(source="slots")
             win_type = "card"
-
-        # Roll 2: Aspect win (only if card didn't win)
-        if not win_type:
-            aspect_chance = 0.3 if DEBUG_MODE else SLOT_ASPECT_WIN_CHANCE
-            if random.random() < aspect_chance and set_symbols:
-                rarity = get_random_rarity(source="slots")
-                try:
-                    defs_by_rarity = await asyncio.to_thread(
-                        aspect_repo.get_aspect_definitions_by_rarity,
-                        source="slots",
+        elif outcome == "aspect" and set_symbols:
+            rarity = get_random_rarity(source="slots")
+            try:
+                defs_by_rarity = await asyncio.to_thread(
+                    aspect_repo.get_aspect_definitions_by_rarity,
+                    source="slots",
+                )
+                eligible_ids = {d.set_id for d in defs_by_rarity.get(rarity, [])}
+                eligible = [s for s in set_symbols if s.id in eligible_ids]
+                if eligible:
+                    winning_symbol = random.choice(eligible)
+                    chosen_set_id = winning_symbol.id
+                    chosen_set_name = next(
+                        (
+                            d.set_name
+                            for d in defs_by_rarity.get(rarity, [])
+                            if d.set_id == chosen_set_id
+                        ),
+                        None,
                     )
-                    eligible_ids = {d.set_id for d in defs_by_rarity.get(rarity, [])}
-                    eligible = [s for s in set_symbols if s.id in eligible_ids]
-                    if eligible:
-                        winning_symbol = random.choice(eligible)
-                        chosen_set_id = winning_symbol.id
-                        chosen_set_name = next(
-                            (d.set_name for d in defs_by_rarity.get(rarity, []) if d.set_id == chosen_set_id),
-                            None,
-                        )
-                        win_type = "aspect"
-                    else:
-                        rarity = None  # No eligible sets for this rarity — fall through
-                except Exception as e:
-                    logger.warning("Failed to pick set for aspect win: %s", e)
-                    rarity = None
-
-        # Roll 3: Claim win (only if no card/aspect win)
-        if not win_type:
-            claim_chance = 0.5 if DEBUG_MODE else SLOT_CLAIM_CHANCE
-            if random.random() < claim_chance and claim_symbols:
-                winning_symbol = claim_symbols[0]
-                win_type = "claim"
+                    win_type = "aspect"
+                else:
+                    rarity = None  # No eligible sets for this rarity
+            except Exception as e:
+                logger.warning("Failed to pick set for aspect win: %s", e)
+                rarity = None
+        elif outcome == "claim" and claim_symbols:
+            winning_symbol = claim_symbols[0]
+            win_type = "claim"
 
         # Build results
         if winning_symbol:
@@ -404,24 +409,31 @@ async def verify_slot_spin(
 
         # Logging
         win_type_log = (
-            f"{win_type} ({rarity})" if win_type in ("card", "aspect") and rarity
+            f"{win_type} ({rarity})"
+            if win_type in ("card", "aspect") and rarity
             else win_type or "loss"
         )
         logger.info(
             "Slot verification for user %s in chat %s: result=%s",
-            request.user_id, request.chat_id, win_type_log,
+            request.user_id,
+            request.chat_id,
+            win_type_log,
         )
 
         # Event logging (card/aspect wins logged after generation in background task)
         if win_type == "claim":
             event_manager.log(
-                EventType.SPIN, SpinOutcome.CLAIM_WIN,
-                user_id=request.user_id, chat_id=request.chat_id,
+                EventType.SPIN,
+                SpinOutcome.CLAIM_WIN,
+                user_id=request.user_id,
+                chat_id=request.chat_id,
             )
         elif not win_type:
             event_manager.log(
-                EventType.SPIN, SpinOutcome.LOSS,
-                user_id=request.user_id, chat_id=request.chat_id,
+                EventType.SPIN,
+                SpinOutcome.LOSS,
+                user_id=request.user_id,
+                chat_id=request.chat_id,
             )
 
         return SlotVerifyResponse(
