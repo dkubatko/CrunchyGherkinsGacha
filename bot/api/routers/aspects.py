@@ -445,6 +445,19 @@ async def share_aspect(
         raise HTTPException(status_code=500, detail="Failed to share aspect")
 
 
+@router.get("/all", response_model=List[OwnedAspect])
+async def get_all_chat_aspects(
+    chat_id: str = Query(..., alias="chat_id"),
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get all unequipped aspects in a chat across all users (read-only)."""
+    aspect_models = await asyncio.to_thread(
+        aspect_repo.get_all_chat_aspects,
+        chat_id,
+    )
+    return aspect_models
+
+
 # =============================================================================
 # DETAIL ENDPOINT (path param catch-all - must come after specific paths)
 # =============================================================================

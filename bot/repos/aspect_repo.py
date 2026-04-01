@@ -979,8 +979,41 @@ def get_chat_aspects_for_trade(
     return [OwnedAspect.from_orm(row) for row in rows]
 
 
-@with_session(commit=True)
-def swap_aspect_owners(aspect_id1: int, aspect_id2: int, *, session: Session) -> bool:
+@with_session
+def get_all_chat_aspects(
+    chat_id: str,
+    season_id: Optional[int] = None,
+    *,
+    session: Session,
+) -> List[OwnedAspect]:
+    """Return all unequipped aspects in a chat across all users.
+
+    Used to populate the read-only "All > Aspects" view in the mini app.
+
+    Args:
+        chat_id: The chat to scope the query to.
+        season_id: Season filter (defaults to ``CURRENT_SEASON``).
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    rows = (
+        session.query(OwnedAspectModel)
+        .outerjoin(CardAspectModel, CardAspectModel.aspect_id == OwnedAspectModel.id)
+        .filter(
+            OwnedAspectModel.chat_id == str(chat_id),
+            OwnedAspectModel.season_id == season_id,
+            OwnedAspectModel.user_id.isnot(None),
+            CardAspectModel.id.is_(None),  # unequipped only
+        )
+        .options(
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_set
+            ),
+        )
+        .all()
+    )
+    return [OwnedAspect.from_orm(row) for row in rows]
     """Swap the owners of two aspects atomically."""
     aspect1 = session.query(OwnedAspectModel).filter(OwnedAspectModel.id == aspect_id1).first()
     aspect2 = session.query(OwnedAspectModel).filter(OwnedAspectModel.id == aspect_id2).first()

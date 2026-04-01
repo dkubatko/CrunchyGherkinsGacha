@@ -91,6 +91,21 @@ export class ApiService {
     return response.json();
   }
 
+  static async fetchAllChatAspects(initData: string, chatId: string): Promise<AspectData[]> {
+    const params = new URLSearchParams({ chat_id: chatId });
+    const endpoint = `${API_BASE_URL}/aspects/all?${params.toString()}`;
+
+    const response = await fetch(endpoint, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch all chat aspects');
+    }
+
+    return response.json();
+  }
+
   static async fetchAspectTradeOptions(aspectId: number, initData: string): Promise<AspectData[]> {
     const endpoint = `${API_BASE_URL}/trade/aspect/${encodeURIComponent(String(aspectId))}/options`;
 

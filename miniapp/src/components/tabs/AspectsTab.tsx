@@ -29,9 +29,10 @@ interface AspectsTabProps {
   initData: string;
   targetUserId?: number;
   ownerLabel: string | null;
+  subTabToggle?: React.ReactNode;
 }
 
-const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel }: AspectsTabProps) => {
+const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel, subTabToggle }: AspectsTabProps) => {
   const { aspects, loading, error, refetch } = useAspects(initData, chatId, targetUserId);
   const { orientation, orientationKey } = useOrientation({ enabled: true });
   const isOwnCollection = !targetUserId || targetUserId === currentUserId;
@@ -389,7 +390,7 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel 
             </>
           ) : (
             <>
-              <Title title={`${ownerLabel ? `${ownerLabel}'s` : ''} Aspects`} />
+              {subTabToggle || <Title title={`${ownerLabel ? `${ownerLabel}'s` : ''} Aspects`} />}
 
               {aspects.length > 0 && (
                 <FilterSortControls

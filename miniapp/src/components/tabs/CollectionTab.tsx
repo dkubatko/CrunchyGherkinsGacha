@@ -2,9 +2,10 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 // Components
 import { CardModal, CardGrid, FilterSortControls } from '@/components/cards';
-import { ActionPanel, Title } from '@/components/common';
+import { ActionPanel, Title, SubTabToggle } from '@/components/common';
 import Loading from '@/components/common/Loading';
 import { LockConfirmDialog } from '@/components/dialogs';
+import AspectsTab from './AspectsTab';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
@@ -47,6 +48,30 @@ const CollectionTab = ({
   initData,
   ownerLabel,
 }: CollectionTabProps) => {
+  // Sub-tab state
+  type CollectionSubTab = 'cards' | 'aspects';
+  const [activeSubTab, setActiveSubTab] = useState<CollectionSubTab>('cards');
+  const [mountedSubTabs, setMountedSubTabs] = useState<Set<CollectionSubTab>>(new Set(['cards']));
+  const collectionOwnerLabel = ownerLabel ?? 'Collection';
+  const SUB_TABS = useMemo(() => {
+    const prefix = ownerLabel ? `${ownerLabel}'s` : '';
+    return [
+      { key: 'cards', label: prefix ? `${prefix} Cards` : 'Cards' },
+      { key: 'aspects', label: prefix ? `${prefix} Aspects` : 'Aspects' },
+    ];
+  }, [ownerLabel]);
+
+  const handleSubTabChange = useCallback((key: string) => {
+    const tab = key as CollectionSubTab;
+    setActiveSubTab(tab);
+    setMountedSubTabs(prev => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+  }, []);
+
   // Core data hooks
   const {
     cards,
@@ -361,8 +386,6 @@ const CollectionTab = ({
 
   const isActionPanelVisible = actionButtons.length > 0;
 
-  const collectionOwnerLabel = ownerLabel ?? 'Collection';
-
   // Event handlers
   const swipeHandlers = useSwipeHandlers({
     cardsLength: cards.length,
@@ -371,147 +394,178 @@ const CollectionTab = ({
     onTiltReset: resetTiltReference
   });
 
-  // Loading state
-  if (loading) {
-    return <Loading message="Loading collection..." />;
+  // Loading state (only blocks the cards sub-tab)
+  if (loading && activeSubTab === 'cards') {
+    return (
+      <>
+        <div className="app-content">
+          <SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />
+        </div>
+        <Loading message="Loading collection..." />
+      </>
+    );
   }
 
-  // Error state
-  if (error) {
+  // Error state (only blocks the cards sub-tab)
+  if (error && activeSubTab === 'cards') {
     return (
-      <div className="error-container">
-        <h2>Error</h2>
-        <p>{error}</p>
-      </div>
+      <>
+        <div className="app-content">
+          <SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />
+        </div>
+        <div className="error-container">
+          <h2>Error</h2>
+          <p>{error}</p>
+        </div>
+      </>
     );
   }
 
   return (
     <>
-      <div
-        className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
-        {...(!isTradeView ? swipeHandlers : {})}
-      >
-        {/* Trade view: selecting a card to trade for */}
-        {isTradeView ? (
-          <div className="app-content">
-            <Title
-              title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
-            />
-            {allCardsLoading ? (
-              <Loading message="Loading trade options..." />
-            ) : allCardsError ? (
-              <div className="error-container">
-                <h2>Error loading trade options</h2>
-                <p>{allCardsError}</p>
-                <button onClick={() => { void refetchAllCards(); }}>Retry</button>
-              </div>
-            ) : baseDisplayedCards.length === 0 ? (
-              <div className="no-cards-container">
-                <h2>No trade options</h2>
-                <p>No other cards are available in this chat right now.</p>
-              </div>
-            ) : (
-              <>
-                <FilterSortControls
-                  cards={baseDisplayedCards}
-                  filterOptions={tradeFiltering.filterOptions}
-                  sortOptions={tradeFiltering.sortOptions}
-                  onFilterChange={tradeFiltering.onFilterChange}
-                  onSortChange={tradeFiltering.onSortChange}
-                  counter={{
-                    current: displayedCards.length,
-                    total: baseDisplayedCards.length
-                  }}
+      {/* Cards sub-tab */}
+      {mountedSubTabs.has('cards') && (
+        <div style={{ display: activeSubTab === 'cards' ? 'contents' : 'none' }}>
+          <div
+            className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
+            {...(!isTradeView ? swipeHandlers : {})}
+          >
+            {/* Trade view: selecting a card to trade for */}
+            {isTradeView ? (
+              <div className="app-content">
+                <Title
+                  title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
                 />
-                {displayedCards.length === 0 ? (
+                {allCardsLoading ? (
+                  <Loading message="Loading trade options..." />
+                ) : allCardsError ? (
+                  <div className="error-container">
+                    <h2>Error loading trade options</h2>
+                    <p>{allCardsError}</p>
+                    <button onClick={() => { void refetchAllCards(); }}>Retry</button>
+                  </div>
+                ) : baseDisplayedCards.length === 0 ? (
                   <div className="no-cards-container">
-                    <h2>No cards match your filters</h2>
-                    <p>Try adjusting your filter settings to see more cards.</p>
+                    <h2>No trade options</h2>
+                    <p>No other cards are available in this chat right now.</p>
                   </div>
                 ) : (
-                  <CardGrid
-                    cards={displayedCards}
-                    onCardClick={openModal}
-                    initData={initData}
-                  />
+                  <>
+                    <FilterSortControls
+                      cards={baseDisplayedCards}
+                      filterOptions={tradeFiltering.filterOptions}
+                      sortOptions={tradeFiltering.sortOptions}
+                      onFilterChange={tradeFiltering.onFilterChange}
+                      onSortChange={tradeFiltering.onSortChange}
+                      counter={{
+                        current: displayedCards.length,
+                        total: baseDisplayedCards.length
+                      }}
+                    />
+                    {displayedCards.length === 0 ? (
+                      <div className="no-cards-container">
+                        <h2>No cards match your filters</h2>
+                        <p>Try adjusting your filter settings to see more cards.</p>
+                      </div>
+                    ) : (
+                      <CardGrid
+                        cards={displayedCards}
+                        onCardClick={openModal}
+                        initData={initData}
+                      />
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
-        ) : (
-          /* Normal collection view */
-          <div className="app-content">
-            <Title title={`${collectionOwnerLabel}'s collection`} />
-            {cards.length > 0 ? (
-              <>
-                <FilterSortControls
-                  cards={cards}
-                  filterOptions={currentFiltering.filterOptions}
-                  sortOptions={currentFiltering.sortOptions}
-                  onFilterChange={currentFiltering.onFilterChange}
-                  onSortChange={currentFiltering.onSortChange}
-                  showOwnerFilter={false}
-                  counter={{
-                    current: filteredCurrentCards.length,
-                    total: cards.length
-                  }}
-                />
-                {filteredCurrentCards.length === 0 ? (
-                  <div className="no-cards-container">
-                    <h2>No cards match your filter</h2>
-                    <p>Try selecting a different rarity or clearing the filter.</p>
-                  </div>
-                ) : (
-                  <CardGrid
-                    cards={filteredCurrentCards}
-                    onCardClick={openModal}
-                    initData={initData}
-                  />
-                )}
-              </>
+              </div>
             ) : (
-              <p>
-                {isOwnCollection
-                  ? "You don't own any cards yet."
-                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
-              </p>
+              /* Normal collection view */
+              <div className="app-content">
+                <SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />
+                {cards.length > 0 ? (
+                  <>
+                    <FilterSortControls
+                      cards={cards}
+                      filterOptions={currentFiltering.filterOptions}
+                      sortOptions={currentFiltering.sortOptions}
+                      onFilterChange={currentFiltering.onFilterChange}
+                      onSortChange={currentFiltering.onSortChange}
+                      showOwnerFilter={false}
+                      counter={{
+                        current: filteredCurrentCards.length,
+                        total: cards.length
+                      }}
+                    />
+                    {filteredCurrentCards.length === 0 ? (
+                      <div className="no-cards-container">
+                        <h2>No cards match your filter</h2>
+                        <p>Try selecting a different rarity or clearing the filter.</p>
+                      </div>
+                    ) : (
+                      <CardGrid
+                        cards={filteredCurrentCards}
+                        onCardClick={openModal}
+                        initData={initData}
+                      />
+                    )}
+                  </>
+                ) : (
+                  <p>
+                    {isOwnCollection
+                      ? "You don't own any cards yet."
+                      : `${collectionOwnerLabel} doesn't own any cards yet.`}
+                  </p>
+                )}
+              </div>
             )}
           </div>
-        )}
-      </div>
 
-      {/* Card Modal */}
-      {modalCard && (
-        <CardModal
-          isOpen={showModal}
-          card={modalCard}
-          orientation={orientation}
-          orientationKey={orientationKey}
-          initData={initData}
-          onClose={closeModal}
-          onShare={shareEnabled ? handleShareCard : undefined}
-          onCardOpen={handleCardOpen}
-          isActionPanelVisible={isActionPanelVisible}
-        />
+          {/* Card Modal */}
+          {modalCard && (
+            <CardModal
+              isOpen={showModal}
+              card={modalCard}
+              orientation={orientation}
+              orientationKey={orientationKey}
+              initData={initData}
+              onClose={closeModal}
+              onShare={shareEnabled ? handleShareCard : undefined}
+              onCardOpen={handleCardOpen}
+              isActionPanelVisible={isActionPanelVisible}
+            />
+          )}
+
+          {/* Lock confirmation */}
+          <LockConfirmDialog
+            isOpen={showLockDialog}
+            locking={lockProcessing}
+            card={modalCard}
+            lockCost={lockCost}
+            claimState={claimState}
+            onConfirm={() => void handleLockConfirm()}
+            onCancel={handleLockCancel}
+          />
+
+          {/* Action Panel */}
+          <ActionPanel
+            buttons={actionButtons}
+            visible={isActionPanelVisible}
+          />
+        </div>
       )}
 
-      {/* Lock confirmation */}
-      <LockConfirmDialog
-        isOpen={showLockDialog}
-        locking={lockProcessing}
-        card={modalCard}
-        lockCost={lockCost}
-        claimState={claimState}
-        onConfirm={() => void handleLockConfirm()}
-        onCancel={handleLockCancel}
-      />
-
-      {/* Action Panel */}
-      <ActionPanel
-        buttons={actionButtons}
-        visible={isActionPanelVisible}
-      />
+      {/* Aspects sub-tab */}
+      {mountedSubTabs.has('aspects') && chatId && (
+        <div style={{ display: activeSubTab === 'aspects' ? 'contents' : 'none' }}>
+          <AspectsTab
+            currentUserId={currentUserId}
+            chatId={chatId}
+            initData={initData}
+            targetUserId={initialTargetUserId}
+            ownerLabel={ownerLabel}
+            subTabToggle={<SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />}
+          />
+        </div>
+      )}
     </>
   );
 };

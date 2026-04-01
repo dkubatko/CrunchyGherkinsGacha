@@ -198,7 +198,7 @@ miniapp/src/
 ├── main.tsx                  # React root
 ├── pages/
 │   ├── LandingPage.tsx       # Public landing page (no Telegram context)
-│   ├── HubPage.tsx           # Main collection hub (5 tabs: Profile, Collection, Aspects, Casino, All Cards)
+│   ├── HubPage.tsx           # Main collection hub (4 tabs: Profile, Collection, Casino, All)
 │   ├── SingleCardPage.tsx    # Fullscreen single card display
 │   ├── SingleAspectPage.tsx  # Fullscreen single aspect display
 │   └── admin/               # Admin dashboard (login, management, set detail)
@@ -209,9 +209,9 @@ miniapp/src/
 │   │   ├── slots/           # 3-reel slot machine with rarity wheel
 │   │   ├── minesweeper/     # 3×3 grid game
 │   │   └── rtb/             # Ride the Bus card guessing game
-│   ├── tabs/                # ProfileTab, CollectionTab, AspectsTab, CasinoTab, AllCardsTab
+│   ├── tabs/                # ProfileTab, CollectionTab (Cards/Aspects sub-tabs), AspectsTab, CasinoTab, AllTab (Cards/Aspects sub-tabs)
 │   ├── profile/             # ProfileView, Achievement badge
-│   ├── common/              # BottomNav, ActionPanel, AnimatedImage, badges, dialogs
+│   ├── common/              # BottomNav, ActionPanel, SubTabToggle, AnimatedImage, badges, dialogs
 │   └── dialogs/             # BurnConfirmDialog, LockConfirmDialog
 ├── hooks/                   # ~21 custom hooks (useAppRouter, useCards, useSlots, useOrientation, etc.)
 ├── services/

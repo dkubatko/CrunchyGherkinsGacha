@@ -13,3 +13,4 @@ export { useCardFiltering, DEFAULT_FILTER_OPTIONS, DEFAULT_SORT_OPTIONS } from '
 export { useAspects } from './useAspects';
 export { useAspectFiltering, DEFAULT_ASPECT_FILTER_OPTIONS, DEFAULT_ASPECT_SORT_OPTIONS } from './useAspectFiltering';
 export { useVirtualizedAspectImages } from './useVirtualizedAspectImages';export { useAllChatAspects } from './useAllChatAspects';
+export { useAllChatAspectsReadonly } from './useAllChatAspectsReadonly';
