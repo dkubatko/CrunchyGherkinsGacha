@@ -159,7 +159,7 @@ async def process_slots_victory_background(
             if is_megaspin:
                 event_manager.log(
                     EventType.MEGASPIN,
-                    MegaspinOutcome.SUCCESS,
+                    MegaspinOutcome.CARD_WIN,
                     user_id=user_id,
                     chat_id=chat_id,
                     card_id=card_id,
@@ -638,6 +638,7 @@ async def process_slot_aspect_victory_background(
     user_id: int,
     gemini_util_instance,
     set_id: Optional[int] = None,
+    is_megaspin: bool = False,
 ):
     """Process slots aspect victory in background after responding to client.
 
@@ -736,18 +737,33 @@ async def process_slot_aspect_victory_background(
 
             aspect_generated = True
 
-            # Log spin event
-            event_manager.log(
-                EventType.SPIN,
-                SpinOutcome.ASPECT_WIN,
-                user_id=user_id,
-                chat_id=chat_id,
-                aspect_id=generated_aspect.aspect_id,
-                rarity=normalized_rarity,
-                aspect_name=generated_aspect.aspect_name,
-                set_name=generated_aspect.set_name,
-                type="aspect",
-            )
+            # Log spin/megaspin aspect win event
+            if is_megaspin:
+                event_manager.log(
+                    EventType.MEGASPIN,
+                    MegaspinOutcome.ASPECT_WIN,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    aspect_id=generated_aspect.aspect_id,
+                    rarity=normalized_rarity,
+                    aspect_name=generated_aspect.aspect_name,
+                    aspect_definition_id=generated_aspect.aspect_definition_id,
+                    set_name=generated_aspect.set_name,
+                    type="aspect",
+                )
+            else:
+                event_manager.log(
+                    EventType.SPIN,
+                    SpinOutcome.ASPECT_WIN,
+                    user_id=user_id,
+                    chat_id=chat_id,
+                    aspect_id=generated_aspect.aspect_id,
+                    rarity=normalized_rarity,
+                    aspect_name=generated_aspect.aspect_name,
+                    aspect_definition_id=generated_aspect.aspect_definition_id,
+                    set_name=generated_aspect.set_name,
+                    type="aspect",
+                )
 
             # Send result image
             final_caption = SLOTS_ASPECT_VICTORY_RESULT_MESSAGE.format(

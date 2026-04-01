@@ -148,7 +148,8 @@ class SpinOutcome(str, Enum):
 class MegaspinOutcome(str, Enum):
     """Outcomes for MEGASPIN events."""
 
-    SUCCESS = "SUCCESS"
+    CARD_WIN = "CARD_WIN"
+    ASPECT_WIN = "ASPECT_WIN"
     UNAVAILABLE = "UNAVAILABLE"
     ERROR = "ERROR"
 
