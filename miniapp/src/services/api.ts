@@ -91,6 +91,36 @@ export class ApiService {
     return response.json();
   }
 
+  static async fetchAspectTradeOptions(aspectId: number, initData: string): Promise<AspectData[]> {
+    const endpoint = `${API_BASE_URL}/trade/aspect/${encodeURIComponent(String(aspectId))}/options`;
+
+    const response = await fetch(endpoint, {
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch aspect trade options');
+    }
+
+    return response.json();
+  }
+
+  static async executeAspectTrade(aspectId1: number, aspectId2: number, initData: string): Promise<{ success: boolean; message: string }> {
+    const endpoint = `${API_BASE_URL}/trade/aspect/${encodeURIComponent(String(aspectId1))}/${encodeURIComponent(String(aspectId2))}`;
+
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: this.getHeaders(initData)
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || 'Failed to execute aspect trade');
+    }
+
+    return response.json();
+  }
+
   static async fetchCardDetails(cardId: number, initData: string): Promise<CardData> {
     const response = await fetch(`${API_BASE_URL}/cards/detail/${encodeURIComponent(String(cardId))}`, {
       headers: this.getHeaders(initData)
@@ -117,6 +147,27 @@ export class ApiService {
 
     if (!response.ok) {
       let detail = `Failed to share card (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) {
+          detail = payload.detail;
+        }
+      } catch {
+        // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+  }
+
+  static async shareAspect(aspectId: number, userId: number, initData: string): Promise<void> {
+    const response = await fetch(`${API_BASE_URL}/aspects/share`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ aspect_id: aspectId, user_id: userId })
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to share aspect (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

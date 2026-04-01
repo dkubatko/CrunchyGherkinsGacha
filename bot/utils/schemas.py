@@ -66,17 +66,21 @@ class Card(BaseModel):
     aspect_count: int = 0
     equipped_aspects: List["CardAspect"] = []
 
-    def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
+    def title(self, include_id: bool = False, include_rarity: bool = False, include_emoji: bool = False) -> str:
         """Return the card's title, optionally including rarity and ID.
 
         Args:
             include_rarity: If True, includes rarity prefix. Default is False.
             include_id: If True, includes card ID in brackets as prefix. Default is False.
+            include_emoji: If True, prepends 🃏 emoji. Default is False.
 
         Returns:
             HTML-escaped title text.
         """
         parts = []
+
+        if include_emoji:
+            parts.append("🃏")
 
         if include_id:
             parts.append(f"[{self.id}]")
@@ -530,9 +534,11 @@ class AspectDefinition(BaseModel):
     source: str = "all"
     description: str = ""
 
-    def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
+    def title(self, include_id: bool = False, include_rarity: bool = False, include_emoji: bool = False) -> str:
         """Return ``[id] Rarity Name`` (HTML-escaped)."""
         parts: list[str] = []
+        if include_emoji:
+            parts.append("🔮")
         if include_id:
             parts.append(f"[{self.id}]")
         if include_rarity:
@@ -574,9 +580,11 @@ class OwnedAspect(BaseModel):
     display_name: str = ""
     aspect_definition: Optional[AspectDefinition] = None
 
-    def title(self, include_id: bool = False, include_rarity: bool = False) -> str:
+    def title(self, include_id: bool = False, include_rarity: bool = False, include_emoji: bool = False) -> str:
         """Return ``[id] Rarity Name`` (HTML-escaped)."""
         parts: list[str] = []
+        if include_emoji:
+            parts.append("🔮")
         if include_id:
             parts.append(f"[{self.id}]")
         if include_rarity:

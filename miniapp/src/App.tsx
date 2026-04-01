@@ -5,7 +5,7 @@ import './App.css';
 import { useAppRouter } from './hooks';
 
 // Pages
-import { SingleCardPage, LandingPage, HubPage } from './pages';
+import { SingleCardPage, SingleAspectPage, LandingPage, HubPage } from './pages';
 import { AdminApp } from './pages/admin';
 
 // Components
@@ -65,6 +65,14 @@ function App() {
       return (
         <SingleCardPage
           cardId={route.cardId}
+          initData={route.initData}
+        />
+      );
+
+    case 'singleAspect':
+      return (
+        <SingleAspectPage
+          aspectId={route.aspectId}
           initData={route.initData}
         />
       );

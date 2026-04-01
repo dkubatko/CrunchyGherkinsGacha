@@ -20,7 +20,7 @@ from api.config import (
     MAX_SLOT_VICTORY_IMAGE_RETRIES,
     gemini_util,
 )
-from api.helpers import build_single_card_url
+from api.helpers import build_single_aspect_url, build_single_card_url
 from settings.constants import (
     BURN_RESULT_MESSAGE,
     CARD_STATUS_PRE_CLAIM_MESSAGES,
@@ -760,10 +760,16 @@ async def process_slot_aspect_victory_background(
 
             aspect_image = base64.b64decode(generated_aspect.image_b64)
 
+            aspect_url = build_single_aspect_url(generated_aspect.aspect_id)
+            keyboard = InlineKeyboardMarkup(
+                [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
+            )
+
             photo_params = {
                 "chat_id": chat_id,
                 "photo": aspect_image,
                 "caption": final_caption,
+                "reply_markup": keyboard,
                 "parse_mode": ParseMode.HTML,
             }
             if thread_id is not None:

@@ -82,6 +82,10 @@
   font-weight: bold;
   margin: 0 0 0.2rem 0;
   line-height: 1.1;
+  text-align: center;
+  display: block;
+  white-space: nowrap;
+  overflow: visible;
 }
 
 /* Rarity — mirrors .card-rarity */
@@ -104,4 +108,67 @@
   margin: 0;
   text-transform: uppercase;
   letter-spacing: -0.02em;
+}
+
+.aspect-name-row {
+  --aspect-share-size: 1.5rem;
+  --aspect-share-gap: 0.25rem;
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: var(--aspect-share-size) auto var(--aspect-share-size);
+  align-items: center;
+  justify-content: center;
+  column-gap: var(--aspect-share-gap);
+  margin: 0 auto 0.2rem;
+  min-height: var(--aspect-share-size);
+  max-width: 95%;
+  width: max-content;
+}
+
+.aspect-name-row::before {
+  content: '';
+}
+
+.aspect-name-row .aspect-modal-name {
+  grid-column: 2;
+}
+
+.aspect-share-button-inline {
+  grid-column: 3;
+  justify-self: start;
+  width: var(--aspect-share-size);
+  height: var(--aspect-share-size);
+  min-width: var(--aspect-share-size);
+  min-height: var(--aspect-share-size);
+  border-radius: 50%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: transform 0.2s ease, color 0.2s ease, opacity 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transform: scale(1);
+}
+
+.aspect-share-button-inline:hover:not(:disabled) {
+  transform: scale(1.1);
+  color: rgba(255, 255, 255, 1);
+}
+
+.aspect-share-button-inline:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.aspect-share-button-inline:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.aspect-share-button-inline .share-icon-inline {
+  width: 1.3rem;
+  height: 1.3rem;
 }

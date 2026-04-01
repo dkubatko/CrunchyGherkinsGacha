@@ -1,0 +1,107 @@
+/* Single aspect full-screen view — mirrors single-card-container layout */
+
+.single-aspect-layout {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(1rem, 3vh, 2rem);
+  box-sizing: border-box;
+}
+
+/* Card-like shell container */
+.single-aspect-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: clamp(0.85rem, 1.25vw + 0.5rem, 1.4rem);
+  width: min(360px, 90vw);
+  background: rgba(40, 40, 42, 0.95);
+  border-radius: 25px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.single-aspect-sphere {
+  width: min(65vw, 260px);
+  height: min(65vw, 260px);
+  border-radius: 25%;
+  overflow: visible;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* AnimatedImage reuses .card-image-container — scope overrides */
+.single-aspect-sphere .card-image-container {
+  width: 100%;
+  padding: 0;
+}
+
+.single-aspect-sphere .card-shadow {
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+.single-aspect-sphere img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.single-aspect-info {
+  text-align: center;
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.single-aspect-name {
+  font-size: 1.6rem;
+  font-weight: bold;
+  margin: 0 0 0.3rem 0;
+  line-height: 1.1;
+}
+
+.single-aspect-rarity {
+  font-size: 0.95rem;
+  color: #ccc;
+  margin: 0 0 0.3rem 0;
+  text-transform: capitalize;
+}
+
+.single-aspect-set {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.9);
+  background: rgba(128, 128, 128, 0.4);
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  margin: 0 0 0.5rem 0;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+}
+
+.single-aspect-owner {
+  font-size: 0.85rem;
+  color: #aaa;
+  margin: 0.4rem 0 0 0;
+}
+
+@media (max-width: 480px) {
+  .single-aspect-layout {
+    padding: 0.75rem 0.4rem 1.1rem;
+  }
+
+  .single-aspect-card {
+    width: calc(100vw - 0.8rem);
+    padding: clamp(0.65rem, 3vw, 1rem);
+  }
+}
+

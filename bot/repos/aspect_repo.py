@@ -937,6 +937,48 @@ def delete_aspect_by_id(aspect_id: int, *, session: Session) -> bool:
     return True
 
 
+@with_session
+def get_chat_aspects_for_trade(
+    chat_id: str,
+    exclude_user_id: int,
+    season_id: Optional[int] = None,
+    *,
+    session: Session,
+) -> List[OwnedAspect]:
+    """Return all tradeable aspects in a chat, excluding those owned by a specific user.
+
+    Only returns aspects that are unequipped and unlocked, making them eligible
+    for trading. Used to populate trade options in the mini app.
+
+    Args:
+        chat_id: The chat to scope the query to.
+        exclude_user_id: User ID to exclude (the trade initiator).
+        season_id: Season filter (defaults to ``CURRENT_SEASON``).
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    rows = (
+        session.query(OwnedAspectModel)
+        .outerjoin(CardAspectModel, CardAspectModel.aspect_id == OwnedAspectModel.id)
+        .filter(
+            OwnedAspectModel.chat_id == str(chat_id),
+            OwnedAspectModel.season_id == season_id,
+            OwnedAspectModel.user_id != exclude_user_id,
+            OwnedAspectModel.user_id.isnot(None),
+            OwnedAspectModel.locked.is_(False),
+            CardAspectModel.id.is_(None),  # unequipped only
+        )
+        .options(
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_set
+            ),
+        )
+        .all()
+    )
+    return [OwnedAspect.from_orm(row) for row in rows]
+
+
 @with_session(commit=True)
 def swap_aspect_owners(aspect_id1: int, aspect_id2: int, *, session: Session) -> bool:
     """Swap the owners of two aspects atomically."""

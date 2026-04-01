@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AspectData, OrientationData } from '@/types';
 import { ApiService } from '@/services/api';
 import { getRarityGradient } from '@/utils/rarityStyles';
-import { AnimatedImage } from '@/components/common';
+import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import BeatLoader from 'react-spinners/BeatLoader';
 import './AspectModal.css';
 
@@ -18,6 +18,8 @@ interface AspectModalProps {
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
   isBurning?: boolean;
+  onShare?: (aspectId: number) => Promise<void> | void;
+  showShareButton?: boolean;
 }
 
 const AspectModal: React.FC<AspectModalProps> = ({
@@ -31,11 +33,16 @@ const AspectModal: React.FC<AspectModalProps> = ({
   triggerBurn,
   onBurnComplete,
   isBurning = false,
+  onShare,
+  showShareButton,
 }) => {
   const [fullImage, setFullImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [effectsEnabled, setEffectsEnabled] = useState(true);
   const [lockExpanded, setLockExpanded] = useState(false);
+  const [sharing, setSharing] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const showInlineShareButton = Boolean(showShareButton && onShare);
 
   useEffect(() => {
     if (!isOpen || !initData) return;
@@ -59,6 +66,29 @@ const AspectModal: React.FC<AspectModalProps> = ({
     return () => { cancelled = true; };
   }, [isOpen, aspect.id, initData]);
 
+  const handleShareClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    if (!onShare || sharing) return;
+    setShowShareDialog(true);
+  };
+
+  const confirmShare = async () => {
+    if (!onShare) return;
+    try {
+      setSharing(true);
+      setShowShareDialog(false);
+      await onShare(aspect.id);
+    } catch (error) {
+      console.error('Failed to share aspect:', error);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const cancelShare = () => {
+    setShowShareDialog(false);
+  };
+
   if (!isOpen) return null;
 
   const setName = aspect.aspect_definition?.set_name ?? 'Unknown';
@@ -68,6 +98,15 @@ const AspectModal: React.FC<AspectModalProps> = ({
   return createPortal(
     <div className={`modal-overlay ${isActionPanelVisible ? 'with-action-panel' : ''}`} onClick={isBurning ? undefined : onClose}>
       <div className="modal-content aspect-modal-content" onClick={(e) => e.stopPropagation()}>
+        <ConfirmDialog
+          isOpen={showShareDialog}
+          onRequestClose={cancelShare}
+          onConfirm={confirmShare}
+          onCancel={cancelShare}
+        >
+          <p>Share to the group?</p>
+        </ConfirmDialog>
+
         {!isBurning && (
           <button
             type="button"
@@ -133,17 +172,40 @@ const AspectModal: React.FC<AspectModalProps> = ({
           </div>
 
           <div className="aspect-modal-info">
-            <h3
-              className="aspect-modal-name"
-              style={{
-                background: gradient,
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}
-            >
-              {aspect.display_name}
-            </h3>
+            <div className="aspect-name-row">
+              <h3
+                className="aspect-modal-name"
+                style={{
+                  background: gradient,
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                {aspect.display_name}
+              </h3>
+              {showInlineShareButton && (
+                <button
+                  className="aspect-share-button-inline"
+                  onClick={handleShareClick}
+                  disabled={sharing}
+                  aria-label="Share aspect"
+                >
+                  {sharing ? (
+                    <BeatLoader color="rgba(255, 255, 255, 0.8)" size={4} speedMultiplier={0.8} />
+                  ) : (
+                    <svg 
+                      className="share-icon-inline"
+                      xmlns="http://www.w3.org/2000/svg"  
+                      viewBox="0 0 50 50"
+                      fill="currentColor"
+                    >
+                      <path d="M46.137,6.552c-0.75-0.636-1.928-0.727-3.146-0.238l-0.002,0C41.708,6.828,6.728,21.832,5.304,22.445c-0.259,0.09-2.521,0.934-2.288,2.814c0.208,1.695,2.026,2.397,2.248,2.478l8.893,3.045c0.59,1.964,2.765,9.21,3.246,10.758c0.3,0.965,0.789,2.233,1.646,2.494c0.752,0.29,1.5,0.025,1.984-0.355l5.437-5.043l8.777,6.845l0.209,0.125c0.596,0.264,1.167,0.396,1.712,0.396c0.421,0,0.825-0.079,1.211-0.237c1.315-0.54,1.841-1.793,1.896-1.935l6.556-34.077C47.231,7.933,46.675,7.007,46.137,6.552z M22,32l-3,8l-3-10l23-17L22,32z"/>
+                    </svg>
+                  )}
+                </button>
+              )}
+            </div>
             <p className="aspect-modal-rarity">{aspect.rarity}</p>
             <p className="aspect-modal-set">{setName}</p>
           </div>

@@ -200,10 +200,11 @@ miniapp/src/
 │   ├── LandingPage.tsx       # Public landing page (no Telegram context)
 │   ├── HubPage.tsx           # Main collection hub (5 tabs: Profile, Collection, Aspects, Casino, All Cards)
 │   ├── SingleCardPage.tsx    # Fullscreen single card display
+│   ├── SingleAspectPage.tsx  # Fullscreen single aspect display
 │   └── admin/               # Admin dashboard (login, management, set detail)
 ├── components/
 │   ├── cards/               # Card, CardGrid (virtualized), CardModal, FilterSortControls, MiniCard
-│   ├── aspects/             # AspectGrid (virtualized), AspectModal, MiniAspect
+│   ├── aspects/             # AspectGrid (virtualized), AspectModal, MiniAspect, SingleAspectView
 │   ├── casino/              # Casino catalog + game UIs
 │   │   ├── slots/           # 3-reel slot machine with rarity wheel
 │   │   ├── minesweeper/     # 3×3 grid game
@@ -306,6 +307,7 @@ Bot commands use decorators for auth/validation:
 ### Mini App Routing
 The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 - `c-<cardId>` → Single card view
+- `a-<aspectId>` → Single aspect view
 - `u-<userId>` → User collection
 - `uc-<userId>-<chatId>` → Chat-scoped collection
 - `casino-<chatId>` → Casino catalog
@@ -446,7 +448,7 @@ docker compose down
 - **Use existing decorators** — don't reinvent auth/validation in handlers
 - **Extend the ApiService class** — don't scatter fetch calls in frontend components; all backend calls go through `miniapp/src/services/api.ts`
 - **Use typed events** — use the EventType and outcome enums when logging actions via `event_manager.log()`
-- **Token encoding** — mini app launch params must use the established payload format (`c-`, `u-`, `uc-`, `casino-`)
+- **Token encoding** — mini app launch params must use the established payload format (`c-`, `a-`, `u-`, `uc-`, `casino-`)
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
 - **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel, SetIconModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
 - **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot/set-icon generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image). Set slot icons use text-to-image generation (no input portrait)

@@ -75,6 +75,13 @@ class ShareCardRequest(BaseModel):
     user_id: int
 
 
+class ShareAspectRequest(BaseModel):
+    """Request to share an aspect to chat."""
+
+    aspect_id: int
+    user_id: int
+
+
 class CardLockRequest(BaseModel):
     """Request to lock or unlock a card."""
 

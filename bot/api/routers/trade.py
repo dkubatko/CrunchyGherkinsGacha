@@ -13,10 +13,10 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from api.config import create_bot_instance, MINIAPP_URL, TELEGRAM_TOKEN
 from api.dependencies import get_validated_user
-from api.helpers import build_single_card_url
-from settings.constants import TRADE_REQUEST_MESSAGE
-from utils.schemas import Card as APICard
-from repos import card_repo
+from api.helpers import build_single_card_url, build_single_aspect_url
+from settings.constants import TRADE_REQUEST_MESSAGE, ASPECT_TRADE_REQUEST_MESSAGE
+from utils.schemas import Card as APICard, OwnedAspect as APIAspect
+from repos import card_repo, aspect_repo
 from repos import thread_repo
 from managers import event_manager
 from utils.events import EventType, TradeOutcome
@@ -122,9 +122,9 @@ async def execute_trade(
         # Send trade request message with accept/reject buttons
         trade_message = TRADE_REQUEST_MESSAGE.format(
             user1_username=current_username,
-            card1_title=card1.title(include_rarity=True),
+            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
             user2_username=card2.owner,
-            card2_title=card2.title(include_rarity=True),
+            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
         )
 
         # Create inline keyboard with accept/reject buttons, card view links, and cancel button
@@ -197,4 +197,144 @@ async def execute_trade(
         raise  # Re-raise HTTP exceptions
     except Exception as e:
         logger.error(f"Unexpected error in trade endpoint: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error")
+
+
+@router.get("/aspect/{aspect_id}/options", response_model=List[APIAspect])
+async def get_aspect_trade_options(
+    aspect_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Get tradeable aspects for a given aspect, scoped to the same chat."""
+    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
+    if not aspect:
+        raise HTTPException(status_code=404, detail="Aspect not found")
+
+    if not aspect.chat_id:
+        raise HTTPException(status_code=400, detail="Aspect is not associated with a chat")
+
+    user_data = validated_user["user"]
+    user_id = user_data.get("id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
+
+    tradeable = await asyncio.to_thread(
+        aspect_repo.get_chat_aspects_for_trade, aspect.chat_id, user_id
+    )
+    return tradeable
+
+
+@router.post("/aspect/{aspect_id1}/{aspect_id2}")
+async def execute_aspect_trade(
+    aspect_id1: int,
+    aspect_id2: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Initiate an aspect trade by sending a trade request message to the Telegram chat."""
+    user_data = validated_user["user"]
+    user_id = user_data.get("id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user data in init data")
+
+    if not TELEGRAM_TOKEN:
+        raise HTTPException(status_code=503, detail="Bot service unavailable")
+
+    try:
+        aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
+        aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
+
+        if not aspect1 or not aspect2:
+            raise HTTPException(status_code=404, detail="One or both aspect IDs are invalid")
+
+        if not aspect1.chat_id or not aspect2.chat_id:
+            raise HTTPException(status_code=500, detail="Aspect chat not configured")
+
+        if aspect1.chat_id != aspect2.chat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Both aspects must belong to the same chat to trade",
+            )
+
+        chat_id = aspect1.chat_id
+        current_username = user_data.get("username")
+        if not current_username:
+            raise HTTPException(status_code=400, detail="Username not found in init data")
+
+        if aspect1.user_id != user_id:
+            raise HTTPException(status_code=403, detail=f"You do not own aspect #{aspect_id1}")
+
+        if aspect2.user_id == user_id:
+            raise HTTPException(status_code=400, detail=f"You already own aspect #{aspect_id2}")
+
+        trade_message = ASPECT_TRADE_REQUEST_MESSAGE.format(
+            user1_username=current_username,
+            aspect1_title=aspect1.title(include_id=True, include_rarity=True, include_emoji=True),
+            user2_username=aspect2.owner,
+            aspect2_title=aspect2.title(include_id=True, include_rarity=True, include_emoji=True),
+        )
+
+        keyboard = [
+            [
+                InlineKeyboardButton(
+                    "Accept", callback_data=f"aspect_trade_accept_{aspect_id1}_{aspect_id2}"
+                ),
+                InlineKeyboardButton(
+                    "Reject", callback_data=f"aspect_trade_reject_{aspect_id1}_{aspect_id2}"
+                ),
+            ]
+        ]
+
+        if MINIAPP_URL:
+            aspect1_url = build_single_aspect_url(aspect_id1)
+            aspect2_url = build_single_aspect_url(aspect_id2)
+            keyboard.append(
+                [
+                    InlineKeyboardButton("Aspect 1", url=aspect1_url),
+                    InlineKeyboardButton("Aspect 2", url=aspect2_url),
+                ]
+            )
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        try:
+            bot = create_bot_instance()
+
+            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(chat_id), "trade")
+            if thread_id is None:
+                thread_id = await asyncio.to_thread(
+                    thread_repo.get_thread_id, str(chat_id), "main"
+                )
+
+            send_params: Dict[str, Any] = {
+                "chat_id": chat_id,
+                "text": trade_message,
+                "parse_mode": "HTML",
+                "reply_markup": reply_markup,
+            }
+            if thread_id is not None:
+                send_params["message_thread_id"] = thread_id
+
+            await bot.send_message(**send_params)
+
+            event_manager.log(
+                EventType.TRADE,
+                TradeOutcome.CREATED,
+                user_id=user_id,
+                chat_id=str(chat_id),
+                aspect_id=aspect_id1,
+                target_aspect_id=aspect_id2,
+                target_user=aspect2.owner,
+                source="miniapp",
+                type="aspect",
+            )
+        except Exception as e:
+            logger.error(f"Failed to send aspect trade request to chat {chat_id}: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send trade request")
+
+        return {"success": True, "message": "Aspect trade request sent successfully"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in aspect trade endpoint: {e}")
         raise HTTPException(status_code=500, detail="Internal server error")

@@ -30,7 +30,7 @@ from managers import event_manager
 from managers import trade_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat
-from utils.miniapp import encode_single_card_token
+from utils.miniapp import encode_single_card_token, encode_single_aspect_token
 from utils.events import EventType, TradeOutcome
 
 logger = logging.getLogger(__name__)
@@ -154,9 +154,9 @@ async def _initiate_card_trade(
     await update.message.reply_text(
         TRADE_REQUEST_MESSAGE.format(
             user1_username=user.username,
-            card1_title=card1.title(include_rarity=True),
+            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
             user2_username=user2_username,
-            card2_title=card2.title(include_rarity=True),
+            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
         ),
         reply_markup=reply_markup,
         parse_mode=ParseMode.HTML,
@@ -218,8 +218,17 @@ async def _initiate_aspect_trade(
 
     user2_username = aspect2.owner
 
-    aspect1_title = f"{aspect1.rarity} {aspect1.display_name}"
-    aspect2_title = f"{aspect2.rarity} {aspect2.display_name}"
+    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
+    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
+
+    # Build mini-app aspect view URLs
+    aspect1_url = None
+    aspect2_url = None
+    if MINIAPP_URL_ENV:
+        aspect1_token = encode_single_aspect_token(aspect_id1)
+        aspect2_token = encode_single_aspect_token(aspect_id2)
+        aspect1_url = f"{MINIAPP_URL_ENV}?startapp={aspect1_token}"
+        aspect2_url = f"{MINIAPP_URL_ENV}?startapp={aspect2_token}"
 
     keyboard = [
         [
@@ -231,6 +240,15 @@ async def _initiate_aspect_trade(
             ),
         ]
     ]
+
+    # Add aspect view links if miniapp_url is available
+    if aspect1_url and aspect2_url:
+        keyboard.append(
+            [
+                InlineKeyboardButton("Aspect 1", url=aspect1_url),
+                InlineKeyboardButton("Aspect 2", url=aspect2_url),
+            ]
+        )
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
@@ -303,9 +321,9 @@ async def reject_card_trade(
     if is_initiator:
         message_text = TRADE_CANCELLED_MESSAGE.format(
             user1_username=user1_username,
-            card1_title=card1.title(include_rarity=True),
+            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
             user2_username=user2_username,
-            card2_title=card2.title(include_rarity=True),
+            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
         )
         event_manager.log(
             EventType.TRADE,
@@ -320,9 +338,9 @@ async def reject_card_trade(
     else:
         message_text = TRADE_REJECTED_MESSAGE.format(
             user1_username=user1_username,
-            card1_title=card1.title(include_rarity=True),
+            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
             user2_username=user2_username,
-            card2_title=card2.title(include_rarity=True),
+            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
         )
         event_manager.log(
             EventType.TRADE,
@@ -389,9 +407,9 @@ async def accept_card_trade(
     if success:
         message_text = TRADE_COMPLETE_MESSAGE.format(
             user1_username=user1_username,
-            card1_title=card1.title(include_rarity=True),
+            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
             user2_username=user2_username,
-            card2_title=card2.title(include_rarity=True),
+            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
         )
         event_manager.log(
             EventType.TRADE,
@@ -468,8 +486,8 @@ async def reject_aspect_trade(
     user1_username = aspect1.owner
     user2_username = aspect2.owner
 
-    aspect1_title = f"{aspect1.rarity} {aspect1.display_name}"
-    aspect2_title = f"{aspect2.rarity} {aspect2.display_name}"
+    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
+    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
 
     is_initiator = user.username == user1_username
 
@@ -514,6 +532,12 @@ async def reject_aspect_trade(
             type="aspect",
         )
 
+    # Extract Aspect 1 and Aspect 2 buttons from original message (skip Accept/Reject row)
+    reply_markup = None
+    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
+        keyboard = [query.message.reply_markup.inline_keyboard[1]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
     await query.answer()
     await query.message.delete()
     await context.bot.send_message(
@@ -521,6 +545,7 @@ async def reject_aspect_trade(
         message_thread_id=query.message.message_thread_id,
         text=message_text,
         parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
     )
 
 
@@ -552,8 +577,8 @@ async def accept_aspect_trade(
     user1_username = aspect1.owner
     user2_username = aspect2.owner
 
-    aspect1_title = f"{aspect1.rarity} {aspect1.display_name}"
-    aspect2_title = f"{aspect2.rarity} {aspect2.display_name}"
+    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
+    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
 
     if not DEBUG_MODE and user.username != user2_username:
         await query.answer("You are not the owner of the aspect being traded for.", show_alert=True)
@@ -594,6 +619,12 @@ async def accept_aspect_trade(
             type="aspect",
         )
 
+    # Extract Aspect 1 and Aspect 2 buttons from original message (skip Accept/Reject row)
+    reply_markup = None
+    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
+        keyboard = [query.message.reply_markup.inline_keyboard[1]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
     await query.answer()
     await query.message.delete()
     await context.bot.send_message(
@@ -601,4 +632,5 @@ async def accept_aspect_trade(
         message_thread_id=query.message.message_thread_id,
         text=message_text,
         parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup,
     )
