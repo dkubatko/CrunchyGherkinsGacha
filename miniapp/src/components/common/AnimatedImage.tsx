@@ -5,8 +5,8 @@ import type { OrientationData } from '@/types';
 const TILT_LIMIT = 15;
 const RAD_TO_DEG = 180 / Math.PI;
 const TILT_SENSITIVITY = 0.75;
-const SMOOTHING = 0.15;
-const SMOOTHING_DESKTOP = 1;
+const SMOOTHING = 0.10;
+const SMOOTHING_DESKTOP = 0.25;
 const IDLE_THRESHOLD = 0.05;
 const BURN_DURATION = 5000;
 
@@ -174,7 +174,7 @@ const AnimatedImage: React.FC<AnimatedImageProps> = ({
       tick.current++;
 
       // --- Tilt transform ---
-      el.style.transform = `perspective(1000px) rotateX(${cur.x}deg) rotateY(${-cur.y}deg)`;
+      el.style.transform = `perspective(1000px) rotateX(${-cur.x}deg) rotateY(${cur.y}deg)`;
 
       // --- Shadow ---
       const sh = shadowRef.current;
