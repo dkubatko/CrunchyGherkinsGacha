@@ -7,7 +7,7 @@ import BottomNav from '@/components/common/BottomNav';
 import ProfileTab from '@/components/tabs/ProfileTab';
 import CollectionTab from '@/components/tabs/CollectionTab';
 import CasinoTab from '@/components/tabs/CasinoTab';
-import AllTab from '@/components/tabs/AllCardsTab';
+import AllTab from '@/components/tabs/AllTab';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
@@ -153,6 +153,7 @@ export const HubPage = ({
             <AllTab
               chatId={chatId}
               initData={initData}
+              currentUserId={currentUserId}
             />
           </div>
         )}

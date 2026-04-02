@@ -10,31 +10,29 @@ import './AspectModal.css';
 interface AspectModalProps {
   isOpen: boolean;
   aspect: AspectData;
-  initData: string | null;
-  onClose: () => void;
-  isActionPanelVisible?: boolean;
   orientation: OrientationData;
   orientationKey: number;
+  initData: string | null;
+  onClose: () => void;
+  onShare?: (aspectId: number) => Promise<void> | void;
   triggerBurn?: boolean;
   onBurnComplete?: () => void;
   isBurning?: boolean;
-  onShare?: (aspectId: number) => Promise<void> | void;
-  showShareButton?: boolean;
+  isActionPanelVisible?: boolean;
 }
 
 const AspectModal: React.FC<AspectModalProps> = ({
   isOpen,
   aspect,
-  initData,
-  onClose,
-  isActionPanelVisible = false,
   orientation,
   orientationKey,
+  initData,
+  onClose,
+  onShare,
   triggerBurn,
   onBurnComplete,
   isBurning = false,
-  onShare,
-  showShareButton,
+  isActionPanelVisible = false,
 }) => {
   const [fullImage, setFullImage] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -42,7 +40,7 @@ const AspectModal: React.FC<AspectModalProps> = ({
   const [lockExpanded, setLockExpanded] = useState(false);
   const [sharing, setSharing] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const showInlineShareButton = Boolean(showShareButton && onShare);
+  const showInlineShareButton = Boolean(onShare);
 
   useEffect(() => {
     if (!isOpen || !initData) return;

@@ -32,6 +32,7 @@ interface FilterSortControlsProps {
   onSortChange: (sort: SortOptions) => void;
   showOwnerFilter?: boolean;
   showCharacterFilter?: boolean;
+  showAspectStatusFilter?: boolean;
   filterValues?: FilterValues;
   counter?: {
     current: number | string;
@@ -47,6 +48,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
   onSortChange,
   showOwnerFilter = true,
   showCharacterFilter = true,
+  showAspectStatusFilter = true,
   filterValues: externalFilterValues,
   counter,
 }) => {
@@ -145,7 +147,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
     }
   };
 
-  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || (showCharacterFilter && filterOptions.characterName) || filterOptions.setName || filterOptions.aspectStatus;
+  const hasActiveFilters = (showOwnerFilter && filterOptions.owner) || filterOptions.rarity || filterOptions.locked || (showCharacterFilter && filterOptions.characterName) || filterOptions.setName || (showAspectStatusFilter && filterOptions.aspectStatus);
   const isActiveSortField = (field: string) => sortOptions.field === field;
 
   const handleFilterToggle = () => {
@@ -287,6 +289,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                     </div>
                   )}
 
+                  {showAspectStatusFilter && (
                   <div className="dropdown-item" ref={el => { categoryItemRefs.current['aspectStatus'] = el; }}>
                     <button 
                       className={`dropdown-main-option ${expandedFilter === 'aspectStatus' ? 'selected' : ''} ${filterOptions.aspectStatus ? 'has-filter' : ''}`}
@@ -298,6 +301,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                       </svg>
                     </button>
                   </div>
+                  )}
 
                   {hasActiveFilters && (
                     <div className="dropdown-item">
@@ -426,7 +430,7 @@ const FilterSortControls: React.FC<FilterSortControlsProps> = memo(({
                 </div>
               )}
 
-              {expandedFilter === 'aspectStatus' && (
+              {showAspectStatusFilter && expandedFilter === 'aspectStatus' && (
                 <div className="dropdown-submenu" style={{ '--submenu-offset': `${getSubmenuOffset()}px` } as React.CSSProperties}>
                   <div className="dropdown-submenu-content" ref={submenuContentRef}>
                     <button 

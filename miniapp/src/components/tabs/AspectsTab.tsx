@@ -400,6 +400,7 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
                   onSortChange={onSortChange}
                   showOwnerFilter={false}
                   showCharacterFilter={false}
+                  showAspectStatusFilter={false}
                   filterValues={filterValues}
                   counter={{
                     current: displayedAspects.length,
@@ -443,8 +444,7 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
           triggerBurn={triggerBurn}
           onBurnComplete={handleBurnComplete}
           isBurning={isBurning}
-          onShare={shareEnabled ? handleShareAspect : undefined}
-          showShareButton={isOwnCollection}
+          onShare={shareEnabled && isOwnCollection ? handleShareAspect : undefined}
         />
       )}
 

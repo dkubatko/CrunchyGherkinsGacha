@@ -24,6 +24,9 @@ const applyFilteringAndSorting = (
 ): AspectData[] => {
   let filtered = aspects;
 
+  if (filterOptions.owner) {
+    filtered = filtered.filter(a => a.owner === filterOptions.owner);
+  }
   if (filterOptions.rarity) {
     filtered = filtered.filter(a => a.rarity === filterOptions.rarity);
   }
@@ -95,7 +98,9 @@ export const useAspectFiltering = (aspects: AspectData[]) => {
       if (a.aspect_definition?.set_name) sets.add(a.aspect_definition.set_name);
     });
     return {
-      owners: [],
+      owners: Array.from(new Set(
+        aspects.map(a => a.owner).filter((o): o is string => Boolean(o))
+      )).sort(),
       characters: [],
       rarities: Array.from(rarities).sort((a, b) => {
         const aPos = rarityArray.indexOf(a);
