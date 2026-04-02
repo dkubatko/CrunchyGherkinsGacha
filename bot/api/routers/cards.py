@@ -138,7 +138,7 @@ async def share_card(
         logger.warning("Unable to resolve username for user_id %s during share", auth_user_id)
         raise HTTPException(status_code=400, detail="Username not found for user")
 
-    card_title = card.title(include_id=True, include_rarity=True)
+    card_title = card.title(include_id=True, include_rarity=True, include_emoji=True)
     if not MINIAPP_URL:
         logger.error("MINIAPP_URL not configured; cannot generate share link")
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
@@ -157,8 +157,7 @@ async def share_card(
         bot = create_bot_instance()
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=share_url)]])
 
-        set_name = card.set_name or "Unknown"
-        message = f"@{username} shared card:\n\n<b>{card_title}</b>\nSet: <b>{set_name.title()}</b>"
+        message = f"@{username} shared card:\n\n<b>{card_title}</b>"
 
         # Add ownership info if the sharer is not the owner
         if card.owner and card.owner != username:

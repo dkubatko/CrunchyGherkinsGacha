@@ -10,8 +10,20 @@ import Loading from '@/components/common/Loading';
 import { useAllCards, useOrientation, useModal, useCardFiltering, useAllChatAspectsReadonly } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 
+// Services
+import { ApiService } from '@/services/api';
+
+// Utils
+import { TelegramUtils } from '@/utils/telegram';
+
 // Types
 import type { AspectData } from '@/types';
+
+interface AllTabProps {
+  chatId: string;
+  initData: string;
+  currentUserId: number;
+}
 
 interface AllTabProps {
   chatId: string;
@@ -25,7 +37,7 @@ const SUB_TABS = [
   { key: 'aspects', label: 'All Aspects' },
 ];
 
-const AllTab = ({ chatId, initData }: AllTabProps) => {
+const AllTab = ({ chatId, initData, currentUserId }: AllTabProps) => {
   // Sub-tab state
   const [activeSubTab, setActiveSubTab] = useState<AllSubTab>('cards');
   const [mountedSubTabs, setMountedSubTabs] = useState<Set<AllSubTab>>(new Set(['cards']));
@@ -91,6 +103,26 @@ const AllTab = ({ chatId, initData }: AllTabProps) => {
     setSelectedAspect(null);
   }, []);
 
+  const handleShareAspect = useCallback(async (aspectId: number) => {
+    try {
+      await ApiService.shareAspect(aspectId, currentUserId, initData);
+      TelegramUtils.showAlert('Shared to chat!');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to share aspect.';
+      TelegramUtils.showAlert(message);
+    }
+  }, [currentUserId, initData]);
+
+  const handleShareCard = useCallback(async (cardId: number) => {
+    try {
+      await ApiService.shareCard(cardId, currentUserId, initData);
+      TelegramUtils.showAlert('Shared to chat!');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to share card.';
+      TelegramUtils.showAlert(message);
+    }
+  }, [currentUserId, initData]);
+
   return (
     <>
       {/* Cards sub-tab */}
@@ -150,6 +182,7 @@ const AllTab = ({ chatId, initData }: AllTabProps) => {
               initData={initData}
               onClose={closeCardModal}
               isActionPanelVisible={false}
+              onShare={handleShareCard}
             />
           )}
         </div>
@@ -180,8 +213,8 @@ const AllTab = ({ chatId, initData }: AllTabProps) => {
                   sortOptions={aspectSortOptions}
                   onFilterChange={onAspectFilterChange}
                   onSortChange={onAspectSortChange}
-                  showOwnerFilter={false}
                   showCharacterFilter={false}
+                  showAspectStatusFilter={false}
                   filterValues={aspectFilterValues}
                   counter={{
                     current: displayedAspects.length,
@@ -209,11 +242,12 @@ const AllTab = ({ chatId, initData }: AllTabProps) => {
             <AspectModal
               isOpen={showAspectModal}
               aspect={selectedAspect}
-              initData={initData}
-              onClose={closeAspectModal}
-              isActionPanelVisible={false}
               orientation={orientation}
               orientationKey={orientationKey}
+              initData={initData}
+              onClose={closeAspectModal}
+              onShare={handleShareAspect}
+              isActionPanelVisible={false}
             />
           )}
         </div>
