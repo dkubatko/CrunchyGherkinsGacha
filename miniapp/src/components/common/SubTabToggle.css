@@ -1,7 +1,7 @@
 .subtab-toggle {
   display: flex;
   width: calc(100% + 0.5rem);
-  margin: 0 -0.25rem 12px;
+  margin: 0 -0.25rem 15px;
 }
 
 .subtab-toggle-item {
