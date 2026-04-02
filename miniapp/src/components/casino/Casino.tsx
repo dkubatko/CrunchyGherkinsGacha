@@ -48,6 +48,8 @@ interface CasinoProps {
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
   claimPoints: number | null;
   updateClaimPoints: (count: number) => void;
+  rtbAvailable: boolean;
+  rtbUnavailableReason: string | null;
 }
 
 type GameView = 'catalog' | 'slots' | 'ridethebus';
@@ -91,13 +93,12 @@ export default function Casino({
   updateSpins,
   updateMegaspin,
   claimPoints,
-  updateClaimPoints
+  updateClaimPoints,
+  rtbAvailable,
+  rtbUnavailableReason
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
   const [showInfo, setShowInfo] = useState<'slots' | 'ridethebus' | null>(null);
-  const [rtbAvailable, setRtbAvailable] = useState<boolean>(true);
-  const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
-  const rtbCheckRef = useRef(false);
 
   // Daily bonus state
   const [showDailyBonus, setShowDailyBonus] = useState(false);
@@ -138,21 +139,6 @@ export default function Casino({
       setShowDailyBonus(false);
     }
   };
-
-  // Check RTB availability on mount
-  useEffect(() => {
-    if (rtbCheckRef.current) return;
-    rtbCheckRef.current = true;
-
-    ApiService.getRTBConfig(initData, chatId)
-      .then((config) => {
-        setRtbAvailable(config.available);
-        setRtbUnavailableReason(config.unavailable_reason);
-      })
-      .catch((err) => {
-        console.error('Failed to check RTB availability:', err);
-      });
-  }, [initData, chatId]);
 
   // Setup back button when viewing a game
   useEffect(() => {
@@ -237,11 +223,11 @@ export default function Casino({
           </div>
           
           <div 
-            className={`casino-game-card ${!rtbAvailable ? 'locked' : ''}`}
-            onClick={() => rtbAvailable && handleGameSelect('ridethebus')}
+            className={`casino-game-card ${rtbAvailable === false ? 'locked' : ''}`}
+            onClick={() => rtbAvailable === true && handleGameSelect('ridethebus')}
           >
             <img src={rtbCover} alt="Ride the Bus" className="casino-game-image" />
-            {!rtbAvailable && (
+            {rtbAvailable === false && (
               <div className="casino-game-locked-overlay">
                 <span className="casino-game-locked-icon">🔒</span>
                 <span className="casino-game-locked-text">

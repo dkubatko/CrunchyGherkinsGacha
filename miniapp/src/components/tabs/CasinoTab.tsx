@@ -12,15 +12,22 @@ interface CasinoTabProps {
 
 const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
   const [claimPoints, setClaimPoints] = useState<number | null>(null);
+  const [rtbAvailable, setRtbAvailable] = useState<boolean | null>(null);
+  const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
   const fetchedRef = useRef(false);
 
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
-    ApiService.fetchUserProfile(currentUserId, chatId, initData)
-      .then((result) => setClaimPoints(result.claim_balance))
-      .catch(() => {/* badge will just show no balance */});
+    Promise.all([
+      ApiService.fetchUserProfile(currentUserId, chatId, initData),
+      ApiService.getRTBConfig(initData, chatId),
+    ]).then(([profile, rtbConfig]) => {
+      setClaimPoints(profile.claim_balance);
+      setRtbAvailable(rtbConfig.available);
+      setRtbUnavailableReason(rtbConfig.unavailable_reason);
+    }).catch(() => {/* badge will just show no balance */});
   }, [currentUserId, chatId, initData]);
 
   const updateClaimPoints = useCallback((count: number) => {
@@ -38,7 +45,7 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
     updateMegaspin
   } = useSlots(chatId, currentUserId, initData);
 
-  if (loading || symbols.length === 0 || claimPoints === null) {
+  if (loading || symbols.length === 0 || claimPoints === null || rtbAvailable === null) {
     return <Loading message="Loading casino..." />;
   }
 
@@ -64,6 +71,8 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
       updateMegaspin={updateMegaspin}
       claimPoints={claimPoints}
       updateClaimPoints={updateClaimPoints}
+      rtbAvailable={rtbAvailable}
+      rtbUnavailableReason={rtbUnavailableReason}
     />
   );
 };
