@@ -7,17 +7,21 @@ interface UseAspectsResult {
   loading: boolean;
   error: string | null;
   refetch: () => Promise<void>;
+  updateAspect: (aspectId: number, updates: Partial<AspectData>) => void;
+  removeAspect: (aspectId: number) => void;
 }
 
 export const useAspects = (
   initData: string,
   chatId: string | null,
   userId?: number,
+  options?: { initialAspects?: AspectData[] },
 ): UseAspectsResult => {
-  const [aspects, setAspects] = useState<AspectData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasInitial = Boolean(options?.initialAspects);
+  const [aspects, setAspects] = useState<AspectData[]>(options?.initialAspects ?? []);
+  const [loading, setLoading] = useState(!hasInitial);
   const [error, setError] = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+  const fetchedRef = useRef(hasInitial);
 
   const fetchAspects = useCallback(async (silent = false) => {
     try {
@@ -45,5 +49,14 @@ export const useAspects = (
     await fetchAspects(true);
   }, [fetchAspects]);
 
-  return { aspects, loading, error, refetch };
+  // Client-side update functions (no API calls)
+  const updateAspect = useCallback((aspectId: number, updates: Partial<AspectData>) => {
+    setAspects(prev => prev.map(a => a.id === aspectId ? { ...a, ...updates } : a));
+  }, []);
+
+  const removeAspect = useCallback((aspectId: number) => {
+    setAspects(prev => prev.filter(a => a.id !== aspectId));
+  }, []);
+
+  return { aspects, loading, error, refetch, updateAspect, removeAspect };
 };

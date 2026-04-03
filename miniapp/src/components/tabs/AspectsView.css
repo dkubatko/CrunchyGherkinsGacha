@@ -1,0 +1,10 @@
+/* Aspect-specific overrides: square image, auto-height container */
+.grid-card.aspect-sphere {
+  aspect-ratio: auto;
+}
+
+.grid-card.aspect-sphere img,
+.grid-card.aspect-sphere .card-image-loader {
+  aspect-ratio: 1 / 1;
+  flex: none;
+}

@@ -6,6 +6,8 @@ interface UseCollectionCardsOptions {
   initialIsOwnCollection: boolean;
   initialEnableTrade: boolean;
   currentUserId: number;
+  /** Pre-fetched cards from the splash screen — skips the initial API call */
+  initialCards?: CardData[];
 }
 
 interface UseCollectionCardsResult {
@@ -29,13 +31,14 @@ export const useCollectionCards = (
   initData: string,
   options: UseCollectionCardsOptions
 ): UseCollectionCardsResult => {
-  const [cards, setCards] = useState<CardData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const hasInitialCards = Boolean(options.initialCards);
+  const [cards, setCards] = useState<CardData[]>(options.initialCards ?? []);
+  const [loading, setLoading] = useState(!hasInitialCards);
   const [error, setError] = useState<string | null>(null);
   const [targetUserId, setTargetUserId] = useState(initialTargetUserId);
   const [isOwnCollection, setIsOwnCollection] = useState(options.initialIsOwnCollection);
   const [enableTrade, setEnableTrade] = useState(options.initialEnableTrade);
-  const initializationStartedRef = useRef(false);
+  const initializationStartedRef = useRef(hasInitialCards);
 
   const fetchCards = useCallback(async () => {
     try {
