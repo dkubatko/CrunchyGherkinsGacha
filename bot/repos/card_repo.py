@@ -893,10 +893,30 @@ def delete_card(card_id, *, session: Session) -> bool:
 def delete_cards(card_ids: List[int], *, session: Session) -> int:
     """Delete multiple cards by ID. Returns number of deleted cards.
 
-    Only works for cards in the current season.
+    Only works for cards in the current season. Equipped aspects are also
+    destroyed alongside their card_aspects junction rows.
     """
     if not card_ids:
         return 0
+
+    # Collect equipped aspect IDs before removing junction rows
+    equipped_aspect_ids = [
+        row.aspect_id
+        for row in session.query(CardAspectModel.aspect_id).filter(
+            CardAspectModel.card_id.in_(card_ids)
+        ).all()
+    ]
+
+    # Delete junction rows first to satisfy FK constraint
+    session.query(CardAspectModel).filter(
+        CardAspectModel.card_id.in_(card_ids)
+    ).delete(synchronize_session=False)
+
+    # Delete the owned aspect instances that were equipped on these cards
+    if equipped_aspect_ids:
+        session.query(OwnedAspectModel).filter(
+            OwnedAspectModel.id.in_(equipped_aspect_ids)
+        ).delete(synchronize_session=False)
 
     deleted = (
         session.query(CardModel)
