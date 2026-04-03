@@ -87,9 +87,9 @@ def build_burning_text(
     emoji = "🔮" if item_label == "aspects" else "🃏"
     lines = []
     for idx in range(revealed):
-        line = f"{emoji} {card_titles[idx]}"
+        line = f"🔥{emoji} {card_titles[idx]}🔥"
         if strike_all or idx < revealed - 1:
-            line = f"<s>🔥{line}🔥</s>"
+            line = f"<s>{line}</s>"
         lines.append(line)
 
     return f"{header}\n\n" + "\n".join(lines)

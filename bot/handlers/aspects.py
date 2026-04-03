@@ -1382,7 +1382,7 @@ async def handle_recycle_callback(
             return
 
         aspects_to_burn = random.sample(eligible, required)
-        aspect_names = [a.title() for a in aspects_to_burn]
+        aspect_names = [a.title(include_id=True, include_rarity=True) for a in aspects_to_burn]
 
         await query.answer()
         try:
@@ -1695,7 +1695,7 @@ async def handle_card_recycle_callback(
             return
 
         cards_to_burn = random.sample(eligible, required)
-        card_titles = [c.title(include_id=True) for c in cards_to_burn]
+        card_titles = [c.title(include_id=True, include_rarity=True) for c in cards_to_burn]
 
         await query.answer()
         try:
