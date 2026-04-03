@@ -193,3 +193,10 @@ body {
 .no-cards-container p {
   color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
 }
+
+/* Blank loading state — matches body bg for seamless transition to splash */
+.app-loading-blank {
+  position: fixed;
+  inset: 0;
+  background: #0d0d0f;
+}

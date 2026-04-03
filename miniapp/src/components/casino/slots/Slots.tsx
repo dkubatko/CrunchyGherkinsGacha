@@ -494,7 +494,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     } else {
       processVictory();
     }
-  }, [chatId, initData, isMegaspinning, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
+  }, [chatId, initData, isMegaspinning, onClaimPointsUpdate, resetRarityWheel, setReelStates, setSpinning, startRarityWheelAnimation, userId]);
 
   const handleSpin = useCallback(async (): Promise<boolean> => {
     // Ignore click if it was a long press that just completed

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
 import type { MegaspinInfo } from '../types';
 
@@ -34,22 +34,37 @@ interface UseSlotsResult {
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
 
-export const useSlots = (chatId?: string, userId?: number, initData?: string | null): UseSlotsResult => {
-  const [symbols, setSymbols] = useState<SlotSymbol[]>([]);
+export interface UseSlotsOptions {
+  /** Pre-fetched casino data from the splash screen — skips the initial API calls */
+  initialData?: {
+    symbols: SlotSymbol[];
+    spinsCount: number;
+    megaspin: {
+      spinsUntilMegaspin: number;
+      totalSpinsRequired: number;
+      megaspinAvailable: boolean;
+    };
+  };
+}
+
+export const useSlots = (chatId?: string, userId?: number, initData?: string | null, options?: UseSlotsOptions): UseSlotsResult => {
+  const initial = options?.initialData;
+  const [symbols, setSymbols] = useState<SlotSymbol[]>(initial?.symbols ?? []);
   const [spins, setSpins] = useState<UserSpinsData>({
-    count: 0,
-    loading: true,
+    count: initial?.spinsCount ?? 0,
+    loading: !initial,
     error: null
   });
   const [megaspin, setMegaspin] = useState<MegaspinData>({
-    spinsUntilMegaspin: 100,
-    totalSpinsRequired: 100,
-    megaspinAvailable: false,
-    loading: true,
+    spinsUntilMegaspin: initial?.megaspin?.spinsUntilMegaspin ?? 100,
+    totalSpinsRequired: initial?.megaspin?.totalSpinsRequired ?? 100,
+    megaspinAvailable: initial?.megaspin?.megaspinAvailable ?? false,
+    loading: !initial,
     error: null
   });
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!initial);
   const [error, setError] = useState<string | null>(null);
+  const skipFetchRef = useRef(!!initial);
 
   const fetchSpins = useCallback(async () => {
     if (!chatId || !userId) {
@@ -113,6 +128,9 @@ export const useSlots = (chatId?: string, userId?: number, initData?: string | n
   }, []);
 
   useEffect(() => {
+    // Skip initial fetch when pre-fetched data was provided
+    if (skipFetchRef.current) return;
+
     const fetchSlotsData = async () => {
       if (!chatId) {
         setError('No chat ID provided');

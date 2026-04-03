@@ -14,3 +14,5 @@ export { useAspects } from './useAspects';
 export { useAspectFiltering, DEFAULT_ASPECT_FILTER_OPTIONS, DEFAULT_ASPECT_SORT_OPTIONS } from './useAspectFiltering';
 export { useVirtualizedAspectImages } from './useVirtualizedAspectImages';export { useAllChatAspects } from './useAllChatAspects';
 export { useAllChatAspectsReadonly } from './useAllChatAspectsReadonly';
+export { useHubData } from './useHubData';
+export type { HubData, CasinoData, CollectionData, SlotSymbol } from './useHubData';

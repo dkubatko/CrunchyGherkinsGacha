@@ -8,9 +8,6 @@ import { useAppRouter } from './hooks';
 import { SingleCardPage, SingleAspectPage, LandingPage, HubPage } from './pages';
 import { AdminApp } from './pages/admin';
 
-// Components
-import { Title } from './components/common';
-
 // Build info
 import { BUILD_INFO } from './build-info';
 
@@ -22,13 +19,9 @@ function App() {
 
   const { route } = useAppRouter();
 
-  // Loading state
+  // Loading state — empty dark div that matches body bg (seamless before splash)
   if (route.type === 'loading') {
-    return (
-      <div className="app-container">
-        <Title title="Loading..." loading fullscreen />
-      </div>
-    );
+    return <div className="app-loading-blank" />;
   }
 
   // Error state

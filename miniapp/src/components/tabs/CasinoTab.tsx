@@ -1,20 +1,23 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Casino } from '@/components/casino';
 import Loading from '@/components/common/Loading';
 import { useSlots } from '@/hooks';
 import { ApiService } from '@/services/api';
+import type { CasinoData } from '@/hooks/useHubData';
 
 interface CasinoTabProps {
   currentUserId: number;
   chatId: string;
   initData: string;
+  initialCasinoData?: CasinoData;
+  claimPoints: number | null;
+  onClaimPointsUpdate: (count: number) => void;
 }
 
-const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
-  const [claimPoints, setClaimPoints] = useState<number | null>(null);
-  const [rtbAvailable, setRtbAvailable] = useState<boolean | null>(null);
-  const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(null);
-  const fetchedRef = useRef(false);
+const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPoints, onClaimPointsUpdate }: CasinoTabProps) => {
+  const [rtbAvailable, setRtbAvailable] = useState<boolean | null>(initialCasinoData?.rtbAvailable ?? null);
+  const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(initialCasinoData?.rtbUnavailableReason ?? null);
+  const fetchedRef = useRef(Boolean(initialCasinoData));
 
   useEffect(() => {
     if (fetchedRef.current) return;
@@ -24,15 +27,17 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
       ApiService.fetchUserProfile(currentUserId, chatId, initData),
       ApiService.getRTBConfig(initData, chatId),
     ]).then(([profile, rtbConfig]) => {
-      setClaimPoints(profile.claim_balance);
+      onClaimPointsUpdate(profile.claim_balance);
       setRtbAvailable(rtbConfig.available);
       setRtbUnavailableReason(rtbConfig.unavailable_reason);
     }).catch(() => {/* badge will just show no balance */});
-  }, [currentUserId, chatId, initData]);
+  }, [currentUserId, chatId, initData, onClaimPointsUpdate]);
 
-  const updateClaimPoints = useCallback((count: number) => {
-    setClaimPoints(count);
-  }, []);
+  const slotsInitialData = initialCasinoData ? {
+    symbols: initialCasinoData.symbols,
+    spinsCount: initialCasinoData.spinsCount,
+    megaspin: initialCasinoData.megaspin,
+  } : undefined;
 
   const {
     symbols,
@@ -43,7 +48,7 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
     refetchSpins,
     updateSpins,
     updateMegaspin
-  } = useSlots(chatId, currentUserId, initData);
+  } = useSlots(chatId, currentUserId, initData, { initialData: slotsInitialData });
 
   if (loading || symbols.length === 0 || claimPoints === null || rtbAvailable === null) {
     return <Loading message="Loading casino..." />;
@@ -70,7 +75,7 @@ const CasinoTab = ({ currentUserId, chatId, initData }: CasinoTabProps) => {
       updateSpins={updateSpins}
       updateMegaspin={updateMegaspin}
       claimPoints={claimPoints}
-      updateClaimPoints={updateClaimPoints}
+      updateClaimPoints={onClaimPointsUpdate}
       rtbAvailable={rtbAvailable}
       rtbUnavailableReason={rtbUnavailableReason}
     />

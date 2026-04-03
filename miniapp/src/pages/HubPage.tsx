@@ -4,6 +4,7 @@ import './HubPage.css';
 
 // Components
 import BottomNav from '@/components/common/BottomNav';
+import SplashScreen from '@/components/common/SplashScreen';
 import ProfileTab from '@/components/tabs/ProfileTab';
 import CollectionTab from '@/components/tabs/CollectionTab';
 import CasinoTab from '@/components/tabs/CasinoTab';
@@ -11,10 +12,12 @@ import AllTab from '@/components/tabs/AllTab';
 
 // Utils
 import { TelegramUtils } from '@/utils/telegram';
-import { ApiService } from '@/services/api';
+
+// Hooks
+import { useHubData } from '@/hooks';
 
 // Types
-import type { HubTab, UserProfile } from '@/types';
+import type { HubTab } from '@/types';
 
 interface HubPageProps {
   currentUserId: number;
@@ -39,6 +42,7 @@ export const HubPage = ({
   // Track which tabs have been visited so we can keep them mounted
   const [mountedTabs, setMountedTabs] = useState<Set<HubTab>>(new Set([initialTab]));
   const expandedRef = useRef(false);
+  const [splashDismissed, setSplashDismissed] = useState(false);
 
   // Tabs that require chat_id
   const disabledTabs = useMemo(() => {
@@ -58,36 +62,25 @@ export const HubPage = ({
     TelegramUtils.expandApp();
   }, []);
 
-  // Profile tab shows the target user (could be self or another user)
-  const profileUserId = isOwnCollection ? currentUserId : targetUserId;
-
-  // Shared profile state — single source of truth for user info
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(true);
-  const [profileError, setProfileError] = useState<string | undefined>();
-  const profileFetchedRef = useRef(false);
-
-  const fetchProfile = useCallback(async () => {
-    if (!chatId) {
-      setProfileLoading(false);
-      setProfileError('Profile is unavailable outside a chat context.');
-      return;
-    }
-    try {
-      const result = await ApiService.fetchUserProfile(profileUserId, chatId, initData);
-      setProfile(result);
-    } catch (err) {
-      setProfileError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setProfileLoading(false);
-    }
-  }, [profileUserId, chatId, initData]);
-
-  useEffect(() => {
-    if (profileFetchedRef.current) return;
-    profileFetchedRef.current = true;
-    void fetchProfile();
-  }, [fetchProfile]);
+  // ── Centralized data prefetching ──
+  const {
+    profile,
+    profileError,
+    collection,
+    aspects,
+    allCards,
+    allChatAspects,
+    casino,
+    config,
+    ready,
+    progress,
+    refreshProfile,
+    updateCardInAll,
+    updateAspectInAll,
+    removeAspectFromAll,
+    claimPoints,
+    updateClaimPoints,
+  } = useHubData({ currentUserId, targetUserId, chatId, initData });
 
   const ownerLabel = useMemo(() => {
     if (profile?.display_name) return profile.display_name;
@@ -105,18 +98,27 @@ export const HubPage = ({
     });
   }, []);
 
+  const handleSplashDone = useCallback(() => {
+    setSplashDismissed(true);
+  }, []);
+
   return (
     <div className="hub-container">
+      {/* Splash screen overlay — shown until data is ready + animation completes */}
+      {!splashDismissed && (
+        <SplashScreen progress={progress} ready={ready} onTransitionEnd={handleSplashDone} />
+      )}
+
       <div className="hub-content">
         {/* Profile Tab */}
         {mountedTabs.has('profile') && (
           <div className={`hub-tab-panel ${activeTab === 'profile' ? 'active' : ''}`}>
             <ProfileTab
               profile={profile}
-              loading={profileLoading}
-              error={profileError}
+              loading={!ready}
+              error={profileError ?? undefined}
               isActive={activeTab === 'profile'}
-              onRefresh={fetchProfile}
+              onRefresh={refreshProfile}
             />
           </div>
         )}
@@ -126,12 +128,19 @@ export const HubPage = ({
           <div className={`hub-tab-panel ${activeTab === 'collection' ? 'active' : ''}`}>
             <CollectionTab
               currentUserId={currentUserId}
-              targetUserId={targetUserId}
+              targetUserId={collection?.userId ?? targetUserId}
               chatId={chatId}
-              isOwnCollection={isOwnCollection}
-              enableTrade={enableTrade}
+              isOwnCollection={collection?.isOwnCollection ?? isOwnCollection}
+              enableTrade={collection?.enableTrade ?? enableTrade}
               initData={initData}
               ownerLabel={ownerLabel}
+              initialCards={collection?.cards}
+              initialAspects={aspects}
+              initialConfig={config ?? undefined}
+              onCardUpdate={updateCardInAll}
+              onAspectUpdate={updateAspectInAll}
+              onAspectRemove={removeAspectFromAll}
+              onClaimPointsUpdate={updateClaimPoints}
             />
           </div>
         )}
@@ -143,6 +152,9 @@ export const HubPage = ({
               currentUserId={currentUserId}
               chatId={chatId}
               initData={initData}
+              initialCasinoData={casino ?? undefined}
+              claimPoints={claimPoints}
+              onClaimPointsUpdate={updateClaimPoints}
             />
           </div>
         )}
@@ -151,9 +163,10 @@ export const HubPage = ({
         {mountedTabs.has('allCards') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'allCards' ? 'active' : ''}`}>
             <AllTab
-              chatId={chatId}
               initData={initData}
               currentUserId={currentUserId}
+              initialAllCards={allCards}
+              initialAllAspects={allChatAspects}
             />
           </div>
         )}
