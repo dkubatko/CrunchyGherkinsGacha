@@ -21,6 +21,7 @@ from handlers import (
     enroll,
     unenroll,
     help_command,
+    notify_toggle,
     # Rolling handlers
     roll,
     handle_claim,
@@ -97,6 +98,7 @@ def _register_user_handlers(application: Application) -> None:
     application.add_handler(CommandHandler("enroll", enroll))
     application.add_handler(CommandHandler("unenroll", unenroll))
     application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(CommandHandler("notify", notify_toggle))
 
 
 def _register_collection_handlers(application: Application) -> None:

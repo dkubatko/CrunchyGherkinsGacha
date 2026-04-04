@@ -18,6 +18,7 @@ from config import ADMIN_USERNAME, DEBUG_MODE
 from settings.constants import REACTION_IN_PROGRESS
 from repos import user_repo
 from repos import character_repo
+from repos import preferences_repo
 from managers import character_manager
 from managers import user_manager
 from utils.schemas import User
@@ -442,6 +443,21 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         "  /stats — View your stats\n"
         "  /casino — Open the casino\n"
         "  /trade — Trade cards or aspects with another player\n"
+        "  /notify — Toggle roll reminder notifications (DM)\n"
         "  /help — Show this message"
     )
     await message.reply_text(help_text, parse_mode=ParseMode.HTML)
+
+
+@verify_user
+async def notify_toggle(update: Update, context: ContextTypes.DEFAULT_TYPE, *, user) -> None:
+    """Toggle roll availability DM notifications on/off."""
+    message = update.message
+    if not message:
+        return
+
+    new_state = await asyncio.to_thread(preferences_repo.toggle_notify_rolls, user.user_id)
+    if new_state:
+        await message.reply_text("🔔 Roll notifications <b>enabled</b>. I'll DM you when your roll is ready.", parse_mode=ParseMode.HTML)
+    else:
+        await message.reply_text("🔕 Roll notifications <b>disabled</b>.", parse_mode=ParseMode.HTML)

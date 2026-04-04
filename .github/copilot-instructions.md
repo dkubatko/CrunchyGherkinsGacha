@@ -106,13 +106,14 @@ bot/
 │   ├── application.py        # Factory: create_application() — debug vs production Telegram endpoints
 │   └── handlers.py           # register_handlers() — wires all command & callback handlers
 ├── handlers/                 # Telegram command handlers (thin layer → services)
-│   ├── user.py               # /start, /profile, /delete, /enroll, /unenroll
+│   ├── user.py               # /start, /profile, /delete, /enroll, /unenroll, /notify
 │   ├── rolling.py            # /roll (card/aspect), claim_/lock_/reroll_ callbacks
 │   ├── cards.py              # /refresh, /equip + callbacks
 │   ├── aspects.py            # /burn, /lock (aspect & card), /recycle, /create + callbacks
 │   ├── collection.py         # /casino, /balance, /collection, /stats + navigation callbacks
 │   ├── trade.py              # /trade, accept/reject callbacks for card & aspect trades
 │   ├── admin.py              # /spins, /reload, /set_thread (admin-only)
+│   ├── notifications.py      # Roll notification scheduling, DM sending, startup recovery
 │   └── helpers.py            # Handler utilities (logging, file ID saving, roll time calc)
 ├── api/
 │   ├── server.py             # FastAPI app: CORS, rate limiting, router mounting, startup hooks
@@ -150,7 +151,9 @@ bot/
 │   ├── thread_repo.py            # Thread ID storage for topic-based chats
 │   ├── admin_auth_repo.py        # Admin user lookups, OTP storage
 │   ├── set_icon_repo.py          # Set slot icon CRUD (get, upsert, delete, bulk load)
-│   └── roll_repo.py              # Roll time tracking
+│   ├── roll_repo.py              # Roll time tracking
+│   ├── notification_repo.py      # Roll notification CRUD + deliverability checks
+│   └── preferences_repo.py       # User preference CRUD (notify_rolls toggle)
 ├── managers/                 # Manager layer — business logic and orchestration
 │   ├── card_manager.py           # Card claiming logic (row locks, point deduction)
 │   ├── aspect_manager.py         # Aspect burn, recycle, equip, claim logic
@@ -160,6 +163,7 @@ bot/
 │   ├── event_manager.py          # Event logging + observer pattern
 │   ├── achievement_manager.py    # Achievement granting/syncing logic
 │   ├── auth_manager.py           # Admin JWT + bcrypt authentication
+│   ├── notification_manager.py   # Roll notification business logic (PTB-free)
 │   └── casino/
 │       └── rtb_manager.py        # Ride the Bus game state machine
 ├── utils/
@@ -280,6 +284,8 @@ miniapp/src/
 | **AchievementModel** | Achievement definitions (name, description, icon) |
 | **UserAchievementModel** | User achievement progress (unlocked_at) |
 | **AdminUserModel** | Admin dashboard users (username, password_hash, OTP) |
+| **RollNotificationModel** | Scheduled roll-ready DM notifications (composite PK user_id+chat_id, notify_at, sent status) |
+| **UserPreferencesModel** | Per-user preferences/settings (notify_rolls opt-out; extensible for future settings) |
 
 ---
 
@@ -335,6 +341,16 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 - **Framer Motion** for card animations (RTB flip/move, transitions)
 - **Device orientation** tracking via Telegram TWA SDK for 3D card tilt effects
 
+### Roll Notification System
+- **Purpose**: DMs users when their 24-hour roll cooldown expires, with an inline button linking to the chat/thread
+- **Architecture**: DB-backed notifications + PTB's `JobQueue` (APScheduler wrapper) in the bot process
+- **Flow**: After each roll → atomically write `RollNotificationModel` + roll record in shared DB session → schedule `job_queue.run_once()` to fire at `roll_time + 24h`
+- **Startup recovery**: `post_init` hook queries all unsent notifications — sends overdue ones immediately (rate-limited), re-schedules future ones in JobQueue
+- **Deliverability check**: Before sending, verifies user is still enrolled in the chat, has not opted out (`UserPreferencesModel`), and the notification hasn't been superseded by a newer roll (stale job prevention via `notify_at` matching)
+- **Opt-out**: Users toggle via `/notify` command; notifications are on by default; lazy row creation in `user_preferences` table
+- **Deep links**: `https://t.me/c/{numeric_id}/{thread_id}` for topic chats; text-only DM for non-topic chats
+- **Error handling**: `Forbidden` (user blocked bot) → mark sent; `RetryAfter` → sleep + retry; other errors → `mark_failed()` with attempt tracking
+
 ---
 
 ## Bot Commands Reference
@@ -359,6 +375,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 | `/collection` | collection.py | Browse card collection |
 | `/stats` | collection.py | View user statistics |
 | `/trade` | trade.py | Initiate card or aspect trade |
+| `/notify` | user.py | Toggle roll reminder DM notifications (on by default) |
 | `/spins` | admin.py | Add spins to user (admin) |
 | `/reload` | admin.py | Reload bot config (admin) |
 | `/set_thread` | admin.py | Set chat thread (admin) |

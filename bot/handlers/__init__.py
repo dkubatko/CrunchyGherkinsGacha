@@ -20,6 +20,7 @@ from handlers.user import (
     enroll,
     unenroll,
     help_command,
+    notify_toggle,
 )
 
 # Rolling handlers
@@ -97,6 +98,7 @@ __all__ = [
     "enroll",
     "unenroll",
     "help_command",
+    "notify_toggle",
     # Rolling handlers
     "roll",
     "handle_claim",
