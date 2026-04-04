@@ -7,7 +7,9 @@ claiming, and locking rolled items.
 
 import asyncio
 import base64
+import datetime
 import logging
+from datetime import timezone
 
 from telegram import Update, InputMediaPhoto, ReactionTypeEmoji
 from telegram.constants import ChatType, ParseMode
@@ -20,6 +22,7 @@ from handlers.helpers import (
     save_card_file_id_from_message,
     save_aspect_file_id_from_message,
 )
+from handlers.notifications import schedule_notification
 from settings.constants import (
     REACTION_IN_PROGRESS,
     get_claim_cost,
@@ -31,6 +34,7 @@ from repos import rolled_card_repo
 from repos import rolled_aspect_repo
 from repos import roll_repo
 from managers import event_manager
+from managers import notification_manager
 from managers import roll_manager
 from utils.schemas import User
 from utils.decorators import verify_user_in_chat, prevent_concurrency
@@ -71,6 +75,7 @@ async def roll(
 
     rolling_users.add(user.user_id)
 
+    roll_succeeded = False
     try:
         if not DEBUG_MODE:
             await context.bot.set_message_reaction(
@@ -80,9 +85,9 @@ async def roll(
             )
         if not DEBUG_MODE:
             if not await asyncio.to_thread(roll_manager.can_roll, user.user_id, chat_id_str):
-                hours, minutes = get_time_until_next_roll(user.user_id, chat_id_str)
+                time_remaining = get_time_until_next_roll(user.user_id, chat_id_str)
                 await update.message.reply_text(
-                    f"You have already rolled. Next roll in {hours} hours {minutes} minutes.",
+                    f"You have already rolled. Next roll in {time_remaining}.",
                     reply_to_message_id=update.message.message_id,
                 )
                 if not DEBUG_MODE:
@@ -117,6 +122,8 @@ async def roll(
             await _handle_aspect_roll(update, context, user, chat_id_str, roll_result.aspect)
         else:
             raise rolling.ImageGenerationError("Roll produced no output")
+
+        roll_succeeded = True
 
     except rolling.NoEligibleUserError:
         event_manager.log(
@@ -166,6 +173,19 @@ async def roll(
                 message_id=update.message.message_id,
                 reaction=[],
             )
+
+    # Schedule roll notification (best-effort, outside roll's error handling)
+    if roll_succeeded:
+        try:
+            notification_delay = datetime.timedelta(seconds=30) if DEBUG_MODE else datetime.timedelta(hours=24)
+            notify_at = datetime.datetime.now(timezone.utc) + notification_delay
+            await asyncio.to_thread(
+                notification_manager.persist_notification,
+                user.user_id, chat_id_str, notify_at,
+            )
+            schedule_notification(context.job_queue, user.user_id, chat_id_str, notify_at)
+        except Exception as e:
+            logger.error("Failed to schedule roll notification for user %d: %s", user.user_id, e)
 
 
 # ---------------------------------------------------------------------------

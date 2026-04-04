@@ -5,6 +5,7 @@ This module contains the factory function for creating and configuring
 the Telegram bot application with the appropriate API endpoints.
 """
 
+import asyncio
 import logging
 import os
 
@@ -13,6 +14,12 @@ from telegram.ext import Application
 from config import DEBUG_MODE, TELEGRAM_TOKEN
 
 logger = logging.getLogger(__name__)
+
+
+async def _post_init(application: Application) -> None:
+    """Recover pending roll notifications after bot startup."""
+    from handlers.notifications import recover_pending_notifications
+    asyncio.create_task(recover_pending_notifications(application))
 
 
 def create_application() -> Application:
@@ -33,6 +40,7 @@ def create_application() -> Application:
             .base_url("https://api.telegram.org/bot")
             .base_file_url("https://api.telegram.org/file/bot")
             .concurrent_updates(True)
+            .post_init(_post_init)
             .build()
         )
         # Override the bot's base_url to include /test/ for test environment
@@ -50,6 +58,7 @@ def create_application() -> Application:
             .base_file_url(f"{api_base_url}/file/bot")
             .local_mode(True)
             .concurrent_updates(True)
+            .post_init(_post_init)
             .build()
         )
         logger.info("🚀 Running in PRODUCTION mode with local Telegram Bot API server")

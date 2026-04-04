@@ -715,3 +715,38 @@ class EquipSessionModel(Base):
         UniqueConstraint("user_id", "chat_id", name="uq_equip_sessions_user_chat"),
         Index("idx_equip_sessions_user_chat", "user_id", "chat_id"),
     )
+
+
+class UserPreferencesModel(Base):
+    """Per-user preferences/settings. Extensible for future options."""
+
+    __tablename__ = "user_preferences"
+
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.user_id"), primary_key=True
+    )
+    notify_rolls: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+
+
+class RollNotificationModel(Base):
+    """Tracks scheduled roll availability notifications per user per chat."""
+
+    __tablename__ = "roll_notifications"
+
+    user_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    chat_id: Mapped[str] = mapped_column(Text, primary_key=True)
+    notify_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    sent: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    sent_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    attempt_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    last_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        Index("idx_roll_notifications_pending", "sent", "notify_at"),
+    )

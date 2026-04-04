@@ -27,22 +27,37 @@ def log_card_generation(generated_card, context="card generation"):
 def get_time_until_next_roll(user_id, chat_id):
     """Calculate time until next roll (24 hours from last roll).
     Uses UTC for consistent timezone handling.
+
+    Returns a human-readable string like:
+    - "less than a minute"
+    - "23 minutes"
+    - "5 hours 12 minutes"
+    Returns None if the user can roll now.
     """
     last_roll_time = roll_repo.get_last_roll_time(user_id, chat_id)
     if last_roll_time is None:
-        return 0, 0  # Can roll immediately if never rolled before
+        return None
 
     now = datetime.datetime.now(timezone.utc)
     next_roll_time = last_roll_time + datetime.timedelta(hours=24)
-    time_diff = next_roll_time - now
+    total_seconds = (next_roll_time - now).total_seconds()
 
-    if time_diff.total_seconds() <= 0:
-        return 0, 0  # Can roll now
+    if total_seconds <= 0:
+        return None
 
-    hours = int(time_diff.total_seconds() // 3600)
-    minutes = int((time_diff.total_seconds() % 3600) // 60)
+    if total_seconds < 60:
+        return "less than a minute"
 
-    return hours, minutes
+    total_minutes = int(total_seconds // 60)
+    if total_minutes < 60:
+        return f"{total_minutes} minute{'s' if total_minutes != 1 else ''}"
+
+    hours = total_minutes // 60
+    minutes = total_minutes % 60
+    parts = [f"{hours} hour{'s' if hours != 1 else ''}"]
+    if minutes > 0:
+        parts.append(f"{minutes} minute{'s' if minutes != 1 else ''}")
+    return " ".join(parts)
 
 
 async def save_card_file_id_from_message(message, card_id: int) -> None:
