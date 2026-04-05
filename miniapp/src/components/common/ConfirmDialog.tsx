@@ -1,4 +1,5 @@
 import type { ReactNode, MouseEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -40,7 +41,7 @@ const ConfirmDialog = ({
     event.stopPropagation();
   };
 
-  return (
+  return createPortal(
     <div
       className="share-dialog-overlay"
       onClick={handleOverlayClick}
@@ -70,7 +71,8 @@ const ConfirmDialog = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
 

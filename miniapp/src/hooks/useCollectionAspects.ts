@@ -15,11 +15,12 @@ export const useCollectionAspects = (
   initData: string,
   chatId: string | null,
   userId?: number,
-  options?: { initialAspects?: AspectData[] },
+  options?: { initialAspects?: AspectData[]; enabled?: boolean },
 ): UseAspectsResult => {
+  const enabled = options?.enabled ?? true;
   const hasInitial = Boolean(options?.initialAspects);
   const [aspects, setAspects] = useState<AspectData[]>(options?.initialAspects ?? []);
-  const [loading, setLoading] = useState(!hasInitial);
+  const [loading, setLoading] = useState(!hasInitial && enabled);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(hasInitial);
 
@@ -39,10 +40,10 @@ export const useCollectionAspects = (
   }, [initData, chatId, userId]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
+    if (!enabled || fetchedRef.current) return;
     fetchedRef.current = true;
     void fetchAspects();
-  }, [fetchAspects]);
+  }, [enabled, fetchAspects]);
 
   // Silent refetch — doesn't trigger loading state, so modals stay mounted
   const refetch = useCallback(async () => {

@@ -7,7 +7,9 @@
 
 .virtualized-container {
   height: 100%;
-  overflow: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
   contain: layout style;
 }
 

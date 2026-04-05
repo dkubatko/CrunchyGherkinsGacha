@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CardGrid, CardModal, FilterSortControls } from '@/components/cards';
 import { ActionPanel, Title } from '@/components/common';
 import type { ActionButton } from '@/components/common';
@@ -115,7 +116,7 @@ const EquipCardSelector = ({
 
   if (!isOpen) return null;
 
-  return (
+  return createPortal(
     <div className="equip-card-selector">
       <div className={`equip-card-selector-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
         <Title title={`Select a card for ${aspect.display_name}`} />
@@ -183,7 +184,8 @@ const EquipCardSelector = ({
         buttons={actionButtons}
         visible={isActionPanelVisible}
       />
-    </div>
+    </div>,
+    document.body,
   );
 };
 

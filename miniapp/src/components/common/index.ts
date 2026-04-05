@@ -11,4 +11,5 @@ export type { SpinsBadgeProps } from './SpinsBadge';
 export { default as ClaimPointsBadge } from './ClaimPointsBadge';
 export type { ClaimPointsBadgeProps } from './ClaimPointsBadge';
 export { default as SubTabToggle } from './SubTabToggle';
+export { default as SwipeableSubTabs } from './SwipeableSubTabs';
 export { default as SplashScreen } from './SplashScreen';

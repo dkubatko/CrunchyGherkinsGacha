@@ -215,9 +215,9 @@ miniapp/src/
 │   │   └── rtb/             # Ride the Bus card guessing game
 │   ├── tabs/                # ProfileTab, CollectionTab (Cards/Aspects sub-tabs), AspectsTab, CasinoTab, AllTab (Cards/Aspects sub-tabs)
 │   ├── profile/             # ProfileView, Achievement badge
-│   ├── common/              # BottomNav, ActionPanel, SubTabToggle, AnimatedImage, badges, dialogs
+│   ├── common/              # BottomNav, ActionPanel, SubTabToggle, SwipeableSubTabs, AnimatedImage, badges, dialogs
 │   └── dialogs/             # BurnConfirmDialog, LockConfirmDialog
-├── hooks/                   # ~21 custom hooks (useAppRouter, useCards, useSlots, useOrientation, etc.)
+├── hooks/                   # ~22 custom hooks (useAppRouter, useCards, useSlots, useOrientation, useScrollSnap, etc.)
 ├── services/
 │   └── api.ts               # ApiService class — all backend communication (static methods)
 ├── stores/                  # Zustand stores (useSlotsStore for animation state, useAdminStore for auth)
@@ -337,9 +337,10 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 
 ### Frontend State Management
 - **Zustand** stores for slot machine animation state and admin auth
-- **Custom hooks** (~21) for data fetching, filtering, orientation tracking, gestures
+- **Custom hooks** (~22) for data fetching, filtering, orientation tracking, gestures, scroll-snap
 - **Framer Motion** for card animations (RTB flip/move, transitions)
 - **Device orientation** tracking via Telegram TWA SDK for 3D card tilt effects
+- **Swipeable sub-tabs**: CollectionTab and AllTab use `SwipeableSubTabs` (CSS transforms + `touch-action: pan-y`) for horizontal pane swiping between Cards and Aspects. The `useScrollSnap` hook applies `translateX()` transforms with JS gesture handling (direction-locked, clamped to valid neighbor panes, velocity-based snapping). Progress-based indicator animation on `SubTabToggle` is driven via rAF-interpolated callbacks. Panes signal `onLockSwipe(true)` to disable swiping during trade/modal flows.
 
 ### Roll Notification System
 - **Purpose**: DMs users when their 24-hour roll cooldown expires, with an inline button linking to the chat/thread

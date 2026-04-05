@@ -16,3 +16,4 @@ export { useVirtualizedAspectImages } from './useVirtualizedAspectImages';
 export { useAllAspects } from './useAllAspects';
 export { useHubData } from './useHubData';
 export type { HubData, CasinoData, CollectionData, SlotSymbol } from './useHubData';
+export { useScrollSnap } from './useScrollSnap';

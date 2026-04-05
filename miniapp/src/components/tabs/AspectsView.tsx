@@ -29,7 +29,8 @@ interface AspectsViewProps {
   initData: string;
   ownerLabel: string | null;
   initialConfig?: AspectConfigResponse;
-  header?: React.ReactNode;
+  isActive?: boolean;
+  onLockSwipe?: (locked: boolean) => void;
   // Mutable mode (user's aspects)
   targetUserId?: number;
   initialAspects?: AspectData[];
@@ -46,7 +47,7 @@ const AspectsView = ({
   chatId,
   initData,
   initialConfig,
-  header,
+  onLockSwipe,
   // Mutable mode props
   targetUserId,
   initialAspects,
@@ -65,7 +66,7 @@ const AspectsView = ({
     refetch,
     updateAspect,
     removeAspect,
-  } = useCollectionAspects(initData, chatId, targetUserId, { initialAspects });
+  } = useCollectionAspects(initData, chatId, targetUserId, { initialAspects, enabled: !isReadOnly });
 
   // In read-only mode, use props; in mutable mode, use hook values
   const aspects = isReadOnly ? (allAspectsProp ?? []) : hookAspects;
@@ -274,9 +275,10 @@ const AspectsView = ({
   const switchToNormalView = useCallback(() => {
     setSelectedAspectForTrade(null);
     setIsTradeView(false);
+    onLockSwipe?.(false);
     closeModal();
     TelegramUtils.hideBackButton();
-  }, [closeModal]);
+  }, [closeModal, onLockSwipe]);
 
   const switchToNormalViewRef = useRef(switchToNormalView);
   useEffect(() => {
@@ -302,8 +304,9 @@ const AspectsView = ({
     }
     setSelectedAspectForTrade(selectedAspect);
     setIsTradeView(true);
+    onLockSwipe?.(true);
     closeModal();
-  }, [selectedAspect, isOwnCollection, closeModal]);
+  }, [selectedAspect, isOwnCollection, closeModal, onLockSwipe]);
 
   const handleSelectClick = useCallback(() => {
     if (!selectedAspectForTrade || !selectedAspect) return;
@@ -435,7 +438,6 @@ const AspectsView = ({
             </>
           ) : (
             <>
-              {header}
               {aspects.length > 0 && (
                 <FilterSortControls
                   filterOptions={filterOptions}

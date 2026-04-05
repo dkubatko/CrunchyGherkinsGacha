@@ -2,6 +2,7 @@
   display: flex;
   width: calc(100% + 0.5rem);
   margin: 0 -0.25rem 15px;
+  position: relative;
 }
 
 .subtab-toggle-item {
@@ -14,7 +15,7 @@
   border: none;
   border-radius: 0 0 8px 8px;
   cursor: pointer;
-  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+  transition: color 0.2s ease, background 0.2s ease;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -34,5 +35,15 @@
   color: var(--tg-theme-text-color, #ffffff);
   font-weight: 600;
   background: var(--tg-theme-secondary-bg-color, rgba(255, 255, 255, 0.06));
-  box-shadow: 0 2px 0 0 var(--tg-theme-button-color, #007aff);
+}
+
+/* Sliding indicator bar — positioned at bottom of toggle, animated via JS */
+.subtab-toggle-indicator {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 2px;
+  background: var(--tg-theme-button-color, #007aff);
+  will-change: transform;
+  border-radius: 1px;
 }

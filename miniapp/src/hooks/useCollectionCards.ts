@@ -18,11 +18,12 @@ export const useCollectionCards = (
   initData: string,
   chatId: string | null,
   userId?: number,
-  options?: { initialCards?: CardData[] },
+  options?: { initialCards?: CardData[]; enabled?: boolean },
 ): UseCollectionCardsResult => {
+  const enabled = options?.enabled ?? true;
   const hasInitial = Boolean(options?.initialCards);
   const [cards, setCards] = useState<CardData[]>(options?.initialCards ?? []);
-  const [loading, setLoading] = useState(!hasInitial);
+  const [loading, setLoading] = useState(!hasInitial && enabled);
   const [error, setError] = useState<string | null>(null);
   const fetchedRef = useRef(hasInitial);
 
@@ -46,10 +47,10 @@ export const useCollectionCards = (
   }, [initData, chatId, userId]);
 
   useEffect(() => {
-    if (fetchedRef.current) return;
+    if (!enabled || fetchedRef.current) return;
     fetchedRef.current = true;
     void fetchCards();
-  }, [fetchCards]);
+  }, [enabled, fetchCards]);
 
   const refetch = useCallback(async () => {
     await fetchCards(true);
