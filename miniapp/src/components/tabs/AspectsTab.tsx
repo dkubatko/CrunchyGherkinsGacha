@@ -10,7 +10,7 @@ import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/compone
 import type { ActionButton } from '@/components/common';
 
 // Hooks
-import { useAspects, useAllChatAspects } from '@/hooks';
+import { useCollectionAspects, useAllAspects } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 import { useOrientation } from '@/hooks';
 
@@ -33,7 +33,7 @@ interface AspectsTabProps {
 }
 
 const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel, subTabToggle }: AspectsTabProps) => {
-  const { aspects, loading, error, refetch } = useAspects(initData, chatId, targetUserId);
+  const { aspects, loading, error, refetch, updateAspect, removeAspect } = useCollectionAspects(initData, chatId, targetUserId);
   const { orientation, orientationKey } = useOrientation({ enabled: true });
   const isOwnCollection = !targetUserId || targetUserId === currentUserId;
 
@@ -46,7 +46,10 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
   const {
     allAspects: tradeAspects,
     loading: tradeAspectsLoading,
-  } = useAllChatAspects(initData, selectedAspectForTrade?.id ?? null, {
+    error: tradeAspectsError,
+    refetch: refetchTradeAspects,
+  } = useAllAspects(initData, chatId, {
+    tradeAspectId: selectedAspectForTrade?.id ?? null,
     enabled: isTradeMode,
   });
 
@@ -133,12 +136,13 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
   }, [selectedAspect, chatId, currentUserId, initData]);
 
   const handleBurnComplete = useCallback(() => {
+    if (!selectedAspect) return;
     setTriggerBurn(false);
     setIsBurning(false);
+    removeAspect(selectedAspect.id);
     closeModal();
     TelegramUtils.showAlert(burnResultRef.current);
-    void refetch();
-  }, [closeModal, refetch]);
+  }, [closeModal, selectedAspect, removeAspect]);
 
   const handleBurnCancel = useCallback(() => setShowBurnDialog(false), []);
 
@@ -156,19 +160,19 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
       const result = await ApiService.lockAspect(selectedAspect.id, currentUserId, chatId, wantLock, initData);
       setClaimState({ balance: result.balance, loading: false });
 
-      // Optimistically update the selected aspect
+      // Client-side update — no refetch needed
       setSelectedAspect((prev) => prev ? { ...prev, locked: result.locked } : prev);
+      updateAspect(selectedAspect.id, { locked: result.locked });
 
       TelegramUtils.showAlert(result.message || (result.locked ? 'Locked!' : 'Unlocked!'));
       setShowLockDialog(false);
-      await refetch();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Lock/unlock failed';
       TelegramUtils.showAlert(msg);
     } finally {
       setLockProcessing(false);
     }
-  }, [selectedAspect, chatId, currentUserId, initData, refetch]);
+  }, [selectedAspect, chatId, currentUserId, initData, updateAspect]);
 
   const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
 
@@ -375,6 +379,12 @@ const AspectsTab = ({ currentUserId, chatId, initData, targetUserId, ownerLabel,
               <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
               {tradeAspectsLoading ? (
                 <Loading message="Loading aspects..." />
+              ) : tradeAspectsError ? (
+                <div className="error-container">
+                  <h2>Error loading trade options</h2>
+                  <p>{tradeAspectsError}</p>
+                  <button onClick={() => { void refetchTradeAspects(); }}>Retry</button>
+                </div>
               ) : tradeAspects.length === 0 ? (
                 <div className="no-cards-container">
                   <h2>No tradeable aspects</h2>

@@ -111,7 +111,7 @@ export const HubPage = ({
 
       <div className="hub-content">
         {/* Profile Tab */}
-        {mountedTabs.has('profile') && (
+        {ready && mountedTabs.has('profile') && (
           <div className={`hub-tab-panel ${activeTab === 'profile' ? 'active' : ''}`}>
             <ProfileTab
               profile={profile}
@@ -124,7 +124,7 @@ export const HubPage = ({
         )}
 
         {/* Collection Tab */}
-        {mountedTabs.has('collection') && (
+        {ready && mountedTabs.has('collection') && (
           <div className={`hub-tab-panel ${activeTab === 'collection' ? 'active' : ''}`}>
             <CollectionTab
               currentUserId={currentUserId}
@@ -146,7 +146,7 @@ export const HubPage = ({
         )}
 
         {/* Casino Tab */}
-        {mountedTabs.has('casino') && chatId && (
+        {ready && mountedTabs.has('casino') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'casino' ? 'active' : ''}`}>
             <CasinoTab
               currentUserId={currentUserId}
@@ -160,7 +160,7 @@ export const HubPage = ({
         )}
 
         {/* All Tab */}
-        {mountedTabs.has('allCards') && chatId && (
+        {ready && mountedTabs.has('allCards') && chatId && (
           <div className={`hub-tab-panel ${activeTab === 'allCards' ? 'active' : ''}`}>
             <AllTab
               initData={initData}

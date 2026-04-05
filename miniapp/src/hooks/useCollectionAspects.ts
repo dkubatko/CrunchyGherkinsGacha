@@ -11,7 +11,7 @@ interface UseAspectsResult {
   removeAspect: (aspectId: number) => void;
 }
 
-export const useAspects = (
+export const useCollectionAspects = (
   initData: string,
   chatId: string | null,
   userId?: number,

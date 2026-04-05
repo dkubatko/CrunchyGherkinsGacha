@@ -68,18 +68,13 @@ const CardsView = ({
   const collectionOwnerLabel = ownerLabel ?? 'Collection';
 
   // For read-only mode, use the provided allCards directly
-  // For mutable mode, use useCollectionCards hook
+  // For mutable mode, use useCollectionCards hook (ownership resolved by hub)
   const {
     cards: hookCards,
     loading: hookLoading,
     error: hookError,
-    isOwnCollection: hookIsOwnCollection,
-    enableTrade: hookEnableTrade,
     updateCard,
-  } = useCollectionCards(targetUserId ?? currentUserId, chatId, initData, {
-    initialIsOwnCollection: isOwnCollectionProp ?? true,
-    initialEnableTrade: enableTradeProp ?? false,
-    currentUserId,
+  } = useCollectionCards(initData, chatId, targetUserId ?? currentUserId, {
     initialCards,
   });
 
@@ -90,8 +85,8 @@ const CardsView = ({
   );
   const loading = isReadOnly ? false : hookLoading;
   const error = isReadOnly ? null : hookError;
-  const isOwnCollection = isReadOnly ? false : hookIsOwnCollection;
-  const enableTrade = isReadOnly ? false : hookEnableTrade;
+  const isOwnCollection = isReadOnly ? false : (isOwnCollectionProp ?? true);
+  const enableTrade = isReadOnly ? false : (enableTradeProp ?? false);
 
   // Only enable orientation tracking for card tilt effects
   const { orientation, orientationKey, resetTiltReference } = useOrientation({ enabled: true });
@@ -358,12 +353,10 @@ const CardsView = ({
     }
 
     if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
-      if (!modalCard.locked) {
-        buttons.push({
-          id: 'trade', text: 'Trade', onClick: handleTradeClick,
-          variant: 'trade-blue'
-        });
-      }
+      buttons.push({
+        id: 'trade', text: 'Trade', onClick: handleTradeClick,
+        variant: 'trade-blue'
+      });
     } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
       modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
       buttons.push({

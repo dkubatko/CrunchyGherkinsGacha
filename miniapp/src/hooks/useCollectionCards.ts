@@ -2,115 +2,62 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { CardData } from '@/types';
 import { ApiService } from '@/services/api';
 
-interface UseCollectionCardsOptions {
-  initialIsOwnCollection: boolean;
-  initialEnableTrade: boolean;
-  currentUserId: number;
-  /** Pre-fetched cards from the splash screen — skips the initial API call */
-  initialCards?: CardData[];
-}
-
 interface UseCollectionCardsResult {
   cards: CardData[];
   loading: boolean;
   error: string | null;
-  targetUserId: number;
-  isOwnCollection: boolean;
-  enableTrade: boolean;
   refetch: () => Promise<void>;
   updateCard: (cardId: number, updates: Partial<CardData>) => void;
 }
 
 /**
  * Hook for fetching and managing collection cards.
- * Separated from useCards to avoid coupling with Telegram initialization.
+ * Ownership resolution is handled by the hub — this hook trusts the caller.
  */
 export const useCollectionCards = (
-  initialTargetUserId: number,
-  chatId: string | null,
   initData: string,
-  options: UseCollectionCardsOptions
+  chatId: string | null,
+  userId?: number,
+  options?: { initialCards?: CardData[] },
 ): UseCollectionCardsResult => {
-  const hasInitialCards = Boolean(options.initialCards);
-  const [cards, setCards] = useState<CardData[]>(options.initialCards ?? []);
-  const [loading, setLoading] = useState(!hasInitialCards);
+  const hasInitial = Boolean(options?.initialCards);
+  const [cards, setCards] = useState<CardData[]>(options?.initialCards ?? []);
+  const [loading, setLoading] = useState(!hasInitial);
   const [error, setError] = useState<string | null>(null);
-  const [targetUserId, setTargetUserId] = useState(initialTargetUserId);
-  const [isOwnCollection, setIsOwnCollection] = useState(options.initialIsOwnCollection);
-  const [enableTrade, setEnableTrade] = useState(options.initialEnableTrade);
-  const initializationStartedRef = useRef(hasInitialCards);
+  const fetchedRef = useRef(hasInitial);
 
-  const fetchCards = useCallback(async () => {
+  const fetchCards = useCallback(async (silent = false) => {
     try {
-      const userCardsResponse = await ApiService.fetchUserCards(
-        targetUserId,
+      if (!silent) setLoading(true);
+      setError(null);
+      const response = await ApiService.fetchUserCards(
+        userId ?? 0,
         initData,
-        chatId ?? undefined
+        chatId ?? undefined,
       );
-      setCards(userCardsResponse.cards);
-
-      const responseUserId = userCardsResponse.user_id;
-      const isOwn = responseUserId === options.currentUserId;
-
-      setTargetUserId(responseUserId);
-      setIsOwnCollection(isOwn);
-      setEnableTrade(isOwn);
+      setCards(response.cards);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-      setError(errorMessage);
+      const message = err instanceof Error ? err.message : 'Failed to fetch cards';
+      setError(message);
+      console.error('Failed to fetch cards:', err);
+    } finally {
+      if (!silent) setLoading(false);
     }
-  }, [targetUserId, initData, chatId, options.currentUserId]);
+  }, [initData, chatId, userId]);
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    void fetchCards();
+  }, [fetchCards]);
 
   const refetch = useCallback(async () => {
-    try {
-      await fetchCards();
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-      setError(errorMessage);
-    }
+    await fetchCards(true);
   }, [fetchCards]);
 
   const updateCard = useCallback((cardId: number, updates: Partial<CardData>) => {
-    setCards(previousCards =>
-      previousCards.map(card =>
-        card.id === cardId
-          ? {
-              ...card,
-              ...updates
-            }
-          : card
-      )
-    );
+    setCards(prev => prev.map(c => c.id === cardId ? { ...c, ...updates } : c));
   }, []);
 
-  useEffect(() => {
-    if (initializationStartedRef.current) {
-      return;
-    }
-    initializationStartedRef.current = true;
-
-    const initializeAndFetch = async () => {
-      try {
-        await fetchCards();
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAndFetch();
-  }, [fetchCards]);
-
-  return {
-    cards,
-    loading,
-    error,
-    targetUserId,
-    isOwnCollection,
-    enableTrade,
-    refetch,
-    updateCard
-  };
+  return { cards, loading, error, refetch, updateCard };
 };
