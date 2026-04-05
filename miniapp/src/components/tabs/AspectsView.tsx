@@ -10,7 +10,7 @@ import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/compone
 import type { ActionButton } from '@/components/common';
 
 // Hooks
-import { useAspects, useAllChatAspects } from '@/hooks';
+import { useCollectionAspects, useAllAspects } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 import { useOrientation } from '@/hooks';
 
@@ -65,7 +65,7 @@ const AspectsView = ({
     refetch,
     updateAspect,
     removeAspect,
-  } = useAspects(initData, chatId, targetUserId, { initialAspects });
+  } = useCollectionAspects(initData, chatId, targetUserId, { initialAspects });
 
   // In read-only mode, use props; in mutable mode, use hook values
   const aspects = isReadOnly ? (allAspectsProp ?? []) : hookAspects;
@@ -84,7 +84,10 @@ const AspectsView = ({
   const {
     allAspects: tradeAspects,
     loading: tradeAspectsLoading,
-  } = useAllChatAspects(initData, selectedAspectForTrade?.id ?? null, {
+    error: tradeAspectsError,
+    refetch: refetchTradeAspects,
+  } = useAllAspects(initData, chatId, {
+    tradeAspectId: selectedAspectForTrade?.id ?? null,
     enabled: isTradeMode,
   });
 
@@ -411,6 +414,12 @@ const AspectsView = ({
               <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
               {tradeAspectsLoading ? (
                 <Loading message="Loading aspects..." />
+              ) : tradeAspectsError ? (
+                <div className="error-container">
+                  <h2>Error loading trade options</h2>
+                  <p>{tradeAspectsError}</p>
+                  <button onClick={() => { void refetchTradeAspects(); }}>Retry</button>
+                </div>
               ) : tradeAspects.length === 0 ? (
                 <div className="no-cards-container">
                   <h2>No tradeable aspects</h2>
