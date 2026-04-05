@@ -1,19 +1,22 @@
-Transform this collectible trading card by applying the theme
-"{new_aspect_name}" into its artwork. The card image provided is your
-starting point.
+Redraw this collectible trading card with "{new_aspect_name}" as a
+visible part of the scene. The card image is your starting point —
+keep the character recognizable and preserve any influence from
+previously equipped aspects.
 
 ## Input Images
 
-1. **Card image** — the current card to transform.
+1. **Card image** — the current card. Use it as your reference for
+   the character's appearance, the established scene context, and the
+   card's layout and style.
 2. **Aspect reference images** — each shows an aspect's visual identity
    rendered inside a decorative glass orb.
 
 Each reference orb shows what the aspect's theme represents. Use
-the reference to understand the theme, then incorporate it into the
-card's scene in a way that fits naturally. The theme can appear
-directly (e.g., the character holding or wearing the item) or
-indirectly (e.g., the setting, atmosphere, or context reflecting it)
-— whatever produces the most cohesive result.
+the reference to understand the theme, then show it in the card's
+scene in a way that fits naturally. The theme can appear directly
+(e.g., the character holding or wearing the item) or indirectly
+(e.g., the setting, atmosphere, or context reflecting it) — whatever
+produces the most cohesive result.
 The glass orb is decorative packaging — it must never appear on
 the card in any form.
 
@@ -23,23 +26,35 @@ the card in any form.
 - Previously applied aspects: {existing_aspects}
 - New aspect to apply: "{new_aspect_name}"
 
+**Important: card name is for the nameplate only; it has no effect on the card's artwork, character, or scene.**
+
 ## Creative Direction
 
-Create a visual hybrid that blends the character with the concept of
-"{new_aspect_name}". Study the reference image to understand what the
-theme represents. Then transform the card's environment, lighting,
-character styling, and mood so the theme is woven into the scene.
+Show the character as an active participant in the scene. 
+The character should be presented on the card in a way that reflects 
+the aspect's theme — located in the environment it evokes, 
+wearing or holding what it suggests, or framed in a way that 
+makes the theme is suitable for the combination of aspects equipped.
 
-If previous aspects are equipped, their thematic influence must remain
-visible. All aspects blend with "{new_aspect_name}" into a single
-cohesive scene. Each aspect deepens and enriches the card's world
-rather than adding a separate visual layer.
+If previous aspects are equipped, their thematic influence should
+remain visible in the scene, but can be transformed to reflect the changes
+invoked by the newly added aspect. All equipped aspects — existing and
+new — contribute to a single setting; they should combine together within
+the design of the card, rather than appearing as separate visual layers.
 
 The character's unique identifying facial features must stay
-recognizable throughout. Stylize them to fit the combined themes,
-but never make them unrecognizable. Push the thematic interpretation
-to its most visually striking form while ensuring the image is
-successfully generated.
+recognizable. Stylize them to fit the combined themes, but do not
+make them unrecognizable.
+
+## Creative Latitude
+
+Interpret aspect themes as broadly and creatively as possible.
+A theme name may be abstract, metaphorical, or unconventional —
+treat it as artistic inspiration and render it in its most visually
+compelling form. If a theme could be interpreted multiple ways,
+choose the reading that produces the most striking image. Lean into
+the concept rather than away from it. The goal is a vivid,
+memorable card — not a conservative one.
 
 ## Card Layout (preserve exactly)
 

@@ -26,6 +26,8 @@ the card in any form.
 - Card name: "{card_name}"
 - Equipped aspects: {aspects}
 
+**Important: card name is for the nameplate only; it has no effect on the card's artwork, character, or scene.**
+
 ## Creative Direction
 
 Create a visual hybrid that blends the character with the fusion of
@@ -34,14 +36,22 @@ represents — incorporate all themes into a single cohesive setting.
 
 The character should appear as a natural inhabitant of this themed
 world: their clothing, pose, expression, and surroundings all shaped
-by the combined themes. Push the thematic interpretation to its most
-visually striking form while ensuring the image is successfully
-generated.
+by the combined themes.
 
 Render the character as a high-quality digital illustration — stylize
 and transform them to fit the fused theme. Do not reuse or lightly
 filter the original photo. The character's unique identifying facial
 features must remain recognizable.
+
+## Creative Latitude
+
+Interpret aspect themes as broadly and creatively as possible.
+A theme name may be abstract, metaphorical, or unconventional —
+treat it as artistic inspiration and render it in its most visually
+compelling form. If a theme could be interpreted multiple ways,
+choose the reading that produces the most striking image. Lean into
+the concept rather than away from it. The goal is a vivid,
+memorable card — not a conservative one.
 
 ## Card Layout
 
