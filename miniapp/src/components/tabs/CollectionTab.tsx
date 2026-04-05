@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 
 // Components
-import { SubTabToggle } from '@/components/common';
+import SwipeableSubTabs from '@/components/common/SwipeableSubTabs';
 import CardsView from './CardsView';
 import AspectsView from './AspectsView';
 
@@ -26,8 +26,6 @@ interface CollectionTabProps {
   onClaimPointsUpdate?: (count: number) => void;
 }
 
-type CollectionSubTab = 'cards' | 'aspects';
-
 const CollectionTab = ({
   currentUserId,
   targetUserId,
@@ -44,70 +42,65 @@ const CollectionTab = ({
   onAspectRemove,
   onClaimPointsUpdate,
 }: CollectionTabProps) => {
-  // Sub-tab state
-  const [activeSubTab, setActiveSubTab] = useState<CollectionSubTab>('cards');
-  const [mountedSubTabs, setMountedSubTabs] = useState<Set<CollectionSubTab>>(new Set(['cards']));
+  // Lock swiping when a pane is in trade/modal mode
+  const [swipeLocked, setSwipeLocked] = useState(false);
+
+  const handleLockSwipe = useCallback((locked: boolean) => {
+    setSwipeLocked(locked);
+  }, []);
 
   const SUB_TABS = useMemo(() => {
     const prefix = ownerLabel ? `${ownerLabel}'s` : '';
-    return [
+    const tabs = [
       { key: 'cards', label: prefix ? `${prefix} Cards` : 'Cards' },
-      { key: 'aspects', label: prefix ? `${prefix} Aspects` : 'Aspects' },
     ];
-  }, [ownerLabel]);
+    if (chatId) {
+      tabs.push({ key: 'aspects', label: prefix ? `${prefix} Aspects` : 'Aspects' });
+    }
+    return tabs;
+  }, [ownerLabel, chatId]);
 
-  const handleSubTabChange = useCallback((key: string) => {
-    const tab = key as CollectionSubTab;
-    setActiveSubTab(tab);
-    setMountedSubTabs(prev => {
-      if (prev.has(tab)) return prev;
-      const next = new Set(prev);
-      next.add(tab);
-      return next;
-    });
-  }, []);
+  const hasAspects = Boolean(chatId);
+
+  // Mark panes as visited when the scroll-snap triggers a tab change
+  // We do this via a simple wrapper around the SwipeableSubTabs children
+  // The isActive prop gates expensive hook fetches
 
   return (
-    <>
-      {/* Cards sub-tab */}
-      {mountedSubTabs.has('cards') && (
-        <div style={{ display: activeSubTab === 'cards' ? 'contents' : 'none' }}>
-          <CardsView
-            currentUserId={currentUserId}
-            targetUserId={targetUserId}
-            chatId={chatId}
-            isOwnCollection={isOwnCollection}
-            enableTrade={enableTrade}
-            initData={initData}
-            ownerLabel={ownerLabel}
-            initialCards={initialCards}
-            initialConfig={initialConfig}
-            onCardUpdate={onCardUpdate}
-            onClaimPointsUpdate={onClaimPointsUpdate}
-            header={<SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />}
-          />
-        </div>
+    <SwipeableSubTabs
+      tabs={SUB_TABS}
+      locked={swipeLocked}
+    >
+      <CardsView
+        currentUserId={currentUserId}
+        targetUserId={targetUserId}
+        chatId={chatId}
+        isOwnCollection={isOwnCollection}
+        enableTrade={enableTrade}
+        initData={initData}
+        ownerLabel={ownerLabel}
+        initialCards={initialCards}
+        initialConfig={initialConfig}
+        onCardUpdate={onCardUpdate}
+        onClaimPointsUpdate={onClaimPointsUpdate}
+        onLockSwipe={handleLockSwipe}
+      />
+      {hasAspects && (
+        <AspectsView
+          currentUserId={currentUserId}
+          chatId={chatId}
+          initData={initData}
+          targetUserId={targetUserId}
+          ownerLabel={ownerLabel}
+          initialAspects={initialAspects}
+          initialConfig={initialConfig}
+          onAspectUpdate={onAspectUpdate}
+          onAspectRemove={onAspectRemove}
+          onClaimPointsUpdate={onClaimPointsUpdate}
+          onLockSwipe={handleLockSwipe}
+        />
       )}
-
-      {/* Aspects sub-tab */}
-      {mountedSubTabs.has('aspects') && chatId && (
-        <div style={{ display: activeSubTab === 'aspects' ? 'contents' : 'none' }}>
-          <AspectsView
-            currentUserId={currentUserId}
-            chatId={chatId}
-            initData={initData}
-            targetUserId={targetUserId}
-            ownerLabel={ownerLabel}
-            initialAspects={initialAspects}
-            initialConfig={initialConfig}
-            onAspectUpdate={onAspectUpdate}
-            onAspectRemove={onAspectRemove}
-            onClaimPointsUpdate={onClaimPointsUpdate}
-            header={<SubTabToggle tabs={SUB_TABS} activeTab={activeSubTab} onChange={handleSubTabChange} />}
-          />
-        </div>
-      )}
-    </>
+    </SwipeableSubTabs>
   );
 };
 

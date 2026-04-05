@@ -1,0 +1,62 @@
+.swipeable-subtabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.swipeable-subtabs-header {
+  flex-shrink: 0;
+  padding: 0 0.25rem;
+}
+
+.swipeable-subtabs-track {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  touch-action: pan-y;
+  will-change: transform;
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.swipeable-subtabs-track.dragging {
+  transition: none;
+}
+
+.swipeable-subtabs-pane {
+  flex: 0 0 100%;
+  min-width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/*
+ * Inside swipeable panes, reduce to a SINGLE vertical scroll container
+ * (the virtualized grid). Without this, mobile WebViews can't decide
+ * which of the multiple nested overflow-y:auto containers should receive
+ * the touch gesture, causing all scrolling to fail.
+ */
+.swipeable-subtabs-pane .app-content {
+  overflow: hidden;
+}
+
+.swipeable-subtabs-pane .virtualized-container {
+  height: auto;
+  flex: 1;
+  min-height: 0;
+  overflow-y: scroll;
+}
+
+/*
+ * Guarantee the virtualized container is always scrollable (even with few items).
+ * Without actual overflow, the browser compositor skips non-overflowing scroll
+ * containers and passes the gesture to the page. This 1px overflow forces the
+ * container to always be a live scroll target, so overscroll-behavior-y: contain
+ * can prevent scroll chaining.
+ */
+.swipeable-subtabs-pane .virtualized-content {
+  min-height: calc(100% + 1px);
+}

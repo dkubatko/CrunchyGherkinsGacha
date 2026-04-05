@@ -12,7 +12,6 @@ import {
   useAllCards,
   useOrientation,
   useModal,
-  useSwipeHandlers,
   useCollectionCards,
   useCardFiltering,
   DEFAULT_FILTER_OPTIONS,
@@ -34,7 +33,8 @@ interface CardsViewProps {
   initData: string;
   ownerLabel: string | null;
   initialConfig?: AspectConfigResponse;
-  header?: React.ReactNode;
+  isActive?: boolean;
+  onLockSwipe?: (locked: boolean) => void;
   // Mutable mode (user's collection)
   targetUserId?: number;
   isOwnCollection?: boolean;
@@ -53,7 +53,7 @@ const CardsView = ({
   initData,
   ownerLabel,
   initialConfig,
-  header,
+  onLockSwipe,
   // Mutable mode props
   targetUserId,
   isOwnCollection: isOwnCollectionProp,
@@ -76,6 +76,7 @@ const CardsView = ({
     updateCard,
   } = useCollectionCards(initData, chatId, targetUserId ?? currentUserId, {
     initialCards,
+    enabled: !isReadOnly,
   });
 
   // In read-only mode, use props; in mutable mode, use hook values
@@ -89,10 +90,10 @@ const CardsView = ({
   const enableTrade = isReadOnly ? false : (enableTradeProp ?? false);
 
   // Only enable orientation tracking for card tilt effects
-  const { orientation, orientationKey, resetTiltReference } = useOrientation({ enabled: true });
+  const { orientation, orientationKey } = useOrientation({ enabled: true });
 
   // UI state
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex] = useState(0);
   const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
   const [chatProfiles, setChatProfiles] = useState<Record<string, ProfileState>>({});
   const profileRequestsRef = useRef<Map<string, Promise<UserProfile | null>>>(new Map());
@@ -228,13 +229,14 @@ const CardsView = ({
   const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
     setSelectedCardForTrade(null);
     setIsTradeView(false);
+    onLockSwipe?.(false);
     closeModal();
     if (!options?.preserveAllFilters) {
       tradeFiltering.setFilterOptions(DEFAULT_FILTER_OPTIONS);
       tradeFiltering.setSortOptions(DEFAULT_SORT_OPTIONS);
     }
     TelegramUtils.hideBackButton();
-  }, [closeModal, tradeFiltering]);
+  }, [closeModal, tradeFiltering, onLockSwipe]);
 
   const switchToCurrentViewRef = useRef(switchToCurrentView);
   useEffect(() => {
@@ -256,8 +258,9 @@ const CardsView = ({
 
       setSelectedCardForTrade(tradeCard);
       setIsTradeView(true);
+      onLockSwipe?.(true);
     }
-  }, [cards, currentIndex, modalCard, enableTrade, closeModal]);
+  }, [cards, currentIndex, modalCard, enableTrade, closeModal, onLockSwipe]);
 
   const handleSelectClick = useCallback(() => {
     if (selectedCardForTrade && modalCard) {
@@ -383,14 +386,6 @@ const CardsView = ({
 
   const isActionPanelVisible = actionButtons.length > 0;
 
-  // Event handlers
-  const swipeHandlers = useSwipeHandlers({
-    cardsLength: cards.length,
-    currentIndex,
-    onIndexChange: setCurrentIndex,
-    onTiltReset: resetTiltReference
-  });
-
   // Loading state
   if (loading) {
     return <Loading message="Loading collection..." />;
@@ -410,7 +405,6 @@ const CardsView = ({
     <>
       <div
         className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
-        {...(!isTradeView ? swipeHandlers : {})}
       >
         {/* Trade view: selecting a card to trade for */}
         {isTradeView ? (
@@ -462,7 +456,6 @@ const CardsView = ({
         ) : (
           /* Normal collection view */
           <div className="app-content">
-            {header}
             {cards.length > 0 ? (
               <>
                 <FilterSortControls
