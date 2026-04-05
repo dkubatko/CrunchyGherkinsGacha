@@ -24,6 +24,7 @@ interface CollectionTabProps {
   onAspectUpdate?: (aspectId: number, updates: Partial<AspectData>) => void;
   onAspectRemove?: (aspectId: number) => void;
   onClaimPointsUpdate?: (count: number) => void;
+  onSpinsUpdate?: (count: number) => void;
 }
 
 const CollectionTab = ({
@@ -41,6 +42,7 @@ const CollectionTab = ({
   onAspectUpdate,
   onAspectRemove,
   onClaimPointsUpdate,
+  onSpinsUpdate,
 }: CollectionTabProps) => {
   // Lock swiping when a pane is in trade/modal mode
   const [swipeLocked, setSwipeLocked] = useState(false);
@@ -97,6 +99,7 @@ const CollectionTab = ({
           onAspectUpdate={onAspectUpdate}
           onAspectRemove={onAspectRemove}
           onClaimPointsUpdate={onClaimPointsUpdate}
+          onSpinsUpdate={onSpinsUpdate}
           onLockSwipe={handleLockSwipe}
         />
       )}

@@ -43,6 +43,7 @@ export const HubPage = ({
   const [mountedTabs, setMountedTabs] = useState<Set<HubTab>>(new Set([initialTab]));
   const expandedRef = useRef(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
+  const [currentSpinBalance, setCurrentSpinBalance] = useState<number | null>(null);
 
   // Tabs that require chat_id
   const disabledTabs = useMemo(() => {
@@ -141,6 +142,7 @@ export const HubPage = ({
               onAspectUpdate={updateAspectInAll}
               onAspectRemove={removeAspectFromAll}
               onClaimPointsUpdate={updateClaimPoints}
+              onSpinsUpdate={setCurrentSpinBalance}
             />
           </div>
         )}
@@ -155,6 +157,7 @@ export const HubPage = ({
               initialCasinoData={casino ?? undefined}
               claimPoints={claimPoints}
               onClaimPointsUpdate={updateClaimPoints}
+              currentSpinBalance={currentSpinBalance}
             />
           </div>
         )}

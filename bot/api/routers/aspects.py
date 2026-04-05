@@ -38,7 +38,12 @@ from api.schemas import (
     EquipInitiateResponse,
     ShareAspectRequest,
 )
-from settings.constants import EQUIP_CONFIRM_MESSAGE, RARITY_ORDER, get_lock_cost, get_spin_reward
+from settings.constants import (
+    EQUIP_CONFIRM_MESSAGE,
+    RARITY_ORDER,
+    get_lock_cost,
+    get_spin_reward,
+)
 from utils.schemas import Card, OwnedAspect
 from repos import aspect_repo
 from repos import card_repo
@@ -559,6 +564,33 @@ async def burn_aspect(
         spin_reward=reward,
         new_spin_total=new_spin_total,
     )
+
+    # Send burn notification to chat
+    try:
+        from telegram.constants import ParseMode
+
+        username = user_data.get("username")
+        if not username:
+            username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
+
+        aspect_title = aspect.title(include_id=True, include_rarity=True, include_emoji=True)
+        header = f"<s>🔥{aspect_title}🔥</s>"
+        burn_text = f"@{username} burned an aspect:\n\n<b>{header}</b>\n\nReward: <b>{reward} spins</b>"
+
+        bot = create_bot_instance()
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
+
+        send_params: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "text": burn_text,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+    except Exception as exc:
+        logger.warning("Failed to send burn notification to chat %s: %s", chat_id, exc)
 
     return AspectBurnResponse(
         success=True,

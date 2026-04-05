@@ -37,6 +37,7 @@ interface AspectsViewProps {
   onAspectUpdate?: (aspectId: number, updates: Partial<AspectData>) => void;
   onAspectRemove?: (aspectId: number) => void;
   onClaimPointsUpdate?: (count: number) => void;
+  onSpinsUpdate?: (count: number) => void;
   // Read-only mode (all aspects in chat)
   isReadOnly?: boolean;
   allAspects?: AspectData[];
@@ -54,6 +55,7 @@ const AspectsView = ({
   onAspectUpdate,
   onAspectRemove,
   onClaimPointsUpdate,
+  onSpinsUpdate,
   // Read-only mode props
   isReadOnly = false,
   allAspects: allAspectsProp,
@@ -155,6 +157,7 @@ const AspectsView = ({
     try {
       const result = await ApiService.burnAspect(selectedAspect.id, currentUserId, chatId, initData);
       burnResultRef.current = result.message || 'Aspect burned!';
+      onSpinsUpdate?.(result.new_spin_total);
       setShowBurnDialog(false);
       setIsBurning(true);
       setTriggerBurn(true);
@@ -164,7 +167,7 @@ const AspectsView = ({
     } finally {
       setBurnProcessing(false);
     }
-  }, [selectedAspect, chatId, currentUserId, initData]);
+  }, [selectedAspect, chatId, currentUserId, initData, onSpinsUpdate]);
 
   const handleBurnComplete = useCallback(() => {
     if (!selectedAspect) return;
