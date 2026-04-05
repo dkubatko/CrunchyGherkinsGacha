@@ -1,10 +1,13 @@
 /**
- * Minimal image cache facade for Card/SingleCardView components.
- * For thumbnail loading in AllCards, use useVirtualizedImages hook directly.
+ * Minimal image cache facade for Card/Aspect/SingleView components.
+ * For thumbnail loading in grids, use useVirtualized*Images hooks directly.
  */
 
 import { memoryImageCache, type ImageVariant } from './memoryImageCache';
 import { persistentImageCache } from './persistentImageCache';
+
+/** Offset aspect IDs to avoid collisions with card IDs in the shared cache. */
+export const aspectCacheId = (id: number) => id + 1_000_000_000;
 
 export const imageCache = {
   /** Store in both memory and IndexedDB */

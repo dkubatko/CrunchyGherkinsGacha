@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Title } from '@/components/common';
 import { AnimatedImage } from '@/components/common';
 import { ApiService } from '@/services/api';
+import { imageCache, aspectCacheId } from '@/lib/imageCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
 import type { OrientationData, AspectData } from '@/types';
 import './SingleAspectView.css';
@@ -37,10 +38,20 @@ export const SingleAspectView: React.FC<SingleAspectViewProps> = ({ aspectId, in
 
   useEffect(() => {
     let isMounted = true;
+    const cacheKey = aspectCacheId(aspectId);
     const load = async () => {
+      // Check cache first
+      const cached = await imageCache.getAsync(cacheKey, 'full', null);
+      if (cached) {
+        if (isMounted) setFullImage(cached);
+        return;
+      }
       try {
         const img = await ApiService.fetchAspectImage(aspectId, initData);
-        if (isMounted) setFullImage(img);
+        if (isMounted) {
+          setFullImage(img);
+          imageCache.set(cacheKey, img, 'full', null);
+        }
       } catch (e) {
         console.error('Failed to load aspect image', e);
         if (isMounted) setError(e instanceof Error ? e.message : 'Failed to load image');
