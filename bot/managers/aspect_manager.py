@@ -10,7 +10,7 @@ import datetime
 import logging
 from typing import List, Optional
 
-from settings.constants import RARITY_ORDER, get_claim_cost, get_spin_reward
+from settings.constants import RARITY_ORDER, get_spin_reward
 from utils.events import EquipOutcome, EventType
 from repos import aspect_repo, card_repo, claim_repo
 from utils.session import get_session
@@ -22,10 +22,17 @@ def try_claim_aspect(
     aspect_id: int,
     user_id: int,
     username: str,
-    chat_id: str,
+    chat_id: Optional[str] = None,
+    claim_cost: Optional[int] = None,
 ) -> bool:
-    """Atomically claim an aspect: row-lock, validate, deduct claim points,
-    and assign ownership in a single transaction.
+    """Atomically claim an aspect: row-lock, validate, optionally deduct
+    claim points, and assign ownership in a single transaction.
+
+    When ``chat_id`` and ``claim_cost`` are provided the claim-point
+    deduction happens inside the same transaction (no race window).
+    If they are omitted the function behaves like a simple ownership
+    assignment (used by recycle and other flows where the user has
+    already "paid").
 
     Returns ``True`` on success, ``False`` if the aspect is already owned or
     the user has insufficient claim points.
@@ -40,15 +47,20 @@ def try_claim_aspect(
         if aspect.owner is not None or aspect.user_id is not None:
             return False
 
-        cost = get_claim_cost(aspect.rarity)
+        # If claim cost info provided, deduct in same transaction
+        if (
+            chat_id is not None
+            and claim_cost is not None
+            and claim_cost > 0
+        ):
+            claim = claim_repo.get_or_create_claim_for_update(user_id, chat_id, session=session)
 
-        claim = claim_repo.get_or_create_claim_for_update(user_id, chat_id, session=session)
+            if claim.balance < claim_cost:
+                return False
 
-        if claim.balance < cost:
-            return False
+            claim_repo.reduce_claim_points(user_id, chat_id, claim_cost, session=session)
 
-        # Deduct and assign
-        claim_repo.reduce_claim_points(user_id, chat_id, cost, session=session)
+        # Assign
         aspect_repo.set_aspect_owner(aspect_id, username, user_id, locked=False, session=session)
         return True
 

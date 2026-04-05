@@ -270,7 +270,8 @@ class RollManager:
                 item.id,
                 user_id,
                 owner_username,
-                chat_id,
+                chat_id=chat_id,
+                claim_cost=claim_cost,
             )
 
         if not claimed:

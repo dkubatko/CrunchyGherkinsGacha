@@ -1487,14 +1487,13 @@ async def handle_recycle_callback(
             )
             return
 
-        # Claim the newly generated aspect for the user
+        # Assign the newly generated aspect to the user (no claim cost for recycling)
         owner_username = user.username or f"user_{user.user_id}"
         claimed = await asyncio.to_thread(
             aspect_manager.try_claim_aspect,
             generated_aspect.aspect_id,
             user.user_id,
             owner_username,
-            chat_id_str,
         )
         if not claimed:
             logger.warning(
