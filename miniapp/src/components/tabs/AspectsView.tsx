@@ -493,7 +493,7 @@ const AspectsView = ({
           triggerBurn={triggerBurn}
           onBurnComplete={handleBurnComplete}
           isBurning={isBurning}
-          onShare={shareEnabled && isOwnCollection ? handleShareAspect : undefined}
+          onShare={shareEnabled ? handleShareAspect : undefined}
         />
       )}
 
