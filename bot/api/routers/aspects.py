@@ -262,10 +262,6 @@ async def equip_initiate(
         raise HTTPException(
             status_code=400, detail="Cannot equip onto a locked card. Unlock it first."
         )
-    if aspect.locked:
-        raise HTTPException(
-            status_code=400, detail="Cannot equip a locked aspect. Unlock it first."
-        )
 
     # Check if aspect is already equipped
     is_equipped = await asyncio.to_thread(aspect_repo.is_aspect_equipped, aspect_id)
