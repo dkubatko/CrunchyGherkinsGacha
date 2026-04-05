@@ -12,9 +12,10 @@ interface CasinoTabProps {
   initialCasinoData?: CasinoData;
   claimPoints: number | null;
   onClaimPointsUpdate: (count: number) => void;
+  currentSpinBalance?: number | null;
 }
 
-const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPoints, onClaimPointsUpdate }: CasinoTabProps) => {
+const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPoints, onClaimPointsUpdate, currentSpinBalance }: CasinoTabProps) => {
   const [rtbAvailable, setRtbAvailable] = useState<boolean | null>(initialCasinoData?.rtbAvailable ?? null);
   const [rtbUnavailableReason, setRtbUnavailableReason] = useState<string | null>(initialCasinoData?.rtbUnavailableReason ?? null);
   const fetchedRef = useRef(Boolean(initialCasinoData));
@@ -49,6 +50,13 @@ const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPo
     updateSpins,
     updateMegaspin
   } = useSlots(chatId, currentUserId, initData, { initialData: slotsInitialData });
+
+  // Sync spin balance from external updates (e.g., burning aspects in collection tab)
+  useEffect(() => {
+    if (currentSpinBalance != null) {
+      updateSpins(currentSpinBalance);
+    }
+  }, [currentSpinBalance, updateSpins]);
 
   if (loading || symbols.length === 0 || claimPoints === null || rtbAvailable === null) {
     return <Loading message="Loading casino..." />;
