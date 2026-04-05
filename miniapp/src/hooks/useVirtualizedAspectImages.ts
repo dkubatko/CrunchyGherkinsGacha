@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { memoryImageCache } from '../lib/memoryImageCache';
 import { persistentImageCache } from '../lib/persistentImageCache';
+import { aspectCacheId } from '../lib/imageCache';
 import { fetchAspectImages } from '../services/aspectImageApiService';
 import type { AspectData } from '../types';
 
@@ -27,9 +28,6 @@ const decodeImage = async (base64: string) => {
     // Ignore decode failures; rendering will still attempt to display the image.
   }
 };
-
-/** Cache key prefix to namespace aspect images separately from card images. */
-const aspectCacheId = (id: number) => id + 1_000_000_000;
 
 export interface UseVirtualizedAspectImagesReturn {
   getImage: (aspectId: number) => string | null;

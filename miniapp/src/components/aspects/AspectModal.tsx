@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { AspectData, OrientationData } from '@/types';
 import { ApiService } from '@/services/api';
+import { imageCache, aspectCacheId } from '@/lib/imageCache';
 import { getRarityGradient } from '@/utils/rarityStyles';
 import { AnimatedImage, ConfirmDialog } from '@/components/common';
 import BeatLoader from 'react-spinners/BeatLoader';
@@ -45,14 +46,26 @@ const AspectModal: React.FC<AspectModalProps> = ({
   useEffect(() => {
     if (!isOpen || !initData) return;
     let cancelled = false;
-
-    setFullImage(null);
+    const cacheKey = aspectCacheId(aspect.id);
 
     const loadImage = async () => {
+      // Check cache first (memory → IndexedDB)
+      const cached = await imageCache.getAsync(cacheKey, 'full', null);
+      if (cached) {
+        if (!cancelled) {
+          setFullImage(cached);
+          setImageLoading(false);
+        }
+        return;
+      }
+
       setImageLoading(true);
       try {
         const img = await ApiService.fetchAspectImage(aspect.id, initData);
-        if (!cancelled) setFullImage(img);
+        if (!cancelled) {
+          setFullImage(img);
+          imageCache.set(cacheKey, img, 'full', null);
+        }
       } catch {
         // thumbnail fallback handled by caller
       } finally {

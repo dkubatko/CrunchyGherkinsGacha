@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import WebApp from '@twa-dev/sdk';
 import BeatLoader from 'react-spinners/BeatLoader';
 import { AnimatedImage, ConfirmDialog } from '@/components/common';
@@ -315,7 +316,7 @@ const Card: React.FC<CardProps> = ({
                 <polyline points="9 18 15 12 9 6" />
               </svg>
             </button>
-            {showAspectsPopup && equipped_aspects && equipped_aspects.length > 0 && (
+            {showAspectsPopup && equipped_aspects && equipped_aspects.length > 0 && createPortal(
               <div
                 className="card-aspects-popup-overlay"
                 onClick={(e) => {
@@ -350,7 +351,8 @@ const Card: React.FC<CardProps> = ({
                       })}
                   </ul>
                 </div>
-              </div>
+              </div>,
+              document.body,
             )}
           </>
         )}
