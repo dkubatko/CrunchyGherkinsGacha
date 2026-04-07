@@ -947,8 +947,8 @@ def get_chat_aspects_for_trade(
 ) -> List[OwnedAspect]:
     """Return all tradeable aspects in a chat, excluding those owned by a specific user.
 
-    Only returns aspects that are unequipped and unlocked, making them eligible
-    for trading. Used to populate trade options in the mini app.
+    Only returns aspects that are unequipped, making them eligible for trading.
+    Used to populate trade options in the mini app.
 
     Args:
         chat_id: The chat to scope the query to.
@@ -966,7 +966,6 @@ def get_chat_aspects_for_trade(
             OwnedAspectModel.season_id == season_id,
             OwnedAspectModel.user_id != exclude_user_id,
             OwnedAspectModel.user_id.isnot(None),
-            OwnedAspectModel.locked.is_(False),
             CardAspectModel.id.is_(None),  # unequipped only
         )
         .options(

@@ -48,7 +48,6 @@ from settings.constants import (
     EQUIP_NOT_YOUR_ASPECT_MESSAGE,
     EQUIP_NOT_YOUR_CARD_MESSAGE,
     EQUIP_CHAT_MISMATCH_MESSAGE,
-    EQUIP_CARD_LOCKED_MESSAGE,
     EQUIP_ASPECT_EQUIPPED_MESSAGE,
     EQUIP_CAPACITY_MESSAGE,
     EQUIP_RARITY_MISMATCH_MESSAGE,
@@ -911,14 +910,6 @@ async def equip(
     if not card.chat_id or card.chat_id != chat_id_str:
         await message.reply_text(
             EQUIP_CHAT_MISMATCH_MESSAGE,
-            reply_to_message_id=message.message_id,
-        )
-        return
-
-    # Lock checks
-    if card.locked:
-        await message.reply_text(
-            EQUIP_CARD_LOCKED_MESSAGE,
             reply_to_message_id=message.message_id,
         )
         return

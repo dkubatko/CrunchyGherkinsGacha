@@ -176,7 +176,6 @@ async def get_eligible_cards(
     Filters:
     - Owned by the authenticated user
     - Same chat_id as the aspect
-    - Not locked
     - aspect_count < 5
     - Rarity compatible (card rarity >= aspect rarity, or aspect is Unique)
     """
@@ -207,9 +206,6 @@ async def get_eligible_cards(
 
     eligible = []
     for card in cards:
-        # Must not be locked
-        if card.locked:
-            continue
         # Must have capacity
         if card.aspect_count >= 5:
             continue
@@ -261,12 +257,6 @@ async def equip_initiate(
         raise HTTPException(status_code=400, detail="Aspect is not in this chat")
     if not card.chat_id or card.chat_id != chat_id:
         raise HTTPException(status_code=400, detail="Card is not in this chat")
-
-    # Lock checks
-    if card.locked:
-        raise HTTPException(
-            status_code=400, detail="Cannot equip onto a locked card. Unlock it first."
-        )
 
     # Check if aspect is already equipped
     is_equipped = await asyncio.to_thread(aspect_repo.is_aspect_equipped, aspect_id)

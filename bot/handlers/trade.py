@@ -202,20 +202,6 @@ async def _initiate_aspect_trade(
         )
         return
 
-    if aspect1.locked:
-        await update.message.reply_text(
-            f"Aspect <b>{aspect1.display_name}</b> is locked. Unlock it first.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
-    if aspect2.locked:
-        await update.message.reply_text(
-            f"Aspect <b>{aspect2.display_name}</b> is locked.",
-            parse_mode=ParseMode.HTML,
-        )
-        return
-
     user2_username = aspect2.owner
 
     aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
@@ -606,7 +592,7 @@ async def accept_aspect_trade(
             type="aspect",
         )
     else:
-        message_text = "Aspect trade failed. Both aspects must be unlocked and unequipped."
+        message_text = "Aspect trade failed. Both aspects must be unequipped."
         event_manager.log(
             EventType.TRADE,
             TradeOutcome.ERROR,

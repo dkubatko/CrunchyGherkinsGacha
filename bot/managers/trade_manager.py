@@ -48,10 +48,9 @@ def trade_cards(card_id1: int, card_id2: int) -> bool:
 
 
 def trade_aspects(aspect_id1: int, aspect_id2: int) -> bool:
-    """Atomically swap ownership of two unequipped, unlocked aspects.
+    """Atomically swap ownership of two unequipped aspects.
 
-    Returns ``False`` if either aspect is not found, is equipped, or is
-    locked.
+    Returns ``False`` if either aspect is not found or is equipped.
     """
     try:
         with get_session(commit=True) as session:
@@ -61,10 +60,6 @@ def trade_aspects(aspect_id1: int, aspect_id2: int) -> bool:
 
             aspect2 = aspect_repo.get_aspect_for_update(aspect_id2, session=session)
             if not aspect2:
-                return False
-
-            # Both must be unlocked
-            if aspect1.locked or aspect2.locked:
                 return False
 
             # Neither may be equipped

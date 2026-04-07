@@ -164,7 +164,6 @@ def equip_aspect_on_card(
     - Ownership match (both belong to ``user_id``)
     - Rarity compatibility (aspect rarity ≤ card rarity; Unique exempt)
     - ``aspect_count < 5``
-    - Card is not locked
     - Aspect is not already equipped
 
     On success, creates a ``CardAspectModel`` row, increments the card's
@@ -188,10 +187,6 @@ def equip_aspect_on_card(
 
         # Ownership checks
         if card.user_id != user_id or aspect.user_id != user_id:
-            return False
-
-        # Lock check (only card lock prevents equip)
-        if card.locked:
             return False
 
         # Capacity check
