@@ -213,7 +213,7 @@ const CardsView = ({
   }, [isTradeMode, selectedCardForTrade, allCards, currentUserId]);
 
   const tradeFiltering = useCardFiltering(baseDisplayedCards);
-  const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: false });
+  const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: isReadOnly });
   const displayedCards = tradeFiltering.displayedCards;
   const filteredCurrentCards = currentFiltering.displayedCards;
 
@@ -464,7 +464,7 @@ const CardsView = ({
                   sortOptions={currentFiltering.sortOptions}
                   onFilterChange={currentFiltering.onFilterChange}
                   onSortChange={currentFiltering.onSortChange}
-                  showOwnerFilter={false}
+                  showOwnerFilter={isReadOnly}
                   counter={{
                     current: filteredCurrentCards.length,
                     total: cards.length
