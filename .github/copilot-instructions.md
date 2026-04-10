@@ -97,8 +97,7 @@ bot/
 ├── prompts/                  # Markdown prompt templates for Gemini image generation
 │   ├── aspect_sphere.md      # Aspect sphere generation prompt
 │   ├── base_card.md          # Base character card generation prompt
-│   ├── equip_card.md         # Equip aspect onto existing card prompt
-│   ├── refresh_card.md       # Full card regeneration with aspects prompt
+│   ├── card_with_aspects.md  # Card generation with equipped aspects prompt
 │   ├── unique_aspect.md      # Addendum for Unique rarity aspects
 │   ├── slot_icon.md          # Slot machine icon generation prompt (profile-based)
 │   └── set_slot_icon.md      # Set slot icon generation prompt (text-to-image, theme-based)

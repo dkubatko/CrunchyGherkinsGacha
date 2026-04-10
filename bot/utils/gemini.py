@@ -12,10 +12,9 @@ from settings.constants import (
     ASPECT_GENERATION_PROMPT,
     ASPECT_SET_CONTEXT,
     BASE_CARD_GENERATION_PROMPT,
-    EQUIP_GENERATION_PROMPT,
+    CARD_WITH_ASPECTS_PROMPT,
     RARITIES,
     CARD_TEMPLATES_PATH,
-    REFRESH_EQUIPPED_PROMPT,
     SLOT_MACHINE_INSTRUCTION,
     UNIQUE_ASPECT_ADDENDUM,
 )
@@ -394,95 +393,7 @@ class GeminiUtil:
             logger.error(f"Error generating aspect sphere image: {e}")
             return None
 
-    def generate_equipped_card_image(
-        self,
-        card_image_b64: str,
-        existing_aspects: list[tuple[str, bytes]],
-        new_aspect_name: str,
-        new_aspect_image_bytes: bytes,
-        rarity: str,
-        card_name: str,
-        temperature: float = 1.0,
-    ) -> str | None:
-        """Generate a transformed card image by applying a new aspect.
-
-        Sends the current card image plus all aspect sphere images to Gemini,
-        which produces a new card image that visually incorporates the new
-        aspect theme while preserving previously applied aspects.
-
-        Args:
-            card_image_b64: Base64-encoded current card image.
-            existing_aspects: List of (name, image_bytes) for previously equipped aspects.
-            new_aspect_name: Name of the aspect being equipped now.
-            new_aspect_image_bytes: Raw bytes of the new aspect's sphere image.
-            rarity: Card rarity (for color and creativeness lookup).
-            card_name: Full display name for the card nameplate.
-            temperature: Gemini sampling temperature.
-
-        Returns:
-            Base64-encoded transformed card image, or None on failure.
-        """
-        try:
-            # Build existing aspects description
-            if existing_aspects:
-                existing_desc = ", ".join(f'"{name}"' for name, _ in existing_aspects)
-            else:
-                existing_desc = "None (this is the first aspect being applied)"
-
-            prompt = EQUIP_GENERATION_PROMPT.format(
-                card_name=card_name,
-                existing_aspects=existing_desc,
-                new_aspect_name=new_aspect_name,
-                rarity=rarity,
-                color=RARITIES[rarity]["color"],
-                creativeness_factor=RARITIES[rarity]["creativeness_factor"],
-            )
-
-            logger.info(
-                f"Requesting equip card generation for '{card_name}', "
-                f"new aspect '{new_aspect_name}', rarity '{rarity}' "
-                f"({len(existing_aspects)} existing aspects) (temperature {temperature})"
-            )
-
-            # Prepare image parts: current card + labeled aspect references
-            contents: list = [prompt]
-            contents.append("Card image:")
-            contents.append(self._prepare_image_part(image_b64=card_image_b64))
-            for aspect_name, aspect_bytes in existing_aspects:
-                contents.append(f'Equipped aspect "{aspect_name}" reference:')
-                contents.append(self._prepare_image_part(image_bytes=aspect_bytes))
-            contents.append(f'New aspect "{new_aspect_name}" reference:')
-            contents.append(self._prepare_image_part(image_bytes=new_aspect_image_bytes))
-
-            config = types.GenerateContentConfig(
-                temperature=temperature,
-                safety_settings=self.safety_settings,
-                response_modalities=["IMAGE"],
-                image_config=types.ImageConfig(image_size="1K"),
-            )
-
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=config,
-            )
-
-            for part in response.candidates[0].content.parts:
-                if part.inline_data:
-                    image_bytes = part.inline_data.data
-                    image_bytes = ImageUtil.to_jpeg(image_bytes)
-                    processed = ImageUtil.crop_to_content(image_bytes)
-                    processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
-                    logger.info(f"Equipped card image for '{card_name}' generated successfully.")
-                    return base64.b64encode(processed).decode("utf-8")
-
-            logger.warning("No image data found in equip card generation response.")
-            return None
-        except Exception as e:
-            logger.error(f"Error generating equipped card image: {e}")
-            return None
-
-    def generate_refresh_equipped_image(
+    def generate_card_with_aspects(
         self,
         rarity: str,
         card_name: str,
@@ -491,11 +402,10 @@ class GeminiUtil:
         base_image_b64: str | None = None,
         temperature: float = 1.0,
     ) -> str | None:
-        """Generate a completely fresh card image for a card with equipped aspects.
+        """Generate a card image from scratch with equipped aspects.
 
-        Unlike generate_equipped_card_image, this does NOT use the existing card
-        image. Instead it starts from scratch with the character photo, the
-        rarity template, and all equipped aspect sphere images.
+        Uses the character photo, rarity template, and all equipped aspect
+        sphere images to produce a fresh card. Used by both /equip and /refresh.
 
         Args:
             rarity: Card rarity (for template selection, color, creativeness).
@@ -506,7 +416,7 @@ class GeminiUtil:
             temperature: Gemini sampling temperature.
 
         Returns:
-            Base64-encoded fresh card image, or None on failure.
+            Base64-encoded card image, or None on failure.
         """
         try:
             if base_image_path is None and base_image_b64 is None:
@@ -518,7 +428,7 @@ class GeminiUtil:
             else:
                 aspects_desc = "None"
 
-            prompt = REFRESH_EQUIPPED_PROMPT.format(
+            prompt = CARD_WITH_ASPECTS_PROMPT.format(
                 card_name=card_name,
                 aspects=aspects_desc,
                 rarity=rarity,
@@ -527,7 +437,7 @@ class GeminiUtil:
             )
 
             logger.info(
-                f"Requesting refresh-equipped generation for '{card_name}', "
+                f"Requesting card-with-aspects generation for '{card_name}', "
                 f"rarity '{rarity}', {len(aspects)} aspects (temperature {temperature})"
             )
 
@@ -563,11 +473,11 @@ class GeminiUtil:
                     image_bytes = ImageUtil.to_jpeg(image_bytes)
                     processed = ImageUtil.crop_to_content(image_bytes)
                     processed = ImageUtil.crop_to_aspect_ratio(processed, 5/7)
-                    logger.info(f"Refresh-equipped image for '{card_name}' generated successfully.")
+                    logger.info(f"Card-with-aspects image for '{card_name}' generated successfully.")
                     return base64.b64encode(processed).decode("utf-8")
 
-            logger.warning("No image data found in refresh-equipped generation response.")
+            logger.warning("No image data found in card-with-aspects generation response.")
             return None
         except Exception as e:
-            logger.error(f"Error generating refresh-equipped image: {e}")
+            logger.error(f"Error generating card-with-aspects image: {e}")
             return None

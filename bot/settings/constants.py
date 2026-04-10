@@ -134,8 +134,7 @@ SLOT_MACHINE_INSTRUCTION = _load_prompt("slot_icon.md")
 SET_SLOT_ICON_PROMPT = _load_prompt("set_slot_icon.md")
 ASPECT_GENERATION_PROMPT = _load_prompt("aspect_sphere.md")
 BASE_CARD_GENERATION_PROMPT = _load_prompt("base_card.md")
-EQUIP_GENERATION_PROMPT = _load_prompt("equip_card.md")
-REFRESH_EQUIPPED_PROMPT = _load_prompt("refresh_card.md")
+CARD_WITH_ASPECTS_PROMPT = _load_prompt("card_with_aspects.md")
 
 ASPECT_SET_CONTEXT = (
     "\n- This aspect belongs to the themed set {set_details}."

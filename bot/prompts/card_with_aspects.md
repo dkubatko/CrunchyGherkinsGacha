@@ -1,9 +1,5 @@
-Generate a completely fresh 5:7 collectible trading card featuring the
+Generate a 5:7 collectible trading card featuring the
 provided character in a world defined by their equipped aspects.
-
-This is a full regeneration — create a brand new image from scratch
-with a different composition, pose, background, and artistic
-interpretation than any previous version.
 
 ## Input Images
 
@@ -74,7 +70,7 @@ memorable card — not a conservative one.
 ## Rarity Color
 
 Border and nameplate use a {color} color palette. Main artwork is
-not constrained by this color.
+**not** constrained by this color.
 
 ## Creativity Factor: {creativeness_factor}/100
 

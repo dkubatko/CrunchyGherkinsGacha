@@ -416,9 +416,9 @@ async def _generate_refresh_options(
 ) -> tuple[str, str]:
     """Generate two refresh image options.
 
-    For cards with equipped aspects, uses the equipped-card refresh path
-    (``generate_refresh_equipped_image``) which generates from scratch
-    using the character photo + all equipped aspect sphere images.
+    For cards with equipped aspects, uses ``generate_card_with_aspects``
+    which generates from scratch using the character photo + all equipped
+    aspect sphere images.
     """
     if card.aspect_count > 0:
         return await _generate_equipped_refresh_options(card, gemini_util, max_retries)
@@ -447,9 +447,9 @@ async def _generate_equipped_refresh_options(
 ) -> tuple[str, str]:
     """Generate two refresh options for a card with equipped aspects.
 
-    Uses ``generate_refresh_equipped_image`` which starts from scratch
-    with the character photo, rarity template, and all equipped aspect
-    sphere images — producing a completely fresh interpretation.
+    Uses ``generate_card_with_aspects`` which starts from scratch with
+    the character photo, rarity template, and all equipped aspect sphere
+    images — producing a completely fresh interpretation.
     """
     # Get source profile image
     if not card.source_type or not card.source_id:
@@ -482,7 +482,7 @@ async def _generate_equipped_refresh_options(
         for attempt in range(1, total_attempts + 1):
             try:
                 image_b64 = await asyncio.to_thread(
-                    gemini_util.generate_refresh_equipped_image,
+                    gemini_util.generate_card_with_aspects,
                     card.rarity,
                     card_name,
                     aspects_data,
@@ -1153,29 +1153,9 @@ async def handle_equip_callback(
             )
             return
 
-        # Gather equipped aspect images for Gemini
-        equipped_aspects_data = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card_id)
-
-        existing_aspects: list[tuple[str, bytes]] = []
-        new_aspect_image_bytes: Optional[bytes] = None
-
-        for ca in equipped_aspects_data:
-            aspect_with_img = await asyncio.to_thread(
-                aspect_repo.get_aspect_with_image, ca.aspect_id
-            )
-            if not aspect_with_img or not aspect_with_img.image_b64:
-                continue
-
-            img_bytes = base64.b64decode(aspect_with_img.image_b64)
-            if ca.aspect_id == aspect_id:
-                # This is the newly equipped aspect
-                new_aspect_image_bytes = img_bytes
-            else:
-                # Previously equipped aspect
-                existing_aspects.append((aspect_with_img.display_name, img_bytes))
-
-        if new_aspect_image_bytes is None:
-            logger.warning("Could not load image for newly equipped aspect %s", aspect_id)
+        # Fetch the character's source profile image
+        if not card_with_image.source_type or not card_with_image.source_id:
+            logger.error("Card %s has no source info for from-scratch generation", card_id)
             await query.edit_message_text(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
                     card_id=card_id,
@@ -1187,16 +1167,46 @@ async def handle_equip_callback(
             )
             return
 
-        # Generate the transformed card image
+        try:
+            profile = await asyncio.to_thread(
+                rolling.get_profile_for_source,
+                card_with_image.source_type,
+                card_with_image.source_id,
+            )
+        except Exception as exc:
+            logger.error("Failed to fetch profile for card %s: %s", card_id, exc)
+            await query.edit_message_text(
+                EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    card_id=card_id,
+                    new_title=html.escape(new_title),
+                    rarity=card_with_image.rarity,
+                    equipped_aspects=format_aspect_list(card_with_image),
+                ),
+                parse_mode=ParseMode.HTML,
+            )
+            return
+
+        # Gather all equipped aspect images (flat list)
+        equipped_aspects_data = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card_id)
+        aspects_data: list[tuple[str, bytes]] = []
+
+        for ca in equipped_aspects_data:
+            aspect_with_img = await asyncio.to_thread(
+                aspect_repo.get_aspect_with_image, ca.aspect_id
+            )
+            if aspect_with_img and aspect_with_img.image_b64:
+                aspects_data.append(
+                    (aspect_with_img.display_name, base64.b64decode(aspect_with_img.image_b64))
+                )
+
+        # Generate the card image with the new aspect
         try:
             new_image_b64 = await asyncio.to_thread(
-                gemini_util.generate_equipped_card_image,
-                card_with_image.image_b64,
-                existing_aspects,
-                aspect_name,
-                new_aspect_image_bytes,
+                gemini_util.generate_card_with_aspects,
                 card_with_image.rarity,
                 new_title,
+                aspects_data,
+                base_image_b64=profile.image_b64,
             )
         except Exception as exc:
             logger.error("Equip image generation failed for card %s: %s", card_id, exc)
@@ -1234,6 +1244,16 @@ async def handle_equip_callback(
             )
 
             await save_card_file_id_from_message(sent_message, card_id)
+
+            event_manager.log(
+                EventType.EQUIP,
+                EquipOutcome.SUCCESS,
+                user_id=user.user_id,
+                chat_id=chat_id_str,
+                card_id=card_id,
+                aspect_id=aspect_id,
+                aspect_name=aspect_name,
+            )
 
             # Delete the crafting message
             try:

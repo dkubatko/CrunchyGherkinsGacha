@@ -11,7 +11,6 @@ import logging
 from typing import List, Optional
 
 from settings.constants import RARITY_ORDER, get_spin_reward
-from utils.events import EquipOutcome, EventType
 from repos import aspect_repo, card_repo, claim_repo
 from utils.session import get_session
 
@@ -48,11 +47,7 @@ def try_claim_aspect(
             return False
 
         # If claim cost info provided, deduct in same transaction
-        if (
-            chat_id is not None
-            and claim_cost is not None
-            and claim_cost > 0
-        ):
+        if chat_id is not None and claim_cost is not None and claim_cost > 0:
             claim = claim_repo.get_or_create_claim_for_update(user_id, chat_id, session=session)
 
             if claim.balance < claim_cost:
@@ -167,13 +162,10 @@ def equip_aspect_on_card(
     - Aspect is not already equipped
 
     On success, creates a ``CardAspectModel`` row, increments the card's
-    ``aspect_count``, sets the card's ``modifier`` to ``name_prefix``, and
-    emits an ``EQUIP`` event.
+    ``aspect_count``, and sets the card's ``modifier`` to ``name_prefix``.
 
     Returns ``True`` on success, ``False`` on any validation failure.
     """
-    from managers import event_manager as event_service
-
     now = datetime.datetime.now(datetime.timezone.utc)
 
     with get_session(commit=True) as session:
@@ -210,18 +202,8 @@ def equip_aspect_on_card(
         aspect_repo.create_card_aspect_link(card_id, aspect_id, new_order, now, session=session)
 
         # Update card
-        card_repo.update_card_aspect_equip(card_id, aspect_count=new_order, modifier=name_prefix, updated_at=now, session=session)
-
-    # Emit event outside the transaction
-    event_service.log(
-        EventType.EQUIP,
-        EquipOutcome.SUCCESS,
-        user_id=user_id,
-        chat_id=chat_id,
-        card_id=card_id,
-        aspect_id=aspect_id,
-        order=new_order,
-        name_prefix=name_prefix,
-    )
+        card_repo.update_card_aspect_equip(
+            card_id, aspect_count=new_order, modifier=name_prefix, updated_at=now, session=session
+        )
 
     return True
