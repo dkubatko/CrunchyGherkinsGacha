@@ -104,6 +104,16 @@ const AspectsView = ({
     onSortChange,
   } = useAspectFiltering(aspects);
 
+  const {
+    displayedAspects: filteredTradeAspects,
+    filterOptions: tradeFilterOptions,
+    sortOptions: tradeSortOptions,
+    filterValues: tradeFilterValues,
+    onFilterChange: onTradeFilterChange,
+    onSortChange: onTradeSortChange,
+    reset: resetTradeFilters,
+  } = useAspectFiltering(tradeAspects);
+
   // Modal state
   const [selectedAspect, setSelectedAspect] = useState<AspectData | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -280,8 +290,9 @@ const AspectsView = ({
     setIsTradeView(false);
     onLockSwipe?.(false);
     closeModal();
+    resetTradeFilters();
     TelegramUtils.hideBackButton();
-  }, [closeModal, onLockSwipe]);
+  }, [closeModal, onLockSwipe, resetTradeFilters]);
 
   const switchToNormalViewRef = useRef(switchToNormalView);
   useEffect(() => {
@@ -301,10 +312,6 @@ const AspectsView = ({
 
   const handleTradeClick = useCallback(() => {
     if (!selectedAspect || !isOwnCollection) return;
-    if (selectedAspect.locked) {
-      TelegramUtils.showAlert('Unlock this aspect before trading it.');
-      return;
-    }
     setSelectedAspectForTrade(selectedAspect);
     setIsTradeView(true);
     onLockSwipe?.(true);
@@ -417,7 +424,9 @@ const AspectsView = ({
         <div className="app-content">
           {isTradeView && selectedAspectForTrade ? (
             <>
-              <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
+              <div style={{ marginTop: 8 }}>
+                <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
+              </div>
               {tradeAspectsLoading ? (
                 <Loading message="Loading aspects..." />
               ) : tradeAspectsError ? (
@@ -432,11 +441,34 @@ const AspectsView = ({
                   <p>No other users have tradeable aspects in this chat.</p>
                 </div>
               ) : (
-                <AspectGrid
-                  aspects={tradeAspects}
-                  onAspectClick={openModal}
-                  initData={initData}
-                />
+                <>
+                  <FilterSortControls
+                    filterOptions={tradeFilterOptions}
+                    sortOptions={tradeSortOptions}
+                    onFilterChange={onTradeFilterChange}
+                    onSortChange={onTradeSortChange}
+                    showOwnerFilter={true}
+                    showCharacterFilter={false}
+                    showAspectStatusFilter={false}
+                    filterValues={tradeFilterValues}
+                    counter={{
+                      current: filteredTradeAspects.length,
+                      total: tradeAspects.length,
+                    }}
+                  />
+                  {filteredTradeAspects.length === 0 ? (
+                    <div className="no-cards-container">
+                      <h2>No aspects match your filters</h2>
+                      <p>Try adjusting your filter settings.</p>
+                    </div>
+                  ) : (
+                    <AspectGrid
+                      aspects={filteredTradeAspects}
+                      onAspectClick={openModal}
+                      initData={initData}
+                    />
+                  )}
+                </>
               )}
             </>
           ) : (

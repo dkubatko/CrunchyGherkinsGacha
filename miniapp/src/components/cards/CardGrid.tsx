@@ -52,8 +52,8 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
     getScrollElement: () => parentRef.current,
     estimateSize: () => rowHeight,
     overscan: 5,
-    paddingStart: PADDING,
-    paddingEnd: PADDING,
+    paddingStart: 0,
+    paddingEnd: 0,
     onChange: (instance) => {
       const items = instance.getVirtualItems();
       if (items.length === 0) return;

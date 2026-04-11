@@ -409,9 +409,11 @@ const CardsView = ({
         {/* Trade view: selecting a card to trade for */}
         {isTradeView ? (
           <div className="app-content">
-            <Title
-              title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
-            />
+            <div style={{ marginTop: 8 }}>
+              <Title
+                title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
+              />
+            </div>
             {allCardsLoading ? (
               <Loading message="Loading trade options..." />
             ) : allCardsError ? (
