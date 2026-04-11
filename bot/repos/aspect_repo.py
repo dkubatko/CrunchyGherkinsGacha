@@ -871,6 +871,21 @@ def is_aspect_equipped(aspect_id: int, *, session: Session) -> bool:
     ) is not None
 
 
+@with_session(commit=True)
+def swap_aspect_owners(aspect_id1: int, aspect_id2: int, *, session: Session) -> bool:
+    """Swap the owners of two aspects."""
+    aspect1 = session.query(OwnedAspectModel).filter(OwnedAspectModel.id == aspect_id1).first()
+    if not aspect1:
+        return False
+    aspect2 = session.query(OwnedAspectModel).filter(OwnedAspectModel.id == aspect_id2).first()
+    if not aspect2:
+        return False
+
+    aspect1.owner, aspect2.owner = aspect2.owner, aspect1.owner
+    aspect1.user_id, aspect2.user_id = aspect2.user_id, aspect1.user_id
+    return True
+
+
 @with_session
 def get_aspects_by_ids(aspect_ids: List[int], *, session: Session) -> List[OwnedAspect]:
     """Get multiple aspects by their IDs."""

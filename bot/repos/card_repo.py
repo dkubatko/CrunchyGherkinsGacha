@@ -675,35 +675,32 @@ def swap_card_owners(card_id1, card_id2, *, session: Session) -> bool:
 
     Only works for cards in the current season.
     """
-    try:
-        card1 = (
-            session.query(CardModel)
-            .filter(
-                CardModel.id == card_id1,
-                CardModel.season_id == CURRENT_SEASON,
-            )
-            .first()
+    card1 = (
+        session.query(CardModel)
+        .filter(
+            CardModel.id == card_id1,
+            CardModel.season_id == CURRENT_SEASON,
         )
-        if not card1:
-            return False
-
-        card2 = (
-            session.query(CardModel)
-            .filter(
-                CardModel.id == card_id2,
-                CardModel.season_id == CURRENT_SEASON,
-            )
-            .first()
-        )
-        if not card2:
-            return False
-
-        # Swap owners and user_ids
-        card1.owner, card2.owner = card2.owner, card1.owner
-        card1.user_id, card2.user_id = card2.user_id, card1.user_id
-        return True
-    except Exception:
+        .first()
+    )
+    if not card1:
         return False
+
+    card2 = (
+        session.query(CardModel)
+        .filter(
+            CardModel.id == card_id2,
+            CardModel.season_id == CURRENT_SEASON,
+        )
+        .first()
+    )
+    if not card2:
+        return False
+
+    # Swap owners and user_ids
+    card1.owner, card2.owner = card2.owner, card1.owner
+    card1.user_id, card2.user_id = card2.user_id, card1.user_id
+    return True
 
 
 @with_session(commit=True)

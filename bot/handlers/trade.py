@@ -386,11 +386,11 @@ async def accept_card_trade(
         await query.answer("You are not the owner of the card being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(trade_manager.trade_cards, card_id1, card_id2)
+    error = await asyncio.to_thread(trade_manager.trade_cards, card_id1, card_id2)
 
     chat_id_str = str(query.message.chat_id)
 
-    if success:
+    if error is None:
         message_text = TRADE_COMPLETE_MESSAGE.format(
             user1_username=user1_username,
             card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
@@ -408,7 +408,7 @@ async def accept_card_trade(
             type="card",
         )
     else:
-        message_text = "Trade failed. Please try again."
+        message_text = f"Trade failed: {error}"
         event_manager.log(
             EventType.TRADE,
             TradeOutcome.ERROR,
@@ -570,11 +570,11 @@ async def accept_aspect_trade(
         await query.answer("You are not the owner of the aspect being traded for.", show_alert=True)
         return
 
-    success = await asyncio.to_thread(trade_manager.trade_aspects, aspect_id1, aspect_id2)
+    error = await asyncio.to_thread(trade_manager.trade_aspects, aspect_id1, aspect_id2)
 
     chat_id_str = str(query.message.chat_id)
 
-    if success:
+    if error is None:
         message_text = ASPECT_TRADE_COMPLETE_MESSAGE.format(
             user1_username=user1_username,
             aspect1_title=aspect1_title,
@@ -592,7 +592,7 @@ async def accept_aspect_trade(
             type="aspect",
         )
     else:
-        message_text = "Aspect trade failed. Both aspects must be unequipped."
+        message_text = f"Aspect trade failed: {error}"
         event_manager.log(
             EventType.TRADE,
             TradeOutcome.ERROR,
