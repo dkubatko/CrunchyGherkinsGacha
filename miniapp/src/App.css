@@ -19,6 +19,9 @@
   --action-panel-content-padding: 10px;
   --action-panel-button-height: 55px;
   --action-panel-height: calc(var(--bottom-bar-padding) + var(--action-panel-content-padding) + var(--action-panel-button-height));
+
+  /* Margin around filter/sort controls above grids */
+  --filter-sort-margin: 8px;
 }
 
 * {

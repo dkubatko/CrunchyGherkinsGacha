@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { CardData } from '../types';
 import { ApiService } from '../services/api';
 import { cardsCache } from '../lib/cardsCache';
@@ -27,6 +27,13 @@ export const useAllCards = (
   const [allCards, setAllCards] = useState<CardData[]>(initialCachedCards || []);
   const [loading, setLoading] = useState<boolean>(enabled && !initialCachedCards);
   const [error, setError] = useState<string | null>(null);
+  const prevEnabledRef = useRef(enabled);
+
+  // Synchronously set loading when enabled flips to true (before render completes)
+  if (enabled && !prevEnabledRef.current && !loading && allCards.length === 0 && !error) {
+    setLoading(true);
+  }
+  prevEnabledRef.current = enabled;
 
   const fetchAllCards = useCallback(
     async (forceRefresh = false) => {
@@ -54,7 +61,9 @@ export const useAllCards = (
         setAllCards([]);
       }
 
-      setLoading(true);
+      if (!forceRefresh) {
+        setLoading(true);
+      }
       setError(null);
 
       try {

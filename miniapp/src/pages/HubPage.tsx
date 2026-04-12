@@ -168,6 +168,7 @@ export const HubPage = ({
             <AllTab
               initData={initData}
               currentUserId={currentUserId}
+              chatId={chatId}
               initialAllCards={allCards}
               initialAllAspects={allChatAspects}
             />

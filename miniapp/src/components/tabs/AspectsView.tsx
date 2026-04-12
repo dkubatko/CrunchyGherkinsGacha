@@ -41,6 +41,7 @@ interface AspectsViewProps {
   // Read-only mode (all aspects in chat)
   isReadOnly?: boolean;
   allAspects?: AspectData[];
+  onRefresh?: () => Promise<void>;
 }
 
 const AspectsView = ({
@@ -59,6 +60,7 @@ const AspectsView = ({
   // Read-only mode props
   isReadOnly = false,
   allAspects: allAspectsProp,
+  onRefresh: onRefreshProp,
 }: AspectsViewProps) => {
   // For mutable mode, use useAspects hook
   const {
@@ -424,11 +426,11 @@ const AspectsView = ({
         <div className="app-content">
           {isTradeView && selectedAspectForTrade ? (
             <>
-              <div style={{ marginTop: 8 }}>
+              <div className="trade-view-title">
                 <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
               </div>
               {tradeAspectsLoading ? (
-                <Loading message="Loading aspects..." />
+                <Loading message="Loading trade options..." />
               ) : tradeAspectsError ? (
                 <div className="error-container">
                   <h2>Error loading trade options</h2>
@@ -466,6 +468,7 @@ const AspectsView = ({
                       aspects={filteredTradeAspects}
                       onAspectClick={openModal}
                       initData={initData}
+                      onRefresh={refetchTradeAspects}
                     />
                   )}
                 </>
@@ -505,6 +508,7 @@ const AspectsView = ({
                   aspects={displayedAspects}
                   onAspectClick={openModal}
                   initData={initData}
+                  onRefresh={onRefreshProp ?? (!isReadOnly ? refetch : undefined)}
                 />
               )}
             </>

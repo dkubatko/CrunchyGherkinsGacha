@@ -11,6 +11,7 @@
   overflow-y: auto;
   overscroll-behavior-y: contain;
   contain: layout style;
+  position: relative;
 }
 
 .virtualized-content {

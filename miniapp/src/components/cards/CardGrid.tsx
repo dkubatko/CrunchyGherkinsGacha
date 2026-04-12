@@ -2,6 +2,8 @@ import React, { memo, useCallback, useRef, useLayoutEffect, useMemo, useState } 
 import { useVirtualizer } from '@tanstack/react-virtual';
 import MiniCard from './MiniCard';
 import { useVirtualizedImages } from '@/hooks';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import PullToRefreshSpinner from '@/components/common/PullToRefreshSpinner';
 import './CardGrid.css';
 import type { CardData } from '@/types';
 
@@ -9,6 +11,7 @@ interface CardGridProps {
   cards: CardData[];
   onCardClick: (card: CardData) => void;
   initData: string | null;
+  onRefresh?: () => Promise<void>;
 }
 
 const COLUMNS = 3;
@@ -24,7 +27,7 @@ const getRowHeightFromWidth = (width: number) => {
   return Math.ceil(cardHeight + GAP);
 };
 
-const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }) => {
+const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData, onRefresh }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { getImage, isLoading, hasFailed, setVisibleRange } = useVirtualizedImages(cards, initData);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -117,9 +120,20 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData }
 
   const handleCardClick = useCallback((card: CardData) => onCardClick(card), [onCardClick]);
 
+  const { pullDistance, isRefreshing, spinnerAngle } = usePullToRefresh(
+    parentRef, onRefresh, !!onRefresh,
+  );
+
   return (
     <div ref={parentRef} className="all-cards-container virtualized-container">
-      <div className="virtualized-content" style={{ height: virtualizer.getTotalSize() }}>
+      <PullToRefreshSpinner pullDistance={pullDistance} spinnerAngle={spinnerAngle} isRefreshing={isRefreshing} />
+      <div
+        className="virtualized-content"
+        style={{
+          height: virtualizer.getTotalSize(),
+          transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
+        }}
+      >
         {virtualRows.map((row) => (
           <div
             key={row.key}

@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ApiService } from '@/services/api';
+import { cardsCache } from '@/lib/cardsCache';
+import { aspectsCache } from '@/lib/aspectsCache';
 import type {
   CardData,
   AspectData,
@@ -200,6 +202,7 @@ export const useHubData = ({
         const allCardsPromise = ApiService.fetchAllCards(initData, chatId)
           .then(result => {
             setAllCards(result);
+            cardsCache.set(result, initData, chatId);
             incrementProgress();
           })
           .catch(err => {
@@ -211,6 +214,7 @@ export const useHubData = ({
         const allAspectsPromise = ApiService.fetchAllChatAspects(initData, chatId)
           .then(result => {
             setAllChatAspects(result);
+            aspectsCache.set(result, initData, chatId);
             incrementProgress();
           })
           .catch(err => {

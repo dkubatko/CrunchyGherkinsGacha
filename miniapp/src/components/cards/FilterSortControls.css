@@ -3,7 +3,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 0 12px;
-  margin: 8px 0;
+  margin: var(--filter-sort-margin, 8px) 0;
   position: relative;
   width: 100%;
   box-sizing: border-box;
@@ -467,4 +467,9 @@
     width: 36px;
     height: 36px;
   }
+}
+
+/* Wrapper for trade view title, matching filter-sort-controls vertical spacing */
+.trade-view-title {
+  margin-top: var(--filter-sort-margin, 8px);
 }

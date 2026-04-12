@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AspectData } from '../types';
 import { ApiService } from '../services/api';
 import { aspectsCache } from '../lib/aspectsCache';
@@ -32,6 +32,13 @@ export const useAllAspects = (
   const [allAspects, setAllAspects] = useState<AspectData[]>(initialCachedAspects || []);
   const [loading, setLoading] = useState<boolean>(enabled && !initialCachedAspects);
   const [error, setError] = useState<string | null>(null);
+  const prevEnabledRef = useRef(enabled);
+
+  // Synchronously set loading when enabled flips to true (before render completes)
+  if (enabled && !prevEnabledRef.current && !loading && allAspects.length === 0 && !error) {
+    setLoading(true);
+  }
+  prevEnabledRef.current = enabled;
 
   const fetchAllAspects = useCallback(
     async (forceRefresh = false) => {
@@ -59,7 +66,9 @@ export const useAllAspects = (
         setAllAspects([]);
       }
 
-      setLoading(true);
+      if (!forceRefresh) {
+        setLoading(true);
+      }
       setError(null);
 
       try {

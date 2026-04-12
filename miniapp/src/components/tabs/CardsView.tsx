@@ -45,6 +45,7 @@ interface CardsViewProps {
   // Read-only mode (all cards in chat)
   isReadOnly?: boolean;
   allCards?: CardData[];
+  onRefresh?: () => Promise<void>;
 }
 
 const CardsView = ({
@@ -64,6 +65,7 @@ const CardsView = ({
   // Read-only mode props
   isReadOnly = false,
   allCards: allCardsProp,
+  onRefresh: onRefreshProp,
 }: CardsViewProps) => {
   const collectionOwnerLabel = ownerLabel ?? 'Collection';
 
@@ -73,6 +75,7 @@ const CardsView = ({
     cards: hookCards,
     loading: hookLoading,
     error: hookError,
+    refetch: refetchCards,
     updateCard,
   } = useCollectionCards(initData, chatId, targetUserId ?? currentUserId, {
     initialCards,
@@ -189,10 +192,10 @@ const CardsView = ({
   }, [ensureUserProfile]);
 
   const {
-    allCards,
-    loading: allCardsLoading,
-    error: allCardsError,
-    refetch: refetchAllCards,
+    allCards: tradeCards,
+    loading: tradeCardsLoading,
+    error: tradeCardsError,
+    refetch: refetchTradeCards,
   } = useAllCards(initData, cardsScopeChatId, {
     enabled: shouldFetchAllCards,
     tradeCardId: activeTradeCardId
@@ -204,13 +207,13 @@ const CardsView = ({
 
   const baseDisplayedCards = useMemo(() => {
     if (isTradeMode && selectedCardForTrade) {
-      return allCards.filter((card) =>
+      return tradeCards.filter((card) =>
         card.id !== selectedCardForTrade.id &&
         card.user_id !== currentUserId
       );
     }
-    return allCards;
-  }, [isTradeMode, selectedCardForTrade, allCards, currentUserId]);
+    return tradeCards;
+  }, [isTradeMode, selectedCardForTrade, tradeCards, currentUserId]);
 
   const tradeFiltering = useCardFiltering(baseDisplayedCards);
   const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: isReadOnly });
@@ -406,94 +409,98 @@ const CardsView = ({
       <div
         className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
       >
-        {/* Trade view: selecting a card to trade for */}
-        {isTradeView ? (
-          <div className="app-content">
-            <div style={{ marginTop: 8 }}>
-              <Title
-                title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
-              />
-            </div>
-            {allCardsLoading ? (
-              <Loading message="Loading trade options..." />
-            ) : allCardsError ? (
-              <div className="error-container">
-                <h2>Error loading trade options</h2>
-                <p>{allCardsError}</p>
-                <button onClick={() => { void refetchAllCards(); }}>Retry</button>
-              </div>
-            ) : baseDisplayedCards.length === 0 ? (
-              <div className="no-cards-container">
-                <h2>No trade options</h2>
-                <p>No other cards are available in this chat right now.</p>
-              </div>
-            ) : (
-              <>
-                <FilterSortControls
-                  cards={baseDisplayedCards}
-                  filterOptions={tradeFiltering.filterOptions}
-                  sortOptions={tradeFiltering.sortOptions}
-                  onFilterChange={tradeFiltering.onFilterChange}
-                  onSortChange={tradeFiltering.onSortChange}
-                  counter={{
-                    current: displayedCards.length,
-                    total: baseDisplayedCards.length
-                  }}
+        <div className="app-content">
+          {/* Trade view: selecting a card to trade for */}
+          {isTradeView ? (
+            <>
+              <div className="trade-view-title">
+                <Title
+                  title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
                 />
-                {displayedCards.length === 0 ? (
-                  <div className="no-cards-container">
-                    <h2>No cards match your filters</h2>
-                    <p>Try adjusting your filter settings to see more cards.</p>
-                  </div>
-                ) : (
-                  <CardGrid
-                    cards={displayedCards}
-                    onCardClick={openModal}
-                    initData={initData}
+              </div>
+              {tradeCardsLoading ? (
+                <Loading message="Loading trade options..." />
+              ) : tradeCardsError ? (
+                <div className="error-container">
+                  <h2>Error loading trade options</h2>
+                  <p>{tradeCardsError}</p>
+                  <button onClick={() => { void refetchTradeCards(); }}>Retry</button>
+                </div>
+              ) : baseDisplayedCards.length === 0 ? (
+                <div className="no-cards-container">
+                  <h2>No trade options</h2>
+                  <p>No other cards are available in this chat right now.</p>
+                </div>
+              ) : (
+                <>
+                  <FilterSortControls
+                    cards={baseDisplayedCards}
+                    filterOptions={tradeFiltering.filterOptions}
+                    sortOptions={tradeFiltering.sortOptions}
+                    onFilterChange={tradeFiltering.onFilterChange}
+                    onSortChange={tradeFiltering.onSortChange}
+                    counter={{
+                      current: displayedCards.length,
+                      total: baseDisplayedCards.length
+                    }}
                   />
-                )}
-              </>
-            )}
-          </div>
-        ) : (
-          /* Normal collection view */
-          <div className="app-content">
-            {cards.length > 0 ? (
-              <>
-                <FilterSortControls
-                  cards={cards}
-                  filterOptions={currentFiltering.filterOptions}
-                  sortOptions={currentFiltering.sortOptions}
-                  onFilterChange={currentFiltering.onFilterChange}
-                  onSortChange={currentFiltering.onSortChange}
-                  showOwnerFilter={isReadOnly}
-                  counter={{
-                    current: filteredCurrentCards.length,
-                    total: cards.length
-                  }}
-                />
-                {filteredCurrentCards.length === 0 ? (
-                  <div className="no-cards-container">
-                    <h2>No cards match your filter</h2>
-                    <p>Try selecting a different rarity or clearing the filter.</p>
-                  </div>
-                ) : (
-                  <CardGrid
-                    cards={filteredCurrentCards}
-                    onCardClick={openModal}
-                    initData={initData}
+                  {displayedCards.length === 0 ? (
+                    <div className="no-cards-container">
+                      <h2>No cards match your filters</h2>
+                      <p>Try adjusting your filter settings to see more cards.</p>
+                    </div>
+                  ) : (
+                    <CardGrid
+                      cards={displayedCards}
+                      onCardClick={openModal}
+                      initData={initData}
+                      onRefresh={refetchTradeCards}
+                    />
+                  )}
+                </>
+              )}
+            </>
+          ) : (
+            /* Normal collection view */
+            <>
+              {cards.length > 0 ? (
+                <>
+                  <FilterSortControls
+                    cards={cards}
+                    filterOptions={currentFiltering.filterOptions}
+                    sortOptions={currentFiltering.sortOptions}
+                    onFilterChange={currentFiltering.onFilterChange}
+                    onSortChange={currentFiltering.onSortChange}
+                    showOwnerFilter={isReadOnly}
+                    counter={{
+                      current: filteredCurrentCards.length,
+                      total: cards.length
+                    }}
                   />
-                )}
-              </>
-            ) : (
-              <p>
-                {isOwnCollection
-                  ? "You don't own any cards yet."
-                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
-              </p>
-            )}
-          </div>
-        )}
+                  {filteredCurrentCards.length === 0 ? (
+                    <div className="no-cards-container">
+                      <h2>No cards match your filter</h2>
+                      <p>Try selecting a different rarity or clearing the filter.</p>
+                    </div>
+                  ) : (
+                    <CardGrid
+                      cards={filteredCurrentCards}
+                      onCardClick={openModal}
+                      initData={initData}
+                      onRefresh={onRefreshProp ?? (!isReadOnly ? refetchCards : undefined)}
+                    />
+                  )}
+                </>
+              ) : (
+                <p>
+                  {isOwnCollection
+                    ? "You don't own any cards yet."
+                    : `${collectionOwnerLabel} doesn't own any cards yet.`}
+                </p>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Card Modal */}

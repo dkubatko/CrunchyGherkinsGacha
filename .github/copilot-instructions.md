@@ -216,7 +216,7 @@ miniapp/src/
 │   ├── profile/             # ProfileView, Achievement badge
 │   ├── common/              # BottomNav, ActionPanel, SubTabToggle, SwipeableSubTabs, AnimatedImage, badges, dialogs
 │   └── dialogs/             # BurnConfirmDialog, LockConfirmDialog
-├── hooks/                   # ~22 custom hooks (useAppRouter, useCards, useSlots, useOrientation, useScrollSnap, etc.)
+├── hooks/                   # ~23 custom hooks (useAppRouter, useCards, useSlots, useOrientation, useScrollSnap, usePullToRefresh, etc.)
 ├── services/
 │   └── api.ts               # ApiService class — all backend communication (static methods)
 ├── stores/                  # Zustand stores (useSlotsStore for animation state, useAdminStore for auth)
@@ -340,6 +340,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 - **Framer Motion** for card animations (RTB flip/move, transitions)
 - **Device orientation** tracking via Telegram TWA SDK for 3D card tilt effects
 - **Swipeable sub-tabs**: CollectionTab and AllTab use `SwipeableSubTabs` (CSS transforms + `touch-action: pan-y`) for horizontal pane swiping between Cards and Aspects. The `useScrollSnap` hook applies `translateX()` transforms with JS gesture handling (direction-locked, clamped to valid neighbor panes, velocity-based snapping). Progress-based indicator animation on `SubTabToggle` is driven via rAF-interpolated callbacks. Panes signal `onLockSwipe(true)` to disable swiping during trade/modal flows.
+- **Pull-to-refresh**: CardGrid and AspectGrid support pull-to-refresh via the `usePullToRefresh` hook + `PullToRefreshSpinner` component. When at `scrollTop=0`, downward drag applies `translateY` to `virtualized-content` and shows a spinner centered in the gap. Uses non-passive `touchmove` with `preventDefault` during active pull to prevent native overscroll. Direction-locked to avoid interfering with SwipeableSubTabs. Enabled via `onRefresh` prop on grids; wired to `refetch()` from collection hooks in mutable mode only.
 
 ### Roll Notification System
 - **Purpose**: DMs users when their 24-hour roll cooldown expires, with an inline button linking to the chat/thread

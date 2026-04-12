@@ -2,6 +2,8 @@ import React, { memo, useCallback, useRef, useLayoutEffect, useMemo, useState } 
 import { useVirtualizer } from '@tanstack/react-virtual';
 import MiniAspect from './MiniAspect';
 import { useVirtualizedAspectImages } from '@/hooks/useVirtualizedAspectImages';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import PullToRefreshSpinner from '@/components/common/PullToRefreshSpinner';
 import '@/components/cards/CardGrid.css';
 import type { AspectData } from '@/types';
 
@@ -9,6 +11,7 @@ interface AspectGridProps {
   aspects: AspectData[];
   onAspectClick: (aspect: AspectData) => void;
   initData: string | null;
+  onRefresh?: () => Promise<void>;
 }
 
 const COLUMNS = 3;
@@ -25,7 +28,7 @@ const getRowHeightFromWidth = (width: number) => {
   return Math.ceil(cardHeight + GAP);
 };
 
-const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, initData }) => {
+const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, initData, onRefresh }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { getImage, isLoading, hasFailed, setVisibleRange } = useVirtualizedAspectImages(aspects, initData);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -108,9 +111,20 @@ const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, in
 
   const handleAspectClick = useCallback((aspect: AspectData) => onAspectClick(aspect), [onAspectClick]);
 
+  const { pullDistance, isRefreshing, spinnerAngle } = usePullToRefresh(
+    parentRef, onRefresh, !!onRefresh,
+  );
+
   return (
     <div ref={parentRef} className="all-cards-container virtualized-container">
-      <div className="virtualized-content" style={{ height: virtualizer.getTotalSize() }}>
+      <PullToRefreshSpinner pullDistance={pullDistance} spinnerAngle={spinnerAngle} isRefreshing={isRefreshing} />
+      <div
+        className="virtualized-content"
+        style={{
+          height: virtualizer.getTotalSize(),
+          transform: pullDistance > 0 ? `translateY(${pullDistance}px)` : undefined,
+        }}
+      >
         {virtualRows.map((row) => (
           <div
             key={row.key}
