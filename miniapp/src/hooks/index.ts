@@ -17,3 +17,4 @@ export { useAllAspects } from './useAllAspects';
 export { useHubData } from './useHubData';
 export type { HubData, CasinoData, CollectionData, SlotSymbol } from './useHubData';
 export { useScrollSnap } from './useScrollSnap';
+export { useTradeOptions, useTradeExecution } from './useTrade';

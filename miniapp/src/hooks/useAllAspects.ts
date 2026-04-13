@@ -12,21 +12,18 @@ interface UseAllAspectsResult {
 }
 
 interface UseAllAspectsOptions {
-  tradeAspectId?: number | null;
   enabled?: boolean;
 }
 
 /**
- * Hook for fetching all aspects — mirrors useAllCards.
- * - With tradeAspectId: fetches trade options for the given aspect.
- * - Without tradeAspectId: fetches all chat aspects (read-only mode).
+ * Hook for fetching all aspects in a chat (read-only mode).
  */
 export const useAllAspects = (
   initData: string | null,
   chatId: string | null = null,
-  { tradeAspectId = null, enabled = true }: UseAllAspectsOptions = {},
+  { enabled = true }: UseAllAspectsOptions = {},
 ): UseAllAspectsResult => {
-  const cacheKey = tradeAspectId !== null ? `trade:${tradeAspectId}` : chatId ?? null;
+  const cacheKey = chatId ?? null;
   const initialCachedAspects = initData && enabled ? aspectsCache.get(initData, cacheKey) : null;
 
   const [allAspects, setAllAspects] = useState<AspectData[]>(initialCachedAspects || []);
@@ -73,9 +70,7 @@ export const useAllAspects = (
 
       try {
         let aspects: AspectData[];
-        if (tradeAspectId !== null) {
-          aspects = await ApiService.fetchAspectTradeOptions(tradeAspectId, initData);
-        } else if (chatId) {
+        if (chatId) {
           aspects = await ApiService.fetchAllChatAspects(initData, chatId);
         } else {
           aspects = [];
@@ -89,7 +84,7 @@ export const useAllAspects = (
         setLoading(false);
       }
     },
-    [enabled, initData, chatId, tradeAspectId, cacheKey],
+    [enabled, initData, chatId, cacheKey],
   );
 
   useEffect(() => {

@@ -15,7 +15,7 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 2. **Claiming**: Rolled items appear in chat; any enrolled user can `/claim` them using claim points
 3. **Card Crafting**: Players `/equip` aspects onto base cards (up to 5 per card), naming the card and generating new AI art blending the character with equipped aspects — this is the core creative loop
 4. **Collection**: Users build collections viewable in a Telegram Mini App
-5. **Trading**: Users can trade cards with each other, or aspects with each other (no cross-type trades)
+5. **Trading**: Users can trade any item for any item — card↔card, aspect↔aspect, or card↔aspect (cross-type). In the miniapp, the existing Cards/Aspects sub-tabs in CollectionTab switch to showing trade options when trade mode is active
 6. **Casino**: Users spend "spins" (earned by burning aspects) on casino mini-games to win more cards/aspects
 
 ### Card & Aspect System
@@ -110,7 +110,7 @@ bot/
 │   ├── cards.py              # /refresh, /equip + callbacks
 │   ├── aspects.py            # /burn, /lock (aspect & card), /recycle, /create + callbacks
 │   ├── collection.py         # /casino, /balance, /collection, /stats + navigation callbacks
-│   ├── trade.py              # /trade, accept/reject callbacks for card & aspect trades
+│   ├── trade.py              # /trade <type> <id> <type> <id>, unified accept/reject callbacks
 │   ├── admin.py              # /spins, /reload, /set_thread (admin-only)
 │   ├── notifications.py      # Roll notification scheduling, DM sending, startup recovery
 │   └── helpers.py            # Handler utilities (logging, file ID saving, roll time calc)
@@ -126,7 +126,7 @@ bot/
 │       ├── slots.py          # Slots game: spins, daily bonus, spin/verify/victory
 │       ├── rtb.py            # Ride the Bus: game state, start, guess, cashout
 │       ├── minesweeper.py    # Minesweeper: game state, create, update
-│       ├── trade.py          # Trade endpoints: options, execute
+│       ├── trade.py          # Trade endpoints: GET options (cards/aspects), POST execute
 │       ├── user.py           # User profile endpoint
 │       ├── chat.py           # Chat utilities
 │       ├── downloads.py      # Image download/export
@@ -156,7 +156,7 @@ bot/
 ├── managers/                 # Manager layer — business logic and orchestration
 │   ├── card_manager.py           # Card claiming logic (row locks, point deduction)
 │   ├── aspect_manager.py         # Aspect burn, recycle, equip, claim logic
-│   ├── trade_manager.py          # Card and aspect trade orchestration
+│   ├── trade_manager.py          # Polymorphic trade orchestration (card↔card, aspect↔aspect, card↔aspect)
 │   ├── spin_manager.py           # Daily bonus streaks, megaspin counter
 │   ├── roll_manager.py           # Roll eligibility (cooldown checking)
 │   ├── event_manager.py          # Event logging + observer pattern
@@ -212,9 +212,9 @@ miniapp/src/
 │   │   ├── slots/           # 3-reel slot machine with rarity wheel
 │   │   ├── minesweeper/     # 3×3 grid game
 │   │   └── rtb/             # Ride the Bus card guessing game
-│   ├── tabs/                # ProfileTab, CollectionTab (Cards/Aspects sub-tabs), AspectsTab, CasinoTab, AllTab (Cards/Aspects sub-tabs)
+│   ├── tabs/                # ProfileTab, CollectionTab (Cards/Aspects sub-tabs with inline trade mode), CasinoTab, AllTab (Cards/Aspects sub-tabs)
 │   ├── profile/             # ProfileView, Achievement badge
-│   ├── common/              # BottomNav, ActionPanel, SubTabToggle, SwipeableSubTabs, AnimatedImage, badges, dialogs
+│   ├── common/              # BottomNav, ActionPanel, SubTabToggle, SwipeableSubTabs, PullToRefreshSpinner, AnimatedImage, badges, dialogs
 │   └── dialogs/             # BurnConfirmDialog, LockConfirmDialog
 ├── hooks/                   # ~23 custom hooks (useAppRouter, useCards, useSlots, useOrientation, useScrollSnap, usePullToRefresh, etc.)
 ├── services/
@@ -336,11 +336,12 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 
 ### Frontend State Management
 - **Zustand** stores for slot machine animation state and admin auth
-- **Custom hooks** (~22) for data fetching, filtering, orientation tracking, gestures, scroll-snap
+- **Custom hooks** (~23) for data fetching, filtering, orientation tracking, gestures, scroll-snap, pull-to-refresh
 - **Framer Motion** for card animations (RTB flip/move, transitions)
 - **Device orientation** tracking via Telegram TWA SDK for 3D card tilt effects
-- **Swipeable sub-tabs**: CollectionTab and AllTab use `SwipeableSubTabs` (CSS transforms + `touch-action: pan-y`) for horizontal pane swiping between Cards and Aspects. The `useScrollSnap` hook applies `translateX()` transforms with JS gesture handling (direction-locked, clamped to valid neighbor panes, velocity-based snapping). Progress-based indicator animation on `SubTabToggle` is driven via rAF-interpolated callbacks. Panes signal `onLockSwipe(true)` to disable swiping during trade/modal flows.
-- **Pull-to-refresh**: CardGrid and AspectGrid support pull-to-refresh via the `usePullToRefresh` hook + `PullToRefreshSpinner` component. When at `scrollTop=0`, downward drag applies `translateY` to `virtualized-content` and shows a spinner centered in the gap. Uses non-passive `touchmove` with `preventDefault` during active pull to prevent native overscroll. Direction-locked to avoid interfering with SwipeableSubTabs. Enabled via `onRefresh` prop on grids; wired to `refetch()` from collection hooks in mutable mode only.
+- **Swipeable sub-tabs**: CollectionTab and AllTab use `SwipeableSubTabs` (CSS transforms + `touch-action: pan-y`) for horizontal pane swiping between Cards and Aspects. The `useScrollSnap` hook applies `translateX()` transforms with JS gesture handling (direction-locked, clamped to valid neighbor panes, velocity-based snapping). Progress-based indicator animation on `SubTabToggle` is driven via rAF-interpolated callbacks. In trade mode, the same sub-tabs repurpose to show tradeable items from the API instead of the user's collection.
+- **Pull-to-refresh**: CardGrid and AspectGrid support pull-to-refresh via the `usePullToRefresh` hook + `PullToRefreshSpinner` component. Enabled via `onRefresh` prop on grids; wired to `refetch()` in CollectionTab, AllTab, and trade views. Transform-based (`translateY` on `virtualized-content`), direction-locked to coexist with SwipeableSubTabs, with early `preventDefault` to suppress iOS native overscroll. Haptic feedback on threshold cross, release, and completion. Trade views use silent refetch (no loading flash).
+- **AllTab cache warming**: `useHubData` populates `cardsCache` and `aspectsCache` after fetching, so AllTab's hooks find warm caches on mount and skip redundant API calls.
 
 ### Roll Notification System
 - **Purpose**: DMs users when their 24-hour roll cooldown expires, with an inline button linking to the chat/thread
@@ -375,7 +376,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 | `/balance` | collection.py | View claim points |
 | `/collection` | collection.py | Browse card collection |
 | `/stats` | collection.py | View user statistics |
-| `/trade` | trade.py | Initiate card or aspect trade |
+| `/trade` | trade.py | Trade any item: `/trade <type> <id> <type> <id>` (card/aspect) |
 | `/notify` | user.py | Toggle roll reminder DM notifications (on by default) |
 | `/spins` | admin.py | Add spins to user (admin) |
 | `/reload` | admin.py | Reload bot config (admin) |

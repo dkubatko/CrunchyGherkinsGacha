@@ -1,3 +1,12 @@
+export type TradeOfferType = 'card' | 'aspect';
+
+export interface TradeOffer {
+  type: TradeOfferType;
+  id: number;
+  title: string;
+  rarity: string;
+}
+
 export interface CardAspectData {
   id: number;
   card_id: number;

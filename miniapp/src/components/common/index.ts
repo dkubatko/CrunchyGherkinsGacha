@@ -13,3 +13,4 @@ export type { ClaimPointsBadgeProps } from './ClaimPointsBadge';
 export { default as SubTabToggle } from './SubTabToggle';
 export { default as SwipeableSubTabs } from './SwipeableSubTabs';
 export { default as SplashScreen } from './SplashScreen';
+export { default as TradeHeader } from './TradeHeader';

@@ -12,16 +12,15 @@ interface UseAllCardsResult {
 }
 
 interface UseAllCardsOptions {
-  tradeCardId?: number | null;
   enabled?: boolean;
 }
 
 export const useAllCards = (
   initData: string | null,
   chatId: string | null = null,
-  { tradeCardId = null, enabled = true }: UseAllCardsOptions = {}
+  { enabled = true }: UseAllCardsOptions = {}
 ): UseAllCardsResult => {
-  const cacheKey = tradeCardId !== null ? `trade:${tradeCardId}` : chatId ?? null;
+  const cacheKey = chatId ?? null;
   const initialCachedCards = initData && enabled ? cardsCache.get(initData, cacheKey) : null;
 
   const [allCards, setAllCards] = useState<CardData[]>(initialCachedCards || []);
@@ -67,12 +66,7 @@ export const useAllCards = (
       setError(null);
 
       try {
-        let cards: CardData[];
-        if (tradeCardId !== null) {
-          cards = await ApiService.fetchTradeOptions(tradeCardId, initData);
-        } else {
-          cards = await ApiService.fetchAllCards(initData, chatId ?? undefined);
-        }
+        const cards = await ApiService.fetchAllCards(initData, chatId ?? undefined);
         cardsCache.set(cards, initData, cacheKey ?? null);
         setAllCards(cards);
       } catch (err) {
@@ -82,7 +76,7 @@ export const useAllCards = (
         setLoading(false);
       }
     },
-    [enabled, initData, chatId, tradeCardId, cacheKey]
+    [enabled, initData, chatId, cacheKey]
   );
 
   useEffect(() => {

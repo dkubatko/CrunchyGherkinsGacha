@@ -886,6 +886,23 @@ def swap_aspect_owners(aspect_id1: int, aspect_id2: int, *, session: Session) ->
     return True
 
 
+@with_session(commit=True)
+def transfer_aspect_ownership(
+    aspect_id: int, new_owner: str, new_user_id: int, *, session: Session
+) -> bool:
+    """Set the owner/user_id on an aspect."""
+    aspect = (
+        session.query(OwnedAspectModel)
+        .filter(OwnedAspectModel.id == aspect_id)
+        .first()
+    )
+    if not aspect:
+        return False
+    aspect.owner = new_owner
+    aspect.user_id = new_user_id
+    return True
+
+
 @with_session
 def get_aspects_by_ids(aspect_ids: List[int], *, session: Session) -> List[OwnedAspect]:
     """Get multiple aspects by their IDs."""

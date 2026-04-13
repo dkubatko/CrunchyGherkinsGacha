@@ -704,6 +704,23 @@ def swap_card_owners(card_id1, card_id2, *, session: Session) -> bool:
 
 
 @with_session(commit=True)
+def transfer_card_ownership(
+    card_id: int, new_owner: str, new_user_id: int, *, session: Session
+) -> bool:
+    """Set the owner/user_id on a card."""
+    card = (
+        session.query(CardModel)
+        .filter(CardModel.id == card_id)
+        .first()
+    )
+    if not card:
+        return False
+    card.owner = new_owner
+    card.user_id = new_user_id
+    return True
+
+
+@with_session(commit=True)
 def set_card_owner(
     card_id: int, owner: str, user_id: Optional[int] = None, *, updated_at=None, session: Session
 ) -> bool:

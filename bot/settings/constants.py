@@ -387,59 +387,38 @@ CREATE_PROCESSING_MESSAGE = "Creating <b>Unique</b> aspect..."
 
 TRADE_REQUEST_MESSAGE = (
     "Trade requested:\n\n"
-    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "@{user1_username}'s\n<b>{item1_title}</b>\n\n"
     "🔄\n\n"
-    "@{user2_username}'s\n<b>{card2_title}</b>"
+    "@{user2_username}'s\n<b>{item2_title}</b>"
 )
 
 TRADE_COMPLETE_MESSAGE = (
     "Trade completed:\n\n"
-    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "@{user1_username}'s\n<b>{item1_title}</b>\n\n"
     "🤝\n\n"
-    "@{user2_username}'s\n<b>{card2_title}</b>"
+    "@{user2_username}'s\n<b>{item2_title}</b>"
 )
 
 TRADE_REJECTED_MESSAGE = (
     "Trade rejected:\n\n"
-    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "@{user1_username}'s\n<b>{item1_title}</b>\n\n"
     "🚫\n\n"
-    "@{user2_username}'s\n<b>{card2_title}</b>"
+    "@{user2_username}'s\n<b>{item2_title}</b>"
 )
 
 TRADE_CANCELLED_MESSAGE = (
     "Trade cancelled:\n\n"
-    "@{user1_username}'s\n<b>{card1_title}</b>\n\n"
+    "@{user1_username}'s\n<b>{item1_title}</b>\n\n"
     "❌\n\n"
-    "@{user2_username}'s\n<b>{card2_title}</b>"
+    "@{user2_username}'s\n<b>{item2_title}</b>"
 )
 
-# Aspect trade messages
-ASPECT_TRADE_REQUEST_MESSAGE = (
-    "Aspect trade requested:\n\n"
-    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🔄\n\n"
-    "@{user2_username}'s\n<b>{aspect2_title}</b>"
-)
-
-ASPECT_TRADE_COMPLETE_MESSAGE = (
-    "Aspect trade completed:\n\n"
-    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🤝\n\n"
-    "@{user2_username}'s\n<b>{aspect2_title}</b>"
-)
-
-ASPECT_TRADE_REJECTED_MESSAGE = (
-    "Aspect trade rejected:\n\n"
-    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "🚫\n\n"
-    "@{user2_username}'s\n<b>{aspect2_title}</b>"
-)
-
-ASPECT_TRADE_CANCELLED_MESSAGE = (
-    "Aspect trade cancelled:\n\n"
-    "@{user1_username}'s\n<b>{aspect1_title}</b>\n\n"
-    "❌\n\n"
-    "@{user2_username}'s\n<b>{aspect2_title}</b>"
+TRADE_USAGE_MESSAGE = (
+    "Usage:\n"
+    "  /trade card [your_card_id] card [other_card_id]\n"
+    "  /trade card [your_card_id] aspect [other_aspect_id]\n"
+    "  /trade aspect [your_aspect_id] card [other_card_id]\n"
+    "  /trade aspect [your_aspect_id] aspect [other_aspect_id]"
 )
 
 # Slots aspect victory messages

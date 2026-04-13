@@ -1,7 +1,9 @@
-"""
-Trade-related API endpoints.
+"""Unified trade API endpoints.
 
-This module contains all endpoints for card trading operations.
+Endpoints:
+  GET  /trade/{offer_type}/{offer_id}/options/cards    → tradeable cards
+  GET  /trade/{offer_type}/{offer_id}/options/aspects  → tradeable aspects
+  POST /trade/{offer_type}/{offer_id}/{want_type}/{want_id}  → execute trade
 """
 
 import asyncio
@@ -14,11 +16,11 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from api.config import create_bot_instance, MINIAPP_URL, TELEGRAM_TOKEN
 from api.dependencies import get_validated_user
 from api.helpers import build_single_card_url, build_single_aspect_url
-from settings.constants import TRADE_REQUEST_MESSAGE, ASPECT_TRADE_REQUEST_MESSAGE
+from settings.constants import TRADE_REQUEST_MESSAGE
 from utils.schemas import Card as APICard, OwnedAspect as APIAspect
-from repos import card_repo, aspect_repo
-from repos import thread_repo
+from repos import card_repo, aspect_repo, thread_repo
 from managers import event_manager
+from managers.trade_manager import VALID_TRADE_TYPES
 from utils.events import EventType, TradeOutcome
 
 logger = logging.getLogger(__name__)
@@ -26,315 +28,185 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trade", tags=["trade"])
 
 
-@router.get("/{card_id}/options", response_model=List[APICard])
-async def get_trade_options(
-    card_id: int,
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _fetch_item(item_type: str, item_id: int):
+    """Fetch a card or aspect by type and id, raising on invalid type or missing item."""
+    if item_type not in VALID_TRADE_TYPES:
+        raise HTTPException(status_code=400, detail=f"Invalid item type: {item_type}")
+    if item_type == "card":
+        item = await asyncio.to_thread(card_repo.get_card, item_id)
+    else:
+        item = await asyncio.to_thread(aspect_repo.get_aspect_by_id, item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"{item_type.capitalize()} not found")
+    return item
+
+
+def _build_view_url(item_type: str, item_id: int) -> str | None:
+    """Build a miniapp deep-link URL for viewing a trade item."""
+    if not MINIAPP_URL:
+        return None
+    if item_type == "card":
+        return build_single_card_url(item_id)
+    return build_single_aspect_url(item_id)
+
+
+# ---------------------------------------------------------------------------
+# Options endpoints
+# ---------------------------------------------------------------------------
+
+@router.get("/{offer_type}/{offer_id}/options/cards", response_model=List[APICard])
+async def get_trade_card_options(
+    offer_type: str,
+    offer_id: int,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Get trade options for a specific card, scoped to the same chat."""
-    card = await asyncio.to_thread(card_repo.get_card, card_id)
-    if not card:
-        logger.warning(f"Requested trade options for non-existent card_id: {card_id}")
-        raise HTTPException(status_code=404, detail="Card not found")
+    """Get cards tradeable for the offered item, scoped to the same chat."""
+    user_id = validated_user["user"].get("id")
 
-    if not card.chat_id:
-        logger.warning(f"Card {card_id} has no chat_id; cannot load trade options")
-        raise HTTPException(status_code=400, detail="Card is not associated with a chat")
+    item = await _fetch_item(offer_type, offer_id)
 
-    card_models = await asyncio.to_thread(card_repo.get_all_cards, card.chat_id)
-    cards = card_models
+    if item.user_id != user_id:
+        raise HTTPException(status_code=403, detail="You do not own this item")
 
-    initiating_owner = card.owner
-    filtered_cards = [
-        card_option
-        for card_option in cards
-        if card_option.id != card_id
-        and card_option.owner is not None
-        and card_option.owner != initiating_owner
+    if not item.chat_id:
+        raise HTTPException(status_code=400, detail="Item has no chat")
+
+    cards = await asyncio.to_thread(card_repo.get_all_cards, item.chat_id)
+    return [
+        c for c in cards
+        if c.id != (offer_id if offer_type == "card" else -1)
+        and c.owner is not None
+        and c.owner != item.owner
     ]
-    return filtered_cards
 
 
-@router.post("/{card_id1}/{card_id2}")
-async def execute_trade(
-    card_id1: int,
-    card_id2: int,
+@router.get("/{offer_type}/{offer_id}/options/aspects", response_model=List[APIAspect])
+async def get_trade_aspect_options(
+    offer_type: str,
+    offer_id: int,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Execute a card trade between two cards."""
-    # Get user data from validated init data
+    """Get aspects tradeable for the offered item, scoped to the same chat."""
+    user_id = validated_user["user"].get("id")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Invalid user data")
+
+    item = await _fetch_item(offer_type, offer_id)
+
+    if item.user_id != user_id:
+        raise HTTPException(status_code=403, detail="You do not own this item")
+
+    if not item.chat_id:
+        raise HTTPException(status_code=400, detail="Item has no chat")
+
+    return await asyncio.to_thread(
+        aspect_repo.get_chat_aspects_for_trade, item.chat_id, user_id
+    )
+
+
+# ---------------------------------------------------------------------------
+# Execute trade
+# ---------------------------------------------------------------------------
+
+@router.post("/{offer_type}/{offer_id}/{want_type}/{want_id}")
+async def execute_trade(
+    offer_type: str,
+    offer_id: int,
+    want_type: str,
+    want_id: int,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Execute a trade between two items and send a request to the chat."""
+    if offer_type not in VALID_TRADE_TYPES or want_type not in VALID_TRADE_TYPES:
+        raise HTTPException(status_code=400, detail="Invalid item type")
+
     user_data = validated_user["user"]
     user_id = user_data.get("id")
+    current_username = user_data.get("username")
+    if not user_id or not current_username:
+        raise HTTPException(status_code=400, detail="Invalid user data")
 
-    if not user_id:
-        logger.warning(f"Missing user_id in init data for trade {card_id1}/{card_id2}")
-        raise HTTPException(status_code=400, detail="Invalid user data in init data")
-
-    # Check if bot token is available
     if not TELEGRAM_TOKEN:
-        logger.error("Bot token not available for trade execution")
         raise HTTPException(status_code=503, detail="Bot service unavailable")
 
     try:
-        # Get cards from database
-        card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
-        card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
+        offer_item = await _fetch_item(offer_type, offer_id)
+        want_item = await _fetch_item(want_type, want_id)
 
-        if not card1 or not card2:
-            raise HTTPException(status_code=404, detail="One or both card IDs are invalid")
+        if not offer_item.chat_id or not want_item.chat_id:
+            raise HTTPException(status_code=500, detail="Item chat not configured")
+        if offer_item.chat_id != want_item.chat_id:
+            raise HTTPException(status_code=400, detail="Items must be in the same chat")
 
-        card1_chat_id = card1.chat_id
-        card2_chat_id = card2.chat_id
+        if offer_item.owner != current_username:
+            raise HTTPException(status_code=403, detail=f"You do not own {offer_item.title()}")
+        if want_item.owner == current_username:
+            raise HTTPException(status_code=400, detail="You already own this item")
 
-        if not card1_chat_id or not card2_chat_id:
-            logger.error(
-                "Missing chat_id on cards %s and %s",
-                card_id1,
-                card_id2,
-            )
-            raise HTTPException(status_code=500, detail="Card chat not configured")
+        offer_title = offer_item.title(include_id=True, include_rarity=True, include_emoji=True)
+        want_title = want_item.title(include_id=True, include_rarity=True, include_emoji=True)
 
-        if card1_chat_id != card2_chat_id:
-            logger.warning(
-                "Trade attempted between cards %s and %s from different chats (%s vs %s)",
-                card_id1,
-                card_id2,
-                card1_chat_id,
-                card2_chat_id,
-            )
-            raise HTTPException(
-                status_code=400,
-                detail="Both cards must belong to the same chat to trade",
-            )
-        chat_id = card1_chat_id  # Get current user's username from the validated init data
-        current_username = user_data.get("username")
-        if not current_username:
-            logger.error(f"Username not found in init data for user_id {user_id}")
-            raise HTTPException(status_code=400, detail="Username not found in init data")
-
-        # Validate trade
-        if card1.owner != current_username:
-            raise HTTPException(status_code=403, detail=f"You do not own card {card1.title()}")
-
-        if card2.owner == current_username:
-            raise HTTPException(status_code=400, detail=f"You already own card {card2.title()}")
-
-        # Send trade request message with accept/reject buttons
         trade_message = TRADE_REQUEST_MESSAGE.format(
             user1_username=current_username,
-            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=card2.owner,
-            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
+            item1_title=offer_title,
+            user2_username=want_item.owner,
+            item2_title=want_title,
         )
 
-        # Create inline keyboard with accept/reject buttons, card view links, and cancel button
         keyboard = [
             [
-                InlineKeyboardButton(
-                    "Accept", callback_data=f"card_trade_accept_{card_id1}_{card_id2}"
-                ),
-                InlineKeyboardButton(
-                    "Reject", callback_data=f"card_trade_reject_{card_id1}_{card_id2}"
-                ),
+                InlineKeyboardButton("Accept", callback_data=f"trade_accept_{offer_type}_{offer_id}_{want_type}_{want_id}"),
+                InlineKeyboardButton("Reject", callback_data=f"trade_reject_{offer_type}_{offer_id}_{want_type}_{want_id}"),
             ]
         ]
 
-        # Add card view links
-        if MINIAPP_URL:
-            card1_url = build_single_card_url(card_id1)
-            card2_url = build_single_card_url(card_id2)
-            keyboard.append(
-                [
-                    InlineKeyboardButton("Card 1", url=card1_url),
-                    InlineKeyboardButton("Card 2", url=card2_url),
-                ]
-            )
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        offer_url = _build_view_url(offer_type, offer_id)
+        want_url = _build_view_url(want_type, want_id)
+        if offer_url and want_url:
+            keyboard.append([
+                InlineKeyboardButton(f"View {offer_type.capitalize()}", url=offer_url),
+                InlineKeyboardButton(f"View {want_type.capitalize()}", url=want_url),
+            ])
 
         try:
-            # Create a new bot instance to avoid event loop conflicts
             bot = create_bot_instance()
 
-            # Get thread_id for trade notifications, fallback to main if trade not set
-            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(chat_id), "trade")
+            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(offer_item.chat_id), "trade")
             if thread_id is None:
-                thread_id = await asyncio.to_thread(
-                    thread_repo.get_thread_id, str(chat_id), "main"
-                )
+                thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(offer_item.chat_id), "main")
 
-            send_params = {
-                "chat_id": chat_id,
+            send_params: Dict[str, Any] = {
+                "chat_id": offer_item.chat_id,
                 "text": trade_message,
                 "parse_mode": "HTML",
-                "reply_markup": reply_markup,
+                "reply_markup": InlineKeyboardMarkup(keyboard),
             }
             if thread_id is not None:
                 send_params["message_thread_id"] = thread_id
 
-            # Send message using the new bot instance
             await bot.send_message(**send_params)
 
-            # Log trade created event
             event_manager.log(
                 EventType.TRADE,
                 TradeOutcome.CREATED,
                 user_id=user_id,
-                chat_id=str(chat_id),
-                card_id=card_id1,
-                target_card_id=card_id2,
-                target_user=card2.owner,
+                chat_id=str(offer_item.chat_id),
+                target_user=want_item.owner,
                 source="miniapp",
-                type="card",
+                type=f"{offer_type}_for_{want_type}",
             )
         except Exception as e:
-            logger.error(f"Failed to send trade request message to chat {chat_id}: {e}")
+            logger.error("Failed to send trade request to chat %s: %s", offer_item.chat_id, e)
             raise HTTPException(status_code=500, detail="Failed to send trade request")
 
         return {"success": True, "message": "Trade request sent successfully"}
 
     except HTTPException:
-        raise  # Re-raise HTTP exceptions
-    except Exception as e:
-        logger.error(f"Unexpected error in trade endpoint: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-
-@router.get("/aspect/{aspect_id}/options", response_model=List[APIAspect])
-async def get_aspect_trade_options(
-    aspect_id: int,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Get tradeable aspects for a given aspect, scoped to the same chat."""
-    aspect = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id)
-    if not aspect:
-        raise HTTPException(status_code=404, detail="Aspect not found")
-
-    if not aspect.chat_id:
-        raise HTTPException(status_code=400, detail="Aspect is not associated with a chat")
-
-    user_data = validated_user["user"]
-    user_id = user_data.get("id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid user data in init data")
-
-    tradeable = await asyncio.to_thread(
-        aspect_repo.get_chat_aspects_for_trade, aspect.chat_id, user_id
-    )
-    return tradeable
-
-
-@router.post("/aspect/{aspect_id1}/{aspect_id2}")
-async def execute_aspect_trade(
-    aspect_id1: int,
-    aspect_id2: int,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Initiate an aspect trade by sending a trade request message to the Telegram chat."""
-    user_data = validated_user["user"]
-    user_id = user_data.get("id")
-    if not user_id:
-        raise HTTPException(status_code=400, detail="Invalid user data in init data")
-
-    if not TELEGRAM_TOKEN:
-        raise HTTPException(status_code=503, detail="Bot service unavailable")
-
-    try:
-        aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
-        aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
-
-        if not aspect1 or not aspect2:
-            raise HTTPException(status_code=404, detail="One or both aspect IDs are invalid")
-
-        if not aspect1.chat_id or not aspect2.chat_id:
-            raise HTTPException(status_code=500, detail="Aspect chat not configured")
-
-        if aspect1.chat_id != aspect2.chat_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Both aspects must belong to the same chat to trade",
-            )
-
-        chat_id = aspect1.chat_id
-        current_username = user_data.get("username")
-        if not current_username:
-            raise HTTPException(status_code=400, detail="Username not found in init data")
-
-        if aspect1.user_id != user_id:
-            raise HTTPException(status_code=403, detail=f"You do not own aspect #{aspect_id1}")
-
-        if aspect2.user_id == user_id:
-            raise HTTPException(status_code=400, detail=f"You already own aspect #{aspect_id2}")
-
-        trade_message = ASPECT_TRADE_REQUEST_MESSAGE.format(
-            user1_username=current_username,
-            aspect1_title=aspect1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=aspect2.owner,
-            aspect2_title=aspect2.title(include_id=True, include_rarity=True, include_emoji=True),
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "Accept", callback_data=f"aspect_trade_accept_{aspect_id1}_{aspect_id2}"
-                ),
-                InlineKeyboardButton(
-                    "Reject", callback_data=f"aspect_trade_reject_{aspect_id1}_{aspect_id2}"
-                ),
-            ]
-        ]
-
-        if MINIAPP_URL:
-            aspect1_url = build_single_aspect_url(aspect_id1)
-            aspect2_url = build_single_aspect_url(aspect_id2)
-            keyboard.append(
-                [
-                    InlineKeyboardButton("Aspect 1", url=aspect1_url),
-                    InlineKeyboardButton("Aspect 2", url=aspect2_url),
-                ]
-            )
-
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        try:
-            bot = create_bot_instance()
-
-            thread_id = await asyncio.to_thread(thread_repo.get_thread_id, str(chat_id), "trade")
-            if thread_id is None:
-                thread_id = await asyncio.to_thread(
-                    thread_repo.get_thread_id, str(chat_id), "main"
-                )
-
-            send_params: Dict[str, Any] = {
-                "chat_id": chat_id,
-                "text": trade_message,
-                "parse_mode": "HTML",
-                "reply_markup": reply_markup,
-            }
-            if thread_id is not None:
-                send_params["message_thread_id"] = thread_id
-
-            await bot.send_message(**send_params)
-
-            event_manager.log(
-                EventType.TRADE,
-                TradeOutcome.CREATED,
-                user_id=user_id,
-                chat_id=str(chat_id),
-                aspect_id=aspect_id1,
-                target_aspect_id=aspect_id2,
-                target_user=aspect2.owner,
-                source="miniapp",
-                type="aspect",
-            )
-        except Exception as e:
-            logger.error(f"Failed to send aspect trade request to chat {chat_id}: {e}")
-            raise HTTPException(status_code=500, detail="Failed to send trade request")
-
-        return {"success": True, "message": "Aspect trade request sent successfully"}
-
-    except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in aspect trade endpoint: {e}")
+        logger.error("Unexpected error in trade endpoint: %s", e)
         raise HTTPException(status_code=500, detail="Internal server error")

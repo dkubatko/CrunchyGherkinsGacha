@@ -1,13 +1,16 @@
-"""
-Trade-related command handlers.
+"""Trade-related command handlers.
 
-This module contains handlers for initiating, accepting, and rejecting trades.
-Supports both card-for-card and aspect-for-aspect trades.
-Cross-type trades (card-for-aspect) are explicitly rejected.
+Unified trade flow: every trade is (offer_type, offer_id) ↔ (want_type, want_id)
+where types are ``card`` or ``aspect``.
+
+Bot command:  /trade <offer_type> <offer_id> <want_type> <want_id>
+Callbacks:    trade_accept_{offer_type}_{offer_id}_{want_type}_{want_id}
+              trade_reject_{offer_type}_{offer_id}_{want_type}_{want_id}
 """
 
 import asyncio
 import logging
+from typing import Optional, Tuple, Union
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatType, ParseMode
@@ -19,16 +22,12 @@ from settings.constants import (
     TRADE_COMPLETE_MESSAGE,
     TRADE_REJECTED_MESSAGE,
     TRADE_CANCELLED_MESSAGE,
-    ASPECT_TRADE_REQUEST_MESSAGE,
-    ASPECT_TRADE_COMPLETE_MESSAGE,
-    ASPECT_TRADE_REJECTED_MESSAGE,
-    ASPECT_TRADE_CANCELLED_MESSAGE,
+    TRADE_USAGE_MESSAGE,
 )
-from repos import card_repo
-from repos import aspect_repo
-from managers import event_manager
-from managers import trade_manager
-from utils.schemas import User
+from repos import card_repo, aspect_repo
+from managers import event_manager, trade_manager
+from managers.trade_manager import TradeItemType, VALID_TRADE_TYPES
+from utils.schemas import Card, OwnedAspect, User
 from utils.decorators import verify_user_in_chat
 from utils.miniapp import encode_single_card_token, encode_single_aspect_token
 from utils.events import EventType, TradeOutcome
@@ -36,396 +35,257 @@ from utils.events import EventType, TradeOutcome
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+async def _fetch_item(
+    item_type: TradeItemType, item_id: int
+) -> Optional[Union[Card, OwnedAspect]]:
+    """Fetch a card or aspect by type and id."""
+    if item_type == "card":
+        return await asyncio.to_thread(card_repo.get_card, item_id)
+    return await asyncio.to_thread(aspect_repo.get_aspect_by_id, item_id)
+
+
+def _build_view_url(item_type: TradeItemType, item_id: int) -> Optional[str]:
+    """Build a miniapp deep-link URL for viewing a trade item."""
+    if not MINIAPP_URL_ENV:
+        return None
+    token = encode_single_card_token(item_id) if item_type == "card" else encode_single_aspect_token(item_id)
+    return f"{MINIAPP_URL_ENV}?startapp={token}"
+
+
+def _parse_callback(data: str) -> Optional[Tuple[str, TradeItemType, int, TradeItemType, int]]:
+    """Parse ``trade_{action}_{offer_type}_{offer_id}_{want_type}_{want_id}``.
+
+    Returns (action, offer_type, offer_id, want_type, want_id) or None on failure.
+    """
+    parts = data.split("_")
+    if len(parts) != 6:
+        return None
+    _, action, offer_type, offer_id_str, want_type, want_id_str = parts
+    if action not in ("accept", "reject"):
+        return None
+    if offer_type not in VALID_TRADE_TYPES or want_type not in VALID_TRADE_TYPES:
+        return None
+    try:
+        offer_id = int(offer_id_str)
+        want_id = int(want_id_str)
+    except ValueError:
+        return None
+    if offer_id <= 0 or want_id <= 0:
+        return None
+    return action, offer_type, offer_id, want_type, want_id
+
+
+def _build_trade_keyboard(
+    offer_type: TradeItemType, offer_id: int,
+    want_type: TradeItemType, want_id: int,
+) -> InlineKeyboardMarkup:
+    """Build the Accept/Reject + View keyboard for a trade message."""
+    keyboard = [
+        [
+            InlineKeyboardButton("Accept", callback_data=f"trade_accept_{offer_type}_{offer_id}_{want_type}_{want_id}"),
+            InlineKeyboardButton("Reject", callback_data=f"trade_reject_{offer_type}_{offer_id}_{want_type}_{want_id}"),
+        ]
+    ]
+    offer_url = _build_view_url(offer_type, offer_id)
+    want_url = _build_view_url(want_type, want_id)
+    if offer_url and want_url:
+        keyboard.append([
+            InlineKeyboardButton(f"View {offer_type.capitalize()}", url=offer_url),
+            InlineKeyboardButton(f"View {want_type.capitalize()}", url=want_url),
+        ])
+    return InlineKeyboardMarkup(keyboard)
+
+
+def _strip_action_row(message) -> Optional[InlineKeyboardMarkup]:
+    """Keep view-link row from a trade message, remove Accept/Reject row."""
+    if message.reply_markup and len(message.reply_markup.inline_keyboard) > 1:
+        return InlineKeyboardMarkup([message.reply_markup.inline_keyboard[1]])
+    return None
+
+
+def _build_event_kwargs(item_type: TradeItemType, item_id: int, *, prefix: str = "") -> dict:
+    """Build event_manager.log keyword args for a trade item."""
+    key = f"{prefix}{'card_id' if item_type == 'card' else 'aspect_id'}"
+    return {key: item_id}
+
+
+def _log_trade_event(
+    outcome: TradeOutcome,
+    user_id: int,
+    chat_id: str,
+    offer_type: TradeItemType, offer_id: int,
+    want_type: TradeItemType, want_id: int,
+    target_user: str,
+    *,
+    error_message: Optional[str] = None,
+) -> None:
+    """Log a trade event with consistent kwargs."""
+    kwargs = {
+        **_build_event_kwargs(offer_type, offer_id),
+        **_build_event_kwargs(want_type, want_id, prefix="target_"),
+    }
+    if error_message:
+        kwargs["error_message"] = error_message
+    event_manager.log(
+        EventType.TRADE,
+        outcome,
+        user_id=user_id,
+        chat_id=chat_id,
+        target_user=target_user,
+        type=f"{offer_type}_for_{want_type}",
+        **kwargs,
+    )
+
+
+# ---------------------------------------------------------------------------
+# /trade command
+# ---------------------------------------------------------------------------
+
 @verify_user_in_chat
 async def trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Initiate a card or aspect trade.
+    """Initiate a trade.
 
-    Syntax:
-      /trade <card_id1> <card_id2>           — card-for-card trade
-      /trade aspect <aspect_id1> <aspect_id2> — aspect-for-aspect trade
+    Syntax: /trade <offer_type> <offer_id> <want_type> <want_id>
     """
-
     if update.effective_chat.type == ChatType.PRIVATE and not DEBUG_MODE:
         await update.message.reply_text("Only allowed to trade in the group chat.")
         return
 
-    if not context.args or len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage:\n"
-            "  /trade [your_card_id] [other_card_id]\n"
-            "  /trade aspect [your_aspect_id] [other_aspect_id]"
-        )
+    args = context.args or []
+    if len(args) != 4:
+        await update.message.reply_text(TRADE_USAGE_MESSAGE)
         return
 
-    # Determine trade type
-    if context.args[0].lower() == "aspect":
-        await _initiate_aspect_trade(update, context, user)
-    else:
-        await _initiate_card_trade(update, context, user)
+    offer_type_raw, offer_id_raw, want_type_raw, want_id_raw = args
 
-
-async def _initiate_card_trade(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: User,
-) -> None:
-    """Initiate a card-for-card trade."""
-    if len(context.args) != 2:
-        await update.message.reply_text("Usage: /trade [your_card_id] [other_card_id]")
+    if offer_type_raw.lower() not in VALID_TRADE_TYPES or want_type_raw.lower() not in VALID_TRADE_TYPES:
+        await update.message.reply_text(TRADE_USAGE_MESSAGE)
         return
+
+    offer_type: TradeItemType = offer_type_raw.lower()
+    want_type: TradeItemType = want_type_raw.lower()
 
     try:
-        card_id1 = int(context.args[0])
-        card_id2 = int(context.args[1])
+        offer_id = int(offer_id_raw)
+        want_id = int(want_id_raw)
     except ValueError:
-        await update.message.reply_text("Card IDs must be numbers.")
+        await update.message.reply_text("IDs must be numbers.")
         return
 
-    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
+    offer_item = await _fetch_item(offer_type, offer_id)
+    want_item = await _fetch_item(want_type, want_id)
 
-    if not card1 or not card2:
-        await update.message.reply_text("One or both card IDs are invalid.")
+    if not offer_item or not want_item:
+        await update.message.reply_text("One or both IDs are invalid.")
         return
 
-    if card1.owner != user.username:
+    if offer_item.owner != user.username:
         await update.message.reply_text(
-            f"You do not own card <b>{card1.title()}</b>.", parse_mode=ParseMode.HTML
+            f"You do not own {offer_type} <b>{offer_item.title()}</b>.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
-    if card2.owner == user.username:
+    if want_item.owner == user.username:
         await update.message.reply_text(
-            f"You already own card <b>{card2.title()}</b>.", parse_mode=ParseMode.HTML
+            f"You already own {want_type} <b>{want_item.title()}</b>.",
+            parse_mode=ParseMode.HTML,
         )
         return
 
-    user2_username = card2.owner
-
-    # Build mini-app card view URLs
-    card1_url = None
-    card2_url = None
-    if MINIAPP_URL_ENV:
-        card1_token = encode_single_card_token(card_id1)
-        card2_token = encode_single_card_token(card_id2)
-        card1_url = f"{MINIAPP_URL_ENV}?startapp={card1_token}"
-        card2_url = f"{MINIAPP_URL_ENV}?startapp={card2_token}"
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "Accept", callback_data=f"card_trade_accept_{card_id1}_{card_id2}"
-            ),
-            InlineKeyboardButton(
-                "Reject", callback_data=f"card_trade_reject_{card_id1}_{card_id2}"
-            ),
-        ]
-    ]
-
-    # Add card view links if miniapp_url is available
-    if card1_url and card2_url:
-        keyboard.append(
-            [
-                InlineKeyboardButton("Card 1", url=card1_url),
-                InlineKeyboardButton("Card 2", url=card2_url),
-            ]
-        )
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
+    offer_title = offer_item.title(include_id=True, include_rarity=True, include_emoji=True)
+    want_title = want_item.title(include_id=True, include_rarity=True, include_emoji=True)
     chat_id_str = str(update.effective_chat.id)
 
-    # Log trade created
-    event_manager.log(
-        EventType.TRADE,
-        TradeOutcome.CREATED,
-        user_id=user.user_id,
-        chat_id=chat_id_str,
-        card_id=card_id1,
-        target_card_id=card_id2,
-        target_user=user2_username,
-        type="card",
+    _log_trade_event(
+        TradeOutcome.CREATED, user.user_id, chat_id_str,
+        offer_type, offer_id, want_type, want_id,
+        target_user=want_item.owner,
     )
 
     await update.message.reply_text(
         TRADE_REQUEST_MESSAGE.format(
             user1_username=user.username,
-            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=user2_username,
-            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
+            item1_title=offer_title,
+            user2_username=want_item.owner,
+            item2_title=want_title,
         ),
-        reply_markup=reply_markup,
+        reply_markup=_build_trade_keyboard(offer_type, offer_id, want_type, want_id),
         parse_mode=ParseMode.HTML,
     )
 
 
-async def _initiate_aspect_trade(
+# ---------------------------------------------------------------------------
+# Unified accept / reject callbacks
+# ---------------------------------------------------------------------------
+
+@verify_user_in_chat
+async def accept_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Initiate an aspect-for-aspect trade."""
-    # context.args[0] == "aspect", so ids are at [1] and [2]
-    if len(context.args) != 3:
-        await update.message.reply_text("Usage: /trade aspect [your_aspect_id] [other_aspect_id]")
+    """Handle trade acceptance (any type combination)."""
+    query = update.callback_query
+    parsed = _parse_callback(query.data)
+    if not parsed:
+        await query.answer("Invalid trade data.", show_alert=True)
         return
 
-    try:
-        aspect_id1 = int(context.args[1])
-        aspect_id2 = int(context.args[2])
-    except ValueError:
-        await update.message.reply_text("Aspect IDs must be numbers.")
-        return
+    _, offer_type, offer_id, want_type, want_id = parsed
 
-    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
+    offer_item = await _fetch_item(offer_type, offer_id)
+    want_item = await _fetch_item(want_type, want_id)
 
-    if not aspect1 or not aspect2:
-        await update.message.reply_text("One or both aspect IDs are invalid.")
-        return
-
-    if aspect1.owner != user.username:
-        await update.message.reply_text(
-            f"You do not own aspect <b>{aspect1.display_name}</b>.",
+    if not offer_item or not want_item:
+        await query.answer()
+        await query.edit_message_text(
+            f"{query.message.text}\n\n❌ Trade failed: one of the items no longer exists.",
             parse_mode=ParseMode.HTML,
         )
         return
 
-    if aspect2.owner == user.username:
-        await update.message.reply_text(
-            f"You already own aspect <b>{aspect2.display_name}</b>.",
-            parse_mode=ParseMode.HTML,
-        )
+    if not DEBUG_MODE and user.user_id != want_item.user_id:
+        await query.answer("You are not the owner of the requested item.", show_alert=True)
         return
 
-    user2_username = aspect2.owner
+    offer_title = offer_item.title(include_id=True, include_rarity=True, include_emoji=True)
+    want_title = want_item.title(include_id=True, include_rarity=True, include_emoji=True)
 
-    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
-    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
-
-    # Build mini-app aspect view URLs
-    aspect1_url = None
-    aspect2_url = None
-    if MINIAPP_URL_ENV:
-        aspect1_token = encode_single_aspect_token(aspect_id1)
-        aspect2_token = encode_single_aspect_token(aspect_id2)
-        aspect1_url = f"{MINIAPP_URL_ENV}?startapp={aspect1_token}"
-        aspect2_url = f"{MINIAPP_URL_ENV}?startapp={aspect2_token}"
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "Accept", callback_data=f"aspect_trade_accept_{aspect_id1}_{aspect_id2}"
-            ),
-            InlineKeyboardButton(
-                "Reject", callback_data=f"aspect_trade_reject_{aspect_id1}_{aspect_id2}"
-            ),
-        ]
-    ]
-
-    # Add aspect view links if miniapp_url is available
-    if aspect1_url and aspect2_url:
-        keyboard.append(
-            [
-                InlineKeyboardButton("Aspect 1", url=aspect1_url),
-                InlineKeyboardButton("Aspect 2", url=aspect2_url),
-            ]
-        )
-
-    reply_markup = InlineKeyboardMarkup(keyboard)
-
-    chat_id_str = str(update.effective_chat.id)
-
-    # Log trade created
-    event_manager.log(
-        EventType.TRADE,
-        TradeOutcome.CREATED,
-        user_id=user.user_id,
-        chat_id=chat_id_str,
-        aspect_id=aspect_id1,
-        target_aspect_id=aspect_id2,
-        target_user=user2_username,
-        type="aspect",
+    error = await asyncio.to_thread(
+        trade_manager.execute_trade, offer_type, offer_id, want_type, want_id
     )
-
-    await update.message.reply_text(
-        ASPECT_TRADE_REQUEST_MESSAGE.format(
-            user1_username=user.username,
-            aspect1_title=aspect1_title,
-            user2_username=user2_username,
-            aspect2_title=aspect2_title,
-        ),
-        reply_markup=reply_markup,
-        parse_mode=ParseMode.HTML,
-    )
-
-
-@verify_user_in_chat
-async def reject_card_trade(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: User,
-) -> None:
-    """Handle card trade rejection or cancellation (if initiator)."""
-    query = update.callback_query
-
-    # callback_data: card_trade_reject_{card_id1}_{card_id2}
-    parts = query.data.split("_")
-    # parts: ["card", "trade", "reject", card_id1, card_id2]
-    card_id1 = int(parts[3])
-    card_id2 = int(parts[4])
-
-    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
-
-    if not card1 or not card2:
-        await query.answer()
-        error_text = (
-            f"{query.message.text}\n\n❌ <b>Trade failed: one of the cards no longer exists.</b>"
-        )
-        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
-        return
-
-    user1_username = card1.owner
-    user2_username = card2.owner
-
-    # Check if the user pressing Reject is the initiator (card1 owner)
-    is_initiator = user.username == user1_username
-
-    # If not the initiator, verify they own card2
-    if not is_initiator and not DEBUG_MODE and user.username != user2_username:
-        await query.answer("You are not the owner of the card being traded for.", show_alert=True)
-        return
-
-    chat_id_str = str(query.message.chat_id)
-
-    # Use TRADE_CANCELLED_MESSAGE if initiator pressed Reject, otherwise TRADE_REJECTED_MESSAGE
-    if is_initiator:
-        message_text = TRADE_CANCELLED_MESSAGE.format(
-            user1_username=user1_username,
-            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=user2_username,
-            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
-        )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.CANCELLED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            card_id=card_id1,
-            target_card_id=card_id2,
-            target_user=user2_username,
-            type="card",
-        )
-    else:
-        message_text = TRADE_REJECTED_MESSAGE.format(
-            user1_username=user1_username,
-            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=user2_username,
-            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
-        )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.REJECTED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            card_id=card_id2,
-            target_card_id=card_id1,
-            target_user=user1_username,
-            type="card",
-        )
-
-    # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
-    reply_markup = None
-    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
-        keyboard = [query.message.reply_markup.inline_keyboard[1]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.answer()
-    await query.message.delete()
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        message_thread_id=query.message.message_thread_id,
-        text=message_text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=reply_markup,
-    )
-
-
-@verify_user_in_chat
-async def accept_card_trade(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: User,
-) -> None:
-    """Handle card trade acceptance."""
-    query = update.callback_query
-
-    # callback_data: card_trade_accept_{card_id1}_{card_id2}
-    parts = query.data.split("_")
-    card_id1 = int(parts[3])
-    card_id2 = int(parts[4])
-
-    card1 = await asyncio.to_thread(card_repo.get_card, card_id1)
-    card2 = await asyncio.to_thread(card_repo.get_card, card_id2)
-
-    if not card1 or not card2:
-        await query.answer()
-        error_text = f"{query.message.text}\n\n❌ Trade failed: one of the cards no longer exists."
-        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
-        return
-
-    user1_username = card1.owner
-    user2_username = card2.owner
-
-    if not DEBUG_MODE and user.username != user2_username:
-        await query.answer("You are not the owner of the card being traded for.", show_alert=True)
-        return
-
-    error = await asyncio.to_thread(trade_manager.trade_cards, card_id1, card_id2)
 
     chat_id_str = str(query.message.chat_id)
 
     if error is None:
         message_text = TRADE_COMPLETE_MESSAGE.format(
-            user1_username=user1_username,
-            card1_title=card1.title(include_id=True, include_rarity=True, include_emoji=True),
-            user2_username=user2_username,
-            card2_title=card2.title(include_id=True, include_rarity=True, include_emoji=True),
+            user1_username=offer_item.owner,
+            item1_title=offer_title,
+            user2_username=want_item.owner,
+            item2_title=want_title,
         )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.ACCEPTED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            card_id=card_id2,
-            target_card_id=card_id1,
-            target_user=user1_username,
-            type="card",
+        _log_trade_event(
+            TradeOutcome.ACCEPTED, user.user_id, chat_id_str,
+            offer_type, offer_id, want_type, want_id,
+            target_user=offer_item.owner,
         )
     else:
         message_text = f"Trade failed: {error}"
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.ERROR,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            card_id=card_id2,
-            target_card_id=card_id1,
-            target_user=user1_username,
-            error_message="trade_manager.trade_cards failed",
-            type="card",
+        _log_trade_event(
+            TradeOutcome.ERROR, user.user_id, chat_id_str,
+            offer_type, offer_id, want_type, want_id,
+            target_user=offer_item.owner,
+            error_message=error,
         )
-
-    # Extract Card 1 and Card 2 buttons from original message (skip Accept/Reject row)
-    reply_markup = None
-    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
-        keyboard = [query.message.reply_markup.inline_keyboard[1]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.answer()
     await query.message.delete()
@@ -434,95 +294,70 @@ async def accept_card_trade(
         message_thread_id=query.message.message_thread_id,
         text=message_text,
         parse_mode=ParseMode.HTML,
-        reply_markup=reply_markup,
+        reply_markup=_strip_action_row(query.message),
     )
 
 
-# ---------------------------------------------------------------------------
-# Aspect trade callbacks
-# ---------------------------------------------------------------------------
-
-
 @verify_user_in_chat
-async def reject_aspect_trade(
+async def reject_trade(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Handle aspect trade rejection or cancellation (if initiator)."""
+    """Handle trade rejection or cancellation (if initiator)."""
     query = update.callback_query
+    parsed = _parse_callback(query.data)
+    if not parsed:
+        await query.answer("Invalid trade data.", show_alert=True)
+        return
 
-    # callback_data: aspect_trade_reject_{aspect_id1}_{aspect_id2}
-    parts = query.data.split("_")
-    # parts: ["aspect", "trade", "reject", aspect_id1, aspect_id2]
-    aspect_id1 = int(parts[3])
-    aspect_id2 = int(parts[4])
+    _, offer_type, offer_id, want_type, want_id = parsed
 
-    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
+    offer_item = await _fetch_item(offer_type, offer_id)
+    want_item = await _fetch_item(want_type, want_id)
 
-    if not aspect1 or not aspect2:
+    if not offer_item or not want_item:
         await query.answer()
-        error_text = (
-            f"{query.message.text}\n\n❌ <b>Trade failed: one of the aspects no longer exists.</b>"
+        await query.edit_message_text(
+            f"{query.message.text}\n\n❌ <b>Trade failed: one of the items no longer exists.</b>",
+            parse_mode=ParseMode.HTML,
         )
-        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
         return
 
-    user1_username = aspect1.owner
-    user2_username = aspect2.owner
+    is_initiator = user.user_id == offer_item.user_id
 
-    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
-    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
-
-    is_initiator = user.username == user1_username
-
-    if not is_initiator and not DEBUG_MODE and user.username != user2_username:
-        await query.answer("You are not the owner of the aspect being traded for.", show_alert=True)
+    if not is_initiator and not DEBUG_MODE and user.user_id != want_item.user_id:
+        await query.answer("You are not involved in this trade.", show_alert=True)
         return
 
+    offer_title = offer_item.title(include_id=True, include_rarity=True, include_emoji=True)
+    want_title = want_item.title(include_id=True, include_rarity=True, include_emoji=True)
     chat_id_str = str(query.message.chat_id)
 
     if is_initiator:
-        message_text = ASPECT_TRADE_CANCELLED_MESSAGE.format(
-            user1_username=user1_username,
-            aspect1_title=aspect1_title,
-            user2_username=user2_username,
-            aspect2_title=aspect2_title,
+        message_text = TRADE_CANCELLED_MESSAGE.format(
+            user1_username=offer_item.owner,
+            item1_title=offer_title,
+            user2_username=want_item.owner,
+            item2_title=want_title,
         )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.CANCELLED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            aspect_id=aspect_id1,
-            target_aspect_id=aspect_id2,
-            target_user=user2_username,
-            type="aspect",
+        _log_trade_event(
+            TradeOutcome.CANCELLED, user.user_id, chat_id_str,
+            offer_type, offer_id, want_type, want_id,
+            target_user=want_item.owner,
         )
     else:
-        message_text = ASPECT_TRADE_REJECTED_MESSAGE.format(
-            user1_username=user1_username,
-            aspect1_title=aspect1_title,
-            user2_username=user2_username,
-            aspect2_title=aspect2_title,
+        message_text = TRADE_REJECTED_MESSAGE.format(
+            user1_username=offer_item.owner,
+            item1_title=offer_title,
+            user2_username=want_item.owner,
+            item2_title=want_title,
         )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.REJECTED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            aspect_id=aspect_id2,
-            target_aspect_id=aspect_id1,
-            target_user=user1_username,
-            type="aspect",
+        _log_trade_event(
+            TradeOutcome.REJECTED, user.user_id, chat_id_str,
+            offer_type, offer_id, want_type, want_id,
+            target_user=offer_item.owner,
         )
-
-    # Extract Aspect 1 and Aspect 2 buttons from original message (skip Accept/Reject row)
-    reply_markup = None
-    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
-        keyboard = [query.message.reply_markup.inline_keyboard[1]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.answer()
     await query.message.delete()
@@ -531,92 +366,5 @@ async def reject_aspect_trade(
         message_thread_id=query.message.message_thread_id,
         text=message_text,
         parse_mode=ParseMode.HTML,
-        reply_markup=reply_markup,
-    )
-
-
-@verify_user_in_chat
-async def accept_aspect_trade(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-    user: User,
-) -> None:
-    """Handle aspect trade acceptance."""
-    query = update.callback_query
-
-    # callback_data: aspect_trade_accept_{aspect_id1}_{aspect_id2}
-    parts = query.data.split("_")
-    aspect_id1 = int(parts[3])
-    aspect_id2 = int(parts[4])
-
-    aspect1 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id1)
-    aspect2 = await asyncio.to_thread(aspect_repo.get_aspect_by_id, aspect_id2)
-
-    if not aspect1 or not aspect2:
-        await query.answer()
-        error_text = (
-            f"{query.message.text}\n\n❌ Trade failed: one of the aspects no longer exists."
-        )
-        await query.edit_message_text(error_text, parse_mode=ParseMode.HTML)
-        return
-
-    user1_username = aspect1.owner
-    user2_username = aspect2.owner
-
-    aspect1_title = aspect1.title(include_id=True, include_rarity=True, include_emoji=True)
-    aspect2_title = aspect2.title(include_id=True, include_rarity=True, include_emoji=True)
-
-    if not DEBUG_MODE and user.username != user2_username:
-        await query.answer("You are not the owner of the aspect being traded for.", show_alert=True)
-        return
-
-    error = await asyncio.to_thread(trade_manager.trade_aspects, aspect_id1, aspect_id2)
-
-    chat_id_str = str(query.message.chat_id)
-
-    if error is None:
-        message_text = ASPECT_TRADE_COMPLETE_MESSAGE.format(
-            user1_username=user1_username,
-            aspect1_title=aspect1_title,
-            user2_username=user2_username,
-            aspect2_title=aspect2_title,
-        )
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.ACCEPTED,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            aspect_id=aspect_id2,
-            target_aspect_id=aspect_id1,
-            target_user=user1_username,
-            type="aspect",
-        )
-    else:
-        message_text = f"Aspect trade failed: {error}"
-        event_manager.log(
-            EventType.TRADE,
-            TradeOutcome.ERROR,
-            user_id=user.user_id,
-            chat_id=chat_id_str,
-            aspect_id=aspect_id2,
-            target_aspect_id=aspect_id1,
-            target_user=user1_username,
-            error_message="trade_manager.trade_aspects failed",
-            type="aspect",
-        )
-
-    # Extract Aspect 1 and Aspect 2 buttons from original message (skip Accept/Reject row)
-    reply_markup = None
-    if query.message.reply_markup and len(query.message.reply_markup.inline_keyboard) > 1:
-        keyboard = [query.message.reply_markup.inline_keyboard[1]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-    await query.answer()
-    await query.message.delete()
-    await context.bot.send_message(
-        chat_id=query.message.chat_id,
-        message_thread_id=query.message.message_thread_id,
-        text=message_text,
-        parse_mode=ParseMode.HTML,
-        reply_markup=reply_markup,
+        reply_markup=_strip_action_row(query.message),
     )

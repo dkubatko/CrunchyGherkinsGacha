@@ -205,3 +205,20 @@ body {
   inset: 0;
   background: #0d0d0f;
 }
+
+/* ── Trade header ── */
+.trade-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 5px;
+  padding: 0 12px;
+  margin: var(--filter-sort-margin, 8px) 0 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--tg-theme-text-color, #fff);
+}
+
+.trade-header-name {
+  font-weight: 700;
+}

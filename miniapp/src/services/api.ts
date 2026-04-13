@@ -77,15 +77,15 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchTradeOptions(cardId: number, initData: string): Promise<CardData[]> {
-    const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(String(cardId))}/options`;
+  static async fetchTradeCards(offerType: string, offerId: number, initData: string): Promise<CardData[]> {
+    const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(offerType)}/${encodeURIComponent(String(offerId))}/options/cards`;
 
     const response = await fetch(endpoint, {
       headers: this.getHeaders(initData)
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch trade options');
+      throw new Error('Failed to fetch trade card options');
     }
 
     return response.json();
@@ -106,22 +106,22 @@ export class ApiService {
     return response.json();
   }
 
-  static async fetchAspectTradeOptions(aspectId: number, initData: string): Promise<AspectData[]> {
-    const endpoint = `${API_BASE_URL}/trade/aspect/${encodeURIComponent(String(aspectId))}/options`;
+  static async fetchTradeAspects(offerType: string, offerId: number, initData: string): Promise<AspectData[]> {
+    const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(offerType)}/${encodeURIComponent(String(offerId))}/options/aspects`;
 
     const response = await fetch(endpoint, {
       headers: this.getHeaders(initData)
     });
 
     if (!response.ok) {
-      throw new Error('Failed to fetch aspect trade options');
+      throw new Error('Failed to fetch trade aspect options');
     }
 
     return response.json();
   }
 
-  static async executeAspectTrade(aspectId1: number, aspectId2: number, initData: string): Promise<{ success: boolean; message: string }> {
-    const endpoint = `${API_BASE_URL}/trade/aspect/${encodeURIComponent(String(aspectId1))}/${encodeURIComponent(String(aspectId2))}`;
+  static async executeTrade(offerType: string, offerId: number, wantType: string, wantId: number, initData: string): Promise<{ success: boolean; message: string }> {
+    const endpoint = `${API_BASE_URL}/trade/${encodeURIComponent(offerType)}/${encodeURIComponent(String(offerId))}/${encodeURIComponent(wantType)}/${encodeURIComponent(String(wantId))}`;
 
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -130,7 +130,7 @@ export class ApiService {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.detail || 'Failed to execute aspect trade');
+      throw new Error(errorData.detail || 'Failed to execute trade');
     }
 
     return response.json();

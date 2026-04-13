@@ -2,30 +2,30 @@ import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 
 // Components
 import { CardModal, CardGrid, FilterSortControls } from '@/components/cards';
-import { ActionPanel, Title } from '@/components/common';
+import { ActionPanel } from '@/components/common';
 import Loading from '@/components/common/Loading';
 import { LockConfirmDialog } from '@/components/dialogs';
 import type { ActionButton } from '@/components/common';
+import TradeHeader from '@/components/common/TradeHeader';
 
 // Hooks
 import {
-  useAllCards,
   useOrientation,
   useModal,
   useCollectionCards,
   useCardFiltering,
-  DEFAULT_FILTER_OPTIONS,
-  DEFAULT_SORT_OPTIONS,
+  useTradeOptions,
+  useTradeExecution,
 } from '@/hooks';
-
-// Utils
-import { TelegramUtils } from '@/utils/telegram';
 
 // Services
 import { ApiService } from '@/services/api';
 
+// Utils
+import { TelegramUtils } from '@/utils/telegram';
+
 // Types
-import type { CardData, ProfileState, UserProfile, AspectConfigResponse, ClaimBalanceState } from '@/types';
+import type { CardData, AspectConfigResponse, ClaimBalanceState, TradeOffer } from '@/types';
 
 interface CardsViewProps {
   currentUserId: number;
@@ -33,8 +33,6 @@ interface CardsViewProps {
   initData: string;
   ownerLabel: string | null;
   initialConfig?: AspectConfigResponse;
-  isActive?: boolean;
-  onLockSwipe?: (locked: boolean) => void;
   // Mutable mode (user's collection)
   targetUserId?: number;
   isOwnCollection?: boolean;
@@ -46,6 +44,9 @@ interface CardsViewProps {
   isReadOnly?: boolean;
   allCards?: CardData[];
   onRefresh?: () => Promise<void>;
+  // Trade mode (managed by CollectionTab)
+  tradeOffer?: TradeOffer | null;
+  onTradeInitiate?: (offer: TradeOffer) => void;
 }
 
 const CardsView = ({
@@ -54,7 +55,6 @@ const CardsView = ({
   initData,
   ownerLabel,
   initialConfig,
-  onLockSwipe,
   // Mutable mode props
   targetUserId,
   isOwnCollection: isOwnCollectionProp,
@@ -66,11 +66,13 @@ const CardsView = ({
   isReadOnly = false,
   allCards: allCardsProp,
   onRefresh: onRefreshProp,
+  // Trade mode props
+  tradeOffer,
+  onTradeInitiate,
 }: CardsViewProps) => {
   const collectionOwnerLabel = ownerLabel ?? 'Collection';
+  const isTradeMode = Boolean(tradeOffer);
 
-  // For read-only mode, use the provided allCards directly
-  // For mutable mode, use useCollectionCards hook (ownership resolved by hub)
   const {
     cards: hookCards,
     loading: hookLoading,
@@ -79,36 +81,28 @@ const CardsView = ({
     updateCard,
   } = useCollectionCards(initData, chatId, targetUserId ?? currentUserId, {
     initialCards,
-    enabled: !isReadOnly,
+    enabled: !isReadOnly && !isTradeMode,
   });
 
-  // In read-only mode, use props; in mutable mode, use hook values
+  // Trade mode: fetch options
+  const {
+    items: tradeCards,
+    loading: tradeLoading,
+    error: tradeError,
+    refetch: refetchTradeCards,
+  } = useTradeOptions<CardData>(tradeOffer, initData, 'card');
+
+  // Choose data source based on mode
   const cards = useMemo(
-    () => (isReadOnly ? (allCardsProp ?? []) : hookCards),
-    [isReadOnly, allCardsProp, hookCards]
+    () => isTradeMode ? tradeCards : (isReadOnly ? (allCardsProp ?? []) : hookCards),
+    [isTradeMode, tradeCards, isReadOnly, allCardsProp, hookCards],
   );
-  const loading = isReadOnly ? false : hookLoading;
-  const error = isReadOnly ? null : hookError;
-  const isOwnCollection = isReadOnly ? false : (isOwnCollectionProp ?? true);
-  const enableTrade = isReadOnly ? false : (enableTradeProp ?? false);
+  const loading = isTradeMode ? tradeLoading : (isReadOnly ? false : hookLoading);
+  const error = isTradeMode ? tradeError : (isReadOnly ? null : hookError);
+  const isOwnCollection = isReadOnly || isTradeMode ? false : (isOwnCollectionProp ?? true);
+  const enableTrade = isReadOnly || isTradeMode ? false : (enableTradeProp ?? false);
 
-  // Only enable orientation tracking for card tilt effects
   const { orientation, orientationKey } = useOrientation({ enabled: true });
-
-  // UI state
-  const [currentIndex] = useState(0);
-  const [selectedCardForTrade, setSelectedCardForTrade] = useState<CardData | null>(null);
-  const [chatProfiles, setChatProfiles] = useState<Record<string, ProfileState>>({});
-  const profileRequestsRef = useRef<Map<string, Promise<UserProfile | null>>>(new Map());
-  const pendingChatIdsRef = useRef<Set<string>>(new Set());
-  const [isTradeView, setIsTradeView] = useState(false);
-
-  const isTradeMode = Boolean(selectedCardForTrade);
-  const activeTradeCardId = isTradeMode && selectedCardForTrade ? selectedCardForTrade.id : null;
-  const cardsScopeChatId = isTradeMode && selectedCardForTrade?.chat_id
-    ? selectedCardForTrade.chat_id
-    : chatId;
-  const shouldFetchAllCards = activeTradeCardId !== null;
 
   // Lock dialog state
   const [showLockDialog, setShowLockDialog] = useState(false);
@@ -118,13 +112,17 @@ const CardsView = ({
     loading: false,
   });
 
-  // Config (lock costs) — prefetched from hub (use prop directly, no state needed)
   const config = initialConfig ?? null;
+
+  // Profile loading for card owners
+  const [chatProfiles, setChatProfiles] = useState<Record<string, { profile: import('@/types').UserProfile | null; loading: boolean; error?: string }>>({});
+  const profileRequestsRef = useRef<Map<string, Promise<import('@/types').UserProfile | null>>>(new Map());
+  const pendingChatIdsRef = useRef<Set<string>>(new Set());
 
   const ensureUserProfile = useCallback(async (
     profileChatId: string,
     options: { force?: boolean } = {}
-  ): Promise<UserProfile | null> => {
+  ): Promise<import('@/types').UserProfile | null> => {
     if (!profileChatId) return null;
 
     pendingChatIdsRef.current.delete(profileChatId);
@@ -191,106 +189,42 @@ const CardsView = ({
     });
   }, [ensureUserProfile]);
 
-  const {
-    allCards: tradeCards,
-    loading: tradeCardsLoading,
-    error: tradeCardsError,
-    refetch: refetchTradeCards,
-  } = useAllCards(initData, cardsScopeChatId, {
-    enabled: shouldFetchAllCards,
-    tradeCardId: activeTradeCardId
-  });
-
-  const tradeCardName = selectedCardForTrade
-    ? [selectedCardForTrade.modifier, selectedCardForTrade.base_name].filter(Boolean).join(' ')
-    : null;
-
-  const baseDisplayedCards = useMemo(() => {
-    if (isTradeMode && selectedCardForTrade) {
-      return tradeCards.filter((card) =>
-        card.id !== selectedCardForTrade.id &&
-        card.user_id !== currentUserId
-      );
-    }
-    return tradeCards;
-  }, [isTradeMode, selectedCardForTrade, tradeCards, currentUserId]);
-
-  const tradeFiltering = useCardFiltering(baseDisplayedCards);
-  const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: isReadOnly });
-  const displayedCards = tradeFiltering.displayedCards;
+  // Filtering
+  const currentFiltering = useCardFiltering(cards, { includeOwnerFilter: isReadOnly || isTradeMode });
   const filteredCurrentCards = currentFiltering.displayedCards;
 
-  const shareEnabled = Boolean(initData);
+  const shareEnabled = Boolean(initData) && !isTradeMode;
 
   // Feature hooks
   const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
+
+  // Trade mode: execution
+  const { executing: tradeExecuting, execute: executeTradeSelection } = useTradeExecution(
+    tradeOffer, initData, 'card', modalCard?.id ?? null,
+  );
 
   const lockCost = modalCard && config
     ? config.lock_costs[modalCard.rarity] ?? 0
     : 0;
 
-  const switchToCurrentView = useCallback((options?: { preserveAllFilters?: boolean }) => {
-    setSelectedCardForTrade(null);
-    setIsTradeView(false);
-    onLockSwipe?.(false);
-    closeModal();
-    if (!options?.preserveAllFilters) {
-      tradeFiltering.setFilterOptions(DEFAULT_FILTER_OPTIONS);
-      tradeFiltering.setSortOptions(DEFAULT_SORT_OPTIONS);
-    }
-    TelegramUtils.hideBackButton();
-  }, [closeModal, tradeFiltering, onLockSwipe]);
-
-  const switchToCurrentViewRef = useRef(switchToCurrentView);
-  useEffect(() => {
-    switchToCurrentViewRef.current = switchToCurrentView;
-  }, [switchToCurrentView]);
-
-  // Trade handlers
+  // Trade initiation (from normal collection mode)
   const handleTradeClick = useCallback(() => {
     if (enableTrade) {
-      const tradeCard = modalCard || cards[currentIndex];
-      if (!tradeCard) return;
+      const card = modalCard || cards[0];
+      if (!card) return;
 
-      if (!tradeCard.chat_id) {
+      if (!card.chat_id) {
         TelegramUtils.showAlert('This card cannot be traded because it is not associated with a chat yet.');
         return;
       }
 
-      if (modalCard) closeModal();
-
-      setSelectedCardForTrade(tradeCard);
-      setIsTradeView(true);
-      onLockSwipe?.(true);
+      closeModal();
+      const cardName = [card.modifier, card.base_name].filter(Boolean).join(' ');
+      onTradeInitiate?.({ type: 'card', id: card.id, title: cardName, rarity: card.rarity });
     }
-  }, [cards, currentIndex, modalCard, enableTrade, closeModal, onLockSwipe]);
+  }, [cards, modalCard, enableTrade, closeModal, onTradeInitiate]);
 
-  const handleSelectClick = useCallback(() => {
-    if (selectedCardForTrade && modalCard) {
-      const executeTrade = async () => {
-        try {
-          const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-          const response = await fetch(`${apiBaseUrl}/trade/${selectedCardForTrade.id}/${modalCard.id}`, {
-            method: 'POST',
-            headers: { 'Authorization': `tma ${initData}` }
-          });
-
-          if (response.ok) {
-            TelegramUtils.closeApp();
-          } else {
-            const errorData = await response.json();
-            TelegramUtils.showAlert(`Trade request failed: ${errorData.detail || 'Unknown error'}`);
-          }
-        } catch (tradeError) {
-          console.error('Trade API error:', tradeError);
-          TelegramUtils.showAlert('Trade request failed: Network error');
-        }
-      };
-
-      executeTrade();
-      switchToCurrentView();
-    }
-  }, [selectedCardForTrade, modalCard, initData, switchToCurrentView]);
+  // Trade selection (from trade mode — select a card to trade for)
 
   const handleShareCard = useCallback(async (cardId: number) => {
     try {
@@ -320,7 +254,6 @@ const CardsView = ({
       updateModalCard({ locked: result.locked });
       TelegramUtils.showAlert(result.message || (result.locked ? 'Locked!' : 'Unlocked!'));
       setShowLockDialog(false);
-      // Client-side update — no refetch needed
       updateCard(modalCard.id, { locked: result.locked });
       onCardUpdate?.(modalCard.id, { locked: result.locked });
     } catch (err) {
@@ -333,23 +266,26 @@ const CardsView = ({
 
   const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
 
-  useEffect(() => {
-    if (!isTradeView) {
-      TelegramUtils.hideBackButton();
-      return;
-    }
-    const cleanup = TelegramUtils.setupBackButton(() => {
-      switchToCurrentViewRef.current();
-    });
-    return cleanup;
-  }, [isTradeView]);
-
-  // Action Panel logic — disabled in read-only mode
+  // Action Panel
   const actionButtons = useMemo<ActionButton[]>(() => {
-    if (isReadOnly || loading || error) return [];
+    if (loading || error) return [];
+
+    // Trade mode: show Select button for other users' cards
+    if (isTradeMode && modalCard && showModal && modalCard.user_id !== currentUserId) {
+      return [{
+        id: 'select',
+        text: tradeExecuting ? 'Loading...' : 'Select',
+        onClick: executeTradeSelection,
+        variant: 'trade-blue' as const,
+        disabled: tradeExecuting,
+      }];
+    }
+
+    if (isReadOnly || isTradeMode) return [];
+
     const buttons: ActionButton[] = [];
 
-    if (isOwnCollection && !isTradeView && !selectedCardForTrade && modalCard) {
+    if (isOwnCollection && modalCard) {
       buttons.push({
         id: 'lock',
         text: modalCard.locked ? 'Unlock' : 'Lock',
@@ -358,43 +294,26 @@ const CardsView = ({
       });
     }
 
-    if (isOwnCollection && enableTrade && cards.length > 0 && !isTradeView && !selectedCardForTrade && modalCard) {
+    if (isOwnCollection && enableTrade && cards.length > 0 && modalCard) {
       buttons.push({
         id: 'trade', text: 'Trade', onClick: handleTradeClick,
-        variant: 'trade-blue'
-      });
-    } else if (enableTrade && selectedCardForTrade && modalCard && isTradeView &&
-      modalCard.owner && modalCard.owner !== TelegramUtils.getCurrentUsername()) {
-      buttons.push({
-        id: 'select', text: 'Select', onClick: handleSelectClick,
         variant: 'trade-blue'
       });
     }
 
     return buttons;
   }, [
-    isReadOnly,
-    loading,
-    error,
-    isOwnCollection,
-    cards.length,
-    isTradeView,
-    selectedCardForTrade,
-    modalCard,
-    enableTrade,
-    handleLockClick,
-    handleTradeClick,
-    handleSelectClick
+    loading, error, isTradeMode, isReadOnly, tradeExecuting,
+    isOwnCollection, cards.length, modalCard, showModal, enableTrade, currentUserId,
+    handleLockClick, handleTradeClick, executeTradeSelection,
   ]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 
-  // Loading state
   if (loading) {
-    return <Loading message="Loading collection..." />;
+    return <Loading message={isTradeMode ? 'Loading trade options...' : 'Loading collection...'} />;
   }
 
-  // Error state
   if (error) {
     return (
       <div className="error-container">
@@ -410,95 +329,45 @@ const CardsView = ({
         className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}
       >
         <div className="app-content">
-          {/* Trade view: selecting a card to trade for */}
-          {isTradeView ? (
+          {isTradeMode && tradeOffer && (
+            <TradeHeader title={tradeOffer.title} rarity={tradeOffer.rarity} />
+          )}
+          {cards.length > 0 ? (
             <>
-              <div className="trade-view-title">
-                <Title
-                  title={tradeCardName ? `Trade for ${tradeCardName}` : 'Trade'}
-                />
-              </div>
-              {tradeCardsLoading ? (
-                <Loading message="Loading trade options..." />
-              ) : tradeCardsError ? (
-                <div className="error-container">
-                  <h2>Error loading trade options</h2>
-                  <p>{tradeCardsError}</p>
-                  <button onClick={() => { void refetchTradeCards(); }}>Retry</button>
-                </div>
-              ) : baseDisplayedCards.length === 0 ? (
+              <FilterSortControls
+                cards={cards}
+                filterOptions={currentFiltering.filterOptions}
+                sortOptions={currentFiltering.sortOptions}
+                onFilterChange={currentFiltering.onFilterChange}
+                onSortChange={currentFiltering.onSortChange}
+                showOwnerFilter={isReadOnly || isTradeMode}
+                counter={{
+                  current: filteredCurrentCards.length,
+                  total: cards.length
+                }}
+              />
+              {filteredCurrentCards.length === 0 ? (
                 <div className="no-cards-container">
-                  <h2>No trade options</h2>
-                  <p>No other cards are available in this chat right now.</p>
+                  <h2>No cards match your filter</h2>
+                  <p>Try selecting a different rarity or clearing the filter.</p>
                 </div>
               ) : (
-                <>
-                  <FilterSortControls
-                    cards={baseDisplayedCards}
-                    filterOptions={tradeFiltering.filterOptions}
-                    sortOptions={tradeFiltering.sortOptions}
-                    onFilterChange={tradeFiltering.onFilterChange}
-                    onSortChange={tradeFiltering.onSortChange}
-                    counter={{
-                      current: displayedCards.length,
-                      total: baseDisplayedCards.length
-                    }}
-                  />
-                  {displayedCards.length === 0 ? (
-                    <div className="no-cards-container">
-                      <h2>No cards match your filters</h2>
-                      <p>Try adjusting your filter settings to see more cards.</p>
-                    </div>
-                  ) : (
-                    <CardGrid
-                      cards={displayedCards}
-                      onCardClick={openModal}
-                      initData={initData}
-                      onRefresh={refetchTradeCards}
-                    />
-                  )}
-                </>
+                <CardGrid
+                  cards={filteredCurrentCards}
+                  onCardClick={openModal}
+                  initData={initData}
+                  onRefresh={isTradeMode ? refetchTradeCards : (onRefreshProp ?? (!isReadOnly ? refetchCards : undefined))}
+                />
               )}
             </>
           ) : (
-            /* Normal collection view */
-            <>
-              {cards.length > 0 ? (
-                <>
-                  <FilterSortControls
-                    cards={cards}
-                    filterOptions={currentFiltering.filterOptions}
-                    sortOptions={currentFiltering.sortOptions}
-                    onFilterChange={currentFiltering.onFilterChange}
-                    onSortChange={currentFiltering.onSortChange}
-                    showOwnerFilter={isReadOnly}
-                    counter={{
-                      current: filteredCurrentCards.length,
-                      total: cards.length
-                    }}
-                  />
-                  {filteredCurrentCards.length === 0 ? (
-                    <div className="no-cards-container">
-                      <h2>No cards match your filter</h2>
-                      <p>Try selecting a different rarity or clearing the filter.</p>
-                    </div>
-                  ) : (
-                    <CardGrid
-                      cards={filteredCurrentCards}
-                      onCardClick={openModal}
-                      initData={initData}
-                      onRefresh={onRefreshProp ?? (!isReadOnly ? refetchCards : undefined)}
-                    />
-                  )}
-                </>
-              ) : (
-                <p>
-                  {isOwnCollection
-                    ? "You don't own any cards yet."
-                    : `${collectionOwnerLabel} doesn't own any cards yet.`}
-                </p>
-              )}
-            </>
+            <p>
+              {isTradeMode
+                ? 'No cards are available to trade for in this chat.'
+                : isOwnCollection
+                  ? "You don't own any cards yet."
+                  : `${collectionOwnerLabel} doesn't own any cards yet.`}
+            </p>
           )}
         </div>
       </div>

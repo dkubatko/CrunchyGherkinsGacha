@@ -54,10 +54,8 @@ from handlers import (
     stats,
     # Trade handlers
     trade,
-    accept_card_trade,
-    reject_card_trade,
-    accept_aspect_trade,
-    reject_aspect_trade,
+    accept_trade,
+    reject_trade,
     # Admin handlers
     spins,
     reload,
@@ -169,13 +167,6 @@ def _register_callback_handlers(application: Application) -> None:
         CallbackQueryHandler(handle_collection_navigation, pattern="^collection_(prev|next|close)_")
     )
 
-    # Card trade callbacks
-    application.add_handler(CallbackQueryHandler(accept_card_trade, pattern="^card_trade_accept_"))
-    application.add_handler(CallbackQueryHandler(reject_card_trade, pattern="^card_trade_reject_"))
-    # Aspect trade callbacks
-    application.add_handler(
-        CallbackQueryHandler(accept_aspect_trade, pattern="^aspect_trade_accept_")
-    )
-    application.add_handler(
-        CallbackQueryHandler(reject_aspect_trade, pattern="^aspect_trade_reject_")
-    )
+    # Trade callbacks (unified)
+    application.add_handler(CallbackQueryHandler(accept_trade, pattern="^trade_accept_"))
+    application.add_handler(CallbackQueryHandler(reject_trade, pattern="^trade_reject_"))

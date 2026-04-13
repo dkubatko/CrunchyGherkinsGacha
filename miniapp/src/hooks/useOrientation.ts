@@ -13,7 +13,7 @@ interface UseOrientationOptions {
 }
 
 // Singleton tracking state — ensures only one DeviceOrientation.start() call
-// regardless of how many hook instances are active (e.g. CollectionTab + AspectsTab).
+// regardless of how many hook instances are active (e.g. CollectionTab + AspectsView).
 type OrientationCallback = (data: OrientationData) => void;
 let sharedCleanup: (() => void) | null = null;
 const subscribers = new Set<OrientationCallback>();

@@ -1,16 +1,17 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import './AspectsView.css';
 
 // Components
 import { AspectGrid, AspectModal, EquipCardSelector } from '@/components/aspects';
 import { FilterSortControls } from '@/components/cards';
-import { ActionPanel, Title } from '@/components/common';
+import { ActionPanel } from '@/components/common';
+import TradeHeader from '@/components/common/TradeHeader';
 import Loading from '@/components/common/Loading';
 import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/components/dialogs';
 import type { ActionButton } from '@/components/common';
 
 // Hooks
-import { useCollectionAspects, useAllAspects } from '@/hooks';
+import { useCollectionAspects, useTradeOptions, useTradeExecution } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 import { useOrientation } from '@/hooks';
 
@@ -21,7 +22,7 @@ import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 
 // Types
-import type { AspectData, AspectConfigResponse, ClaimBalanceState, CardData } from '@/types';
+import type { AspectData, AspectConfigResponse, ClaimBalanceState, CardData, TradeOffer } from '@/types';
 
 interface AspectsViewProps {
   currentUserId: number;
@@ -29,8 +30,6 @@ interface AspectsViewProps {
   initData: string;
   ownerLabel: string | null;
   initialConfig?: AspectConfigResponse;
-  isActive?: boolean;
-  onLockSwipe?: (locked: boolean) => void;
   // Mutable mode (user's aspects)
   targetUserId?: number;
   initialAspects?: AspectData[];
@@ -42,14 +41,17 @@ interface AspectsViewProps {
   isReadOnly?: boolean;
   allAspects?: AspectData[];
   onRefresh?: () => Promise<void>;
+  // Trade mode (managed by CollectionTab)
+  tradeOffer?: TradeOffer | null;
+  onTradeInitiate?: (offer: TradeOffer) => void;
 }
 
 const AspectsView = ({
   currentUserId,
   chatId,
   initData,
+  ownerLabel,
   initialConfig,
-  onLockSwipe,
   // Mutable mode props
   targetUserId,
   initialAspects,
@@ -61,8 +63,13 @@ const AspectsView = ({
   isReadOnly = false,
   allAspects: allAspectsProp,
   onRefresh: onRefreshProp,
+  // Trade mode props
+  tradeOffer,
+  onTradeInitiate,
 }: AspectsViewProps) => {
-  // For mutable mode, use useAspects hook
+  const isTradeMode = Boolean(tradeOffer);
+  const collectionOwnerLabel = ownerLabel ?? 'Collection';
+
   const {
     aspects: hookAspects,
     loading: hookLoading,
@@ -70,31 +77,23 @@ const AspectsView = ({
     refetch,
     updateAspect,
     removeAspect,
-  } = useCollectionAspects(initData, chatId, targetUserId, { initialAspects, enabled: !isReadOnly });
+  } = useCollectionAspects(initData, chatId, targetUserId, { initialAspects, enabled: !isReadOnly && !isTradeMode });
 
-  // In read-only mode, use props; in mutable mode, use hook values
-  const aspects = isReadOnly ? (allAspectsProp ?? []) : hookAspects;
-  const loading = isReadOnly ? false : hookLoading;
-  const error = isReadOnly ? null : hookError;
+  // Trade mode: fetch options
+  const {
+    items: tradeAspects,
+    loading: tradeLoading,
+    error: tradeError,
+    refetch: refetchTradeAspects,
+  } = useTradeOptions<AspectData>(tradeOffer, initData, 'aspect');
+
+  // Choose data source based on mode
+  const aspects = isTradeMode ? tradeAspects : (isReadOnly ? (allAspectsProp ?? []) : hookAspects);
+  const loading = isTradeMode ? tradeLoading : (isReadOnly ? false : hookLoading);
+  const error = isTradeMode ? tradeError : (isReadOnly ? null : hookError);
 
   const { orientation, orientationKey } = useOrientation({ enabled: true });
-  const isOwnCollection = isReadOnly ? false : (!targetUserId || targetUserId === currentUserId);
-
-  // Trade state
-  const [selectedAspectForTrade, setSelectedAspectForTrade] = useState<AspectData | null>(null);
-  const [isTradeView, setIsTradeView] = useState(false);
-  const isTradeMode = Boolean(selectedAspectForTrade);
-
-  // Fetch all other users' tradeable aspects when in trade mode
-  const {
-    allAspects: tradeAspects,
-    loading: tradeAspectsLoading,
-    error: tradeAspectsError,
-    refetch: refetchTradeAspects,
-  } = useAllAspects(initData, chatId, {
-    tradeAspectId: selectedAspectForTrade?.id ?? null,
-    enabled: isTradeMode,
-  });
+  const isOwnCollection = isReadOnly || isTradeMode ? false : (!targetUserId || targetUserId === currentUserId);
 
   // Filtering / sorting
   const {
@@ -106,21 +105,15 @@ const AspectsView = ({
     onSortChange,
   } = useAspectFiltering(aspects);
 
-  const {
-    displayedAspects: filteredTradeAspects,
-    filterOptions: tradeFilterOptions,
-    sortOptions: tradeSortOptions,
-    filterValues: tradeFilterValues,
-    onFilterChange: onTradeFilterChange,
-    onSortChange: onTradeSortChange,
-    reset: resetTradeFilters,
-  } = useAspectFiltering(tradeAspects);
-
   // Modal state
   const [selectedAspect, setSelectedAspect] = useState<AspectData | null>(null);
   const [showModal, setShowModal] = useState(false);
 
-  // Config (burn rewards + lock costs) — prefetched from hub (use prop directly, no state needed)
+  // Trade mode: execution
+  const { executing: tradeExecuting, execute: executeTradeSelection } = useTradeExecution(
+    tradeOffer, initData, 'aspect', selectedAspect?.id ?? null,
+  );
+
   const config = initialConfig ?? null;
 
   // Burn dialog
@@ -185,7 +178,6 @@ const AspectsView = ({
     if (!selectedAspect) return;
     setTriggerBurn(false);
     setIsBurning(false);
-    // Client-side update — no refetch needed
     removeAspect(selectedAspect.id);
     onAspectRemove?.(selectedAspect.id);
     closeModal();
@@ -209,7 +201,6 @@ const AspectsView = ({
       setClaimState({ balance: result.balance, loading: false });
       onClaimPointsUpdate?.(result.balance);
 
-      // Update local state
       setSelectedAspect((prev) => prev ? { ...prev, locked: result.locked } : prev);
       updateAspect(selectedAspect.id, { locked: result.locked });
       onAspectUpdate?.(selectedAspect.id, { locked: result.locked });
@@ -266,7 +257,6 @@ const AspectsView = ({
 
   const handleEquipSelectorClose = useCallback(() => {
     setShowEquipSelector(false);
-    // Re-open the aspect modal
     if (selectedAspect) {
       setShowModal(true);
     }
@@ -284,56 +274,14 @@ const AspectsView = ({
     }
   }, [currentUserId, initData]);
 
-  const shareEnabled = Boolean(initData);
+  const shareEnabled = Boolean(initData) && !isTradeMode;
 
-  // ── Trade ──
-  const switchToNormalView = useCallback(() => {
-    setSelectedAspectForTrade(null);
-    setIsTradeView(false);
-    onLockSwipe?.(false);
-    closeModal();
-    resetTradeFilters();
-    TelegramUtils.hideBackButton();
-  }, [closeModal, onLockSwipe, resetTradeFilters]);
-
-  const switchToNormalViewRef = useRef(switchToNormalView);
-  useEffect(() => {
-    switchToNormalViewRef.current = switchToNormalView;
-  }, [switchToNormalView]);
-
-  useEffect(() => {
-    if (!isTradeView) {
-      TelegramUtils.hideBackButton();
-      return;
-    }
-    const cleanup = TelegramUtils.setupBackButton(() => {
-      switchToNormalViewRef.current();
-    });
-    return cleanup;
-  }, [isTradeView]);
-
+  // ── Trade initiation (from normal collection mode) ──
   const handleTradeClick = useCallback(() => {
     if (!selectedAspect || !isOwnCollection) return;
-    setSelectedAspectForTrade(selectedAspect);
-    setIsTradeView(true);
-    onLockSwipe?.(true);
     closeModal();
-  }, [selectedAspect, isOwnCollection, closeModal, onLockSwipe]);
-
-  const handleSelectClick = useCallback(() => {
-    if (!selectedAspectForTrade || !selectedAspect) return;
-    const executeAspectTrade = async () => {
-      try {
-        await ApiService.executeAspectTrade(selectedAspectForTrade.id, selectedAspect.id, initData);
-        TelegramUtils.closeApp();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Trade request failed';
-        TelegramUtils.showAlert(msg);
-      }
-    };
-    executeAspectTrade();
-    switchToNormalView();
-  }, [selectedAspectForTrade, selectedAspect, initData, switchToNormalView]);
+    onTradeInitiate?.({ type: 'aspect', id: selectedAspect.id, title: selectedAspect.display_name, rarity: selectedAspect.rarity });
+  }, [selectedAspect, isOwnCollection, closeModal, onTradeInitiate]);
 
   // Derive burn reward & lock cost from config
   const burnReward = selectedAspect && config
@@ -343,7 +291,6 @@ const AspectsView = ({
     ? config.lock_costs[selectedAspect.rarity] ?? 0
     : 0;
 
-  // Build a CardData-shaped shim for LockConfirmDialog
   const lockDialogCard: CardData | null = selectedAspect
     ? {
         id: selectedAspect.id,
@@ -354,60 +301,63 @@ const AspectsView = ({
       }
     : null;
 
-  // Action buttons when a modal is open (only for own collection)
-  // Action buttons — disabled in read-only mode
+  // Action buttons
   const actionButtons = useMemo<ActionButton[]>(() => {
-    if (isReadOnly || !selectedAspect || !showModal || !isOwnCollection) return [];
+    if (loading || error || !selectedAspect || !showModal) return [];
+
+    // Trade mode: show Select button for other users' aspects
+    if (isTradeMode && selectedAspect.user_id !== currentUserId) {
+      return [{
+        id: 'select',
+        text: tradeExecuting ? 'Loading...' : 'Select',
+        onClick: executeTradeSelection,
+        variant: 'trade-blue' as const,
+        disabled: tradeExecuting,
+      }];
+    }
+
+    if (isReadOnly || isTradeMode || !isOwnCollection) return [];
+
     const buttons: ActionButton[] = [];
 
-    if (isTradeView && selectedAspect.user_id !== currentUserId) {
-      // In trade view: only show Select button for other users' aspects
-      buttons.push({
-        id: 'select',
-        text: 'Select',
-        onClick: () => void handleSelectClick(),
-        variant: 'trade-blue',
-      });
-      return buttons;
-    }
+    buttons.push({
+      id: 'lock',
+      text: selectedAspect.locked ? 'Unlock' : 'Lock',
+      onClick: handleLockClick,
+      variant: 'lock-grey',
+    });
 
-    if (!isTradeView) {
-      buttons.push({
-        id: 'lock',
-        text: selectedAspect.locked ? 'Unlock' : 'Lock',
-        onClick: handleLockClick,
-        variant: 'lock-grey',
-      });
+    buttons.push({
+      id: 'equip',
+      text: 'Equip',
+      onClick: handleEquipClick,
+      variant: 'equip-green',
+    });
 
-      buttons.push({
-        id: 'equip',
-        text: 'Equip',
-        onClick: handleEquipClick,
-        variant: 'equip-green',
-      });
+    buttons.push({
+      id: 'trade',
+      text: 'Trade',
+      onClick: handleTradeClick,
+      variant: 'trade-blue',
+    });
 
-      buttons.push({
-        id: 'trade',
-        text: 'Trade',
-        onClick: handleTradeClick,
-        variant: 'trade-blue',
-      });
-
-      buttons.push({
-        id: 'burn',
-        text: 'Burn',
-        onClick: handleBurnClick,
-        variant: 'burn-red',
-      });
-    }
+    buttons.push({
+      id: 'burn',
+      text: 'Burn',
+      onClick: handleBurnClick,
+      variant: 'burn-red',
+    });
 
     return buttons;
-  }, [isReadOnly, selectedAspect, showModal, isOwnCollection, isTradeView, currentUserId, handleLockClick, handleEquipClick, handleTradeClick, handleBurnClick, handleSelectClick]);
+  }, [
+    loading, error, selectedAspect, showModal, isTradeMode, isReadOnly, isOwnCollection, currentUserId, tradeExecuting,
+    handleLockClick, handleEquipClick, handleTradeClick, handleBurnClick, executeTradeSelection,
+  ]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 
   if (loading) {
-    return <Loading message="Loading aspects..." />;
+    return <Loading message={isTradeMode ? 'Loading trade options...' : 'Loading aspects...'} />;
   }
 
   if (error) {
@@ -415,7 +365,7 @@ const AspectsView = ({
       <div className="error-container">
         <h2>Error</h2>
         <p>{error}</p>
-        <button onClick={() => void refetch()}>Retry</button>
+        <button onClick={() => { void (isTradeMode ? refetchTradeAspects() : refetch()); }}>Retry</button>
       </div>
     );
   }
@@ -424,94 +374,47 @@ const AspectsView = ({
     <>
       <div className={`collection-tab-content ${isActionPanelVisible ? 'with-action-panel' : ''}`}>
         <div className="app-content">
-          {isTradeView && selectedAspectForTrade ? (
-            <>
-              <div className="trade-view-title">
-                <Title title={`Trade for ${selectedAspectForTrade.display_name}`} />
-              </div>
-              {tradeAspectsLoading ? (
-                <Loading message="Loading trade options..." />
-              ) : tradeAspectsError ? (
-                <div className="error-container">
-                  <h2>Error loading trade options</h2>
-                  <p>{tradeAspectsError}</p>
-                  <button onClick={() => { void refetchTradeAspects(); }}>Retry</button>
-                </div>
-              ) : tradeAspects.length === 0 ? (
-                <div className="no-cards-container">
-                  <h2>No tradeable aspects</h2>
-                  <p>No other users have tradeable aspects in this chat.</p>
-                </div>
-              ) : (
-                <>
-                  <FilterSortControls
-                    filterOptions={tradeFilterOptions}
-                    sortOptions={tradeSortOptions}
-                    onFilterChange={onTradeFilterChange}
-                    onSortChange={onTradeSortChange}
-                    showOwnerFilter={true}
-                    showCharacterFilter={false}
-                    showAspectStatusFilter={false}
-                    filterValues={tradeFilterValues}
-                    counter={{
-                      current: filteredTradeAspects.length,
-                      total: tradeAspects.length,
-                    }}
-                  />
-                  {filteredTradeAspects.length === 0 ? (
-                    <div className="no-cards-container">
-                      <h2>No aspects match your filters</h2>
-                      <p>Try adjusting your filter settings.</p>
-                    </div>
-                  ) : (
-                    <AspectGrid
-                      aspects={filteredTradeAspects}
-                      onAspectClick={openModal}
-                      initData={initData}
-                      onRefresh={refetchTradeAspects}
-                    />
-                  )}
-                </>
-              )}
-            </>
-          ) : (
-            <>
-              {aspects.length > 0 && (
-                <FilterSortControls
-                  filterOptions={filterOptions}
-                  sortOptions={sortOptions}
-                  onFilterChange={onFilterChange}
-                  onSortChange={onSortChange}
-                  showOwnerFilter={isReadOnly}
-                  showCharacterFilter={false}
-                  showAspectStatusFilter={false}
-                  filterValues={filterValues}
-                  counter={{
-                    current: displayedAspects.length,
-                    total: aspects.length,
-                  }}
-                />
-              )}
+          {isTradeMode && tradeOffer && (
+            <TradeHeader title={tradeOffer.title} rarity={tradeOffer.rarity} />
+          )}
+          {aspects.length > 0 && (
+            <FilterSortControls
+              filterOptions={filterOptions}
+              sortOptions={sortOptions}
+              onFilterChange={onFilterChange}
+              onSortChange={onSortChange}
+              showOwnerFilter={isReadOnly || isTradeMode}
+              showCharacterFilter={false}
+              showAspectStatusFilter={false}
+              filterValues={filterValues}
+              counter={{
+                current: displayedAspects.length,
+                total: aspects.length,
+              }}
+            />
+          )}
 
-              {aspects.length === 0 ? (
-                <div className="no-cards-container">
-                  <h2>No aspects yet</h2>
-                  <p>Roll aspects in the chat to start collecting!</p>
-                </div>
-              ) : displayedAspects.length === 0 ? (
-                <div className="no-cards-container">
-                  <h2>No aspects match your filters</h2>
-                  <p>Try adjusting your filter settings.</p>
-                </div>
-              ) : (
-                <AspectGrid
-                  aspects={displayedAspects}
-                  onAspectClick={openModal}
-                  initData={initData}
-                  onRefresh={onRefreshProp ?? (!isReadOnly ? refetch : undefined)}
-                />
-              )}
-            </>
+          {aspects.length === 0 ? (
+            <div className="no-cards-container">
+              <h2>{isTradeMode ? 'No trade options' : 'No aspects yet'}</h2>
+              <p>{isTradeMode
+                ? 'No aspects are available to trade for in this chat.'
+                : isOwnCollection
+                  ? "You don't own any aspects yet."
+                  : `${collectionOwnerLabel} doesn't own any aspects yet.`}</p>
+            </div>
+          ) : displayedAspects.length === 0 ? (
+            <div className="no-cards-container">
+              <h2>No aspects match your filters</h2>
+              <p>Try adjusting your filter settings.</p>
+            </div>
+          ) : (
+            <AspectGrid
+              aspects={displayedAspects}
+              onAspectClick={openModal}
+              initData={initData}
+              onRefresh={isTradeMode ? refetchTradeAspects : (onRefreshProp ?? (!isReadOnly ? refetch : undefined))}
+            />
           )}
         </div>
       </div>

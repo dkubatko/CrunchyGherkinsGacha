@@ -1,12 +1,15 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 
 // Components
 import SwipeableSubTabs from '@/components/common/SwipeableSubTabs';
 import CardsView from './CardsView';
 import AspectsView from './AspectsView';
 
+// Utils
+import { TelegramUtils } from '@/utils/telegram';
+
 // Types
-import type { CardData, AspectData, AspectConfigResponse } from '@/types';
+import type { CardData, AspectData, AspectConfigResponse, TradeOffer } from '@/types';
 
 interface CollectionTabProps {
   currentUserId: number;
@@ -44,14 +47,39 @@ const CollectionTab = ({
   onClaimPointsUpdate,
   onSpinsUpdate,
 }: CollectionTabProps) => {
-  // Lock swiping when a pane is in trade/modal mode
-  const [swipeLocked, setSwipeLocked] = useState(false);
+  // Trade state — lifted here so both tabs can show trade options
+  const [tradeOffer, setTradeOffer] = useState<TradeOffer | null>(null);
 
-  const handleLockSwipe = useCallback((locked: boolean) => {
-    setSwipeLocked(locked);
+  const handleTradeInitiate = useCallback((offer: TradeOffer) => {
+    setTradeOffer(offer);
   }, []);
 
+  const handleTradeClose = useCallback(() => {
+    setTradeOffer(null);
+    TelegramUtils.hideBackButton();
+  }, []);
+
+  // Back button for trade mode
+  const tradeCloseRef = useRef(handleTradeClose);
+  useEffect(() => {
+    tradeCloseRef.current = handleTradeClose;
+  }, [handleTradeClose]);
+
+  useEffect(() => {
+    if (!tradeOffer) return;
+    const cleanup = TelegramUtils.setupBackButton(() => {
+      tradeCloseRef.current();
+    });
+    return cleanup;
+  }, [tradeOffer]);
+
   const SUB_TABS = useMemo(() => {
+    if (tradeOffer) {
+      return [
+        { key: 'cards', label: 'Cards' },
+        { key: 'aspects', label: 'Aspects' },
+      ];
+    }
     const prefix = ownerLabel ? `${ownerLabel}'s` : '';
     const tabs = [
       { key: 'cards', label: prefix ? `${prefix} Cards` : 'Cards' },
@@ -60,18 +88,13 @@ const CollectionTab = ({
       tabs.push({ key: 'aspects', label: prefix ? `${prefix} Aspects` : 'Aspects' });
     }
     return tabs;
-  }, [ownerLabel, chatId]);
+  }, [ownerLabel, chatId, tradeOffer]);
 
-  const hasAspects = Boolean(chatId);
-
-  // Mark panes as visited when the scroll-snap triggers a tab change
-  // We do this via a simple wrapper around the SwipeableSubTabs children
-  // The isActive prop gates expensive hook fetches
+  const hasAspects = Boolean(chatId) || Boolean(tradeOffer);
 
   return (
     <SwipeableSubTabs
       tabs={SUB_TABS}
-      locked={swipeLocked}
     >
       <CardsView
         currentUserId={currentUserId}
@@ -85,22 +108,24 @@ const CollectionTab = ({
         initialConfig={initialConfig}
         onCardUpdate={onCardUpdate}
         onClaimPointsUpdate={onClaimPointsUpdate}
-        onLockSwipe={handleLockSwipe}
+        tradeOffer={tradeOffer}
+        onTradeInitiate={handleTradeInitiate}
       />
       {hasAspects && (
         <AspectsView
           currentUserId={currentUserId}
           chatId={chatId}
           initData={initData}
-          targetUserId={targetUserId}
           ownerLabel={ownerLabel}
+          targetUserId={targetUserId}
           initialAspects={initialAspects}
           initialConfig={initialConfig}
           onAspectUpdate={onAspectUpdate}
           onAspectRemove={onAspectRemove}
           onClaimPointsUpdate={onClaimPointsUpdate}
           onSpinsUpdate={onSpinsUpdate}
-          onLockSwipe={handleLockSwipe}
+          tradeOffer={tradeOffer}
+          onTradeInitiate={handleTradeInitiate}
         />
       )}
     </SwipeableSubTabs>
