@@ -1,6 +1,6 @@
-# Crunchy Gherkins Bot Backend
+# Crunchy Gherkins TCG Bot Backend
 
-Backend services for the Crunchy Gherkins gacha experience. The Telegram bot handles chat-facing gameplay while a FastAPI service powers a React/Vite mini-app that lets players browse, trade, burn, and lock their cards.
+Backend services for the Crunchy Gherkins TCG experience. The Telegram bot handles chat-facing gameplay while a FastAPI service powers a React/Vite mini-app that lets players browse, trade, burn, and lock their cards.
 
 ## System overview
 

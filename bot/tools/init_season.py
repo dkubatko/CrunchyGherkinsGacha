@@ -63,7 +63,7 @@ DEFAULT_CLAIM_BALANCE = 1
 DEFAULT_SPINS_FOR_MEGASPIN = 100
 
 # Season announcement message
-SEASON_ANNOUNCEMENT = """Today marks the first day of <b>Season 1</b> of the <b>Crunchy Gherkins Gacha</b>!
+SEASON_ANNOUNCEMENT = """Today marks the first day of <b>Season 1</b> of <b>Crunchy Gherkins TCG</b>!
 
 This season includes comprehensive updates as well as a number of new features:
 - 300+ fresh keywords

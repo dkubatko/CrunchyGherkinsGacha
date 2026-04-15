@@ -1,4 +1,4 @@
-# Crunchy Gherkins Gacha Bot — Agent Instructions
+# Crunchy Gherkins TCG Bot — Agent Instructions
 
 > **DO NOT** build the app, run tests, or execute commands unless the prompt explicitly asks for it.
 

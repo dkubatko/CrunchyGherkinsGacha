@@ -57,7 +57,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await message.reply_text("You're already registered! You're good to go.")
     else:
         await message.reply_text(
-            "🎉 <b>Welcome to Crunchy Gherkins!</b>\n\n"
+            "🎉 <b>Welcome to Crunchy Gherkins TCG!</b>\n\n"
             "Here's how to get started:\n\n"
             "1️⃣ <b>Set up your profile</b> — send me:\n"
             "   <code>/profile YourName</code> with a photo attached\n\n"
@@ -423,7 +423,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     help_text = (
-        "🥒 <b>Crunchy Gherkins — Command Reference</b>\n\n"
+        "🥒 <b>Crunchy Gherkins TCG — Command Reference</b>\n\n"
         "<b>Getting Started</b>\n"
         "  /start — Register with the bot (DM only)\n"
         "  /profile &lt;name&gt; + photo — Set your display name and photo (DM only)\n"

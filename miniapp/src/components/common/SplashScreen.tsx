@@ -34,8 +34,8 @@ const SplashScreen: React.FC<SplashScreenProps> = ({ progress, ready, onTransiti
       onAnimationEnd={handleAnimationEnd}
     >
       <div className="splash-content">
-        <img src={logo} alt="Crunchy Gherkins" className="splash-logo" />
-        <h1 className="splash-title">Crunchy Gherkins</h1>
+        <img src={logo} alt="Crunchy Gherkins TCG" className="splash-logo" />
+        <h1 className="splash-title">Crunchy Gherkins TCG</h1>
 
         <div className="splash-progress-container">
           <div className="splash-progress-track">

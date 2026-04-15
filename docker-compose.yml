@@ -1,4 +1,4 @@
-# Crunchy Gherkins Gacha Bot — Docker Compose
+# Crunchy Gherkins TCG — Docker Compose
 #
 # Usage:
 #   Local test:  docker compose up --build        (all services, local PostgreSQL)

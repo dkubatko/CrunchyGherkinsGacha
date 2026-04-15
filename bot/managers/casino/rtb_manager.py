@@ -141,7 +141,11 @@ def check_availability(chat_id: str) -> Tuple[bool, Optional[str]]:
     Returns (is_available, reason_if_unavailable).
     Requires at least RTB_NUM_CARDS_TO_UNLOCK cards total and at least 1 card of each
     standard rarity (Common, Rare, Epic, Legendary). Unique cards are not required.
+    In debug mode, availability checks are bypassed.
     """
+    if DEBUG_MODE:
+        return True, None
+
     rarity_counts = card_repo.get_chat_card_rarity_counts(chat_id)
     total_cards = sum(rarity_counts.values())
 

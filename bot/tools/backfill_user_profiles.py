@@ -25,16 +25,11 @@ from settings.constants import BASE_IMAGE_PATH  # noqa: E402
 from utils.session import get_session  # noqa: E402
 from utils.models import UserModel  # noqa: E402
 
+# Placeholder data — populate with your own username→display-name mappings.
 USERNAME_TO_DISPLAY_NAME = {
     "user_1": "User One",
     "user_2": "User Two",
     "user_3": "User Three",
-    "user_4": "User Four",
-    "user_5": "User Five",
-    "user_6": "User Six",
-    "user_7": "User Seven",
-    "user_8": "User Eight",
-    "user_9": "User Nine",
 }
 
 

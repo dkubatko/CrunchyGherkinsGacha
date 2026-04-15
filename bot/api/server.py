@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI application
 app = FastAPI(
-    title="Crunchy Gherkins Gacha Bot API",
+    title="Crunchy Gherkins TCG Bot API",
     description="API for the Telegram Mini App",
     version="1.0.0",
 )

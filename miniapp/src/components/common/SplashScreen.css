@@ -41,7 +41,7 @@
 
 /* Title */
 .splash-title {
-  font-size: 1.6rem;
+  font-size: 1.2rem;
   font-weight: 700;
   color: #ffffff;
   margin: 0;
@@ -52,7 +52,7 @@
 /* Progress bar container */
 .splash-progress-container {
   width: 60%;
-  margin-top: 1.5rem;
+  margin-top: 0.75rem;
 }
 
 /* Progress track (background) */

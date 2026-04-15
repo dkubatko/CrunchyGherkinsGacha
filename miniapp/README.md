@@ -1,6 +1,6 @@
-# Crunchy Gherkins Mini App
+# Crunchy Gherkins TCG Mini App
 
-React + TypeScript + Vite front-end for the Crunchy Gherkins gacha bot, embedded in Telegram as a Mini App.
+React + TypeScript + Vite front-end for the Crunchy Gherkins TCG bot, embedded in Telegram as a Mini App.
 
 ## Setup
 

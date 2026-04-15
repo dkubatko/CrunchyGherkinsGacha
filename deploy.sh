@@ -1,5 +1,5 @@
 #!/bin/bash
-# Deploy Crunchy Gherkins to GCP Compute Engine VM.
+# Deploy Crunchy Gherkins TCG to GCP Compute Engine VM.
 #
 # Usage:
 #   ./deploy.sh              Deploy to production
@@ -13,8 +13,8 @@
 set -euo pipefail
 
 # ── Configuration ────────────────────────────────────────────────────
-VM_NAME="${GCP_VM_NAME:-gacha-vm}"
-VM_ZONE="${GCP_VM_ZONE:-us-central1-a}"
+VM_NAME="${GCP_VM_NAME:?Set GCP_VM_NAME}"
+VM_ZONE="${GCP_VM_ZONE:?Set GCP_VM_ZONE}"
 PROJECT_DIR="${GCP_PROJECT_DIR:-/home/$(gcloud config get-value account 2>/dev/null | cut -d@ -f1)/CrunchyGherkinsGachaBot}"
 COMPOSE_CMD="docker compose --profile prod"
 
@@ -23,7 +23,7 @@ if [[ "${1:-}" == "--build" ]]; then
     BUILD_FLAG="--build"
 fi
 
-echo "🚀 Deploying Crunchy Gherkins to ${VM_NAME} (${VM_ZONE})"
+echo "🚀 Deploying Crunchy Gherkins TCG to ${VM_NAME} (${VM_ZONE})"
 echo "   Project dir: ${PROJECT_DIR}"
 echo ""
 

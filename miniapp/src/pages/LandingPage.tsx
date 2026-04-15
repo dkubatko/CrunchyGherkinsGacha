@@ -107,7 +107,7 @@ export const LandingPage = () => {
 
   // Set page title and favicon
   useEffect(() => {
-    document.title = 'Crunchy Gherkins Gacha';
+    document.title = 'Crunchy Gherkins TCG';
     const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
     if (link) {
       link.href = gachaIcon;
@@ -153,8 +153,8 @@ export const LandingPage = () => {
       <div className="landing-container">
         {/* Hero Section */}
         <section className="landing-hero">
-          <img src={logo} alt="Crunchy Gherkins" className="landing-logo" />
-          <h1 className="landing-title">Crunchy Gherkins Gacha</h1>
+          <img src={logo} alt="Crunchy Gherkins TCG" className="landing-logo" />
+          <h1 className="landing-title">Crunchy Gherkins TCG</h1>
           <p className="landing-subtitle">
             Collect AI-generated cards featuring you & your friends, play mini-games, 
             and build the ultimate collection in Telegram
@@ -188,7 +188,7 @@ export const LandingPage = () => {
             <div className="landing-demo-header">
               <img src={logo} alt="Bot" className="landing-demo-avatar" />
               <div className="landing-demo-bot-info">
-                <span className="landing-demo-bot-name">Crunchy Gherkins Gacha Bot</span>
+                <span className="landing-demo-bot-name">Crunchy Gherkins TCG Bot</span>
                 <span className="landing-demo-bot-status">online</span>
               </div>
             </div>
