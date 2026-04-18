@@ -15,6 +15,7 @@ export interface AdminAspectDef {
   rarity: string;
   set_id: number;
   season_id: number;
+  type_id?: number | null;
   created_at: string;
   owned_count: number;
 }
@@ -24,12 +25,14 @@ export interface AdminAspectDefCreate {
   season_id: number;
   name: string;
   rarity: string;
+  type_id?: number | null;
 }
 
 export interface AdminAspectDefUpdate {
   name?: string;
   rarity?: string;
   set_id?: number;
+  type_id?: number | null;
 }
 
 export interface AdminSetCreate {
@@ -49,4 +52,31 @@ export interface AdminSetUpdate {
 export interface AdminMe {
   admin_id: number;
   username: string;
+}
+
+export interface AdminAspectType {
+  id: number;
+  name: string;
+  description?: string | null;
+  created_at?: string | null;
+  usage_count: number;
+}
+
+export interface AdminAspectTypeCreate {
+  name: string;
+  description?: string | null;
+}
+
+export interface AdminAspectTypeUpdate {
+  name?: string;
+  description?: string;
+}
+
+export interface AdminAspectByType {
+  id: number;
+  name: string;
+  rarity: string;
+  set_id: number;
+  set_name?: string | null;
+  season_id: number;
 }

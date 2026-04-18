@@ -29,6 +29,7 @@ from api.routers import (
     admin_auth_router,
     admin_sets_router,
     admin_aspects_router,
+    admin_types_router,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,6 +98,7 @@ app.include_router(chat_router)
 app.include_router(admin_auth_router)
 app.include_router(admin_sets_router)
 app.include_router(admin_aspects_router)
+app.include_router(admin_types_router)
 
 
 @app.on_event("startup")

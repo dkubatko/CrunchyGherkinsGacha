@@ -5,11 +5,13 @@ import './Admin.css';
 
 interface Props {
   onSelectSet: (set: AdminSet) => void;
+  selectedSeason: number | null;
+  onSeasonChange: (season: number) => void;
 }
 
-const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
+const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: parentSeason, onSeasonChange }) => {
   const [seasons, setSeasons] = useState<number[]>([]);
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(null);
+  const [selectedSeason, setSelectedSeason] = useState<number | null>(parentSeason);
   const [sets, setSets] = useState<AdminSet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,10 +30,15 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
     AdminApiService.getSeasons()
       .then((s) => {
         setSeasons(s);
-        if (s.length > 0) setSelectedSeason(s[s.length - 1]); // default to latest
+        if (selectedSeason == null && s.length > 0) {
+          const initial = s[s.length - 1];
+          setSelectedSeason(initial);
+          onSeasonChange(initial);
+        }
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSets = useCallback(async () => {
@@ -86,7 +93,11 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
         <select
           className="admin-season-select"
           value={selectedSeason ?? ''}
-          onChange={(e) => setSelectedSeason(Number(e.target.value))}
+          onChange={(e) => {
+            const s = Number(e.target.value);
+            setSelectedSeason(s);
+            onSeasonChange(s);
+          }}
         >
           {seasons.map((s) => (
             <option key={s} value={s}>
@@ -139,8 +150,6 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
       )}
 
       {error && <div className="admin-error">{error}</div>}
-
-      {/* Set cards */}
       {loading ? (
         <div className="admin-loading">Loading sets…</div>
       ) : sets.length === 0 ? (

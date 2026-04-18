@@ -3,6 +3,10 @@ import type {
   AdminAspectDef,
   AdminAspectDefCreate,
   AdminAspectDefUpdate,
+  AdminAspectType,
+  AdminAspectTypeCreate,
+  AdminAspectTypeUpdate,
+  AdminAspectByType,
   AdminSetCreate,
   AdminSetUpdate,
   AdminMe,
@@ -25,7 +29,8 @@ export class AdminApiService {
   }
 
   private static async handleResponse<T>(response: Response): Promise<T> {
-    if (response.status === 401) {
+    if (response.status === 401 && this.getToken()) {
+      // Session expired — clear token and redirect to login
       localStorage.removeItem('admin_token');
       localStorage.removeItem('admin_username');
       window.location.href = '/admin';
@@ -168,5 +173,62 @@ export class AdminApiService {
       headers: this.getHeaders(),
     });
     return this.handleResponse(res);
+  }
+
+  // ── Aspect Types ──────────────────────────────────────────────────────
+
+  static async getTypes(): Promise<AdminAspectType[]> {
+    const res = await fetch(`${API_BASE_URL}/admin/types`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(res);
+  }
+
+  static async getAspectsByType(typeId: number): Promise<AdminAspectByType[]> {
+    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}/aspects`, {
+      headers: this.getHeaders(),
+    });
+    return this.handleResponse(res);
+  }
+
+  static async createType(data: AdminAspectTypeCreate): Promise<AdminAspectType> {
+    const res = await fetch(`${API_BASE_URL}/admin/types`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(res);
+  }
+
+  static async updateType(typeId: number, data: AdminAspectTypeUpdate): Promise<AdminAspectType> {
+    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}`, {
+      method: 'PUT',
+      headers: this.getHeaders(),
+      body: JSON.stringify(data),
+    });
+    return this.handleResponse(res);
+  }
+
+  static async deleteType(typeId: number): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (res.status === 401 && this.getToken()) {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_username');
+      window.location.href = '/admin';
+      throw new Error('Session expired.');
+    }
+    if (!res.ok) {
+      let detail = `Delete failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body?.detail) detail = body.detail;
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail);
+    }
   }
 }

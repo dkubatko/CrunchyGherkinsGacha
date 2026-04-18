@@ -1,7 +1,7 @@
 Generate a 1:1 square collectible "aspect sphere" image using the
 provided template as layout reference.
 
-The sphere represents the thematic aspect "{aspect_name}".{set_context}
+The sphere represents the thematic aspect "{aspect_name}".{type_context}{set_context}
 Transform the plain template sphere into a visually striking sphere
 that embodies "{aspect_name}".
 

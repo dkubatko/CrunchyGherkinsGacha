@@ -15,6 +15,7 @@ from api.routers.user import router as user_router
 from api.routers.admin_auth import router as admin_auth_router
 from api.routers.admin_sets import router as admin_sets_router
 from api.routers.admin_aspects import router as admin_aspects_router
+from api.routers.admin_types import router as admin_types_router
 
 __all__ = [
     "aspects_router",
@@ -28,4 +29,5 @@ __all__ = [
     "admin_auth_router",
     "admin_sets_router",
     "admin_aspects_router",
+    "admin_types_router",
 ]

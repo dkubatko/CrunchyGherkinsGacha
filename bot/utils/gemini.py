@@ -11,6 +11,7 @@ from PIL import Image
 from settings.constants import (
     ASPECT_GENERATION_PROMPT,
     ASPECT_SET_CONTEXT,
+    ASPECT_TYPE_CONTEXT,
     BASE_CARD_GENERATION_PROMPT,
     CARD_WITH_ASPECTS_PROMPT,
     RARITIES,
@@ -306,6 +307,8 @@ class GeminiUtil:
         rarity: str,
         set_name: str | None = None,
         set_description: str | None = None,
+        type_name: str | None = None,
+        type_description: str | None = None,
         temperature: float = 1.0,
         instruction_addendum: str = "",
     ) -> str | None:
@@ -316,6 +319,8 @@ class GeminiUtil:
             rarity: Rarity tier — used to look up creativeness_factor.
             set_name: Optional set name for thematic context.
             set_description: Optional set description for thematic context.
+            type_name: Optional type name (e.g. "Location") for generation guidance.
+            type_description: Optional type description for additional context.
             temperature: Gemini sampling temperature.
             instruction_addendum: Extra instructions appended to the prompt
                 (e.g. user description for Unique creations).
@@ -333,12 +338,22 @@ class GeminiUtil:
             else:
                 set_context = ""
 
+            # Build type context
+            if type_name:
+                type_details = (
+                    f"'{type_name}': {type_description}" if type_description else f"'{type_name}'"
+                )
+                type_context = ASPECT_TYPE_CONTEXT.format(type_details=type_details)
+            else:
+                type_context = ""
+
             creativeness = RARITIES.get(rarity, {}).get("creativeness_factor", 50)
             color = RARITIES.get(rarity, {}).get("color", "blue")
 
             prompt = ASPECT_GENERATION_PROMPT.format(
                 aspect_name=aspect_name,
                 set_context=set_context,
+                type_context=type_context,
                 creativeness_factor=creativeness,
                 color=color,
             )
@@ -397,7 +412,7 @@ class GeminiUtil:
         self,
         rarity: str,
         card_name: str,
-        aspects: list[tuple[str, bytes]],
+        aspects: list,
         base_image_path: str | None = None,
         base_image_b64: str | None = None,
         temperature: float = 1.0,
@@ -410,7 +425,7 @@ class GeminiUtil:
         Args:
             rarity: Card rarity (for template selection, color, creativeness).
             card_name: Full display name for the card nameplate.
-            aspects: List of (name, image_bytes) for ALL equipped aspects.
+            aspects: List of OwnedAspectWithImage objects for ALL equipped aspects.
             base_image_path: Path to the character's base photo.
             base_image_b64: Base64-encoded character base photo.
             temperature: Gemini sampling temperature.
@@ -422,9 +437,15 @@ class GeminiUtil:
             if base_image_path is None and base_image_b64 is None:
                 raise ValueError("Either base_image_path or base_image_b64 must be provided.")
 
-            # Build aspects description
+            # Build rich per-aspect descriptions with set and type context
             if aspects:
-                aspects_desc = ", ".join(f'"{name}"' for name, _ in aspects)
+                aspect_labels = []
+                for a in aspects:
+                    if a.aspect_definition:
+                        aspect_labels.append(a.aspect_definition.context_label())
+                    else:
+                        aspect_labels.append(f'"{a.display_name}"')
+                aspects_desc = "; ".join(aspect_labels)
             else:
                 aspects_desc = "None"
 
@@ -450,9 +471,10 @@ class GeminiUtil:
             contents.append(
                 self._prepare_image_part(image_path=base_image_path, image_b64=base_image_b64)
             )
-            for aspect_name, aspect_bytes in aspects:
-                contents.append(f'Aspect "{aspect_name}" reference:')
-                contents.append(self._prepare_image_part(image_bytes=aspect_bytes))
+            for a in aspects:
+                label = f'Aspect {a.aspect_definition.context_label(include_descriptions=False) if a.aspect_definition else f"{a.display_name}"}'
+                contents.append(f'{label} reference:')
+                contents.append(self._prepare_image_part(image_bytes=base64.b64decode(a.image_b64)))
 
             config = types.GenerateContentConfig(
                 temperature=temperature,

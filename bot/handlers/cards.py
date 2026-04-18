@@ -463,13 +463,11 @@ async def _generate_equipped_refresh_options(
 
     # Gather all equipped aspect images
     equipped = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card.id)
-    aspects_data: list[tuple[str, bytes]] = []
+    aspects_with_images = []
     for ca in equipped:
         aspect_with_img = await asyncio.to_thread(aspect_repo.get_aspect_with_image, ca.aspect_id)
         if aspect_with_img and aspect_with_img.image_b64:
-            aspects_data.append(
-                (aspect_with_img.display_name, base64.b64decode(aspect_with_img.image_b64))
-            )
+            aspects_with_images.append(aspect_with_img)
 
     card_name = card.title()
     total_attempts = max(1, max_retries + 1)
@@ -485,7 +483,7 @@ async def _generate_equipped_refresh_options(
                     gemini_util.generate_card_with_aspects,
                     card.rarity,
                     card_name,
-                    aspects_data,
+                    aspects_with_images,
                     base_image_b64=profile.image_b64,
                     temperature=temperature,
                 )
@@ -1188,16 +1186,14 @@ async def handle_equip_callback(
 
         # Gather all equipped aspect images (flat list)
         equipped_aspects_data = await asyncio.to_thread(aspect_repo.get_aspects_for_card, card_id)
-        aspects_data: list[tuple[str, bytes]] = []
+        aspects_with_images = []
 
         for ca in equipped_aspects_data:
             aspect_with_img = await asyncio.to_thread(
                 aspect_repo.get_aspect_with_image, ca.aspect_id
             )
             if aspect_with_img and aspect_with_img.image_b64:
-                aspects_data.append(
-                    (aspect_with_img.display_name, base64.b64decode(aspect_with_img.image_b64))
-                )
+                aspects_with_images.append(aspect_with_img)
 
         # Generate the card image with the new aspect
         try:
@@ -1205,7 +1201,7 @@ async def handle_equip_callback(
                 gemini_util.generate_card_with_aspects,
                 card_with_image.rarity,
                 new_title,
-                aspects_data,
+                aspects_with_images,
                 base_image_b64=profile.image_b64,
             )
         except Exception as exc:

@@ -39,6 +39,7 @@ def _definition_to_response(
         rarity=defn.rarity,
         set_id=defn.set_id,
         season_id=defn.season_id,
+        type_id=defn.type_id,
         created_at=defn.created_at,
         owned_count=owned_count,
     )
@@ -101,6 +102,7 @@ async def create_aspect_definition(
         name=body.name,
         rarity=body.rarity,
         season_id=body.season_id,
+        type_id=body.type_id,
     )
     return _definition_to_response(defn)
 
@@ -118,6 +120,7 @@ async def update_aspect_definition(
         name=body.name,
         rarity=body.rarity,
         set_id=body.set_id,
+        type_id=body.type_id,
     )
     if updated is None:
         raise HTTPException(status_code=404, detail="Aspect definition not found")

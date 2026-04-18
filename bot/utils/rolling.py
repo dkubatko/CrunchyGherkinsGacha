@@ -406,7 +406,9 @@ def generate_aspect_for_chat(
                 aspect_name=aspect_def.name,
                 rarity=rarity,
                 set_name=aspect_def.set_name,
-                set_description=aspect_def.description or None,
+                set_description=aspect_def.set_description,
+                type_name=aspect_def.type_name,
+                type_description=aspect_def.type_description,
             )
             if not image_b64:
                 raise ImageGenerationError("Empty aspect image returned")
@@ -448,7 +450,7 @@ def generate_aspect_for_chat(
                 set_name=aspect_def.set_name or "",
                 set_id=aspect_def.set_id,
                 aspect_definition_id=aspect_def.id,
-                set_description=aspect_def.description or "",
+                set_description=aspect_def.set_description or "",
             )
         except ImageGenerationError as exc:
             last_error = exc

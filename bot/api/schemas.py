@@ -522,6 +522,7 @@ class AdminAspectDefResponse(BaseModel):
     rarity: str
     set_id: int
     season_id: int
+    type_id: Optional[int] = None
     created_at: Optional[datetime.datetime] = None
     owned_count: int = 0
 
@@ -533,14 +534,21 @@ class AdminAspectDefCreateRequest(BaseModel):
     season_id: int
     name: str
     rarity: str
+    type_id: Optional[int] = None
 
 
 class AdminAspectDefUpdateRequest(BaseModel):
-    """Request body to update an existing aspect definition. Only provided fields are applied."""
+    """Request body to update an existing aspect definition. Only provided fields are applied.
+
+    ``type_id`` follows a clear-convention: pass ``0`` to clear the type
+    (set it to NULL); pass a positive integer to set it; omit (``None``)
+    to leave the existing type unchanged.
+    """
 
     name: Optional[str] = None
     rarity: Optional[str] = None
     set_id: Optional[int] = None
+    type_id: Optional[int] = None
 
 
 class AdminBulkAspectDefItem(BaseModel):
@@ -562,3 +570,46 @@ class AdminBulkAspectDefResponse(BaseModel):
     """Response from bulk aspect definition upsert."""
 
     upserted: int
+
+
+# =============================================================================
+# ADMIN ASPECT TYPE SCHEMAS
+# =============================================================================
+
+
+class AdminAspectTypeResponse(BaseModel):
+    """Aspect type data returned by admin endpoints."""
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
+    usage_count: int = 0
+
+
+class AdminAspectTypeCreateRequest(BaseModel):
+    """Request body to create a new aspect type."""
+
+    name: str
+    description: Optional[str] = None
+
+
+class AdminAspectTypeUpdateRequest(BaseModel):
+    """Request body to update an existing aspect type."""
+
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+class AdminAspectByTypeResponse(BaseModel):
+    """Aspect definition entry returned when listing aspects for a single type.
+
+    Used by the admin Types page to show "what is using this type".
+    """
+
+    id: int
+    name: str
+    rarity: str
+    set_id: int
+    set_name: Optional[str] = None
+    season_id: int

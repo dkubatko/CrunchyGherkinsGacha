@@ -21,6 +21,7 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 ### Card & Aspect System
 - **Rarities**: Common → Rare → Epic → Legendary → Unique (each with different weights, costs, rewards)
 - **Aspects**: Collectible themed keywords (e.g., "Rainy" from a "Weather" set) with unique AI-generated sphere art. Aspects have rarities and can only be equipped on cards of equal or higher rarity (except Unique aspects, which fit any card)
+- **Aspect Types**: Hidden property on aspect definitions (e.g., "Location", "Creature", "Mood", "Object"). Types are invisible to end users but influence AI image generation for both aspect spheres and equipped cards. Types are independent of sets — aspects within a set can have different types. Type is optional (nullable `type_id` on `AspectDefinitionModel`). Managed via admin dashboard under "Types" section.
 - **Unique Aspects**: Forged via `/create` by sacrificing 5 Legendary aspects; player chooses a custom name
 - **Recycling**: Combine lower-rarity aspects into higher-rarity ones (3 Common→1 Rare, 3 Rare→1 Epic, 4 Epic→1 Legendary)
 - **Seasons**: Cards and aspects belong to seasons; only current-season items can be claimed
@@ -132,10 +133,12 @@ bot/
 │       ├── downloads.py      # Image download/export
 │       ├── admin_auth.py     # Admin login (OTP + JWT)
 │       ├── admin_sets.py     # Admin season/set management
-│       └── admin_aspects.py  # Admin aspect definition CRUD
+│       ├── admin_aspects.py  # Admin aspect definition CRUD
+│       └── admin_types.py    # Admin aspect type CRUD
 ├── repos/                    # Repository layer — pure data access (DB queries only)
 │   ├── card_repo.py              # Card CRUD, collection queries, ownership
 │   ├── aspect_repo.py            # Aspect catalog, owned aspects, definition CRUD
+│   ├── aspect_type_repo.py       # Aspect type CRUD (get all, create, update, delete)
 │   ├── user_repo.py              # User management, chat enrollment, profiles
 │   ├── spin_repo.py              # Spin balances, megaspin tracking
 │   ├── claim_repo.py             # Claim point balances
@@ -256,7 +259,8 @@ miniapp/src/
 ### Aspect System (Gacha 2.0)
 | Model | Purpose |
 |-------|---------|
-| **AspectDefinitionModel** | Aspect catalog entries (name, rarity, set_id, season_id) |
+| **AspectTypeModel** | Aspect type catalog (name, description) — e.g., "Location", "Creature", "Mood". Hidden from end users but influences AI image generation |
+| **AspectDefinitionModel** | Aspect catalog entries (name, rarity, set_id, season_id, type_id) |
 | **OwnedAspectModel** | User-owned aspect instances (with optional custom name, rarity, locked, file_id) |
 | **AspectImageModel** | Aspect sphere images (bytea) + thumbnails |
 | **CardAspectModel** | Junction table: equipped aspects on cards (card_id, aspect_id, order 1-5) |
@@ -456,7 +460,9 @@ docker compose down
 ### Admin Dashboard
 - Accessible at `/admin` path in the Mini App
 - Login via OTP sent to admin's Telegram, exchanged for JWT
-- Manages: seasons, sets, aspect definitions (CRUD + bulk operations)
+- Manages: seasons, sets, aspect definitions (CRUD + bulk operations), aspect types (CRUD)
+- Aspect types section on dashboard page: create/edit/delete types inline
+- Set detail page: type selector on aspect create/edit, move-to-set dropdown in edit mode, type badge on aspect rows
 
 ---
 
@@ -474,6 +480,7 @@ docker compose down
 - **PostgreSQL-native types** — use JSONB for structured data, bytea for binary, DateTime(timezone=True) for timestamps
 - **Image storage pattern** — separate image tables (CardImageModel, AspectImageModel, SetIconModel) with bytea columns for full JPEG images + JPEG thumbnails; Gemini output is always converted to JPEG via `ImageUtil.to_jpeg()` before any cropping/processing
 - **Image generation config** — all Gemini calls include `image_size="1K"` for consistent resolution; aspect/slot/set-icon generation additionally specifies `aspect_ratio="1:1"`; card generation omits `aspect_ratio` (Gemini deduces 5:7 from base image). Set slot icons use text-to-image generation (no input portrait)
-- **Prompt templates** — Gemini image generation prompts live in `bot/prompts/*.md` as Markdown files with `{placeholder}` parameters. Loaded at import time via `_load_prompt()` in `constants.py` and formatted with `.format()` in `gemini.py`. Edit prompts by modifying the `.md` files directly.
+- **Prompt templates** — Gemini image generation prompts live in `bot/prompts/*.md` as Markdown files with `{placeholder}` parameters. Loaded at import time via `_load_prompt()` in `constants.py` and formatted with `.format()` in `gemini.py`. Edit prompts by modifying the `.md` files directly. The aspect sphere prompt includes `{type_context}` for type-influenced generation.
+- **Aspect type in image generation** — `generate_aspect_image()` accepts optional `type_name`/`type_description` and injects type context into the sphere prompt. `generate_card_with_aspects()` accepts 3-tuples `(name, bytes, type_name)` and includes type in aspect labels (e.g., `Aspect "Valhalla" (Location) reference:`). Both functions are backward-compatible with callers that don't pass type info.
 - **Virtual scrolling** — use `@tanstack/react-virtual` for any grid that may contain many items
 - **Keep this file up to date** — after any structural change, new feature, or refactor, update this `copilot-instructions.md` to reflect the current project state

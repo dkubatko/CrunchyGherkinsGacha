@@ -141,6 +141,11 @@ ASPECT_SET_CONTEXT = (
     " Interpret the aspect name within that thematic context."
 )
 
+ASPECT_TYPE_CONTEXT = (
+    "\n- This aspect is a {type_details} — the type dictates the nature"
+    " of what the aspect represents."
+)
+
 REACTION_IN_PROGRESS = "🤔"
 
 COLLECTION_CAPTION = (

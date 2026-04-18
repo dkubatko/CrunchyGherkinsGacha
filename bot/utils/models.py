@@ -422,6 +422,23 @@ class EventModel(Base):
 # ---------------------------------------------------------------------------
 
 
+class AspectTypeModel(Base):
+    """Catalog of aspect types (e.g., Location, Creature, Mood).
+
+    Types are independent of sets and influence image generation.
+    Each aspect definition may optionally reference a type.
+    """
+
+    __tablename__ = "aspect_types"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class AspectDefinitionModel(Base):
     """Catalog of aspect keywords grouped by set and rarity.
 
@@ -437,6 +454,9 @@ class AspectDefinitionModel(Base):
     season_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     rarity: Mapped[str] = mapped_column(Text, nullable=False)
+    type_id: Mapped[Optional[int]] = mapped_column(
+        BigInteger, ForeignKey("aspect_types.id"), nullable=True
+    )
     created_at: Mapped[Optional[datetime.datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -448,6 +468,9 @@ class AspectDefinitionModel(Base):
         primaryjoin="and_(AspectDefinitionModel.set_id == SetModel.id, AspectDefinitionModel.season_id == SetModel.season_id)",
     )
 
+    # Relationship to type
+    aspect_type: Mapped[Optional["AspectTypeModel"]] = relationship("AspectTypeModel")
+
     __table_args__ = (
         ForeignKeyConstraint(
             ["set_id", "season_id"],
@@ -457,6 +480,7 @@ class AspectDefinitionModel(Base):
         Index("idx_aspect_definitions_set_season", "set_id", "season_id"),
         Index("idx_aspect_definitions_rarity", "rarity"),
         Index("idx_aspect_definitions_name", "name"),
+        Index("idx_aspect_definitions_type_id", "type_id"),
     )
 
 

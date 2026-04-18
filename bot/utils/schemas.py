@@ -521,18 +521,40 @@ class UserAchievement(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AspectType(BaseModel):
+    """Aspect type (e.g., Location, Creature, Mood) data transfer object."""
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
+
+    @classmethod
+    def from_orm(cls, type_orm) -> "AspectType":
+        """Convert an AspectTypeModel ORM object to an AspectType schema."""
+        return cls(
+            id=type_orm.id,
+            name=type_orm.name,
+            description=type_orm.description,
+            created_at=type_orm.created_at,
+        )
+
+
 class AspectDefinition(BaseModel):
     """Aspect definition (catalog entry) data transfer object."""
 
     id: int
-    set_id: int
-    season_id: int
     name: str
     rarity: str
-    created_at: Optional[datetime.datetime] = None
+    season_id: int
+    set_id: int
     set_name: Optional[str] = None
+    set_description: Optional[str] = None
     source: str = "all"
-    description: str = ""
+    type_id: Optional[int] = None
+    type_name: Optional[str] = None
+    type_description: Optional[str] = None
+    created_at: Optional[datetime.datetime] = None
 
     def title(self, include_id: bool = False, include_rarity: bool = False, include_emoji: bool = False) -> str:
         """Return ``[id] Rarity Name`` (HTML-escaped)."""
@@ -546,20 +568,50 @@ class AspectDefinition(BaseModel):
         parts.append(self.name)
         return html.escape(" ".join(parts))
 
+    def context_label(self, include_descriptions: bool = True) -> str:
+        """Build a rich label with type and set context for image generation prompts.
+
+        Args:
+            include_descriptions: If True, include descriptions after names.
+                If False, only include names (for concise image reference labels).
+
+        Returns e.g. '"Valhalla" (type: Location — a place, set: Fantasy — mythological worlds)'
+        or just '"Valhalla"' if no set/type info is available.
+        """
+        label = f'"{self.name}"'
+        context_parts = []
+        if self.type_name:
+            type_info = self.type_name
+            if include_descriptions and self.type_description:
+                type_info += f' — {self.type_description}'
+            context_parts.append(f'type: {type_info}')
+        if self.set_name:
+            set_info = self.set_name
+            if include_descriptions and self.set_description:
+                set_info += f' — {self.set_description}'
+            context_parts.append(f'set: {set_info}')
+        if context_parts:
+            label += f' ({", ".join(context_parts)})'
+        return label
+
     @classmethod
     def from_orm(cls, aspect_def_orm) -> "AspectDefinition":
         """Convert an AspectDefinitionModel ORM object to an AspectDefinition schema."""
         asp_set = aspect_def_orm.aspect_set
+        asp_type = aspect_def_orm.aspect_type
         return cls(
             id=aspect_def_orm.id,
             set_id=aspect_def_orm.set_id,
             season_id=aspect_def_orm.season_id,
             name=aspect_def_orm.name,
             rarity=aspect_def_orm.rarity,
+            type_id=aspect_def_orm.type_id,
+            type_name=asp_type.name if asp_type else None,
+            type_description=asp_type.description if asp_type else None,
             created_at=aspect_def_orm.created_at,
             set_name=asp_set.name if asp_set else None,
+            set_description=asp_set.description if asp_set else None,
             source=asp_set.source if asp_set else "all",
-            description=asp_set.description if asp_set else "",
         )
 
 

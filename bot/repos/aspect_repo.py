@@ -82,6 +82,7 @@ def get_aspect_definitions_by_rarity(
 
     query = query.options(
         joinedload(AspectDefinitionModel.aspect_set),
+        joinedload(AspectDefinitionModel.aspect_type),
     ).order_by(AspectDefinitionModel.name)
     rows = query.all()
 
@@ -118,7 +119,10 @@ def get_aspect_definitions_by_set(
 
     rows = (
         session.query(AspectDefinitionModel)
-        .options(joinedload(AspectDefinitionModel.aspect_set))
+        .options(
+            joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(AspectDefinitionModel.aspect_type),
+        )
         .filter(
             AspectDefinitionModel.set_id == set_id,
             AspectDefinitionModel.season_id == season_id,
@@ -138,7 +142,10 @@ def get_aspect_definition_by_id(
     """Fetch a single aspect definition by its auto-increment ID."""
     row = (
         session.query(AspectDefinitionModel)
-        .options(joinedload(AspectDefinitionModel.aspect_set))
+        .options(
+            joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(AspectDefinitionModel.aspect_type),
+        )
         .filter(AspectDefinitionModel.id == definition_id)
         .first()
     )
@@ -165,7 +172,10 @@ def get_aspect_definition_by_name_and_set(
 
     row = (
         session.query(AspectDefinitionModel)
-        .options(joinedload(AspectDefinitionModel.aspect_set))
+        .options(
+            joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(AspectDefinitionModel.aspect_type),
+        )
         .filter(
             AspectDefinitionModel.name == name,
             AspectDefinitionModel.set_id == set_id,
@@ -220,6 +230,7 @@ def create_aspect_definition(
     name: str,
     rarity: str,
     season_id: Optional[int] = None,
+    type_id: Optional[int] = None,
     *,
     session: Session,
 ) -> AspectDefinition:
@@ -230,6 +241,7 @@ def create_aspect_definition(
         name: The aspect keyword.
         rarity: The rarity level (Common / Rare / Epic / Legendary).
         season_id: Season ID. Defaults to ``CURRENT_SEASON``.
+        type_id: Optional FK to aspect_types.
 
     Returns:
         The newly created ``AspectDefinition``.
@@ -244,24 +256,29 @@ def create_aspect_definition(
         season_id=season_id,
         name=name,
         rarity=rarity,
+        type_id=type_id,
         created_at=now,
     )
     session.add(definition)
     session.flush()
-    # Re-fetch with eager-loaded relationship for the DTO
+    # Re-fetch with eager-loaded relationships for the DTO
     definition = (
         session.query(AspectDefinitionModel)
-        .options(joinedload(AspectDefinitionModel.aspect_set))
+        .options(
+            joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(AspectDefinitionModel.aspect_type),
+        )
         .filter(AspectDefinitionModel.id == definition.id)
         .one()
     )
     logger.info(
-        "Created aspect definition id=%s name='%s' rarity=%s set=%s season=%s",
+        "Created aspect definition id=%s name='%s' rarity=%s set=%s season=%s type=%s",
         definition.id,
         name,
         rarity,
         set_id,
         season_id,
+        type_id,
     )
     return AspectDefinition.from_orm(definition)
 
@@ -273,19 +290,21 @@ def update_aspect_definition(
     name: Optional[str] = None,
     rarity: Optional[str] = None,
     set_id: Optional[int] = None,
+    type_id: Optional[int] = None,
     session: Session,
 ) -> Optional[AspectDefinition]:
     """Update an existing aspect definition's fields.
 
-    Only provided (non-None) fields are updated.
+    Only provided (non-None) fields are updated.  Pass ``type_id=0`` to
+    clear the type (sets it to ``None``).
 
     Returns:
         The updated ``AspectDefinition``, or ``None`` if not found.
     """
     definition = (
         session.query(AspectDefinitionModel)
-        .options(joinedload(AspectDefinitionModel.aspect_set))
         .filter(AspectDefinitionModel.id == definition_id)
+        .with_for_update()
         .first()
     )
     if not definition:
@@ -297,13 +316,30 @@ def update_aspect_definition(
         definition.rarity = rarity
     if set_id is not None:
         definition.set_id = set_id
+    if type_id is not None:
+        # Convention: type_id=0 means "clear the type"
+        definition.type_id = None if type_id == 0 else type_id
+
+    session.flush()
+
+    # Re-query with eager loads so from_orm() sees updated relationships
+    definition = (
+        session.query(AspectDefinitionModel)
+        .options(
+            joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(AspectDefinitionModel.aspect_type),
+        )
+        .filter(AspectDefinitionModel.id == definition_id)
+        .first()
+    )
 
     logger.info(
-        "Updated aspect definition id=%s: name=%s rarity=%s set=%s",
+        "Updated aspect definition id=%s: name=%s rarity=%s set=%s type=%s",
         definition_id,
         name,
         rarity,
         set_id,
+        type_id,
     )
     return AspectDefinition.from_orm(definition)
 
@@ -439,6 +475,9 @@ def get_user_aspects(
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
             ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
+            ),
         )
     )
     if chat_id is not None:
@@ -459,6 +498,9 @@ def get_aspect_by_id(aspect_id: int, *, session: Session) -> Optional[OwnedAspec
         .options(
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
+            ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
             ),
         )
         .filter(OwnedAspectModel.id == aspect_id)
@@ -499,6 +541,9 @@ def get_aspect_with_image(aspect_id: int, *, session: Session) -> Optional[Owned
         .options(
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
+            ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
             ),
             joinedload(OwnedAspectModel.image),
         )
@@ -656,6 +701,9 @@ def get_aspects_for_card(card_id: int, *, session: Session) -> List[CardAspect]:
             joinedload(CardAspectModel.aspect)
             .joinedload(OwnedAspectModel.aspect_definition)
             .joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(CardAspectModel.aspect)
+            .joinedload(OwnedAspectModel.aspect_definition)
+            .joinedload(AspectDefinitionModel.aspect_type),
         )
         .filter(CardAspectModel.card_id == card_id)
         .order_by(CardAspectModel.order)
@@ -853,6 +901,9 @@ def get_owned_aspect(aspect_id: int, user_id: int, *, session: Session) -> Optio
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
             ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
+            ),
         )
         .filter(
             OwnedAspectModel.id == aspect_id,
@@ -912,6 +963,9 @@ def get_aspects_by_ids(aspect_ids: List[int], *, session: Session) -> List[Owned
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
             ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
+            ),
         )
         .filter(OwnedAspectModel.id.in_(aspect_ids))
         .all()
@@ -952,6 +1006,9 @@ def create_card_aspect_link(
             joinedload(CardAspectModel.aspect)
             .joinedload(OwnedAspectModel.aspect_definition)
             .joinedload(AspectDefinitionModel.aspect_set),
+            joinedload(CardAspectModel.aspect)
+            .joinedload(OwnedAspectModel.aspect_definition)
+            .joinedload(AspectDefinitionModel.aspect_type),
         )
         .filter(CardAspectModel.id == link.id)
         .one()
@@ -1004,6 +1061,9 @@ def get_chat_aspects_for_trade(
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
             ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
+            ),
         )
         .all()
     )
@@ -1040,6 +1100,9 @@ def get_all_chat_aspects(
         .options(
             joinedload(OwnedAspectModel.aspect_definition).joinedload(
                 AspectDefinitionModel.aspect_set
+            ),
+            joinedload(OwnedAspectModel.aspect_definition).joinedload(
+                AspectDefinitionModel.aspect_type
             ),
         )
         .all()
