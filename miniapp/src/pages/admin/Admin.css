@@ -2,6 +2,23 @@
    Admin Dashboard Styles
    ========================================================================= */
 
+/* Re-enable text selection within the admin panel (App.css disables globally) */
+.admin-container,
+.admin-container * {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* Keep interactive controls non-selectable so clicks don't drag-select text */
+.admin-container button,
+.admin-container a,
+.admin-container input[type="button"],
+.admin-container input[type="submit"],
+.admin-container [role="button"] {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* ── Layout ─────────────────────────────────────────────────────────────── */
 
 .admin-container {
