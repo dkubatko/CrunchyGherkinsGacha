@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session, joinedload, noload
 from settings.constants import CURRENT_SEASON
 from utils.image import ImageUtil
 from utils.models import (
+    AspectCountModel,
     AspectDefinitionModel,
     AspectImageModel,
     CardAspectModel,
@@ -370,6 +371,11 @@ def delete_aspect_definition(definition_id: int, *, session: Session) -> tuple[b
             f"Cannot delete: definition is used by {owned_count} owned aspect(s)",
         )
 
+    # Null out any aspect_counts rows referencing this definition (FK preservation
+    # of historical chat counts — definition_id is nullable).
+    session.query(AspectCountModel).filter(
+        AspectCountModel.definition_id == definition_id
+    ).update({AspectCountModel.definition_id: None}, synchronize_session=False)
     session.delete(definition)
     logger.info(
         "Deleted aspect definition id=%s name='%s'",
