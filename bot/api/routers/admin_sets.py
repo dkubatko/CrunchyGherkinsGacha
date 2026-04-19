@@ -143,6 +143,31 @@ async def update_set(
     return _set_to_response(updated, counts.get(set_id, 0), icon_b64)
 
 
+@router.delete("/seasons/{season_id}/{set_id}", status_code=204)
+async def delete_set_endpoint(
+    season_id: int,
+    set_id: int,
+    _admin: Dict[str, Any] = Depends(get_admin_user),
+):
+    """Delete an empty set. Fails if the set still has aspect definitions."""
+
+    def _do_delete():
+        # Delete slot icon first (set_icons has FK to sets).
+        try:
+            set_icon_repo.delete_icon(set_id, season_id)
+        except Exception:
+            logger.exception("Failed to delete slot icon for set %s/%s", set_id, season_id)
+        try:
+            deleted = set_repo.delete_set(set_id, season_id)
+        except ValueError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Set not found")
+
+    await asyncio.to_thread(_do_delete)
+    return None
+
+
 @router.post("/seasons/{season_id}/{set_id}/regenerate-icon", response_model=AdminSetResponse)
 async def regenerate_set_icon(
     season_id: int,

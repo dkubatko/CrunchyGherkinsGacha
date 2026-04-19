@@ -37,6 +37,7 @@ const MoveIcon = () => (
 interface Props {
   set: AdminSet;
   onSetUpdated: (set: AdminSet) => void;
+  onSetDeleted?: () => void;
 }
 
 // In-memory new-aspect record (negative ids for staging).
@@ -72,13 +73,26 @@ interface PopoverProps {
 
 const Popover: React.FC<PopoverProps> = ({ anchor, onClose, className = '', children }) => {
   const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
   useEffect(() => {
     if (!anchor) return;
     const update = () => {
       const rect = anchor.getBoundingClientRect();
-      setPos({ top: rect.bottom + 4, left: rect.left });
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const spaceAbove = rect.top - 8;
+      const PREFERRED_MAX = 260;
+      let top: number;
+      let maxHeight: number;
+      if (spaceBelow >= Math.min(PREFERRED_MAX, 120) || spaceBelow >= spaceAbove) {
+        top = rect.bottom + 4;
+        maxHeight = Math.max(120, Math.min(PREFERRED_MAX, spaceBelow));
+      } else {
+        // Flip above
+        maxHeight = Math.max(120, Math.min(PREFERRED_MAX, spaceAbove));
+        top = rect.top - 4 - maxHeight;
+      }
+      setPos({ top, left: rect.left, maxHeight });
     };
     update();
     window.addEventListener('scroll', update, true);
@@ -114,7 +128,7 @@ const Popover: React.FC<PopoverProps> = ({ anchor, onClose, className = '', chil
     <div
       ref={ref}
       className={`admin-popover ${className}`}
-      style={{ position: 'fixed', top: pos.top, left: pos.left }}
+      style={{ position: 'fixed', top: pos.top, left: pos.left, maxHeight: pos.maxHeight }}
     >
       {children}
     </div>,
@@ -122,7 +136,7 @@ const Popover: React.FC<PopoverProps> = ({ anchor, onClose, className = '', chil
   );
 };
 
-const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
+const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }) => {
   // Loaded data
   const [originalDefs, setOriginalDefs] = useState<AdminAspectDef[]>([]);
   const [loading, setLoading] = useState(true);
@@ -463,6 +477,20 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
     }
   };
 
+  const [deletingSet, setDeletingSet] = useState(false);
+  const handleDeleteSet = async () => {
+    if (!window.confirm(`Delete set "${set.name}"? This cannot be undone.`)) return;
+    setDeletingSet(true);
+    setError('');
+    try {
+      await AdminApiService.deleteSet(set.season_id, set.id);
+      onSetDeleted?.();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete set');
+      setDeletingSet(false);
+    }
+  };
+
   // ── DnD: stage rarity changes ──
   const handleDragStart = (id: number) => setDraggedId(id);
   const handleDragEnd = () => { setDraggedId(null); setDragOverRarity(null); };
@@ -533,6 +561,16 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated }) => {
               <span className="admin-set-meta-sep">·</span>
               <span>{set.source}</span>
             </div>
+            {!loading && originalDefs.length === 0 && newDefs.length === 0 && onSetDeleted && (
+              <button
+                className="admin-btn admin-btn-danger admin-btn-sm admin-set-delete-btn"
+                onClick={handleDeleteSet}
+                disabled={deletingSet}
+                title="Delete this empty set"
+              >
+                {deletingSet ? 'Deleting…' : 'Delete empty set'}
+              </button>
+            )}
           </div>
         </div>
 

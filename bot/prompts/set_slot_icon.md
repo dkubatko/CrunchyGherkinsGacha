@@ -13,3 +13,8 @@ Create a casino slot machine icon that represents the theme: "{set_name}".
 - Exactly 1:1 square aspect ratio.
 - Style must be consistent across different themes: always the same
   vibrant, slightly stylized illustrative look with strong color contrast.
+- The background **must be dark** (deep black, charcoal, or very dark navy/purple) —
+  never white, pale, or light. The dark background is required so the icon contrasts
+  against the casino reels. The sphere itself is vibrant and saturated; the surrounding
+  area behind/around it is uniformly dark.
+

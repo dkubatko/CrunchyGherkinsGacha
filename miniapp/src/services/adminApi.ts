@@ -118,6 +118,27 @@ export class AdminApiService {
     return this.handleResponse(res);
   }
 
+  static async deleteSet(seasonId: number, setId: number): Promise<void> {
+    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}/${setId}`, {
+      method: 'DELETE',
+      headers: this.getHeaders(),
+    });
+    if (res.status === 401 && this.getToken()) {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_username');
+      window.location.href = '/admin';
+      throw new Error('Session expired. Please log in again.');
+    }
+    if (!res.ok) {
+      let detail = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body?.detail) detail = body.detail;
+      } catch { /* ignore */ }
+      throw new Error(detail);
+    }
+  }
+
   // ── Aspect Definitions ────────────────────────────────────────────────
 
   static async getAspectDefs(setId: number, seasonId: number): Promise<AdminAspectDef[]> {

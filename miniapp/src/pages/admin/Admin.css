@@ -212,6 +212,21 @@
   color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
 }
 
+.admin-btn-danger {
+  background: rgba(220, 60, 60, 0.15);
+  color: #ff6b6b;
+  border: 1px solid rgba(220, 60, 60, 0.35);
+}
+
+.admin-btn-danger:hover:not(:disabled) {
+  background: rgba(220, 60, 60, 0.25);
+}
+
+.admin-set-delete-btn {
+  margin-top: 0.5rem;
+  align-self: flex-start;
+}
+
 .admin-btn-sm {
   padding: 0.38rem 0.75rem;
   font-size: 0.84rem;
@@ -553,6 +568,15 @@
   text-align: center;
   border-radius: 50%;
   min-width: unset;
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.admin-set-hero-regen:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.9);
+  color: #fff;
 }
 
 .admin-set-hero-info {
@@ -1758,6 +1782,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
 .admin-popover-item:hover:not(:disabled) {

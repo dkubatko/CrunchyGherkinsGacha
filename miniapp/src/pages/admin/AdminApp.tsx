@@ -208,6 +208,7 @@ const AdminApp: React.FC = () => {
           onSetUpdated={(updatedSet) =>
             setView({ page: 'setDetail', set: updatedSet })
           }
+          onSetDeleted={() => setView({ page: 'dashboard' })}
         />
       )}
     </div>

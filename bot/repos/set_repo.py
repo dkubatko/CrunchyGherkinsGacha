@@ -204,6 +204,45 @@ def update_set(
     return Set.from_orm(set_model)
 
 
+@with_session(commit=True)
+def delete_set(
+    set_id: int,
+    season_id: Optional[int] = None,
+    *,
+    session: Session,
+) -> bool:
+    """Delete a set. Returns True on success.
+
+    Raises:
+        ValueError: If the set still has aspect definitions.
+    """
+    if season_id is None:
+        season_id = CURRENT_SEASON
+
+    remaining = (
+        session.query(AspectDefinitionModel)
+        .filter(
+            AspectDefinitionModel.set_id == set_id,
+            AspectDefinitionModel.season_id == season_id,
+        )
+        .count()
+    )
+    if remaining > 0:
+        raise ValueError(f"Set {set_id} still has {remaining} aspect definition(s).")
+
+    set_model = (
+        session.query(SetModel)
+        .filter(SetModel.id == set_id, SetModel.season_id == season_id)
+        .first()
+    )
+    if not set_model:
+        return False
+
+    session.delete(set_model)
+    logger.info("Deleted set id=%s season=%s", set_id, season_id)
+    return True
+
+
 @with_session
 def get_available_seasons(*, session: Session) -> List[int]:
     """Return a sorted list of all season IDs that have sets, always including the current season."""
