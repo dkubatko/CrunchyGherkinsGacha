@@ -543,7 +543,11 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
               disabled={regeneratingIcon}
               title="Regenerate slot icon"
             >
-              {regeneratingIcon ? '⟳' : '↻'}
+              {regeneratingIcon ? (
+                <span className="admin-set-hero-regen-spinner" aria-label="Regenerating" />
+              ) : (
+                <span className="admin-set-hero-regen-icon">↻</span>
+              )}
             </button>
           </div>
           <div className="admin-set-hero-info">
