@@ -9,7 +9,8 @@ from uvicorn.config import LOGGING_CONFIG as UVICORN_LOGGING_CONFIG
 _NOISY_LOGGERS = {
     "telegram": logging.INFO,
     "telegram.bot": logging.INFO,
-    "httpcore": logging.INFO,
+    "httpx": logging.WARNING,
+    "httpcore": logging.WARNING,
     "PIL": logging.INFO,
     "PIL.Image": logging.INFO,
     "PIL.PngImagePlugin": logging.INFO,
@@ -56,7 +57,6 @@ def configure_logging(debug: bool = False) -> None:
 
     # Keep noisy third-party libraries polite by default
     logging.getLogger("asyncio").setLevel(logging.WARNING)
-    logging.getLogger("httpx").setLevel(logging.INFO)
 
     for logger_name, level in _NOISY_LOGGERS.items():
         logging.getLogger(logger_name).setLevel(level)
