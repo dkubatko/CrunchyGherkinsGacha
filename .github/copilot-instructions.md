@@ -309,6 +309,9 @@ Bot commands use decorators for auth/validation:
 - `@verify_admin` — user must be the configured admin
 - `@prevent_concurrency(bot_data_key, cross_user=False)` — prevents race conditions on user actions via composite locking keys
 
+### Fair-Order Roll Callback Buffering (`bot/utils/roll_action_buffer.py`)
+Claim/lock/reroll callbacks on the same roll share a per-`roll_key` (`f"{roll_type}:{roll_id}"`) in-memory buffer (`RollActionBuffer`) stored on `application.bot_data["roll_action_buffer"]` (lazy-init via `get_buffer()`). The window is fixed at `ROLL_ACTION_BUFFER_WINDOW_MS` (default 250ms) from the first click on that roll — subsequent clicks during the window join the same drain but do NOT extend the deadline. On drain, entries are processed strictly in `(update_id, receipt_ns)` order so the earliest clicker wins regardless of async scheduling jitter from `concurrent_updates=True`. `handle_claim`/`handle_lock`/`handle_reroll` are thin wrappers that submit a `PendingAction` and `await pending.future`; the real logic lives in `_process_{claim,lock,reroll}_ordered`. Per-`(user_id, action, roll_key)` dedup replaces the old `@prevent_concurrency` on these handlers (still used elsewhere). Bot runs as a single process (api workers don't receive Telegram callbacks) so in-memory buffering is safe without Redis.
+
 ### API Authentication
 - **Mini App**: `Authorization: tma <initData>` header validated via Telegram's HMAC-SHA256 WebApp spec
 - **Admin Dashboard**: JWT tokens issued after OTP verification via `admin_auth_service`

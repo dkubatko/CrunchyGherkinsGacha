@@ -221,6 +221,10 @@ PRE_CLAIM_ROTATION_INTERVAL = config.get(
 CLAIM_UNLOCK_DELAY_LOW = config.get("CLAIM_UNLOCK_DELAY_LOW", 3)  # Minimum delay in seconds
 CLAIM_UNLOCK_DELAY_HIGH = config.get("CLAIM_UNLOCK_DELAY_HIGH", 6)  # Maximum delay in seconds
 
+# Roll-action fair-ordering buffer: buffers claim/lock/reroll callbacks per roll_id,
+# then drains them in (update_id, receipt_ns) order so the earliest clicker wins.
+ROLL_ACTION_BUFFER_WINDOW_MS = config.get("ROLL_ACTION_BUFFER_WINDOW_MS", 250)
+
 # Roll type weights (base_card vs aspect)
 ROLL_TYPE_WEIGHTS = config.get("ROLL_TYPE_WEIGHTS", {"base_card": 10, "aspect": 90})
 

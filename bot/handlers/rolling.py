@@ -9,6 +9,7 @@ import asyncio
 import base64
 import datetime
 import logging
+import time
 from datetime import timezone
 
 from telegram import Update, InputMediaPhoto, ReactionTypeEmoji
@@ -37,7 +38,8 @@ from managers import event_manager
 from managers import notification_manager
 from managers import roll_manager
 from utils.schemas import User
-from utils.decorators import verify_user_in_chat, prevent_concurrency
+from utils.decorators import verify_user_in_chat
+from utils.roll_action_buffer import PendingAction, get_buffer
 from utils.roll_manager import RollManager, ClaimStatus
 from utils.events import EventType, RollOutcome, RerollOutcome, ClaimOutcome, RollLockOutcome
 from api.background_tasks import process_claim_countdown
@@ -177,11 +179,15 @@ async def roll(
     # Schedule roll notification (best-effort, outside roll's error handling)
     if roll_succeeded:
         try:
-            notification_delay = datetime.timedelta(seconds=30) if DEBUG_MODE else datetime.timedelta(hours=24)
+            notification_delay = (
+                datetime.timedelta(seconds=30) if DEBUG_MODE else datetime.timedelta(hours=24)
+            )
             notify_at = datetime.datetime.now(timezone.utc) + notification_delay
             await asyncio.to_thread(
                 notification_manager.persist_notification,
-                user.user_id, chat_id_str, notify_at,
+                user.user_id,
+                chat_id_str,
+                notify_at,
             )
             schedule_notification(context.job_queue, user.user_id, chat_id_str, notify_at)
         except Exception as e:
@@ -350,19 +356,71 @@ def _resolve_chat_id(item_chat_id, query):
     return None
 
 
+async def _submit_roll_action(
+    action,
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+    user: User,
+    processor,
+) -> None:
+    """Enqueue a roll-lifecycle callback into the fair-ordering buffer and wait
+    for it to be processed.
+
+    The buffer collects all claim/lock/reroll clicks on the same ``roll_id``
+    for up to ``ROLL_ACTION_BUFFER_WINDOW_MS`` and then processes them strictly
+    in ``(update_id, receipt_ns)`` order — where ``update_id`` is assigned by
+    Telegram at click time, so the earliest clicker wins.
+    """
+    query = update.callback_query
+    if not query or not query.data:
+        return
+
+    try:
+        roll_type, roll_id = _parse_roll_callback(query.data)
+    except (ValueError, IndexError):
+        logger.warning("Unparseable roll callback data: %r", query.data)
+        return
+
+    roll_key = f"{roll_type}:{roll_id}"
+    buffer = get_buffer(context.bot_data)
+    pending = PendingAction(
+        action=action,
+        roll_key=roll_key,
+        update_id=update.update_id or 0,
+        receipt_ns=time.monotonic_ns(),
+        update=update,
+        context=context,
+        user=user,
+        processor=processor,
+    )
+
+    accepted = await buffer.submit(pending)
+    if accepted:
+        try:
+            await pending.future
+        except Exception as exc:
+            logger.error("Buffered %s for %s failed: %s", action, roll_key, exc)
+
+
 # ---------------------------------------------------------------------------
 # Callback handlers  (claim / lock / reroll — unified for card & aspect)
 # ---------------------------------------------------------------------------
 
 
 @verify_user_in_chat
-@prevent_concurrency("pending_roll_actions")
 async def handle_claim(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Handle claim button click for both cards and aspects."""
+    """Enqueue a claim-button click for fair-ordered processing."""
+    await _submit_roll_action("claim", update, context, user, _process_claim_ordered)
+
+
+async def _process_claim_ordered(pending: PendingAction) -> None:
+    """Handle claim button click for both cards and aspects (ordered)."""
+    update = pending.update
+    user = pending.user
     query = update.callback_query
     roll_type, roll_id = _parse_roll_callback(query.data)
     chat_id = str(update.effective_chat.id) if update.effective_chat else None
@@ -375,7 +433,7 @@ async def handle_claim(
         return
 
     if manager.is_being_rerolled():
-        await query.answer("Being rerolled, please wait.", show_alert=True)
+        await query.answer("Too late, already re-rolled.", show_alert=True)
         return
 
     claim_result = await asyncio.to_thread(
@@ -473,13 +531,19 @@ async def handle_claim(
 
 
 @verify_user_in_chat
-@prevent_concurrency("pending_roll_actions", cross_user=True)
 async def handle_lock(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Handle lock button click for both cards and aspects."""
+    """Enqueue a lock-button click for fair-ordered processing."""
+    await _submit_roll_action("lock", update, context, user, _process_lock_ordered)
+
+
+async def _process_lock_ordered(pending: PendingAction) -> None:
+    """Handle lock button click for both cards and aspects (ordered)."""
+    update = pending.update
+    user = pending.user
     query = update.callback_query
     roll_type, roll_id = _parse_roll_callback(query.data)
     chat_id = str(update.effective_chat.id) if update.effective_chat else None
@@ -497,6 +561,10 @@ async def handle_lock(
     item = manager.item
     if item is None:
         await query.answer("Item not found!", show_alert=True)
+        return
+
+    if manager.is_being_rerolled():
+        await query.answer("Too late, already re-rolled!", show_alert=True)
         return
 
     if not manager.can_user_lock(user.user_id, user.username):
@@ -565,13 +633,27 @@ async def handle_lock(
 
 
 @verify_user_in_chat
-@prevent_concurrency("pending_roll_actions", cross_user=True)
 async def handle_reroll(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
     user: User,
 ) -> None:
-    """Handle reroll button click for both cards and aspects."""
+    """Enqueue a reroll-button click for fair-ordered processing."""
+    await _submit_roll_action("reroll", update, context, user, _process_reroll_ordered)
+
+
+async def _process_reroll_ordered(pending: PendingAction) -> None:
+    """Handle reroll button click for both cards and aspects (ordered).
+
+    This runs inside the fair-ordering drain loop, so it must return quickly
+    — otherwise subsequent clicks on the same roll_key wait and their Telegram
+    callback queries can age past the ~15s TTL. All the slow work (Gemini
+    image generation, message edits, claim refunds, event logging) is
+    dispatched to a background task so the drain can move on.
+    """
+    update = pending.update
+    user = pending.user
+    context = pending.context
     query = update.callback_query
     roll_type, roll_id = _parse_roll_callback(query.data)
 
@@ -584,6 +666,10 @@ async def handle_reroll(
     active_item = manager.item
     if active_item is None:
         await query.answer("Item data unavailable", show_alert=True)
+        return
+
+    if manager.is_being_rerolled():
+        await query.answer("Too late, already re-rolled.", show_alert=True)
         return
 
     if not manager.can_user_reroll(user.user_id):
@@ -601,10 +687,7 @@ async def handle_reroll(
             await query.answer("Cannot reroll this item", show_alert=True)
         return
 
-    original_item = manager.original_item or active_item
-    original_owner_id = active_item.user_id
-    original_claim_chat_id = _resolve_chat_id(active_item.chat_id, query)
-
+    # --- Fast path: mark rerolling + ack the callback, then dispatch bg work ---
     try:
         manager.set_being_rerolled(True)
         await query.edit_message_caption(
@@ -612,11 +695,64 @@ async def handle_reroll(
             parse_mode=ParseMode.HTML,
         )
         await query.answer("Rerolling...")
+    except Exception:
+        logger.exception("Failed to initiate reroll for %s:%s", roll_type, roll_id)
+        try:
+            manager.set_being_rerolled(False)
+        except Exception:
+            pass
+        return
 
-        chat_id_for_roll = _resolve_chat_id(active_item.chat_id, query)
-        if chat_id_for_roll is None:
-            raise ValueError("Unable to resolve chat id for reroll")
+    # Capture what we need now; the PendingAction / query object will still be
+    # valid inside the task since it's a ref-held Python object, but we avoid
+    # relying on it for further Telegram replies.
+    original_item = manager.original_item or active_item
+    original_owner_id = active_item.user_id
+    original_claim_chat_id = _resolve_chat_id(active_item.chat_id, query)
+    chat_id_for_roll = _resolve_chat_id(active_item.chat_id, query)
+    if chat_id_for_roll is None:
+        logger.error("Unable to resolve chat id for reroll %s:%s", roll_type, roll_id)
+        manager.set_being_rerolled(False)
+        return
 
+    asyncio.create_task(
+        _reroll_image_generation_task(
+            roll_type=roll_type,
+            roll_id=roll_id,
+            user=user,
+            query=query,
+            context=context,
+            original_item=original_item,
+            active_rarity=active_item.rarity,
+            original_owner_id=original_owner_id,
+            original_claim_chat_id=original_claim_chat_id,
+            chat_id_for_roll=chat_id_for_roll,
+        )
+    )
+
+
+async def _reroll_image_generation_task(
+    *,
+    roll_type: str,
+    roll_id: int,
+    user: User,
+    query,
+    context: ContextTypes.DEFAULT_TYPE,
+    original_item,
+    active_rarity: str,
+    original_owner_id,
+    original_claim_chat_id,
+    chat_id_for_roll: str,
+) -> None:
+    """Background worker for the slow part of a reroll (Gemini + finalization).
+
+    Runs outside the roll-action buffer drain so other queued clicks on the
+    same roll_key can be processed immediately after the reroll is dispatched.
+    A fresh ``RollManager`` is constructed here since the one in the drain has
+    gone out of scope.
+    """
+    manager = RollManager(roll_type, roll_id)
+    try:
         downgraded_rarity = rolling.get_downgraded_rarity(original_item.rarity)
 
         result = await asyncio.to_thread(
@@ -654,7 +790,7 @@ async def handle_reroll(
 
         # Refund if the original was claimed
         if original_owner_id is not None and original_claim_chat_id is not None:
-            refund_amount = get_claim_cost(active_item.rarity)
+            refund_amount = get_claim_cost(active_rarity)
             await asyncio.to_thread(
                 claim_repo.increment_claim_balance,
                 original_owner_id,
@@ -672,52 +808,53 @@ async def handle_reroll(
             **result.event_kwargs,
         )
     except rolling.NoEligibleUserError:
-        chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
         event_manager.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,
-            chat_id=chat_id_for_log,
+            chat_id=chat_id_for_roll,
             error_message="No eligible user with profile",
         )
-        manager.set_being_rerolled(False)
-        await query.edit_message_caption(
-            caption=manager.generate_caption(),
-            reply_markup=manager.generate_keyboard(),
-            parse_mode=ParseMode.HTML,
-        )
-        await query.answer(
-            "No enrolled players have set a display name and profile photo yet.",
-            show_alert=True,
+        await _restore_roll_after_failed_reroll(
+            manager, query, "No enrolled players have set a display name and profile photo yet."
         )
     except rolling.ImageGenerationError:
-        chat_id_for_log = _resolve_chat_id(active_item.chat_id, query) or "unknown"
         event_manager.log(
             EventType.REROLL,
             RerollOutcome.ERROR,
             user_id=user.user_id,
-            chat_id=chat_id_for_log,
+            chat_id=chat_id_for_roll,
             error_message="Image generation failed",
         )
+        await _restore_roll_after_failed_reroll(
+            manager, query, "Sorry, couldn't generate a new image for the reroll."
+        )
+    except Exception as e:
+        logger.error("Error in reroll bg task (roll_type=%s id=%s): %s", roll_type, roll_id, e)
+        await _restore_roll_after_failed_reroll(manager, query, "An error occurred during reroll.")
+
+
+async def _restore_roll_after_failed_reroll(manager, query, chat_notice: str) -> None:
+    """Clear the rerolling flag and restore the original keyboard/caption.
+
+    The original callback query has already been ack'd (with "Rerolling..."),
+    so we can't send a popup alert — instead we restore the buttons and post
+    a short chat message so users know the reroll didn't go through.
+    """
+    try:
         manager.set_being_rerolled(False)
+    except Exception:
+        logger.exception("Failed to clear rerolling flag")
+    try:
         await query.edit_message_caption(
             caption=manager.generate_caption(),
             reply_markup=manager.generate_keyboard(),
             parse_mode=ParseMode.HTML,
         )
-        await query.answer("Sorry, couldn't generate a new image!", show_alert=True)
-    except Exception as e:
-        logger.error("Error in reroll (roll_type=%s): %s", roll_type, e)
+    except Exception:
+        logger.exception("Failed to restore keyboard after failed reroll")
+    if query.message is not None:
         try:
-            manager.set_being_rerolled(False)
-            await query.edit_message_caption(
-                caption=manager.generate_caption(),
-                reply_markup=manager.generate_keyboard(),
-                parse_mode=ParseMode.HTML,
-            )
-        except Exception:
-            pass
-        try:
-            await query.answer("An error occurred during reroll!", show_alert=True)
-        except Exception as cb_err:
-            logger.warning("Failed to answer callback query: %s", cb_err)
+            await query.message.reply_text(chat_notice)
+        except Exception as exc:
+            logger.warning("Failed to post reroll failure notice: %s", exc)
