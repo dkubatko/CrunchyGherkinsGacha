@@ -321,7 +321,14 @@ async def equip_initiate(
     from telegram import InlineKeyboardButton, InlineKeyboardMarkup
     from telegram.constants import ParseMode
 
+    username = user_data.get("username")
+    if not username:
+        username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
+    if not username:
+        username = "user"
+
     confirm_text = EQUIP_CONFIRM_MESSAGE.format(
+        username=username,
         aspect_title=aspect.title(include_id=True, include_rarity=True),
         card_title=card.title(include_id=True, include_rarity=True),
         new_title=html.escape(new_title),

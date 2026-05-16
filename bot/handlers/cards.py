@@ -998,6 +998,7 @@ async def equip(
 
     await message.reply_text(
         EQUIP_CONFIRM_MESSAGE.format(
+            username=user.username,
             aspect_title=aspect.title(include_id=True, include_rarity=True),
             card_title=card.title(include_id=True, include_rarity=True),
             new_title=html.escape(new_title),
@@ -1105,6 +1106,7 @@ async def handle_equip_callback(
         try:
             await query.edit_message_text(
                 EQUIP_CRAFTING_MESSAGE.format(
+                    username=user.username,
                     aspect_title=aspect_title_fmt,
                     card_title=card_title_fmt,
                 ),
@@ -1143,6 +1145,7 @@ async def handle_equip_callback(
             logger.error("Card %s not found after successful equip", card_id)
             await query.edit_message_text(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    username=user.username,
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=db_session.aspect_rarity,
@@ -1156,6 +1159,7 @@ async def handle_equip_callback(
             logger.error("Card %s has no source info for from-scratch generation", card_id)
             await query.edit_message_text(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    username=user.username,
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
@@ -1175,6 +1179,7 @@ async def handle_equip_callback(
             logger.error("Failed to fetch profile for card %s: %s", card_id, exc)
             await query.edit_message_text(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    username=user.username,
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,
@@ -1216,6 +1221,7 @@ async def handle_equip_callback(
             image_bytes = base64.b64decode(new_image_b64)
 
             caption = EQUIP_SUCCESS_MESSAGE.format(
+                username=user.username,
                 card_id=card_id,
                 new_title=html.escape(new_title),
                 rarity=card_with_image.rarity,
@@ -1260,6 +1266,7 @@ async def handle_equip_callback(
             # Image generation failed but equip succeeded
             await query.edit_message_text(
                 EQUIP_IMAGE_FAILURE_MESSAGE.format(
+                    username=user.username,
                     card_id=card_id,
                     new_title=html.escape(new_title),
                     rarity=card_with_image.rarity,

@@ -581,17 +581,21 @@ EQUIP_RARITY_MISMATCH_MESSAGE = (
 EQUIP_NAME_TOO_LONG_MESSAGE = "Name prefix is too long. Please keep it under 30 characters."
 EQUIP_NAME_INVALID_CHARS_MESSAGE = "Name prefix contains invalid characters. Avoid HTML/markdown special characters (<, >, &, *, _, `)."
 EQUIP_CONFIRM_MESSAGE = (
-    "Equip <b>🔮 {aspect_title}</b> "
-    "onto <b>🃏 {card_title}</b>?\n\n"
-    "Card will be renamed to: <b>{new_title}</b>\n"
-    "{equipped_aspects}"
+    "Confirm equip for @{username}:\n\n"
+    "<b>🔮 {aspect_title}</b>\n\n"
+    "⬇️\n\n"
+    "<b>🃏 {card_title}</b>\n\n"
+    "{equipped_aspects}\n\n"
+    "New name: <b>{new_title}</b>\n"
 )
 EQUIP_CANCELLED_MESSAGE = "Equip cancelled."
 EQUIP_ALREADY_RUNNING_MESSAGE = "You already have an equip in progress."
 EQUIP_NOT_YOURS_MESSAGE = "This equip prompt isn't for you!"
 EQUIP_CRAFTING_MESSAGE = (
-    "<b>Crafting...</b>\n\n"
-    "Equipping <b>🔮 {aspect_title}</b> onto <b>🃏 {card_title}</b>...\n\n"
+    "@{username} is equipping:\n\n"
+    "<b>🔮 {aspect_title}</b>\n\n"
+    "⬇️\n\n"
+    "<b>🃏 {card_title}</b>\n\n"
     "<i>Generating new card art — this may take a moment.</i>"
 )
 EQUIP_DB_FAILURE_MESSAGE = (
@@ -602,12 +606,14 @@ EQUIP_SUCCESS_MESSAGE = (
     "<b>Equip complete!</b>\n\n"
     "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
-    "{equipped_aspects}"
+    "{equipped_aspects}\n\n"
+    "<i>Owned by @{username}</i>"
 )
 EQUIP_IMAGE_FAILURE_MESSAGE = (
-    "Aspect equipped successfully, but image generation failed.\n\n"
+    "Equipped a new aspect, but image generation failed.\n\n"
     "<b>🃏 [{card_id}] {new_title}</b>\n"
     "Rarity: <b>{rarity}</b>\n"
     "{equipped_aspects}\n\n"
+    "<i>Owned by @{username}</i>\n\n"
     "<i>Use /refresh to regenerate the card art.</i>"
 )
