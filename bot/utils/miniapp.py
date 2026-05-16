@@ -18,15 +18,30 @@ def encode_miniapp_token(user_id: int, chat_id: Optional[str] = None) -> str:
     return _encode_token(raw_token)
 
 
-def encode_single_card_token(card_id: int) -> str:
-    """Encode a single card payload for the mini app."""
-    raw_token = f"c-{card_id}"
+def encode_single_card_token(card_id: int, chat_id: str) -> str:
+    """Encode a single card payload for the mini app.
+
+    Format: ``c-<chatId>-<cardId>``. The chat_id is included so the mini app
+    can open the Hub in the correct chat context and decide between the
+    Collection (owned) and All (chat-wide) tabs. ``chat_id`` may start with a
+    leading dash for group chats; the decoder splits on the *last* dash to
+    recover the card id.
+    """
+    if chat_id is None or str(chat_id) == "":
+        raise ValueError("encode_single_card_token requires a chat_id")
+    raw_token = f"c-{chat_id}-{card_id}"
     return _encode_token(raw_token)
 
 
-def encode_single_aspect_token(aspect_id: int) -> str:
-    """Encode a single aspect payload for the mini app."""
-    raw_token = f"a-{aspect_id}"
+def encode_single_aspect_token(aspect_id: int, chat_id: str) -> str:
+    """Encode a single aspect payload for the mini app.
+
+    Format: ``a-<chatId>-<aspectId>``. See :func:`encode_single_card_token`
+    for details on chat_id handling.
+    """
+    if chat_id is None or str(chat_id) == "":
+        raise ValueError("encode_single_aspect_token requires a chat_id")
+    raw_token = f"a-{chat_id}-{aspect_id}"
     return _encode_token(raw_token)
 
 

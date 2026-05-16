@@ -2,8 +2,8 @@ import WebApp from '@twa-dev/sdk';
 import type { UserData, OrientationData } from '../types';
 
 type ParsedPayload =
-  | { kind: 'card'; cardId: number }
-  | { kind: 'aspect'; aspectId: number }
+  | { kind: 'card'; cardId: number; chatId: string }
+  | { kind: 'aspect'; aspectId: number; chatId: string }
   | { kind: 'user'; userId: number }
   | { kind: 'userChat'; userId: number; chatId: string }
   | { kind: 'casino'; chatId: string };
@@ -13,11 +13,13 @@ export class TelegramUtils {
 
   // Token format documentation:
   // Supported external payload (start_param) values after the optional tg1_ base64 wrapper:
-  //   c-<cardId>                     => Single card view (display only this card)
-  //   a-<aspectId>                   => Single aspect view (display only this aspect)
+  //   c-<chatId>-<cardId>            => Open Hub and surface the specified card in chat context
+  //   a-<chatId>-<aspectId>          => Open Hub and surface the specified aspect in chat context
   //   u-<userId>                     => View user collection
   //   uc-<userId>-<chatId>           => View user collection scoped to chat
-  //   casino-<chatId>                 => Open casino catalog with game selection
+  //   casino-<chatId>                => Open casino catalog with game selection
+  // Note: chatId may begin with '-' (group chats); for c-/a- we split the trailing item id
+  // using lastIndexOf('-') to preserve the leading dash in chatId.
   // Unrecognized payloads are ignored.
 
   static decodeToken(token: string): string | null {
@@ -54,17 +56,29 @@ export class TelegramUtils {
     const lower = trimmed.toLowerCase();
 
     if (lower.startsWith('c-')) {
-      const maybeCardId = Number(trimmed.slice(2));
-      if (Number.isInteger(maybeCardId) && maybeCardId > 0) {
-        return { kind: 'card', cardId: maybeCardId };
+      const rest = trimmed.slice(2);
+      const splitAt = rest.lastIndexOf('-');
+      if (splitAt > 0) {
+        const chatStr = rest.slice(0, splitAt).trim();
+        const idStr = rest.slice(splitAt + 1);
+        const maybeCardId = Number(idStr);
+        if (chatStr.length > 0 && Number.isInteger(maybeCardId) && maybeCardId > 0) {
+          return { kind: 'card', cardId: maybeCardId, chatId: chatStr };
+        }
       }
       return null;
     }
 
     if (lower.startsWith('a-')) {
-      const maybeAspectId = Number(trimmed.slice(2));
-      if (Number.isInteger(maybeAspectId) && maybeAspectId > 0) {
-        return { kind: 'aspect', aspectId: maybeAspectId };
+      const rest = trimmed.slice(2);
+      const splitAt = rest.lastIndexOf('-');
+      if (splitAt > 0) {
+        const chatStr = rest.slice(0, splitAt).trim();
+        const idStr = rest.slice(splitAt + 1);
+        const maybeAspectId = Number(idStr);
+        if (chatStr.length > 0 && Number.isInteger(maybeAspectId) && maybeAspectId > 0) {
+          return { kind: 'aspect', aspectId: maybeAspectId, chatId: chatStr };
+        }
       }
       return null;
     }
@@ -129,8 +143,7 @@ export class TelegramUtils {
 
       let targetUserId: number = currentUserId;
       let chatId: string | null = null;
-      let singleCardId: number | null = null;
-      let singleAspectId: number | null = null;
+      let pendingOpenItem: { type: 'card' | 'aspect'; id: number } | null = null;
 
       let payloadType: 'card' | 'aspect' | 'user' | 'userChat' | 'casino' | null = null;
       let payloadSource: string | null = null;
@@ -158,31 +171,33 @@ export class TelegramUtils {
 
         switch (parsed.kind) {
           case 'card':
-            singleCardId = parsed.cardId;
+            chatId = parsed.chatId;
+            pendingOpenItem = { type: 'card', id: parsed.cardId };
             payloadType = 'card';
             payloadSource = source;
             return true;
           case 'aspect':
-            singleAspectId = parsed.aspectId;
+            chatId = parsed.chatId;
+            pendingOpenItem = { type: 'aspect', id: parsed.aspectId };
             payloadType = 'aspect';
             payloadSource = source;
             return true;
           case 'user':
             targetUserId = parsed.userId;
-            singleCardId = null;
+            pendingOpenItem = null;
             payloadType = 'user';
             payloadSource = source;
             return true;
           case 'userChat':
             targetUserId = parsed.userId;
             chatId = parsed.chatId;
-            singleCardId = null;
+            pendingOpenItem = null;
             payloadType = 'userChat';
             payloadSource = source;
             return true;
           case 'casino':
             chatId = parsed.chatId;
-            singleCardId = null;
+            pendingOpenItem = null;
             payloadType = 'casino';
             payloadSource = source;
             return true;
@@ -200,12 +215,12 @@ export class TelegramUtils {
       if (payloadType && payloadSource) {
         switch (payloadType) {
           case 'card':
-            console.info('Start parameter requested single card view', {
+            console.info('Start parameter requested card open in Hub', {
               source: payloadSource
             });
             break;
           case 'aspect':
-            console.info('Start parameter requested single aspect view', {
+            console.info('Start parameter requested aspect open in Hub', {
               source: payloadSource
             });
             break;
@@ -232,8 +247,8 @@ export class TelegramUtils {
       }
 
       const casinoView = payloadType === 'casino';
-      const isOwnCollection = singleCardId == null && singleAspectId == null && targetUserId === currentUserId;
-      const enableTrade = isOwnCollection && singleCardId == null && singleAspectId == null;
+      const isOwnCollection = targetUserId === currentUserId;
+      const enableTrade = isOwnCollection && pendingOpenItem == null;
 
       return {
         currentUserId,
@@ -241,10 +256,7 @@ export class TelegramUtils {
         isOwnCollection,
         enableTrade,
         chatId,
-        singleCardId,
-        singleCardView: singleCardId != null,
-        singleAspectId,
-        singleAspectView: singleAspectId != null,
+        pendingOpenItem,
         casinoView,
       };
     } catch (err) {

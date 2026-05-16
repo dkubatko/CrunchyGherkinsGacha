@@ -1536,7 +1536,7 @@ async def handle_recycle_callback(
         # Build View in app button if MINIAPP_URL is configured
         reply_markup = None
         if MINIAPP_URL_ENV:
-            aspect_token = encode_single_aspect_token(generated_aspect.aspect_id)
+            aspect_token = encode_single_aspect_token(generated_aspect.aspect_id, str(chat_id))
             aspect_url = f"{MINIAPP_URL_ENV}?startapp={aspect_token}"
             reply_markup = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
@@ -1860,7 +1860,7 @@ async def handle_card_recycle_callback(
 
         reply_markup = None
         if MINIAPP_URL_ENV:
-            card_token = encode_single_card_token(new_card_id)
+            card_token = encode_single_card_token(new_card_id, str(chat_id))
             card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
             reply_markup = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
@@ -2174,7 +2174,9 @@ async def handle_create_callback(update: Update, context: ContextTypes.DEFAULT_T
                 # Build View in app button if MINIAPP_URL is configured
                 reply_markup = None
                 if MINIAPP_URL_ENV:
-                    aspect_token = encode_single_aspect_token(aspect_id)
+                    aspect_token = encode_single_aspect_token(
+                        aspect_id, str(query.message.chat_id)
+                    )
                     aspect_url = f"{MINIAPP_URL_ENV}?startapp={aspect_token}"
                     reply_markup = InlineKeyboardMarkup(
                         [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]

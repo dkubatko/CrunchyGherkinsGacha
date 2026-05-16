@@ -33,7 +33,7 @@ const EquipCardSelector = ({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { showModal, modalCard, openModal, closeModal } = useModal();
+  const { showModal, modalItem, openModal, closeModal } = useModal<CardData>();
   const { orientation, orientationKey } = useOrientation({ enabled: isOpen });
   const {
     displayedCards,
@@ -97,20 +97,20 @@ const EquipCardSelector = ({
   }, [openModal]);
 
   const handleEquipClick = useCallback(() => {
-    if (!modalCard) return;
+    if (!modalItem) return;
     closeModal();
-    onCardSelect(modalCard);
-  }, [modalCard, closeModal, onCardSelect]);
+    onCardSelect(modalItem);
+  }, [modalItem, closeModal, onCardSelect]);
 
   const actionButtons = useMemo<ActionButton[]>(() => {
-    if (!modalCard) return [];
+    if (!modalItem) return [];
     return [{
       id: 'equip',
       text: 'Equip',
       onClick: handleEquipClick,
       variant: 'equip-green' as const,
     }];
-  }, [modalCard, handleEquipClick]);
+  }, [modalItem, handleEquipClick]);
 
   const isActionPanelVisible = actionButtons.length > 0;
 
@@ -167,10 +167,10 @@ const EquipCardSelector = ({
         )}
       </div>
 
-      {modalCard && (
+      {modalItem && (
         <CardModal
           isOpen={showModal}
-          card={modalCard}
+          card={modalItem}
           orientation={orientation}
           orientationKey={orientationKey}
           initData={initData}

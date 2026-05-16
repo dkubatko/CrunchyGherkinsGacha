@@ -11,7 +11,7 @@ import { BurnConfirmDialog, LockConfirmDialog, EquipNameDialog } from '@/compone
 import type { ActionButton } from '@/components/common';
 
 // Hooks
-import { useCollectionAspects, useTradeOptions, useTradeExecution } from '@/hooks';
+import { useCollectionAspects, useTradeOptions, useTradeExecution, useModal, useAutoOpenItem } from '@/hooks';
 import { useAspectFiltering } from '@/hooks/useAspectFiltering';
 import { useOrientation } from '@/hooks';
 
@@ -44,6 +44,8 @@ interface AspectsViewProps {
   // Trade mode (managed by CollectionTab)
   tradeOffer?: TradeOffer | null;
   onTradeInitiate?: (offer: TradeOffer) => void;
+  // Deep-link request: open this aspect's modal once available
+  pendingOpenAspectId?: number | null;
 }
 
 const AspectsView = ({
@@ -66,6 +68,7 @@ const AspectsView = ({
   // Trade mode props
   tradeOffer,
   onTradeInitiate,
+  pendingOpenAspectId,
 }: AspectsViewProps) => {
   const isTradeMode = Boolean(tradeOffer);
   const collectionOwnerLabel = ownerLabel ?? 'Collection';
@@ -105,14 +108,8 @@ const AspectsView = ({
     onSortChange,
   } = useAspectFiltering(aspects);
 
-  // Modal state
-  const [selectedAspect, setSelectedAspect] = useState<AspectData | null>(null);
-  const [showModal, setShowModal] = useState(false);
-
-  // Trade mode: execution
-  const { executing: tradeExecuting, execute: executeTradeSelection } = useTradeExecution(
-    tradeOffer, initData, 'aspect', selectedAspect?.id ?? null,
-  );
+  // Trade mode: execution (selectedAspect referenced below; declared by useModal further down).
+  // We forward the modal id once it's available — closures inside useTradeExecution will pick it up.
 
   const config = initialConfig ?? null;
 
@@ -139,16 +136,23 @@ const AspectsView = ({
   const [isBurning, setIsBurning] = useState(false);
   const burnResultRef = useRef<string>('');
 
-  // Open / close modal
-  const openModal = useCallback((aspect: AspectData) => {
-    setSelectedAspect(aspect);
-    setShowModal(true);
-  }, []);
+  // Modal state (shared generic hook)
+  const {
+    showModal,
+    modalItem: selectedAspect,
+    openModal,
+    closeModal,
+    setOpen: setModalOpen,
+    updateModalItem: updateSelectedAspect,
+  } = useModal<AspectData>();
 
-  const closeModal = useCallback(() => {
-    setShowModal(false);
-    setSelectedAspect(null);
-  }, []);
+  // Trade mode: execution
+  const { executing: tradeExecuting, execute: executeTradeSelection } = useTradeExecution(
+    tradeOffer, initData, 'aspect', selectedAspect?.id ?? null,
+  );
+
+  // Deep-link: auto-open the modal for `pendingOpenAspectId` once data loads.
+  useAutoOpenItem(aspects, pendingOpenAspectId ?? null, openModal, loading);
 
   // ── Burn ──
   const handleBurnClick = useCallback(() => {
@@ -201,7 +205,7 @@ const AspectsView = ({
       setClaimState({ balance: result.balance, loading: false });
       onClaimPointsUpdate?.(result.balance);
 
-      setSelectedAspect((prev) => prev ? { ...prev, locked: result.locked } : prev);
+      updateSelectedAspect({ locked: result.locked });
       updateAspect(selectedAspect.id, { locked: result.locked });
       onAspectUpdate?.(selectedAspect.id, { locked: result.locked });
 
@@ -220,9 +224,9 @@ const AspectsView = ({
   // ── Equip ──
   const handleEquipClick = useCallback(() => {
     if (!selectedAspect) return;
-    setShowModal(false);
+    setModalOpen(false);
     setShowEquipSelector(true);
-  }, [selectedAspect]);
+  }, [selectedAspect, setModalOpen]);
 
   const handleEquipCardSelect = useCallback((card: CardData) => {
     setEquipSelectedCard(card);
@@ -258,9 +262,9 @@ const AspectsView = ({
   const handleEquipSelectorClose = useCallback(() => {
     setShowEquipSelector(false);
     if (selectedAspect) {
-      setShowModal(true);
+      setModalOpen(true);
     }
-  }, [selectedAspect]);
+  }, [selectedAspect, setModalOpen]);
 
   // ── Share ──
   const handleShareAspect = useCallback(async (aspectId: number) => {
@@ -414,6 +418,7 @@ const AspectsView = ({
               onAspectClick={openModal}
               initData={initData}
               onRefresh={isTradeMode ? refetchTradeAspects : (onRefreshProp ?? (!isReadOnly ? refetch : undefined))}
+              scrollToItemId={pendingOpenAspectId ?? null}
             />
           )}
         </div>

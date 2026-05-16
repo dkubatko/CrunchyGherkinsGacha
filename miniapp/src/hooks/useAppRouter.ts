@@ -1,15 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { TelegramUtils } from '../utils/telegram';
-import type { HubTab } from '../types';
+import type { HubTab, PendingOpenItem } from '../types';
 
 export type AppRoute = 
   | { type: 'loading' }
   | { type: 'error'; message: string }
   | { type: 'landing' }
   | { type: 'admin' }
-  | { type: 'singleCard'; currentUserId: number; cardId: number; initData: string }
-  | { type: 'singleAspect'; currentUserId: number; aspectId: number; initData: string }
-  | { type: 'hub'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string; initialTab: HubTab };
+  | { type: 'hub'; currentUserId: number; targetUserId: number; chatId: string | null; isOwnCollection: boolean; enableTrade: boolean; initData: string; initialTab: HubTab; pendingOpenItem: PendingOpenItem | null };
 
 interface UseAppRouterResult {
   route: AppRoute;
@@ -64,33 +62,18 @@ export const useAppRouter = (): UseAppRouterResult => {
         }
 
         // Route based on the parsed userData
-        if (userData.singleCardView && userData.singleCardId) {
-          setRoute({
-            type: 'singleCard',
-            currentUserId: userData.currentUserId,
-            cardId: userData.singleCardId,
-            initData
-          });
-        } else if (userData.singleAspectView && userData.singleAspectId) {
-          setRoute({
-            type: 'singleAspect',
-            currentUserId: userData.currentUserId,
-            aspectId: userData.singleAspectId,
-            initData
-          });
-        } else {
-          const initialTab: HubTab = (userData.casinoView && userData.chatId) ? 'casino' : 'collection';
-          setRoute({
-            type: 'hub',
-            currentUserId: userData.currentUserId,
-            targetUserId: userData.targetUserId,
-            chatId: userData.chatId ?? null,
-            isOwnCollection: userData.isOwnCollection,
-            enableTrade: userData.enableTrade,
-            initData,
-            initialTab
-          });
-        }
+        const initialTab: HubTab = (userData.casinoView && userData.chatId) ? 'casino' : 'collection';
+        setRoute({
+          type: 'hub',
+          currentUserId: userData.currentUserId,
+          targetUserId: userData.targetUserId,
+          chatId: userData.chatId ?? null,
+          isOwnCollection: userData.isOwnCollection,
+          enableTrade: userData.enableTrade,
+          initData,
+          initialTab,
+          pendingOpenItem: userData.pendingOpenItem ?? null,
+        });
       } catch (err) {
         const message = err instanceof Error ? err.message : 'An unknown error occurred';
         setRoute({ type: 'error', message });

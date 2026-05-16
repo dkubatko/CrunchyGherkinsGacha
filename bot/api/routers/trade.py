@@ -45,13 +45,13 @@ async def _fetch_item(item_type: str, item_id: int):
     return item
 
 
-def _build_view_url(item_type: str, item_id: int) -> str | None:
+def _build_view_url(item_type: str, item_id: int, chat_id: str) -> str | None:
     """Build a miniapp deep-link URL for viewing a trade item."""
     if not MINIAPP_URL:
         return None
     if item_type == "card":
-        return build_single_card_url(item_id)
-    return build_single_aspect_url(item_id)
+        return build_single_card_url(item_id, chat_id)
+    return build_single_aspect_url(item_id, chat_id)
 
 
 # ---------------------------------------------------------------------------
@@ -164,8 +164,8 @@ async def execute_trade(
             ]
         ]
 
-        offer_url = _build_view_url(offer_type, offer_id)
-        want_url = _build_view_url(want_type, want_id)
+        offer_url = _build_view_url(offer_type, offer_id, offer_item.chat_id)
+        want_url = _build_view_url(want_type, want_id, want_item.chat_id)
         if offer_url and want_url:
             keyboard.append([
                 InlineKeyboardButton(f"View {offer_type.capitalize()}", url=offer_url),

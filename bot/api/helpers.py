@@ -63,12 +63,17 @@ def decode_image(image_b64: Optional[str]) -> bytes:
         raise ValueError("Invalid base64 image data") from exc
 
 
-def build_single_card_url(card_id: int) -> str:
+def build_single_card_url(card_id: int, chat_id: str) -> str:
     """
     Build a URL for viewing a single card in the mini app.
 
+    The chat_id is embedded in the token so the mini app can open the Hub
+    in that chat's context and route the user to the Collection tab (if they
+    own the card) or the All tab (if they do not).
+
     Args:
         card_id: The card ID to build URL for
+        chat_id: The Telegram chat id the deep-link is being posted in
 
     Returns:
         Full URL for viewing the card
@@ -80,18 +85,21 @@ def build_single_card_url(card_id: int) -> str:
         logger.error("MINIAPP_URL not configured; cannot build card link")
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
 
-    share_token = encode_single_card_token(card_id)
+    share_token = encode_single_card_token(card_id, chat_id)
     separator = "&" if "?" in MINIAPP_URL else "?"
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
 
-def build_single_aspect_url(aspect_id: int) -> str:
-    """Build a URL for viewing a single aspect in the mini app."""
+def build_single_aspect_url(aspect_id: int, chat_id: str) -> str:
+    """Build a URL for viewing a single aspect in the mini app.
+
+    See :func:`build_single_card_url` for details on chat_id usage.
+    """
     if not MINIAPP_URL:
         logger.error("MINIAPP_URL not configured; cannot build aspect link")
         raise HTTPException(status_code=500, detail="Mini app URL not configured")
 
-    share_token = encode_single_aspect_token(aspect_id)
+    share_token = encode_single_aspect_token(aspect_id, chat_id)
     separator = "&" if "?" in MINIAPP_URL else "?"
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 

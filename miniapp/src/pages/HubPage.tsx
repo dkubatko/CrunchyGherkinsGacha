@@ -17,7 +17,7 @@ import { TelegramUtils } from '@/utils/telegram';
 import { useHubData } from '@/hooks';
 
 // Types
-import type { HubTab } from '@/types';
+import type { HubTab, PendingOpenItem } from '@/types';
 
 interface HubPageProps {
   currentUserId: number;
@@ -27,6 +27,7 @@ interface HubPageProps {
   enableTrade: boolean;
   initData: string;
   initialTab: HubTab;
+  pendingOpenItem?: PendingOpenItem | null;
 }
 
 export const HubPage = ({
@@ -37,6 +38,7 @@ export const HubPage = ({
   enableTrade,
   initData,
   initialTab,
+  pendingOpenItem: pendingOpenItemProp,
 }: HubPageProps) => {
   const [activeTab, setActiveTab] = useState<HubTab>(initialTab);
   // Track which tabs have been visited so we can keep them mounted
@@ -44,6 +46,10 @@ export const HubPage = ({
   const expandedRef = useRef(false);
   const [splashDismissed, setSplashDismissed] = useState(false);
   const [currentSpinBalance, setCurrentSpinBalance] = useState<number | null>(null);
+  // Local copy so we can clear after dispatch (prevents re-trigger if data refetches)
+  const [pendingOpenItem, setPendingOpenItem] = useState<PendingOpenItem | null>(
+    pendingOpenItemProp ?? null,
+  );
 
   // Tabs that require chat_id
   const disabledTabs = useMemo(() => {
@@ -103,6 +109,41 @@ export const HubPage = ({
     setSplashDismissed(true);
   }, []);
 
+  // Deep-link dispatch: once data is ready, decide which tab to open and ensure it's mounted.
+  // Fire exactly once per deep-link request.
+  const dispatchedRef = useRef(false);
+  useEffect(() => {
+    if (dispatchedRef.current) return;
+    if (!pendingOpenItem) return;
+    if (!ready) return;
+
+    const id = pendingOpenItem.id;
+    const inOwn = pendingOpenItem.type === 'card'
+      ? (collection?.cards ?? []).some(c => c.id === id)
+      : (aspects ?? []).some(a => a.id === id);
+    const inAll = pendingOpenItem.type === 'card'
+      ? (allCards ?? []).some(c => c.id === id)
+      : (allChatAspects ?? []).some(a => a.id === id);
+
+    if (!inOwn && !inAll) {
+      const label = pendingOpenItem.type === 'card' ? 'card' : 'aspect';
+      TelegramUtils.showAlert(`This ${label} is no longer available.`);
+      dispatchedRef.current = true;
+      setPendingOpenItem(null);
+      return;
+    }
+
+    const targetTab: HubTab = inOwn ? 'collection' : 'allCards';
+    dispatchedRef.current = true;
+    setActiveTab(targetTab);
+    setMountedTabs(prev => {
+      if (prev.has(targetTab)) return prev;
+      const next = new Set(prev);
+      next.add(targetTab);
+      return next;
+    });
+  }, [pendingOpenItem, ready, collection, aspects, allCards, allChatAspects]);
+
   return (
     <div className="hub-container">
       {/* Splash screen overlay — shown until data is ready + animation completes */}
@@ -143,6 +184,7 @@ export const HubPage = ({
               onAspectRemove={removeAspectFromAll}
               onClaimPointsUpdate={updateClaimPoints}
               onSpinsUpdate={setCurrentSpinBalance}
+              pendingOpenItem={activeTab === 'collection' ? pendingOpenItem : null}
             />
           </div>
         )}
@@ -171,6 +213,7 @@ export const HubPage = ({
               chatId={chatId}
               initialAllCards={allCards}
               initialAllAspects={allChatAspects}
+              pendingOpenItem={activeTab === 'allCards' ? pendingOpenItem : null}
             />
           </div>
         )}

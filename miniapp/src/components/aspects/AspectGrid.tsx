@@ -12,6 +12,7 @@ interface AspectGridProps {
   onAspectClick: (aspect: AspectData) => void;
   initData: string | null;
   onRefresh?: () => Promise<void>;
+  scrollToItemId?: number | null;
 }
 
 const COLUMNS = 3;
@@ -28,7 +29,7 @@ const getRowHeightFromWidth = (width: number) => {
   return Math.ceil(cardHeight + GAP);
 };
 
-const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, initData, onRefresh }) => {
+const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, initData, onRefresh, scrollToItemId }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { getImage, isLoading, hasFailed, setVisibleRange } = useVirtualizedAspectImages(aspects, initData);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -110,6 +111,24 @@ const AspectGrid: React.FC<AspectGridProps> = memo(({ aspects, onAspectClick, in
   }, [rowHeight, virtualizer]);
 
   const handleAspectClick = useCallback((aspect: AspectData) => onAspectClick(aspect), [onAspectClick]);
+
+  const scrolledForIdRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (scrollToItemId == null) {
+      scrolledForIdRef.current = null;
+      return;
+    }
+    if (scrolledForIdRef.current === scrollToItemId) return;
+    const idx = aspects.findIndex((a) => a.id === scrollToItemId);
+    if (idx < 0) return;
+    const rowIndex = Math.floor(idx / COLUMNS);
+    requestAnimationFrame(() => {
+      try {
+        virtualizer.scrollToIndex(rowIndex, { align: 'center' });
+      } catch { /* ignore */ }
+    });
+    scrolledForIdRef.current = scrollToItemId;
+  }, [scrollToItemId, aspects, virtualizer]);
 
   const { pullDistance, isRefreshing, spinnerAngle } = usePullToRefresh(
     parentRef, onRefresh, !!onRefresh,

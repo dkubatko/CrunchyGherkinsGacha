@@ -74,7 +74,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
   const [error, setError] = useState<string | null>(null);
   const initializedRef = useRef(false);
 
-  const { showModal, modalCard, openModal, closeModal } = useModal();
+  const { showModal, modalItem, openModal, closeModal } = useModal<CardData>();
   const { orientation, orientationKey } = useOrientation();
 
   // Check for existing game and fetch cards on mount
@@ -172,7 +172,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
   }, [gameState, gameData]);
 
   const handleSelectCard = useCallback(async () => {
-    if (!modalCard) return;
+    if (!modalItem) return;
 
     try {
       setLoading(true);
@@ -186,11 +186,11 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
       }
 
       // Create new game with selected card
-      console.log('Creating minesweeper game with card:', modalCard.id);
+      console.log('Creating minesweeper game with card:', modalItem.id);
       const newGame = await ApiService.createMinesweeperGame(
         userData.currentUserId,
         chatId,
-        modalCard.id,
+        modalItem.id,
         initData
       );
 
@@ -221,7 +221,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
     } finally {
       setLoading(false);
     }
-  }, [modalCard, closeModal, chatId, initData]);
+  }, [modalItem, closeModal, chatId, initData]);
 
   const handleCellClick = async (row: number, col: number) => {
     if (gameState !== 'playing' || !gameData) return;
@@ -382,7 +382,7 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
 
   // Action buttons for card selection
   const getActionButtons = (): ActionButton[] => {
-    if (gameState === 'selecting' && modalCard) {
+    if (gameState === 'selecting' && modalItem) {
       return [{
         id: 'select',
         text: 'Select',
@@ -438,10 +438,10 @@ const Minesweeper: React.FC<MinesweeperProps> = ({ chatId, initData, onClaimPoin
         </div>
 
         {/* Card Modal */}
-        {modalCard && (
+        {modalItem && (
           <CardModal
             isOpen={showModal}
-            card={modalCard}
+            card={modalItem}
             orientation={orientation}
             orientationKey={orientationKey}
             initData={initData}

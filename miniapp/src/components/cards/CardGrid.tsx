@@ -12,6 +12,7 @@ interface CardGridProps {
   onCardClick: (card: CardData) => void;
   initData: string | null;
   onRefresh?: () => Promise<void>;
+  scrollToItemId?: number | null;
 }
 
 const COLUMNS = 3;
@@ -27,7 +28,7 @@ const getRowHeightFromWidth = (width: number) => {
   return Math.ceil(cardHeight + GAP);
 };
 
-const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData, onRefresh }) => {
+const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData, onRefresh, scrollToItemId }) => {
   const parentRef = useRef<HTMLDivElement>(null);
   const { getImage, isLoading, hasFailed, setVisibleRange } = useVirtualizedImages(cards, initData);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -119,6 +120,26 @@ const CardGrid: React.FC<CardGridProps> = memo(({ cards, onCardClick, initData, 
   }, [rowHeight, virtualizer]);
 
   const handleCardClick = useCallback((card: CardData) => onCardClick(card), [onCardClick]);
+
+  // Scroll to a specific card id when requested (deep-link / pendingOpenItem).
+  // Fire once per (id, cards reference) pair.
+  const scrolledForIdRef = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    if (scrollToItemId == null) {
+      scrolledForIdRef.current = null;
+      return;
+    }
+    if (scrolledForIdRef.current === scrollToItemId) return;
+    const idx = cards.findIndex((c) => c.id === scrollToItemId);
+    if (idx < 0) return;
+    const rowIndex = Math.floor(idx / COLUMNS);
+    requestAnimationFrame(() => {
+      try {
+        virtualizer.scrollToIndex(rowIndex, { align: 'center' });
+      } catch { /* ignore */ }
+    });
+    scrolledForIdRef.current = scrollToItemId;
+  }, [scrollToItemId, cards, virtualizer]);
 
   const { pullDistance, isRefreshing, spinnerAngle } = usePullToRefresh(
     parentRef, onRefresh, !!onRefresh,

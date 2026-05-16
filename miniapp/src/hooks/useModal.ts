@@ -1,62 +1,58 @@
-import { useState, useEffect } from 'react';
-import type { CardData } from '../types';
+import { useCallback, useEffect, useState } from 'react';
 
-interface UseModalResult {
+interface UseModalResult<T> {
   showModal: boolean;
-  modalCard: CardData | null;
-  openModal: (card: CardData) => void;
+  modalItem: T | null;
+  openModal: (item: T) => void;
   closeModal: () => void;
-  updateModalCard: (updates: Partial<CardData>) => void;
+  /** Toggle modal visibility without clearing the item — used by flows
+   *  that temporarily hide the modal (e.g. overlay a sub-dialog) and
+   *  later reopen it with the same item. */
+  setOpen: (open: boolean) => void;
+  updateModalItem: (updates: Partial<T>) => void;
 }
 
-export const useModal = (): UseModalResult => {
+export function useModal<T>(): UseModalResult<T> {
   const [showModal, setShowModal] = useState(false);
-  const [modalCard, setModalCard] = useState<CardData | null>(null);
+  const [modalItem, setModalItem] = useState<T | null>(null);
 
-  const openModal = (card: CardData) => {
-    setModalCard(card);
+  const openModal = useCallback((item: T) => {
+    setModalItem(item);
     setShowModal(true);
-  };
+  }, []);
 
-  const closeModal = () => {
+  const closeModal = useCallback(() => {
     setShowModal(false);
-    setModalCard(null);
-  };
+    setModalItem(null);
+  }, []);
 
-  const updateModalCard = (updates: Partial<CardData>) => {
-    setModalCard(prev => prev ? { ...prev, ...updates } : null);
-  };
+  const setOpen = useCallback((open: boolean) => {
+    setShowModal(open);
+  }, []);
 
-  // Handle Escape key to close modal
+  const updateModalItem = useCallback((updates: Partial<T>) => {
+    setModalItem(prev => prev ? { ...prev, ...updates } : null);
+  }, []);
+
+  // Close on Escape
   useEffect(() => {
+    if (!showModal) return;
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && showModal) {
-        closeModal();
-      }
+      if (event.key === 'Escape') closeModal();
     };
-
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
-  }, [showModal]);
+  }, [showModal, closeModal]);
 
-  // Prevent body scroll when modal is open
+  // Lock body scroll while open
   useEffect(() => {
     if (showModal) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
     }
-
-    return () => {
-      document.body.style.overflow = '';
-    };
+    return () => { document.body.style.overflow = ''; };
   }, [showModal]);
 
-  return {
-    showModal,
-    modalCard,
-    openModal,
-    closeModal,
-    updateModalCard
-  };
-};
+  return { showModal, modalItem, openModal, closeModal, setOpen, updateModalItem };
+}

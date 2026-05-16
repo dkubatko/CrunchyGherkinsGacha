@@ -1224,7 +1224,7 @@ async def handle_equip_callback(
 
             reply_markup = None
             if MINIAPP_URL_ENV:
-                card_token = encode_single_card_token(card_id)
+                card_token = encode_single_card_token(card_id, str(query.message.chat_id))
                 card_url = f"{MINIAPP_URL_ENV}?startapp={card_token}"
                 reply_markup = InlineKeyboardMarkup(
                     [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]

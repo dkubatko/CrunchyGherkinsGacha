@@ -404,7 +404,7 @@ async def share_aspect(
         from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
         from telegram.constants import ParseMode
 
-        aspect_url = build_single_aspect_url(request.aspect_id)
+        aspect_url = build_single_aspect_url(request.aspect_id, aspect_chat_id)
 
         bot = create_bot_instance()
         keyboard = InlineKeyboardMarkup([[InlineKeyboardButton("View here", url=aspect_url)]])

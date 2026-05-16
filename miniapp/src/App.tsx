@@ -5,7 +5,7 @@ import './App.css';
 import { useAppRouter } from './hooks';
 
 // Pages
-import { SingleCardPage, SingleAspectPage, LandingPage, HubPage } from './pages';
+import { LandingPage, HubPage } from './pages';
 import { AdminApp } from './pages/admin';
 
 // Build info
@@ -51,22 +51,7 @@ function App() {
           enableTrade={route.enableTrade}
           initData={route.initData}
           initialTab={route.initialTab}
-        />
-      );
-
-    case 'singleCard':
-      return (
-        <SingleCardPage
-          cardId={route.cardId}
-          initData={route.initData}
-        />
-      );
-
-    case 'singleAspect':
-      return (
-        <SingleAspectPage
-          aspectId={route.aspectId}
-          initData={route.initData}
+          pendingOpenItem={route.pendingOpenItem}
         />
       );
 

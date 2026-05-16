@@ -131,14 +131,14 @@ def create_bot_instance() -> Bot:
         )
 
 
-def build_single_card_url(card_id: int) -> str:
+def build_single_card_url(card_id: int, chat_id: str) -> str:
     """Build a URL for viewing a single card in the mini app."""
     if not MINIAPP_URL:
         return ""
 
     import urllib.parse
 
-    share_token = encode_single_card_token(card_id)
+    share_token = encode_single_card_token(card_id, chat_id)
     separator = "&" if "?" in MINIAPP_URL else "?"
     return f"{MINIAPP_URL}{separator}startapp={urllib.parse.quote(share_token)}"
 
@@ -266,7 +266,7 @@ async def process_card_victory(
                 set_name=(generated_card.set_name or "").title(),
             )
 
-            card_url = build_single_card_url(card_id)
+            card_url = build_single_card_url(card_id, chat_id)
             keyboard = (
                 InlineKeyboardMarkup(
                     [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]

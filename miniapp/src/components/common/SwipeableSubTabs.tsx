@@ -6,6 +6,7 @@ import './SwipeableSubTabs.css';
 interface SwipeableSubTabsProps {
   tabs: { key: string; label: string }[];
   locked?: boolean;
+  initialIndex?: number;
   children: React.ReactNode[];
 }
 
@@ -15,7 +16,7 @@ interface SwipeableSubTabsProps {
  * Touch-action: pan-y lets the browser handle vertical scroll natively;
  * JS handles horizontal gestures with direction locking and clamped translation.
  */
-const SwipeableSubTabs: React.FC<SwipeableSubTabsProps> = ({ tabs, locked = false, children }) => {
+const SwipeableSubTabs: React.FC<SwipeableSubTabsProps> = ({ tabs, locked = false, initialIndex = 0, children }) => {
   const paneCount = React.Children.count(children);
   const indicatorRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
@@ -35,13 +36,13 @@ const SwipeableSubTabs: React.FC<SwipeableSubTabsProps> = ({ tabs, locked = fals
 
   const { containerRef, activeIndex, goTo } = useScrollSnap({
     paneCount,
-    initialIndex: 0,
+    initialIndex,
     locked,
     onProgress: handleProgress,
   });
 
   // Set initial indicator position on mount
-  useEffect(() => { handleProgress(0); }, [handleProgress]);
+  useEffect(() => { handleProgress(initialIndex); }, [handleProgress, initialIndex]);
 
   const handleTabChange = useCallback((key: string) => {
     const idx = tabs.findIndex(t => t.key === key);

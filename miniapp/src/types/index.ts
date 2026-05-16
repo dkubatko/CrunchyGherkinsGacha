@@ -89,18 +89,19 @@ export interface SlotSymbolInfo {
   type: string;
 }
 
+export interface PendingOpenItem {
+  type: 'card' | 'aspect';
+  id: number;
+}
+
 export interface UserData {
   currentUserId: number;
   targetUserId: number;
   isOwnCollection: boolean;
   enableTrade: boolean;
   chatId?: string | null;
-  // Single card view mode: if singleCardId is set, the app should render only that card
-  singleCardId?: number | null;
-  singleCardView?: boolean; // Convenience boolean to avoid recomputing
-  // Single aspect view mode: if singleAspectId is set, the app should render only that aspect
-  singleAspectId?: number | null;
-  singleAspectView?: boolean; // Convenience boolean to avoid recomputing
+  // Deep-link request to open a specific card or aspect inside the Hub.
+  pendingOpenItem?: PendingOpenItem | null;
   // Casino view mode: if casinoView is true, the app should render the casino catalog
   casinoView?: boolean;
 }

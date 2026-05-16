@@ -195,7 +195,7 @@ async def process_slots_victory_background(
                 base_name=generated_card.base_name,
             )
 
-            card_url = build_single_card_url(card_id)
+            card_url = build_single_card_url(card_id, chat_id)
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
             )
@@ -505,7 +505,7 @@ async def process_minesweeper_victory_background(
                 base_name=generated_card.base_name,
             )
 
-            card_url = build_single_card_url(card_id)
+            card_url = build_single_card_url(card_id, chat_id)
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=card_url)]]
             )
@@ -776,7 +776,7 @@ async def process_slot_aspect_victory_background(
 
             aspect_image = base64.b64decode(generated_aspect.image_b64)
 
-            aspect_url = build_single_aspect_url(generated_aspect.aspect_id)
+            aspect_url = build_single_aspect_url(generated_aspect.aspect_id, chat_id)
             keyboard = InlineKeyboardMarkup(
                 [[InlineKeyboardButton(SLOTS_VIEW_IN_APP_LABEL, url=aspect_url)]]
             )

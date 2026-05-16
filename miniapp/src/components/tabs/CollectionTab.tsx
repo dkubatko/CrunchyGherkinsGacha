@@ -9,7 +9,7 @@ import AspectsView from './AspectsView';
 import { TelegramUtils } from '@/utils/telegram';
 
 // Types
-import type { CardData, AspectData, AspectConfigResponse, TradeOffer } from '@/types';
+import type { CardData, AspectData, AspectConfigResponse, TradeOffer, PendingOpenItem } from '@/types';
 
 interface CollectionTabProps {
   currentUserId: number;
@@ -28,6 +28,8 @@ interface CollectionTabProps {
   onAspectRemove?: (aspectId: number) => void;
   onClaimPointsUpdate?: (count: number) => void;
   onSpinsUpdate?: (count: number) => void;
+  // Deep-link request to open a specific item
+  pendingOpenItem?: PendingOpenItem | null;
 }
 
 const CollectionTab = ({
@@ -46,6 +48,7 @@ const CollectionTab = ({
   onAspectRemove,
   onClaimPointsUpdate,
   onSpinsUpdate,
+  pendingOpenItem,
 }: CollectionTabProps) => {
   // Trade state — lifted here so both tabs can show trade options
   const [tradeOffer, setTradeOffer] = useState<TradeOffer | null>(null);
@@ -92,9 +95,20 @@ const CollectionTab = ({
 
   const hasAspects = Boolean(chatId) || Boolean(tradeOffer);
 
+  const pendingSubTabIndex = useMemo(() => {
+    if (!pendingOpenItem) return 0;
+    if (pendingOpenItem.type === 'aspect' && hasAspects) {
+      // Aspects pane index depends on whether it's actually mounted
+      const aspectsTabIdx = SUB_TABS.findIndex(t => t.key === 'aspects');
+      return aspectsTabIdx >= 0 ? aspectsTabIdx : 0;
+    }
+    return 0;
+  }, [pendingOpenItem, hasAspects, SUB_TABS]);
+
   return (
     <SwipeableSubTabs
       tabs={SUB_TABS}
+      initialIndex={pendingSubTabIndex}
     >
       <CardsView
         currentUserId={currentUserId}
@@ -110,6 +124,7 @@ const CollectionTab = ({
         onClaimPointsUpdate={onClaimPointsUpdate}
         tradeOffer={tradeOffer}
         onTradeInitiate={handleTradeInitiate}
+        pendingOpenCardId={pendingOpenItem?.type === 'card' ? pendingOpenItem.id : null}
       />
       {hasAspects && (
         <AspectsView
@@ -126,6 +141,7 @@ const CollectionTab = ({
           onSpinsUpdate={onSpinsUpdate}
           tradeOffer={tradeOffer}
           onTradeInitiate={handleTradeInitiate}
+          pendingOpenAspectId={pendingOpenItem?.type === 'aspect' ? pendingOpenItem.id : null}
         />
       )}
     </SwipeableSubTabs>

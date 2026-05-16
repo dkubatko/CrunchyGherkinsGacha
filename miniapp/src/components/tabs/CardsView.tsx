@@ -12,6 +12,7 @@ import TradeHeader from '@/components/common/TradeHeader';
 import {
   useOrientation,
   useModal,
+  useAutoOpenItem,
   useCollectionCards,
   useCardFiltering,
   useTradeOptions,
@@ -47,6 +48,8 @@ interface CardsViewProps {
   // Trade mode (managed by CollectionTab)
   tradeOffer?: TradeOffer | null;
   onTradeInitiate?: (offer: TradeOffer) => void;
+  // Deep-link request: open this card's modal once available
+  pendingOpenCardId?: number | null;
 }
 
 const CardsView = ({
@@ -69,6 +72,7 @@ const CardsView = ({
   // Trade mode props
   tradeOffer,
   onTradeInitiate,
+  pendingOpenCardId,
 }: CardsViewProps) => {
   const collectionOwnerLabel = ownerLabel ?? 'Collection';
   const isTradeMode = Boolean(tradeOffer);
@@ -196,21 +200,30 @@ const CardsView = ({
   const shareEnabled = Boolean(initData) && !isTradeMode;
 
   // Feature hooks
-  const { showModal, modalCard, openModal, closeModal, updateModalCard } = useModal();
+  const { showModal, modalItem, openModal, closeModal, updateModalItem } = useModal<CardData>();
+
+  // Deep-link: open the modal for `pendingOpenCardId` once data loads.
+  // We compose openModal with handleCardOpen so the chat-profile fetch
+  // mirrors what happens when a user taps a card manually.
+  const openCardModal = useCallback((card: CardData) => {
+    openModal(card);
+    handleCardOpen(card);
+  }, [openModal, handleCardOpen]);
+  useAutoOpenItem(cards, pendingOpenCardId ?? null, openCardModal, loading);
 
   // Trade mode: execution
   const { executing: tradeExecuting, execute: executeTradeSelection } = useTradeExecution(
-    tradeOffer, initData, 'card', modalCard?.id ?? null,
+    tradeOffer, initData, 'card', modalItem?.id ?? null,
   );
 
-  const lockCost = modalCard && config
-    ? config.lock_costs[modalCard.rarity] ?? 0
+  const lockCost = modalItem && config
+    ? config.lock_costs[modalItem.rarity] ?? 0
     : 0;
 
   // Trade initiation (from normal collection mode)
   const handleTradeClick = useCallback(() => {
     if (enableTrade) {
-      const card = modalCard || cards[0];
+      const card = modalItem || cards[0];
       if (!card) return;
 
       if (!card.chat_id) {
@@ -222,7 +235,7 @@ const CardsView = ({
       const cardName = [card.modifier, card.base_name].filter(Boolean).join(' ');
       onTradeInitiate?.({ type: 'card', id: card.id, title: cardName, rarity: card.rarity });
     }
-  }, [cards, modalCard, enableTrade, closeModal, onTradeInitiate]);
+  }, [cards, modalItem, enableTrade, closeModal, onTradeInitiate]);
 
   // Trade selection (from trade mode — select a card to trade for)
 
@@ -239,30 +252,30 @@ const CardsView = ({
 
   // ── Lock / Unlock ──
   const handleLockClick = useCallback(() => {
-    if (!modalCard) return;
+    if (!modalItem) return;
     setShowLockDialog(true);
-  }, [modalCard]);
+  }, [modalItem]);
 
   const handleLockConfirm = useCallback(async () => {
-    if (!modalCard || !chatId) return;
+    if (!modalItem || !chatId) return;
     setLockProcessing(true);
     try {
-      const wantLock = !modalCard.locked;
-      const result = await ApiService.lockCard(modalCard.id, currentUserId, chatId, wantLock, initData);
+      const wantLock = !modalItem.locked;
+      const result = await ApiService.lockCard(modalItem.id, currentUserId, chatId, wantLock, initData);
       setClaimState({ balance: result.balance, loading: false });
       onClaimPointsUpdate?.(result.balance);
-      updateModalCard({ locked: result.locked });
+      updateModalItem({ locked: result.locked });
       TelegramUtils.showAlert(result.message || (result.locked ? 'Locked!' : 'Unlocked!'));
       setShowLockDialog(false);
-      updateCard(modalCard.id, { locked: result.locked });
-      onCardUpdate?.(modalCard.id, { locked: result.locked });
+      updateCard(modalItem.id, { locked: result.locked });
+      onCardUpdate?.(modalItem.id, { locked: result.locked });
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Lock/unlock failed';
       TelegramUtils.showAlert(msg);
     } finally {
       setLockProcessing(false);
     }
-  }, [modalCard, chatId, currentUserId, initData, updateCard, updateModalCard, onCardUpdate, onClaimPointsUpdate]);
+  }, [modalItem, chatId, currentUserId, initData, updateCard, updateModalItem, onCardUpdate, onClaimPointsUpdate]);
 
   const handleLockCancel = useCallback(() => setShowLockDialog(false), []);
 
@@ -271,7 +284,7 @@ const CardsView = ({
     if (loading || error) return [];
 
     // Trade mode: show Select button for other users' cards
-    if (isTradeMode && modalCard && showModal && modalCard.user_id !== currentUserId) {
+    if (isTradeMode && modalItem && showModal && modalItem.user_id !== currentUserId) {
       return [{
         id: 'select',
         text: tradeExecuting ? 'Loading...' : 'Select',
@@ -285,16 +298,16 @@ const CardsView = ({
 
     const buttons: ActionButton[] = [];
 
-    if (isOwnCollection && modalCard) {
+    if (isOwnCollection && modalItem) {
       buttons.push({
         id: 'lock',
-        text: modalCard.locked ? 'Unlock' : 'Lock',
+        text: modalItem.locked ? 'Unlock' : 'Lock',
         onClick: handleLockClick,
         variant: 'lock-grey',
       });
     }
 
-    if (isOwnCollection && enableTrade && cards.length > 0 && modalCard) {
+    if (isOwnCollection && enableTrade && cards.length > 0 && modalItem) {
       buttons.push({
         id: 'trade', text: 'Trade', onClick: handleTradeClick,
         variant: 'trade-blue'
@@ -304,7 +317,7 @@ const CardsView = ({
     return buttons;
   }, [
     loading, error, isTradeMode, isReadOnly, tradeExecuting,
-    isOwnCollection, cards.length, modalCard, showModal, enableTrade, currentUserId,
+    isOwnCollection, cards.length, modalItem, showModal, enableTrade, currentUserId,
     handleLockClick, handleTradeClick, executeTradeSelection,
   ]);
 
@@ -357,6 +370,7 @@ const CardsView = ({
                   onCardClick={openModal}
                   initData={initData}
                   onRefresh={isTradeMode ? refetchTradeCards : (onRefreshProp ?? (!isReadOnly ? refetchCards : undefined))}
+                  scrollToItemId={pendingOpenCardId ?? null}
                 />
               )}
             </>
@@ -373,10 +387,10 @@ const CardsView = ({
       </div>
 
       {/* Card Modal */}
-      {modalCard && (
+      {modalItem && (
         <CardModal
           isOpen={showModal}
-          card={modalCard}
+          card={modalItem}
           orientation={orientation}
           orientationKey={orientationKey}
           initData={initData}
@@ -391,7 +405,7 @@ const CardsView = ({
       <LockConfirmDialog
         isOpen={showLockDialog}
         locking={lockProcessing}
-        card={modalCard}
+        card={modalItem}
         lockCost={lockCost}
         claimState={claimState}
         onConfirm={() => void handleLockConfirm()}

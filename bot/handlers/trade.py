@@ -48,11 +48,15 @@ async def _fetch_item(
     return await asyncio.to_thread(aspect_repo.get_aspect_by_id, item_id)
 
 
-def _build_view_url(item_type: TradeItemType, item_id: int) -> Optional[str]:
+def _build_view_url(item_type: TradeItemType, item_id: int, chat_id: str) -> Optional[str]:
     """Build a miniapp deep-link URL for viewing a trade item."""
     if not MINIAPP_URL_ENV:
         return None
-    token = encode_single_card_token(item_id) if item_type == "card" else encode_single_aspect_token(item_id)
+    token = (
+        encode_single_card_token(item_id, chat_id)
+        if item_type == "card"
+        else encode_single_aspect_token(item_id, chat_id)
+    )
     return f"{MINIAPP_URL_ENV}?startapp={token}"
 
 
@@ -82,6 +86,8 @@ def _parse_callback(data: str) -> Optional[Tuple[str, TradeItemType, int, TradeI
 def _build_trade_keyboard(
     offer_type: TradeItemType, offer_id: int,
     want_type: TradeItemType, want_id: int,
+    offer_chat_id: str,
+    want_chat_id: str,
 ) -> InlineKeyboardMarkup:
     """Build the Accept/Reject + View keyboard for a trade message."""
     keyboard = [
@@ -90,8 +96,8 @@ def _build_trade_keyboard(
             InlineKeyboardButton("Reject", callback_data=f"trade_reject_{offer_type}_{offer_id}_{want_type}_{want_id}"),
         ]
     ]
-    offer_url = _build_view_url(offer_type, offer_id)
-    want_url = _build_view_url(want_type, want_id)
+    offer_url = _build_view_url(offer_type, offer_id, offer_chat_id)
+    want_url = _build_view_url(want_type, want_id, want_chat_id)
     if offer_url and want_url:
         keyboard.append([
             InlineKeyboardButton(f"View {offer_type.capitalize()}", url=offer_url),
@@ -218,7 +224,11 @@ async def trade(
             user2_username=want_item.owner,
             item2_title=want_title,
         ),
-        reply_markup=_build_trade_keyboard(offer_type, offer_id, want_type, want_id),
+        reply_markup=_build_trade_keyboard(
+            offer_type, offer_id, want_type, want_id,
+            offer_item.chat_id or chat_id_str,
+            want_item.chat_id or chat_id_str,
+        ),
         parse_mode=ParseMode.HTML,
     )
 

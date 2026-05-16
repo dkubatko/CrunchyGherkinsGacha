@@ -146,7 +146,7 @@ async def share_card(
     try:
         from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 
-        share_token = encode_single_card_token(request.card_id)
+        share_token = encode_single_card_token(request.card_id, card_chat_id)
         share_url = MINIAPP_URL
         if "?" in MINIAPP_URL:
             separator = "&"
