@@ -43,7 +43,6 @@ interface CasinoProps {
   slotsSymbols: SlotSymbol[];
   slotsSpins: UserSpinsData;
   slotsMegaspin: MegaspinData;
-  refetchSpins: () => Promise<void>;
   updateSpins: (count: number) => void;
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
   claimPoints: number | null;
@@ -89,7 +88,6 @@ export default function Casino({
   slotsSymbols,
   slotsSpins,
   slotsMegaspin,
-  refetchSpins,
   updateSpins,
   updateMegaspin,
   claimPoints,
@@ -179,7 +177,6 @@ export default function Casino({
         userId={userId}
         chatId={chatId}
         initData={initData}
-        refetchSpins={refetchSpins}
         onSpinsUpdate={updateSpins}
         onMegaspinUpdate={updateMegaspin}
         claimPoints={claimPoints ?? undefined}

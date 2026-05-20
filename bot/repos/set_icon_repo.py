@@ -98,6 +98,22 @@ def get_all_icons_b64(
     }
 
 
+@with_session
+def get_set_ids_with_icons(
+    season_id: Optional[int] = None,
+    *,
+    session: Session,
+) -> List[int]:
+    """Return the list of ``set_id``s that have a slot icon in *season_id*."""
+    sid = season_id if season_id is not None else CURRENT_SEASON
+    rows = (
+        session.query(SetIconModel.set_id)
+        .filter(SetIconModel.season_id == sid)
+        .all()
+    )
+    return [row[0] for row in rows]
+
+
 @with_session(commit=True)
 def delete_icon(
     set_id: int,

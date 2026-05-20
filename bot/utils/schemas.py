@@ -326,6 +326,30 @@ class Megaspins(BaseModel):
         )
 
 
+class SpinResult(BaseModel):
+    """Pending slot spin outcome awaiting victory redemption.
+
+    Persisted in Redis under ``spin_result:{id}`` with a short TTL by
+    :mod:`bot.repos.spin_result_repo`. Single-use: redemption uses
+    ``GETDEL`` so there's no "redeemed" state to track — the row either
+    exists (pending) or doesn't (consumed or expired).
+    """
+
+    id: str
+    user_id: int
+    chat_id: str
+    multiplier: int
+    win_type: str
+    rarity: Optional[str] = None
+    source_type: Optional[str] = None
+    source_id: Optional[int] = None
+    display_name: Optional[str] = None
+    set_id: Optional[int] = None
+    set_name: Optional[str] = None
+    is_megaspin: bool = False
+    created_at: datetime.datetime
+
+
 class MinesweeperGame(BaseModel):
     """Minesweeper game state data transfer object."""
 

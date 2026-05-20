@@ -106,13 +106,22 @@ export interface UserData {
   casinoView?: boolean;
 }
 
-export interface SlotVerifyResponse {
+export interface SlotSpinResponse {
+  success: boolean;
+  message?: string | null;
+  spins_remaining: number;
+  megaspin: MegaspinInfo;
   is_win: boolean;
   slot_results: SlotSymbolInfo[];
   rarity?: string | null;
   win_type?: string | null;
   set_id?: number | null;
   set_name?: string | null;
+  spin_result_id?: string | null;
+  // Full payload (incl. b64 icon) for the winning symbol so the client
+  // can render even when its cached symbol pool is stale relative to the
+  // server. Present iff ``is_win`` is true.
+  winning_symbol?: SlotSymbolSummary | null;
 }
 
 export interface MegaspinInfo {

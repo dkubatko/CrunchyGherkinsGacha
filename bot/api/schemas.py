@@ -197,18 +197,16 @@ class SlotSymbolInfo(BaseModel):
 
 
 class SlotsVictoryRequest(BaseModel):
-    """Unified request to process a slots card or aspect victory."""
+    """Request to redeem a previously-rolled slot victory.
+
+    Carries only the server-issued ``spin_result_id`` — the canonical
+    win details (win_type, rarity, source, set) live in Redis under
+    ``spin_result:{id}`` and are not trusted from the client.
+    """
 
     user_id: int
     chat_id: str
-    win_type: str  # "card" or "aspect"
-    rarity: str
-    # Card wins
-    source_id: Optional[int] = None
-    source_type: Optional[str] = None  # "user" or "character"
-    is_megaspin: bool = False
-    # Aspect wins
-    set_id: Optional[int] = None
+    spin_result_id: str
 
 
 class SlotsClaimWinRequest(BaseModel):
@@ -291,24 +289,32 @@ class ConsumeSpinResponse(BaseModel):
     megaspin: Optional[MegaspinInfo] = None
 
 
-class SlotVerifyRequest(BaseModel):
-    """Request to verify a slot spin result."""
+class SlotSpinRequest(BaseModel):
+    """Atomic slot-spin request: deducts spins and rolls outcome in one call."""
 
     user_id: int
     chat_id: str
-    random_number: int
-    symbols: List[SlotSymbolInfo]
+    multiplier: int = 1  # must be one of SLOT_BET_MULTIPLIERS
 
 
-class SlotVerifyResponse(BaseModel):
-    """Response with verified slot spin result."""
+class SlotSpinResponse(BaseModel):
+    """Response from POST /slots/spin — covers consume + verify in one trip."""
 
+    success: bool
+    message: Optional[str] = None
+    spins_remaining: int
+    megaspin: MegaspinInfo
     is_win: bool
-    slot_results: List[SlotSymbolInfo]
+    slot_results: List[SlotSymbolInfo] = []
     rarity: Optional[str] = None
-    win_type: Optional[str] = None  # "card", "aspect", "claim", or None (loss)
-    set_id: Optional[int] = None  # Set ID for aspect wins (pre-picked)
-    set_name: Optional[str] = None  # Set name for aspect wins (display)
+    win_type: Optional[str] = None  # "card", "aspect", "claim", or None
+    set_id: Optional[int] = None
+    set_name: Optional[str] = None
+    spin_result_id: Optional[str] = None  # Only for card/aspect wins
+    # Full payload (incl. b64 icon) for the winning symbol so the client
+    # can render even if its cached symbol pool is stale relative to ours.
+    # Present iff ``is_win`` is True.
+    winning_symbol: Optional[SlotSymbolSummary] = None
 
 
 # =============================================================================

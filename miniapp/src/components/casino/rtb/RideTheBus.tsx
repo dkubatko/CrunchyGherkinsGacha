@@ -17,6 +17,7 @@ import {
 } from '@/utils/rtbAnimations';
 import type { RTBGameResponse, RTBConfigResponse, RTBCardInfo } from '@/types';
 import './RideTheBus.css';
+import '../Casino.css';
 
 interface RideTheBusProps {
   chatId: string;
@@ -628,13 +629,13 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
     let statusClass = '';
     
     if (game?.status === 'won') {
-      statusText = <span>Won <span className="rtb-coin-inline"></span> {potentialPayout}</span>;
+      statusText = <span>Won <span className="casino-coin-inline"></span> {potentialPayout}</span>;
       statusClass = 'win';
     } else if (game?.status === 'lost') {
-      statusText = <span>Lost <span className="rtb-coin-inline"></span> {game.bet_amount}</span>;
+      statusText = <span>Lost <span className="casino-coin-inline"></span> {game.bet_amount}</span>;
       statusClass = 'lose';
     } else if (game?.status === 'cashed_out') {
-      statusText = <span>Cashed out <span className="rtb-coin-inline"></span> {potentialPayout}</span>;
+      statusText = <span>Cashed out <span className="casino-coin-inline"></span> {potentialPayout}</span>;
       statusClass = 'cashout';
     }
 
@@ -644,7 +645,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
         {statusText ? (
           <span className={`rtb-status ${statusClass}`}>{statusText}</span>
         ) : game?.status === 'active' ? (
-          <span className="rtb-payout"><span className="rtb-coin-inline"></span> {potentialPayout}</span>
+          <span className="rtb-payout"><span className="casino-coin-inline"></span> {potentialPayout}</span>
         ) : null}
       </div>
     );
@@ -671,7 +672,7 @@ const RideTheBus: React.FC<RideTheBusProps> = ({ chatId, initData, initialSpins,
               }}
               disabled={amount > spinsBalance || isOnCooldown || loading}
             >
-              <span className="rtb-coin-inline"></span> {amount}
+              <span className="casino-coin-inline"></span> {amount}
             </button>
           ))}
         </div>

@@ -1,7 +1,7 @@
 """Process all spins for a user and generate cards for each win.
 
 This tool simulates the slot machine for all of a user's available spins,
-calculates results using the same logic as the /slots/verify endpoint,
+calculates results using the same logic as the /slots/spin endpoint,
 and generates cards for each win with parallel processing (5 workers).
 
 Usage:
@@ -153,7 +153,7 @@ def get_eligible_sources(chat_id: str) -> List[dict]:
 def simulate_spin(
     spin_index: int, eligible_sources: List[dict], debug_mode: bool = False
 ) -> SpinResult:
-    """Simulate a single spin using the same logic as /slots/verify."""
+    """Simulate a single spin using the same logic as /slots/spin."""
     if not eligible_sources:
         return SpinResult(spin_index=spin_index, is_win=False, win_type="loss")
 

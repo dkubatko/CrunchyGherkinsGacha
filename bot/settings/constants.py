@@ -27,6 +27,30 @@ CARD_TEMPLATES_PATH = config["CARD_TEMPLATES_PATH"]
 SLOT_CARD_WIN_CHANCE = config["SLOT_CARD_WIN_CHANCE"]
 SLOT_ASPECT_WIN_CHANCE = config.get("SLOT_ASPECT_WIN_CHANCE", 0.04)
 SLOT_CLAIM_CHANCE = config["SLOT_CLAIM_CHANCE"]
+
+# Validate slot win probabilities at module import. The bet-multiplier math
+# (P(loss|N) = p_loss^N, P(t|N) = (1-p_loss^N) * p_t/p_win) requires that
+# p_win be strictly positive and that each component be non-negative; the
+# total must not exceed 1.
+_SLOT_TOTAL_WIN_CHANCE = SLOT_CARD_WIN_CHANCE + SLOT_ASPECT_WIN_CHANCE + SLOT_CLAIM_CHANCE
+if not (0.0 <= SLOT_CARD_WIN_CHANCE <= 1.0):
+    raise ValueError(f"SLOT_CARD_WIN_CHANCE out of range: {SLOT_CARD_WIN_CHANCE}")
+if not (0.0 <= SLOT_ASPECT_WIN_CHANCE <= 1.0):
+    raise ValueError(f"SLOT_ASPECT_WIN_CHANCE out of range: {SLOT_ASPECT_WIN_CHANCE}")
+if not (0.0 <= SLOT_CLAIM_CHANCE <= 1.0):
+    raise ValueError(f"SLOT_CLAIM_CHANCE out of range: {SLOT_CLAIM_CHANCE}")
+if not (0.0 < _SLOT_TOTAL_WIN_CHANCE <= 1.0):
+    raise ValueError(
+        f"Total slot win chance must be in (0, 1]; got {_SLOT_TOTAL_WIN_CHANCE}"
+    )
+
+# Selectable slot bet multipliers. Each unit consumes 1 spin and multiplies
+# the per-bet "any win" probability per the formula above; reward remains a
+# single prize per bet regardless of multiplier.
+SLOT_BET_MULTIPLIERS = config.get("SLOT_BET_MULTIPLIERS", [1, 5, 10])
+if not SLOT_BET_MULTIPLIERS or any(m <= 0 for m in SLOT_BET_MULTIPLIERS):
+    raise ValueError(f"SLOT_BET_MULTIPLIERS must be positive ints: {SLOT_BET_MULTIPLIERS}")
+SLOT_DEFAULT_MULTIPLIER = SLOT_BET_MULTIPLIERS[0]
 MINESWEEPER_MINE_COUNT = config.get("MINESWEEPER_MINE_COUNT", 2)
 MINESWEEPER_CLAIM_POINT_COUNT = config.get("MINESWEEPER_CLAIM_POINT_COUNT", 1)
 GEMINI_TIMEOUT_SECONDS = config.get("GEMINI_TIMEOUT_SECONDS", 180)

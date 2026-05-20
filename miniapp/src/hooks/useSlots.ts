@@ -29,7 +29,6 @@ interface UseSlotsResult {
   megaspin: MegaspinData;
   loading: boolean;
   error: string | null;
-  refetchSpins: () => Promise<void>;
   updateSpins: (count: number) => void;
   updateMegaspin: (megaspinInfo: MegaspinInfo) => void;
 }
@@ -106,10 +105,6 @@ export const useSlots = (chatId?: string, userId?: number, initData?: string | n
       setMegaspin(prev => ({ ...prev, loading: false, error: errorMessage }));
     }
   }, [chatId, userId, initData]);
-
-  const refetchSpins = async () => {
-    await fetchSpins();
-  };
 
   const updateSpins = useCallback((count: number) => {
     setSpins(prev => ({
@@ -188,7 +183,6 @@ export const useSlots = (chatId?: string, userId?: number, initData?: string | n
     megaspin,
     loading,
     error,
-    refetchSpins,
     updateSpins,
     updateMegaspin
   };

@@ -46,7 +46,6 @@ const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPo
     megaspin,
     loading,
     error,
-    refetchSpins,
     updateSpins,
     updateMegaspin
   } = useSlots(chatId, currentUserId, initData, { initialData: slotsInitialData });
@@ -79,7 +78,6 @@ const CasinoTab = ({ currentUserId, chatId, initData, initialCasinoData, claimPo
       slotsSymbols={symbols}
       slotsSpins={spins}
       slotsMegaspin={megaspin}
-      refetchSpins={refetchSpins}
       updateSpins={updateSpins}
       updateMegaspin={updateMegaspin}
       claimPoints={claimPoints}

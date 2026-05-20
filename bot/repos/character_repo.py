@@ -100,3 +100,23 @@ def get_character_by_id(character_id: int, *, session: Session) -> Optional[Char
     """Get a character by its ID."""
     result = session.query(CharacterModel).filter(CharacterModel.id == character_id).first()
     return Character.from_orm(result) if result else None
+
+
+@with_session
+def get_character_slot_icon_b64(character_id: int, *, session: Session) -> Optional[str]:
+    """Return base64-encoded slot icon for a character, or ``None`` if absent.
+
+    Lightweight single-column fetch used by the slots roll path so we can
+    embed the winning symbol's icon directly in the spin response (avoids
+    stale-pool races on the client).
+    """
+    import base64
+
+    row = (
+        session.query(CharacterModel.slot_icon)
+        .filter(CharacterModel.id == character_id)
+        .first()
+    )
+    if not row or not row[0]:
+        return None
+    return base64.b64encode(row[0]).decode("utf-8")

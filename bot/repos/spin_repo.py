@@ -111,18 +111,97 @@ def decrement_user_spins(user_id: int, chat_id: str, amount: int = 1, *, session
 @with_session(commit=True)
 def consume_user_spin(user_id: int, chat_id: str, *, session: Session) -> bool:
     """Consume one spin if available. Returns True if successful, False if no spins available."""
+    return consume_user_spins(user_id, chat_id, 1, session=session)
+
+
+@with_session(commit=True)
+def consume_user_spins(
+    user_id: int, chat_id: str, count: int, *, session: Session
+) -> bool:
+    """Atomically consume ``count`` spins if available.
+
+    Uses ``SELECT ... FOR UPDATE`` to lock the user's row, preventing
+    concurrent spends from over-drafting the balance. Returns True on
+    success, False if the user has fewer than ``count`` spins.
+    """
+    if count <= 0:
+        raise ValueError(f"count must be positive, got {count}")
+
     spins = (
         session.query(SpinsModel)
         .filter(
             SpinsModel.user_id == user_id,
             SpinsModel.chat_id == str(chat_id),
         )
+        .with_for_update()
         .first()
     )
-    if spins and spins.count > 0:
-        spins.count -= 1
-        return True
-    return False
+    if not spins or spins.count < count:
+        return False
+    spins.count -= count
+    return True
+
+
+@with_session(commit=True)
+def decrement_megaspin_counter_by(
+    user_id: int, chat_id: str, count: int, *, session: Session
+) -> Megaspins:
+    """Decrement the megaspin counter by ``count`` with carry-overflow.
+
+    If the user is already eligible for a megaspin (``megaspin_available``
+    is True) the counter is *not* advanced — the pending megaspin must be
+    consumed first.
+
+    Otherwise, ``count`` is subtracted. If this would take the counter to
+    zero or below, the megaspin becomes available and the residual
+    (``count - spins_until_megaspin``) carries over as accumulated
+    progress on the next cycle. The carry persists across ``consume_megaspin``
+    so multi-spin bets never lose progress.
+    """
+    if count <= 0:
+        raise ValueError(f"count must be positive, got {count}")
+
+    spins_for_megaspin = _get_spins_for_megaspin()
+
+    megaspins = (
+        session.query(MegaspinsModel)
+        .filter(
+            MegaspinsModel.user_id == user_id,
+            MegaspinsModel.chat_id == str(chat_id),
+        )
+        .with_for_update()
+        .first()
+    )
+
+    if not megaspins:
+        megaspins = MegaspinsModel(
+            user_id=user_id,
+            chat_id=str(chat_id),
+            spins_until_megaspin=spins_for_megaspin,
+            megaspin_available=False,
+        )
+        session.add(megaspins)
+        session.flush()
+
+    if megaspins.megaspin_available:
+        # User already has a pending megaspin; don't accrue further progress.
+        return Megaspins.from_orm(megaspins)
+
+    new_counter = megaspins.spins_until_megaspin - count
+    if new_counter > 0:
+        megaspins.spins_until_megaspin = new_counter
+    else:
+        # Award the megaspin; carry the overflow into the next cycle's progress.
+        # carry = -new_counter (units past the threshold); next-cycle counter
+        # = spins_for_megaspin - carry. Defensive guard for the theoretically
+        # impossible case where count >= 2 * threshold.
+        carry = -new_counter
+        if carry >= spins_for_megaspin:
+            carry = spins_for_megaspin - 1
+        megaspins.megaspin_available = True
+        megaspins.spins_until_megaspin = spins_for_megaspin - carry
+
+    return Megaspins.from_orm(megaspins)
 
 
 @with_session(commit=True)
@@ -170,9 +249,12 @@ def consume_megaspin(user_id: int, chat_id: str, *, session: Session) -> bool:
     if not megaspins or not megaspins.megaspin_available:
         return False
 
-    # Consume the megaspin and reset the counter
+    # Consume the megaspin. Preserve any carry-over progress on
+    # ``spins_until_megaspin`` (set when a multi-spin bet overflowed the
+    # threshold); only reset to a fresh cycle when the counter is at zero.
     megaspins.megaspin_available = False
-    megaspins.spins_until_megaspin = spins_for_megaspin
+    if megaspins.spins_until_megaspin <= 0:
+        megaspins.spins_until_megaspin = spins_for_megaspin
     logger.info(f"User {user_id} in chat {chat_id} consumed their megaspin")
     return True
 

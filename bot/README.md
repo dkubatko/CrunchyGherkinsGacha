@@ -109,7 +109,7 @@ Inline callback handlers also cover `claim_`, `reroll_`, `lock_`, `lockcard_`, `
 - **Single card deep links**: Tokens starting with `c-` display one card without navigation or trading UI—used for share links and inline previews.
 - **Trade workflow**: Selecting “Trade” transitions to a comparison grid; selecting a counter-card makes the API call and then closes the web app.
 - **Burn & lock dialogs**: Provide confirmation screens, show expected spin rewards, and keep claim balances fresh by querying `/user/<id>/claims`.
-- **Slots view**: Displays available symbols, consumes spins, runs verification with `/slots/verify`, and triggers card/claim payouts through dedicated endpoints.
+- **Slots view**: Displays available symbols, performs atomic spins (with selectable 1×/5×/10× bet multipliers) via `/slots/spin`, and redeems server-issued spin result tokens through `/slots/victory` for card/aspect payouts.
 - **Viewport management**: Locks the Telegram webview height and hides the back button during single-card or trade views to avoid layout jumps.
 
 ## Major design choices

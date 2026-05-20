@@ -5,7 +5,7 @@ import { useSlotsStore } from '@/stores/useSlotsStore';
 import { getIconObjectUrl } from '@/lib/iconUrlCache';
 import { SLOT_RARITY_SEQUENCE, getRarityColors, getRarityGradient, normalizeRarityName } from '@/utils/rarityStyles';
 import type { RarityName } from '@/utils/rarityStyles';
-import type { SlotSymbolInfo } from '@/types';
+import type { SlotSymbolInfo, SlotSymbolSummary } from '@/types';
 import { Title, SpinsBadge, ClaimPointsBadge } from '@/components/common';
 import {
   computeRarityWheelTransforms,
@@ -23,6 +23,7 @@ import {
   computeTotalSlotSymbols,
 } from '@/utils/slotWheel';
 import './SlotMachine.css';
+import '../Casino.css';
 
 interface UserSpinsData {
   count: number;
@@ -51,7 +52,6 @@ interface SlotsProps {
   userId: number;
   chatId: string;
   initData: string;
-  refetchSpins: () => void;
   onSpinsUpdate: (count: number) => void;
   onMegaspinUpdate: (megaspinInfo: MegaspinInfo) => void;
   claimPoints?: number;
@@ -73,12 +73,16 @@ interface PendingWin {
   winType: 'card' | 'aspect' | 'claim';
   setId?: number | null;
   setName?: string | null;
+  spinResultId?: string | null;
 }
 
 const INITIAL_REEL_STATES: ReelState[] = Array.from(
   { length: SLOT_REEL_COUNT },
   () => 'idle' as ReelState
 );
+
+const SLOT_BET_MULTIPLIERS = [1, 5, 10] as const;
+type SlotBetMultiplier = (typeof SLOT_BET_MULTIPLIERS)[number];
 
 const clampAlpha = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -120,7 +124,7 @@ const buildRarityHighlightVariables = (primary: string, secondary: string): Reco
 });
 
 
-const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, refetchSpins, onSpinsUpdate, onMegaspinUpdate, claimPoints, onClaimPointsUpdate }) => {
+const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpins, megaspin: megaspinData, userId, chatId, initData, onSpinsUpdate, onMegaspinUpdate, claimPoints, onClaimPointsUpdate }) => {
   const symbols = useSlotsStore((state) => state.symbols);
   const setSymbols = useSlotsStore((state) => state.setSymbols);
   const results = useSlotsStore((state) => state.results);
@@ -166,6 +170,13 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
   const autospinCardsWonRef = useRef(0);
   const autospinAspectsWonRef = useRef(0);
   const autospinClaimPointsWonRef = useRef(0);
+
+  // Bet multiplier (1x default; 5x and 10x multiply per-bet win chance).
+  // The server is the source of truth — this state only drives UI and
+  // the value passed to `/slots/spin`. We snapshot it at spin start so a
+  // mid-flight change can't desync the in-flight animation.
+  const [selectedMultiplier, setSelectedMultiplier] = useState<SlotBetMultiplier>(1);
+  const activeMultiplierRef = useRef<SlotBetMultiplier>(1);
 
   const rarityHighlightVariables = useMemo<React.CSSProperties | undefined>(() => {
     if (!rarityWheelTarget) {
@@ -357,36 +368,41 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     setStripTransforms(transforms);
   }, [results, symbols.length, spinning]);
 
-  const generateVerifyResults = useCallback(async (megaspin: boolean): Promise<{ 
-    isWin: boolean;
-    slotResults: SlotSymbolInfo[];
-    rarity: string | null;
-    winType: string | null;
-    setId: number | null;
-    setName: string | null;
-  }> => {
-    const availableSymbols = symbols.length;
+  // Server returns slot_results (id+type triple) and optionally a full
+  // SlotSymbolSummary for the winning symbol. The local symbol pool may
+  // be stale (e.g. a new user/character/set was added between the
+  // initial pool fetch and this spin), so we merge any missing winning
+  // symbol into the pool before computing animation indices. This
+  // eliminates the prior "fall back to reel index 0" race that silently
+  // mis-rendered legitimate wins.
+  const resolveWinningSymbols = useCallback((
+    slotResults: SlotSymbolInfo[],
+    winningSymbol: SlotSymbolSummary | null | undefined,
+  ): { symbols: SlotSymbol[]; indices: number[] } => {
+    let pool = symbols;
+    const lookup = (info: SlotSymbolInfo) =>
+      pool.findIndex((s) => s.id === info.id && s.type === info.type);
 
-    if (availableSymbols === 0) {
-      return { isWin: false, slotResults: [], rarity: null, winType: null, setId: null, setName: null };
+    // Inject the winning symbol if it isn't in the local pool yet.
+    if (winningSymbol && lookup(winningSymbol) === -1) {
+      const injected: SlotSymbol = {
+        id: winningSymbol.id,
+        type: winningSymbol.type,
+        displayName: winningSymbol.display_name ?? undefined,
+        iconb64: winningSymbol.slot_icon_b64 ?? undefined,
+      };
+      pool = [...pool, injected];
+      setSymbols(pool);
     }
 
-    const randomNumber = Math.floor(Math.random() * availableSymbols);
-    const symbolsInfo = symbols.map(s => ({ id: s.id, type: s.type }));
-
-    const verifyResult = megaspin
-      ? await ApiService.verifyMegaspin(userId, chatId, randomNumber, symbolsInfo, initData)
-      : await ApiService.verifySlotSpin(userId, chatId, randomNumber, symbolsInfo, initData);
-
-    return {
-      isWin: verifyResult.is_win,
-      slotResults: verifyResult.slot_results,
-      rarity: verifyResult.rarity ?? null,
-      winType: verifyResult.win_type ?? null,
-      setId: verifyResult.set_id ?? null,
-      setName: verifyResult.set_name ?? null,
-    };
-  }, [userId, chatId, initData, symbols]);
+    const indices = slotResults.map((info) => {
+      const idx = lookup(info);
+      if (idx !== -1) return idx;
+      console.warn('Slot symbol missing from local pool', info);
+      return 0;
+    });
+    return { symbols: pool, indices };
+  }, [symbols, setSymbols]);
 
   const finalizeSpin = useCallback(() => {
     const pendingWin = pendingWinRef.current;
@@ -408,7 +424,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return;
     }
 
-    const { symbol, rarity, winType, setId, setName } = pendingWin;
+    const { symbol, rarity, winType, setName, spinResultId } = pendingWin;
 
     TelegramUtils.triggerHapticNotification('success');
 
@@ -452,19 +468,11 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
         const delay = currentlyAutospinning ? 800 : 500;
         await new Promise<void>((resolve) => setTimeout(resolve, delay));
 
-        await ApiService.processVictory(
-          userId,
-          chatId,
-          winType,
-          rarity.toLowerCase(),
-          initData,
-          {
-            sourceId: winType === 'card' ? symbol.id : undefined,
-            sourceType: winType === 'card' ? symbol.type : undefined,
-            isMegaspin: isMegaspinning,
-            setId: winType === 'aspect' ? setId : undefined,
-          }
-        );
+        if (!spinResultId) {
+          throw new Error('Missing spin result token');
+        }
+
+        await ApiService.processVictory(userId, chatId, spinResultId, initData);
 
         if (currentlyAutospinning) {
           if (winType === 'aspect') {
@@ -506,9 +514,15 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       return false;
     }
 
-    if (userSpins.count <= 0) {
+    const multiplier = selectedMultiplier;
+
+    if (userSpins.count < multiplier) {
       if (!isAutospinningRef.current) {
-        TelegramUtils.showAlert('No spins available! Spins refresh daily.');
+        TelegramUtils.showAlert(
+          multiplier === 1
+            ? 'No spins available! Spins refresh daily.'
+            : `Not enough spins for a ${multiplier}x bet (need ${multiplier}).`
+        );
       }
       // Return false without error - autospin loop will handle showing summary
       return false;
@@ -516,6 +530,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
     TelegramUtils.triggerHapticImpact('medium');
 
+    activeMultiplierRef.current = multiplier;
     resetRarityWheel();
     setSpinning(true);
     setReelStates(Array.from({ length: SLOT_REEL_COUNT }, () => 'spinning' as ReelState));
@@ -523,47 +538,43 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     pendingWinRef.current = null;
 
     try {
-      const consumeResult = await ApiService.consumeUserSpin(userId, chatId, initData);
+      const spinResult = await ApiService.spin(userId, chatId, multiplier, initData);
 
-      if (!consumeResult.success) {
-        const message = consumeResult.message || 'Failed to consume spin';
+      if (!spinResult.success) {
+        const message = spinResult.message || 'Failed to spin';
         if (!isAutospinningRef.current) {
           TelegramUtils.showAlert(message);
         }
         setSpinning(false);
         setReelStates([...INITIAL_REEL_STATES]);
-        // Update spin count from server response without refetching
-        if (consumeResult.spins_remaining !== undefined) {
-          onSpinsUpdate(consumeResult.spins_remaining);
-        } else {
-          refetchSpins();
-        }
-        // Update megaspin info if provided
-        if (consumeResult.megaspin) {
-          onMegaspinUpdate(consumeResult.megaspin);
+        onSpinsUpdate(spinResult.spins_remaining);
+        if (spinResult.megaspin) {
+          onMegaspinUpdate(spinResult.megaspin);
         }
         return false;
       }
 
-      // Update spin count from server response without refetching
-      if (consumeResult.spins_remaining !== undefined) {
-        onSpinsUpdate(consumeResult.spins_remaining);
-      } else {
-        refetchSpins();
+      // Update balances from server response
+      onSpinsUpdate(spinResult.spins_remaining);
+      if (spinResult.megaspin) {
+        onMegaspinUpdate(spinResult.megaspin);
       }
 
-      // Update megaspin info if provided
-      if (consumeResult.megaspin) {
-        onMegaspinUpdate(consumeResult.megaspin);
-      }
+      const isWin = spinResult.is_win;
+      const slotResults = spinResult.slot_results;
+      const serverRarity = spinResult.rarity ?? null;
+      const winType = spinResult.win_type ?? null;
+      const setId = spinResult.set_id ?? null;
+      const setName = spinResult.set_name ?? null;
+      const spinResultId = spinResult.spin_result_id ?? null;
 
-      const { isWin, slotResults, rarity: serverRarity, winType, setId, setName } = await generateVerifyResults(false);
-      
-      // Convert server-provided symbol results to indices
-      const normalizedResults = slotResults.map(symbolInfo => {
-        const index = symbols.findIndex(s => s.id === symbolInfo.id && s.type === symbolInfo.type);
-        return index !== -1 ? index : 0; // Fallback to 0 if symbol not found
-      });
+      // Resolve winning symbol against the local pool, injecting a
+      // server-provided full payload if the pool is stale.
+      const { symbols: effectiveSymbols, indices: rawIndices } = resolveWinningSymbols(
+        slotResults,
+        spinResult.winning_symbol,
+      );
+      const normalizedResults = [...rawIndices];
 
       // Ensure we have exactly 3 results
       while (normalizedResults.length < SLOT_REEL_COUNT) {
@@ -573,7 +584,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       setResults(normalizedResults.slice(0, SLOT_REEL_COUNT));
 
       const spinTransforms = normalizedResults.map((result) =>
-        computeSlotSpinTransforms(result, symbols.length)
+        computeSlotSpinTransforms(result, effectiveSymbols.length)
       );
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
@@ -611,22 +622,29 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
       if (isWin && slotResults.length > 0) {
         const winningIndex = normalizedResults[0];
-        const winningSymbolFromArray = symbols[winningIndex];
+        const winningSymbolFromArray = effectiveSymbols[winningIndex];
 
         if (!winningSymbolFromArray) {
           console.warn('Winning symbol not found for index:', winningIndex);
         } else if (winType === 'claim') {
-          pendingWinRef.current = { 
-            symbol: winningSymbolFromArray, 
+          pendingWinRef.current = {
+            symbol: winningSymbolFromArray,
             rarity: 'Common' as RarityName,
-            winType: 'claim'
+            winType: 'claim',
           };
         } else if (winType && serverRarity) {
           const normalizedRarity = normalizeRarityName(serverRarity);
           if (!normalizedRarity) {
             console.warn('Server sent unsupported rarity for slots victory:', serverRarity);
           } else {
-            pendingWinRef.current = { symbol: winningSymbolFromArray, rarity: normalizedRarity, winType: winType as 'card' | 'aspect', setId, setName };
+            pendingWinRef.current = {
+              symbol: winningSymbolFromArray,
+              rarity: normalizedRarity,
+              winType: winType as 'card' | 'aspect',
+              setId,
+              setName,
+              spinResultId,
+            };
           }
         }
       }
@@ -650,22 +668,22 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     userId,
     chatId,
     initData,
-    refetchSpins,
     onSpinsUpdate,
     onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
-    generateVerifyResults,
     setResults,
     addReelTimeout,
     finalizeSpin,
     setSpinning,
     resetRarityWheel,
-    getSpeedMultiplier
+    getSpeedMultiplier,
+    selectedMultiplier,
+    resolveWinningSymbols,
   ]);
 
   const handleSpinButtonMouseDown = useCallback(() => {
-    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0 || isAutospinning) {
+    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count < selectedMultiplier || isAutospinning) {
       return;
     }
 
@@ -676,7 +694,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       setIsAutospinMode(newMode);
       TelegramUtils.triggerHapticImpact(newMode ? 'medium' : 'light');
     }, 1000);
-  }, [spinning, symbols.length, userSpins.loading, userSpins.count, isAutospinMode, isAutospinning]);
+  }, [spinning, symbols.length, userSpins.loading, userSpins.count, isAutospinMode, isAutospinning, selectedMultiplier]);
 
   const handleSpinButtonMouseUp = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -723,7 +741,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
 
   // Start autospin loop
   const handleStartAutospin = useCallback(async () => {
-    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0) {
+    if (spinning || symbols.length === 0 || userSpins.loading || userSpins.count < selectedMultiplier) {
       return;
     }
 
@@ -742,9 +760,9 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     // Autospin loop
     const runAutospinLoop = async () => {
       while (!autospinStopRef.current) {
-        // Check if we have spins available (use current store state)
+        // Check if we have enough spins for the selected bet multiplier
         const currentSpinCount = userSpins.count;
-        if (currentSpinCount <= 0) {
+        if (currentSpinCount < selectedMultiplier) {
           break;
         }
 
@@ -821,34 +839,37 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     pendingWinRef.current = null;
 
     try {
-      // Consume the megaspin first
-      const consumeResult = await ApiService.consumeMegaspin(userId, chatId, initData);
+      // Atomic megaspin: consume + roll + persist token in one call.
+      const spinResult = await ApiService.megaspin(userId, chatId, initData);
 
-      if (!consumeResult.success) {
-        const message = consumeResult.message || 'Failed to use megaspin';
+      if (!spinResult.success) {
+        const message = spinResult.message || 'Failed to use megaspin';
         TelegramUtils.showAlert(message);
         setSpinning(false);
+        setIsMegaspinning(false);
         setReelStates([...INITIAL_REEL_STATES]);
-        // Update megaspin info if provided
-        if (consumeResult.megaspin) {
-          onMegaspinUpdate(consumeResult.megaspin);
+        if (spinResult.megaspin) {
+          onMegaspinUpdate(spinResult.megaspin);
         }
         return;
       }
 
-      // Update megaspin info from server response
-      if (consumeResult.megaspin) {
-        onMegaspinUpdate(consumeResult.megaspin);
+      if (spinResult.megaspin) {
+        onMegaspinUpdate(spinResult.megaspin);
       }
 
-      // Megaspin verification - guaranteed win
-      const { slotResults, rarity: serverRarity, winType, setId, setName } = await generateVerifyResults(true);
-      
-      // Convert server-provided symbol results to indices
-      const normalizedResults = slotResults.map(symbolInfo => {
-        const index = symbols.findIndex(s => s.id === symbolInfo.id && s.type === symbolInfo.type);
-        return index !== -1 ? index : 0;
-      });
+      const slotResults = spinResult.slot_results;
+      const serverRarity = spinResult.rarity ?? null;
+      const winType = spinResult.win_type ?? null;
+      const setId = spinResult.set_id ?? null;
+      const setName = spinResult.set_name ?? null;
+      const spinResultId = spinResult.spin_result_id ?? null;
+
+      const { symbols: effectiveSymbols, indices: rawIndices } = resolveWinningSymbols(
+        slotResults,
+        spinResult.winning_symbol,
+      );
+      const normalizedResults = [...rawIndices];
 
       while (normalizedResults.length < SLOT_REEL_COUNT) {
         normalizedResults.push(0);
@@ -857,7 +878,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       setResults(normalizedResults.slice(0, SLOT_REEL_COUNT));
 
       const spinTransforms = normalizedResults.map((result) =>
-        computeSlotSpinTransforms(result, symbols.length)
+        computeSlotSpinTransforms(result, effectiveSymbols.length)
       );
       const finalTransforms = spinTransforms.map((value) => value.final);
       const initialTransforms = spinTransforms.map((value) => value.initial);
@@ -896,7 +917,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
       // Megaspin is guaranteed win - set up pending win
       if (serverRarity && slotResults.length > 0) {
         const winningIndex = normalizedResults[0];
-        const winningSymbolFromArray = symbols[winningIndex];
+        const winningSymbolFromArray = effectiveSymbols[winningIndex];
 
         if (winningSymbolFromArray) {
           const normalizedRarity = normalizeRarityName(serverRarity);
@@ -907,6 +928,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
               winType: winType as 'card' | 'aspect',
               setId,
               setName,
+              spinResultId,
             };
           }
         }
@@ -931,7 +953,7 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
     onMegaspinUpdate,
     clearReelTimeouts,
     setReelStates,
-    generateVerifyResults,
+    resolveWinningSymbols,
     setResults,
     addReelTimeout,
     finalizeSpin,
@@ -1051,9 +1073,15 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                 onTouchStart={handleSpinButtonMouseDown}
                 onTouchEnd={handleSpinButtonMouseUp}
                 onTouchCancel={handleSpinButtonTouchCancel}
-                disabled={(isAutospinning && isAutospinStopping) || (!isAutospinning && (spinning || symbols.length === 0 || userSpins.loading || userSpins.count <= 0))}
+                disabled={(isAutospinning && isAutospinStopping) || (!isAutospinning && (spinning || symbols.length === 0 || userSpins.loading || userSpins.count < selectedMultiplier))}
               >
-                {isAutospinning ? 'STOP' : spinning ? 'SPINNING…' : isAutospinMode ? 'AUTOSPIN' : 'SPIN'}
+                {isAutospinning
+                  ? 'STOP'
+                  : spinning
+                    ? 'SPINNING…'
+                    : isAutospinMode
+                      ? 'AUTOSPIN'
+                      : 'SPIN'}
               </button>
 
               {/* Megaspin Button */}
@@ -1074,6 +1102,30 @@ const Slots: React.FC<SlotsProps> = ({ symbols: providedSymbols, spins: userSpin
                   MEGA SPIN
                 </span>
               </button>
+
+              <div className="slot-bet-buttons">
+                {SLOT_BET_MULTIPLIERS.map((amount) => {
+                  const insufficient = userSpins.count < amount;
+                  const isSelected = selectedMultiplier === amount;
+                  const isBetLocked = spinning || isAutospinning || userSpins.loading;
+                  return (
+                    <button
+                      key={amount}
+                      type="button"
+                      className={`slot-bet-option ${isSelected ? 'selected' : ''}`}
+                      onClick={() => {
+                        if (isBetLocked || insufficient) return;
+                        setSelectedMultiplier(amount);
+                        TelegramUtils.triggerHapticSelection();
+                      }}
+                      disabled={isBetLocked || insufficient}
+                    >
+                      {amount}
+                      <span className="casino-coin-inline slot-bet-coin" />
+                    </button>
+                  );
+                })}
+              </div>
             </>
           )}
         </div>

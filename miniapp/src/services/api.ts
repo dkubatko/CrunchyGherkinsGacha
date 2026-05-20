@@ -2,8 +2,7 @@ import type {
   CardData,
   UserCollectionResponse,
   SlotSymbolSummary,
-  SlotVerifyResponse,
-  SlotSymbolInfo,
+  SlotSpinResponse,
   UserProfile,
   MegaspinInfo,
   RTBGameResponse,
@@ -512,37 +511,26 @@ export class ApiService {
   }
 
   /**
-   * Process a card or aspect victory from slots.
-   * Unified endpoint — server dispatches based on win_type.
+   * Redeem a server-issued slot victory token.
+   *
+   * The server stored the canonical win details (win_type, rarity,
+   * source, set) at spin time — only the opaque ``spin_result_id``
+   * needs to be sent here. Used for both 1x and multi-bet wins.
    */
   static async processVictory(
     userId: number,
     chatId: string,
-    winType: 'card' | 'aspect',
-    rarity: string,
+    spinResultId: string,
     initData: string,
-    opts: {
-      sourceId?: number;
-      sourceType?: string;
-      isMegaspin?: boolean;
-      setId?: number | null;
-    } = {}
   ): Promise<{ status: string; message: string }> {
-    const body: Record<string, unknown> = {
-      user_id: userId,
-      chat_id: chatId,
-      win_type: winType,
-      rarity: rarity,
-    };
-    if (opts.sourceId != null) body.source_id = opts.sourceId;
-    if (opts.sourceType) body.source_type = opts.sourceType;
-    if (opts.isMegaspin) body.is_megaspin = true;
-    if (opts.setId != null) body.set_id = opts.setId;
-
     const response = await fetch(`${API_BASE_URL}/slots/victory`, {
       method: 'POST',
       headers: this.getHeaders(initData),
-      body: JSON.stringify(body)
+      body: JSON.stringify({
+        user_id: userId,
+        chat_id: chatId,
+        spin_result_id: spinResultId,
+      }),
     });
 
     if (!response.ok) {
@@ -651,52 +639,32 @@ export class ApiService {
     return response.json();
   }
 
-  static async consumeUserSpin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string; megaspin?: MegaspinInfo | null }> {
-    const response = await fetch(`${API_BASE_URL}/slots/spins`, {
-      method: 'POST',
-      headers: this.getHeaders(initData),
-      body: JSON.stringify({
-        user_id: userId,
-        chat_id: chatId
-      })
-    });
-
-    if (!response.ok) {
-      let detail = `Failed to consume spin (Error ${response.status})`;
-      try {
-        const payload = await response.json();
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail);
-    }
-
-    return response.json();
-  }
-
-  static async verifySlotSpin(
+  /**
+   * Atomic slot spin: deducts ``multiplier`` spins and rolls the outcome.
+   *
+   * Replaces the previous consume+verify pair. The server returns the
+   * fully-resolved outcome plus a one-time ``spin_result_id`` token that
+   * must be passed to {@link processVictory} once the reel animation
+   * settles.
+   */
+  static async spin(
     userId: number,
     chatId: string,
-    randomNumber: number,
-    symbols: SlotSymbolInfo[],
-    initData: string
-  ): Promise<SlotVerifyResponse> {
-    const response = await fetch(`${API_BASE_URL}/slots/verify`, {
+    multiplier: number,
+    initData: string,
+  ): Promise<SlotSpinResponse> {
+    const response = await fetch(`${API_BASE_URL}/slots/spin`, {
       method: 'POST',
       headers: this.getHeaders(initData),
       body: JSON.stringify({
         user_id: userId,
         chat_id: chatId,
-        random_number: randomNumber,
-        symbols: symbols
-      })
+        multiplier,
+      }),
     });
 
     if (!response.ok) {
-      let detail = `Failed to verify slot spin (Error ${response.status})`;
+      let detail = `Failed to spin (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {
@@ -711,7 +679,11 @@ export class ApiService {
     return response.json();
   }
 
-  static async consumeMegaspin(userId: number, chatId: string, initData: string): Promise<{ success: boolean; spins_remaining?: number; message?: string; megaspin?: MegaspinInfo | null }> {
+  static async megaspin(
+    userId: number,
+    chatId: string,
+    initData: string
+  ): Promise<SlotSpinResponse> {
     const response = await fetch(`${API_BASE_URL}/slots/megaspin`, {
       method: 'POST',
       headers: this.getHeaders(initData),
@@ -722,41 +694,7 @@ export class ApiService {
     });
 
     if (!response.ok) {
-      let detail = `Failed to consume megaspin (Error ${response.status})`;
-      try {
-        const payload = await response.json();
-        if (payload?.detail) {
-          detail = payload.detail;
-        }
-      } catch {
-        // ignore parse errors
-      }
-      throw new Error(detail);
-    }
-
-    return response.json();
-  }
-
-  static async verifyMegaspin(
-    userId: number,
-    chatId: string,
-    randomNumber: number,
-    symbols: SlotSymbolInfo[],
-    initData: string
-  ): Promise<SlotVerifyResponse> {
-    const response = await fetch(`${API_BASE_URL}/slots/megaspin/verify`, {
-      method: 'POST',
-      headers: this.getHeaders(initData),
-      body: JSON.stringify({
-        user_id: userId,
-        chat_id: chatId,
-        random_number: randomNumber,
-        symbols: symbols
-      })
-    });
-
-    if (!response.ok) {
-      let detail = `Failed to verify megaspin (Error ${response.status})`;
+      let detail = `Failed to megaspin (Error ${response.status})`;
       try {
         const payload = await response.json();
         if (payload?.detail) {

@@ -161,6 +161,52 @@
   box-shadow: 0 0 18px rgba(46, 204, 113, 0.5);
 }
 
+.slot-bet-buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: stretch;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 6px;
+}
+
+.slot-bet-option {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: 1 1 0;
+  padding: 10px 0;
+  border: 2px solid rgba(247, 201, 72, 0.22);
+  border-radius: 10px;
+  background: rgba(20, 12, 8, 0.55);
+  color: #f7c948;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.slot-bet-option:hover:not(:disabled):not(.selected) {
+  border-color: rgba(247, 201, 72, 0.4);
+}
+
+.slot-bet-option.selected {
+  border-color: #f7c948;
+  background:
+    radial-gradient(ellipse at center, rgba(247, 201, 72, 0.18) 0%, transparent 75%),
+    rgba(20, 12, 8, 0.55);
+  box-shadow: 0 0 14px rgba(247, 201, 72, 0.5), inset 0 0 12px rgba(247, 201, 72, 0.15);
+}
+
+.slot-bet-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .spin-button {
   width: 100%;
   max-width: 300px;

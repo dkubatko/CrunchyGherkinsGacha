@@ -292,3 +292,51 @@ def get_chat_users_and_characters(chat_id: str, *, session: Session) -> List[Dic
         )
 
     return all_items
+
+
+@with_session
+def get_chat_slot_refs(chat_id: str, *, session: Session) -> List[Dict[str, Any]]:
+    """Return lightweight slot symbol references for users + characters in a chat.
+
+    Each item is ``{"id": int, "display_name": str, "type": "user" | "character"}``
+    with no binary icon data — intended for server-side slot rolls that only
+    need to pick a winning (id, type) pair and persist its display_name.
+    """
+    user_rows = (
+        session.query(UserModel.user_id, UserModel.display_name)
+        .join(ChatModel, ChatModel.user_id == UserModel.user_id)
+        .filter(ChatModel.chat_id == str(chat_id))
+        .all()
+    )
+    char_rows = (
+        session.query(CharacterModel.id, CharacterModel.name)
+        .filter(CharacterModel.chat_id == str(chat_id))
+        .all()
+    )
+
+    refs: List[Dict[str, Any]] = []
+    for uid, name in user_rows:
+        refs.append({"id": uid, "display_name": name, "type": "user"})
+    for cid, name in char_rows:
+        refs.append({"id": cid, "display_name": name, "type": "character"})
+    return refs
+
+
+@with_session
+def get_user_slot_icon_b64(user_id: int, *, session: Session) -> Optional[str]:
+    """Return base64-encoded slot icon for a user, or ``None`` if absent.
+
+    Lightweight single-column fetch used by the slots roll path so we can
+    embed the winning symbol's icon directly in the spin response (avoids
+    stale-pool races on the client).
+    """
+    import base64
+
+    row = (
+        session.query(UserModel.slot_icon)
+        .filter(UserModel.user_id == user_id)
+        .first()
+    )
+    if not row or not row[0]:
+        return None
+    return base64.b64encode(row[0]).decode("utf-8")

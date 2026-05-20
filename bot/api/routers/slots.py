@@ -9,8 +9,6 @@ This module contains all endpoints for slot machine operations including:
 
 import asyncio
 import logging
-import random
-import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -21,31 +19,34 @@ from api.background_tasks import (
 )
 from api.config import DEBUG_MODE, TELEGRAM_TOKEN, gemini_util
 from api.dependencies import get_validated_user, validate_user_in_chat, verify_user_match
-from api.helpers import generate_slot_loss_pattern, normalize_rarity
+from api.helpers import normalize_rarity
 from api.schemas import (
     ConsumeSpinResponse,
     DailyBonusClaimResponse,
     DailyBonusStatusResponse,
     MegaspinInfo,
+    SlotSpinRequest,
+    SlotSpinResponse,
     SlotSymbolInfo,
     SlotSymbolSummary,
     SlotsClaimWinRequest,
     SlotsClaimWinResponse,
     SlotsVictoryRequest,
     SlotsVictoryResponse,
-    SlotVerifyRequest,
-    SlotVerifyResponse,
     SpinsRequest,
     SpinsResponse,
 )
-from settings.constants import SLOT_ASPECT_WIN_CHANCE, SLOT_CLAIM_CHANCE, SLOT_CARD_WIN_CHANCE
-from utils.rolling import get_random_rarity
-from repos import character_repo
+from settings.constants import (
+    SLOT_ASPECT_WIN_CHANCE,
+    SLOT_BET_MULTIPLIERS,
+    SLOT_CARD_WIN_CHANCE,
+    SLOT_CLAIM_CHANCE,
+)
 from repos import claim_repo
-from repos import aspect_repo
 from repos import set_icon_repo
 from repos import set_repo
 from repos import spin_repo
+from repos import spin_result_repo
 from repos import user_repo
 from managers import event_manager
 from managers import spin_manager
@@ -156,127 +157,214 @@ async def claim_daily_bonus(
         raise HTTPException(status_code=500, detail="Failed to claim daily bonus")
 
 
-@router.post("/spins", response_model=ConsumeSpinResponse)
-async def consume_user_spin(
+@router.post("/spin", response_model=SlotSpinResponse)
+async def spin_slots(
+    request: SlotSpinRequest,
+    validated_user: Dict[str, Any] = Depends(get_validated_user),
+):
+    """Atomic slot spin — deducts ``multiplier`` spins and rolls the outcome.
+
+    Replaces the previous ``POST /slots/spins`` (consume) +
+    ``POST /slots/verify`` (compute) pair. The merged endpoint:
+
+      * Validates the multiplier (must be in :data:`SLOT_BET_MULTIPLIERS`).
+      * Atomically deducts ``multiplier`` spins (FOR UPDATE) and advances
+        megaspin progress by the same amount (with carry-overflow).
+      * Derives the slot symbol pool server-side (clients cannot bias it).
+      * Rolls the outcome under the multi-spin distribution
+        ``P(loss|N) = p_loss^N``; conditional win-type ratios unchanged.
+      * For card/aspect wins, persists a ``SpinResult`` row whose id is
+        returned to the client and later required by ``POST /slots/victory``.
+    """
+    await verify_user_match(request.user_id, validated_user)
+    await validate_user_in_chat(request.user_id, request.chat_id)
+
+    if request.multiplier not in SLOT_BET_MULTIPLIERS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"multiplier must be one of {SLOT_BET_MULTIPLIERS}",
+        )
+
+    try:
+        result = await asyncio.to_thread(
+            spin_manager.consume_and_roll,
+            request.user_id,
+            request.chat_id,
+            request.multiplier,
+            DEBUG_MODE,
+        )
+    except Exception as e:
+        logger.error(
+            "Error executing /slots/spin for user %s in chat %s: %s",
+            request.user_id,
+            request.chat_id,
+            e,
+            exc_info=True,
+        )
+        event_manager.log(
+            EventType.SPIN,
+            SpinOutcome.ERROR,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            multiplier=request.multiplier,
+            error_message=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to spin")
+
+    megaspins = result["megaspin"]
+    total_required = spin_repo._get_spins_for_megaspin()
+    megaspin_info = MegaspinInfo(
+        spins_until_megaspin=megaspins.spins_until_megaspin,
+        total_spins_required=total_required,
+        megaspin_available=megaspins.megaspin_available,
+    )
+
+    if not result["success"]:
+        event_manager.log(
+            EventType.SPIN,
+            SpinOutcome.NO_SPINS,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            multiplier=request.multiplier,
+        )
+        return SlotSpinResponse(
+            success=False,
+            message=result["message"],
+            spins_remaining=result["spins_remaining"],
+            megaspin=megaspin_info,
+            is_win=False,
+        )
+
+    # Telemetry: card/aspect wins are logged in the background task after
+    # generation; claim/loss events are logged here so we always emit one
+    # SPIN event per bet.
+    win_type = result["win_type"]
+    if win_type == "claim":
+        event_manager.log(
+            EventType.SPIN,
+            SpinOutcome.CLAIM_WIN,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            multiplier=request.multiplier,
+        )
+    elif win_type is None:
+        event_manager.log(
+            EventType.SPIN,
+            SpinOutcome.LOSS,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            multiplier=request.multiplier,
+        )
+
+    return SlotSpinResponse(
+        success=True,
+        spins_remaining=result["spins_remaining"],
+        megaspin=megaspin_info,
+        is_win=result["is_win"],
+        slot_results=[SlotSymbolInfo(**s) for s in result["slot_results"]],
+        rarity=result["rarity"],
+        win_type=win_type,
+        set_id=result["set_id"],
+        set_name=result["set_name"],
+        spin_result_id=result["spin_result_id"],
+        winning_symbol=(
+            SlotSymbolSummary(**result["winning_symbol"])
+            if result["winning_symbol"]
+            else None
+        ),
+    )
+
+
+@router.post("/megaspin", response_model=SlotSpinResponse)
+async def megaspin(
     request: SpinsRequest,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Consume one spin for a user in a specific chat."""
+    """Atomic megaspin — consume + roll + persist victory token in one call.
+
+    Replaces the previous ``POST /slots/megaspin`` (consume) +
+    ``POST /slots/megaspin/verify`` (compute) pair. The merged endpoint:
+
+      * Atomically consumes the megaspin (no-op if unavailable).
+      * Derives the slot symbol pool server-side (no client-supplied
+        symbols — closes the prior client-trust gap).
+      * Picks a guaranteed-win symbol uniformly from cards + sets (no
+        claim points), pre-picks a rarity from the "slots" source.
+      * Persists a ``SpinResult`` row whose id is returned to the client
+        and later required by ``POST /slots/victory``.
+      * Returns the full winning symbol payload (incl. b64 icon) so the
+        client renders correctly even if its cached symbol pool is stale.
+    """
+    await verify_user_match(request.user_id, validated_user)
+    await validate_user_in_chat(request.user_id, request.chat_id)
+
     try:
-        # Verify the authenticated user matches the requested user_id
-        await verify_user_match(request.user_id, validated_user)
-        await validate_user_in_chat(request.user_id, request.chat_id)
-
-        # Attempt to consume a spin
-        success = await asyncio.to_thread(
-            spin_repo.consume_user_spin, request.user_id, request.chat_id
+        result = await asyncio.to_thread(
+            spin_manager.consume_megaspin_and_roll,
+            request.user_id,
+            request.chat_id,
+            DEBUG_MODE,
         )
-
-        if success:
-            # Update megaspin counter (decrement by 1)
-            megaspins_data = await asyncio.to_thread(
-                spin_manager.decrement_megaspin_counter, request.user_id, request.chat_id
-            )
-            total_spins_required = spin_repo._get_spins_for_megaspin()
-            megaspin_info = MegaspinInfo(
-                spins_until_megaspin=megaspins_data.spins_until_megaspin,
-                total_spins_required=total_spins_required,
-                megaspin_available=megaspins_data.megaspin_available,
-            )
-
-            # Get remaining spins after consumption
-            remaining_spins = await asyncio.to_thread(
-                spin_repo.get_user_spin_count,
-                request.user_id,
-                request.chat_id,
-            )
-
-            return ConsumeSpinResponse(
-                success=True,
-                spins_remaining=remaining_spins,
-                message="Spin consumed successfully",
-                megaspin=megaspin_info,
-            )
-        else:
-            # Get current spins to show in error
-            current_spins = await asyncio.to_thread(
-                spin_repo.get_user_spin_count,
-                request.user_id,
-                request.chat_id,
-            )
-
-            # Get current megaspin info
-            megaspins_data = await asyncio.to_thread(
-                spin_repo.get_user_megaspins, request.user_id, request.chat_id
-            )
-            total_spins_required = spin_repo._get_spins_for_megaspin()
-            megaspin_info = MegaspinInfo(
-                spins_until_megaspin=megaspins_data.spins_until_megaspin,
-                total_spins_required=total_spins_required,
-                megaspin_available=megaspins_data.megaspin_available,
-            )
-
-            return ConsumeSpinResponse(
-                success=False,
-                spins_remaining=current_spins,
-                message="No spins available",
-                megaspin=megaspin_info,
-            )
-
     except Exception as e:
         logger.error(
-            f"Error consuming spin for user {request.user_id} in chat {request.chat_id}: {e}"
+            "Error executing /slots/megaspin for user %s in chat %s: %s",
+            request.user_id,
+            request.chat_id,
+            e,
+            exc_info=True,
         )
-        raise HTTPException(status_code=500, detail="Failed to consume spin")
+        event_manager.log(
+            EventType.MEGASPIN,
+            MegaspinOutcome.ERROR,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+            error_message=str(e),
+        )
+        raise HTTPException(status_code=500, detail="Failed to megaspin")
 
+    megaspins = result["megaspin"]
+    total_required = spin_repo._get_spins_for_megaspin()
+    megaspin_info = MegaspinInfo(
+        spins_until_megaspin=megaspins.spins_until_megaspin,
+        total_spins_required=total_required,
+        megaspin_available=megaspins.megaspin_available,
+    )
 
-@router.post("/megaspin", response_model=ConsumeSpinResponse)
-async def consume_megaspin(
-    request: SpinsRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Consume a megaspin for a user in a specific chat. Megaspins are guaranteed wins."""
-    try:
-        # Verify the authenticated user matches the requested user_id
-        await verify_user_match(request.user_id, validated_user)
-        await validate_user_in_chat(request.user_id, request.chat_id)
-
-        # Attempt to consume the megaspin
-        success = await asyncio.to_thread(
-            spin_repo.consume_megaspin, request.user_id, request.chat_id
+    if not result["success"]:
+        # No megaspin available — log telemetry and short-circuit.
+        event_manager.log(
+            EventType.MEGASPIN,
+            MegaspinOutcome.UNAVAILABLE,
+            user_id=request.user_id,
+            chat_id=request.chat_id,
+        )
+        return SlotSpinResponse(
+            success=False,
+            message=result["message"],
+            spins_remaining=result["spins_remaining"] or 0,
+            megaspin=megaspin_info,
+            is_win=False,
         )
 
-        # Get updated megaspin info
-        megaspins_data = await asyncio.to_thread(
-            spin_repo.get_user_megaspins, request.user_id, request.chat_id
-        )
-        total_spins_required = spin_repo._get_spins_for_megaspin()
-        megaspin_info = MegaspinInfo(
-            spins_until_megaspin=megaspins_data.spins_until_megaspin,
-            total_spins_required=total_spins_required,
-            megaspin_available=megaspins_data.megaspin_available,
-        )
-
-        if success:
-            return ConsumeSpinResponse(
-                success=True,
-                spins_remaining=None,  # Megaspin doesn't affect regular spin count
-                message="Megaspin consumed successfully",
-                megaspin=megaspin_info,
-            )
-        else:
-            return ConsumeSpinResponse(
-                success=False,
-                spins_remaining=None,
-                message="No megaspin available",
-                megaspin=megaspin_info,
-            )
-
-    except Exception as e:
-        logger.error(
-            f"Error consuming megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
-        )
-        raise HTTPException(status_code=500, detail="Failed to consume megaspin")
+    # Megaspin win event is logged in the background generation task once
+    # the card/aspect is actually produced (matches regular spin telemetry).
+    return SlotSpinResponse(
+        success=True,
+        spins_remaining=result["spins_remaining"] or 0,
+        megaspin=megaspin_info,
+        is_win=result["is_win"],
+        slot_results=[SlotSymbolInfo(**s) for s in result["slot_results"]],
+        rarity=result["rarity"],
+        win_type=result["win_type"],
+        set_id=result["set_id"],
+        set_name=result["set_name"],
+        spin_result_id=result["spin_result_id"],
+        winning_symbol=(
+            SlotSymbolSummary(**result["winning_symbol"])
+            if result["winning_symbol"]
+            else None
+        ),
+    )
 
 
 @router.get("/set-symbols", response_model=List[SlotSymbolSummary])
@@ -315,255 +403,29 @@ async def get_set_symbols(
         raise HTTPException(status_code=500, detail="Failed to load set symbols")
 
 
-@router.post("/verify", response_model=SlotVerifyResponse)
-async def verify_slot_spin(
-    request: SlotVerifyRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Verify a slot spin result using server-side randomness and logic."""
-    # Verify the authenticated user matches the requested user_id
-    await verify_user_match(request.user_id, validated_user)
-    await validate_user_in_chat(request.user_id, request.chat_id)
-    # Validate input parameters
-    if not request.symbols or len(request.symbols) == 0:
-        raise HTTPException(status_code=400, detail="Symbols list cannot be empty")
-
-    symbol_count = len(request.symbols)
-
-    if request.random_number < 0 or request.random_number >= symbol_count:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Random number must be between 0 and {symbol_count - 1}",
-        )
-
-    try:
-        random.seed()
-        entropy_source = hash(
-            f"{request.user_id}_{request.chat_id}_{request.random_number}_{time.time()}"
-        )
-        random.seed(entropy_source)
-
-        # Partition symbols by type — each win branch picks only from its own pool
-        card_symbols = [s for s in request.symbols if s.type in ("user", "character")]
-        set_symbols = [s for s in request.symbols if s.type == "set"]
-        claim_symbols = [s for s in request.symbols if s.type == "claim"]
-
-        winning_symbol: Optional[SlotSymbolInfo] = None
-        slot_results: List[SlotSymbolInfo] = []
-        rarity: Optional[str] = None
-        win_type: Optional[str] = None
-        chosen_set_id: Optional[int] = None
-        chosen_set_name: Optional[str] = None
-
-        # Single weighted draw — all win types determined simultaneously
-        card_chance = 0.1 if DEBUG_MODE else SLOT_CARD_WIN_CHANCE
-        aspect_chance = 0.4 if DEBUG_MODE else SLOT_ASPECT_WIN_CHANCE
-        claim_chance = 0.2 if DEBUG_MODE else SLOT_CLAIM_CHANCE
-        loss_chance = max(0.0, 1.0 - card_chance - aspect_chance - claim_chance)
-
-        outcome = random.choices(
-            ["card", "aspect", "claim", "loss"],
-            weights=[card_chance, aspect_chance, claim_chance, loss_chance],
-            k=1,
-        )[0]
-
-        if outcome == "card" and card_symbols:
-            winning_symbol = random.choice(card_symbols)
-            rarity = get_random_rarity(source="slots")
-            win_type = "card"
-        elif outcome == "aspect" and set_symbols:
-            rarity = get_random_rarity(source="slots")
-            try:
-                defs_by_rarity = await asyncio.to_thread(
-                    aspect_repo.get_aspect_definitions_by_rarity,
-                    source="slots",
-                )
-                eligible_ids = {d.set_id for d in defs_by_rarity.get(rarity, [])}
-                eligible = [s for s in set_symbols if s.id in eligible_ids]
-                if eligible:
-                    winning_symbol = random.choice(eligible)
-                    chosen_set_id = winning_symbol.id
-                    chosen_set_name = next(
-                        (
-                            d.set_name
-                            for d in defs_by_rarity.get(rarity, [])
-                            if d.set_id == chosen_set_id
-                        ),
-                        None,
-                    )
-                    win_type = "aspect"
-                else:
-                    rarity = None  # No eligible sets for this rarity
-            except Exception as e:
-                logger.warning("Failed to pick set for aspect win: %s", e)
-                rarity = None
-        elif outcome == "claim" and claim_symbols:
-            winning_symbol = claim_symbols[0]
-            win_type = "claim"
-
-        # Build results
-        if winning_symbol:
-            slot_results = [winning_symbol, winning_symbol, winning_symbol]
-        else:
-            slot_results = generate_slot_loss_pattern(random, request.symbols)
-
-        # Logging
-        win_type_log = (
-            f"{win_type} ({rarity})"
-            if win_type in ("card", "aspect") and rarity
-            else win_type or "loss"
-        )
-        logger.info(
-            "Slot verification for user %s in chat %s: result=%s",
-            request.user_id,
-            request.chat_id,
-            win_type_log,
-        )
-
-        # Event logging (card/aspect wins logged after generation in background task)
-        if win_type == "claim":
-            event_manager.log(
-                EventType.SPIN,
-                SpinOutcome.CLAIM_WIN,
-                user_id=request.user_id,
-                chat_id=request.chat_id,
-            )
-        elif not win_type:
-            event_manager.log(
-                EventType.SPIN,
-                SpinOutcome.LOSS,
-                user_id=request.user_id,
-                chat_id=request.chat_id,
-            )
-
-        return SlotVerifyResponse(
-            is_win=win_type is not None,
-            slot_results=slot_results,
-            rarity=rarity,
-            win_type=win_type,
-            set_id=chosen_set_id,
-            set_name=chosen_set_name.title() if chosen_set_name else None,
-        )
-
-    except Exception as e:
-        logger.error(
-            f"Error verifying slot spin for user {request.user_id} in chat {request.chat_id}: {e}"
-        )
-        # Log spin error
-        event_manager.log(
-            EventType.SPIN,
-            SpinOutcome.ERROR,
-            user_id=request.user_id,
-            chat_id=request.chat_id,
-            error_message=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to verify slot spin")
-
-
-@router.post("/megaspin/verify", response_model=SlotVerifyResponse)
-async def verify_megaspin(
-    request: SlotVerifyRequest,
-    validated_user: Dict[str, Any] = Depends(get_validated_user),
-):
-    """Verify a megaspin result - guaranteed card win."""
-    # Verify the authenticated user matches the requested user_id
-    await verify_user_match(request.user_id, validated_user)
-    await validate_user_in_chat(request.user_id, request.chat_id)
-
-    # Validate input parameters
-    if not request.symbols or len(request.symbols) == 0:
-        raise HTTPException(status_code=400, detail="Symbols list cannot be empty")
-
-    try:
-        random.seed()  # Reset to system randomness
-
-        # Filter out claim symbols - megaspins don't give claim points
-        eligible_symbols = [s for s in request.symbols if s.type != "claim"]
-
-        if not eligible_symbols:
-            raise HTTPException(status_code=400, detail="No eligible symbols for megaspin")
-
-        # Pick a random eligible symbol - guaranteed win
-        winning_symbol = random.choice(eligible_symbols)
-        rarity = get_random_rarity(source="slots")
-
-        # All three reels show the winning symbol
-        slot_results = [winning_symbol, winning_symbol, winning_symbol]
-
-        # Determine win type based on the symbol picked
-        win_type: str = "card"
-        chosen_set_id: Optional[int] = None
-        chosen_set_name: Optional[str] = None
-
-        if winning_symbol.type == "set":
-            win_type = "aspect"
-            chosen_set_id = winning_symbol.id
-            # Simple name lookup — rarity/definition validation
-            # happens downstream in the background task, same as cards
-            try:
-                set_obj = await asyncio.to_thread(set_repo.get_set, chosen_set_id)
-                if set_obj:
-                    chosen_set_name = set_obj.name if set_obj.name else None
-            except Exception as e:
-                logger.warning("Megaspin set name lookup failed: %s", e)
-
-        logger.info(
-            f"Megaspin verification for user {request.user_id} in chat {request.chat_id}: "
-            f"rarity={rarity}, win_type={win_type}, winning_symbol={winning_symbol.type}:{winning_symbol.id}"
-        )
-
-        # Megaspin success event is logged in background after generation
-
-        return SlotVerifyResponse(
-            is_win=True,
-            slot_results=slot_results,
-            rarity=rarity,
-            win_type=win_type,
-            set_id=chosen_set_id,
-            set_name=chosen_set_name.title() if chosen_set_name else None,
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(
-            f"Error verifying megaspin for user {request.user_id} in chat {request.chat_id}: {e}"
-        )
-        # Log megaspin error
-        event_manager.log(
-            EventType.MEGASPIN,
-            MegaspinOutcome.ERROR,
-            user_id=request.user_id,
-            chat_id=request.chat_id,
-            error_message=str(e),
-        )
-        raise HTTPException(status_code=500, detail="Failed to verify megaspin")
-
-
 @router.post("/victory", response_model=SlotsVictoryResponse)
 async def slots_victory(
     request: SlotsVictoryRequest,
     validated_user: Dict[str, Any] = Depends(get_validated_user),
 ):
-    """Handle a slot card or aspect victory.
+    """Redeem a server-issued slot victory token and dispatch processing.
 
-    Dispatches to the appropriate background task based on ``win_type``.
+    The client never supplies win details — the canonical outcome was
+    stored at spin time in Redis (``spin_result:{id}`` with 10-min TTL).
+    We atomically redeem the token via ``GETDEL`` (single-use) and
+    dispatch to the matching background generation task using only
+    server-trusted fields.
     """
     await verify_user_match(request.user_id, validated_user)
 
     user_data: Dict[str, Any] = validated_user["user"] or {}
     auth_user_id = user_data.get("id")
 
-    # --- shared validation ---------------------------------------------------
     username = user_data.get("username")
     if not username:
         username = await asyncio.to_thread(user_repo.get_username_for_user_id, auth_user_id)
     if not username:
         raise HTTPException(status_code=400, detail="Username not found for user")
-
-    normalized_rarity = normalize_rarity(request.rarity)
-    if not normalized_rarity:
-        raise HTTPException(status_code=400, detail="Unsupported rarity value")
 
     chat_id = str(request.chat_id).strip()
     if not chat_id:
@@ -574,45 +436,46 @@ async def slots_victory(
 
     await validate_user_in_chat(request.user_id, chat_id)
 
-    # --- dispatch by win_type ------------------------------------------------
-    if request.win_type == "card":
-        source_type = (request.source_type or "").strip().lower()
-        if source_type not in ("user", "character"):
-            raise HTTPException(status_code=400, detail="Invalid source type")
+    spin_result = await asyncio.to_thread(
+        spin_result_repo.redeem,
+        request.spin_result_id,
+        request.user_id,
+        chat_id,
+    )
+    if not spin_result:
+        raise HTTPException(
+            status_code=404,
+            detail="Spin result not found, already redeemed, or expired",
+        )
 
-        if source_type == "user":
-            source_user = await asyncio.to_thread(user_repo.get_user, request.source_id)
-            if not source_user or not source_user.display_name:
-                raise HTTPException(status_code=404, detail="Source user not found or incomplete")
-            display_name = source_user.display_name
-        else:
-            source_character = await asyncio.to_thread(
-                character_repo.get_character_by_id, request.source_id
-            )
-            if not source_character or not source_character.name:
-                raise HTTPException(status_code=404, detail="Source character not found")
-            if str(source_character.chat_id) != chat_id:
-                raise HTTPException(status_code=400, detail="Character does not belong to chat")
-            display_name = source_character.name
+    normalized_rarity = normalize_rarity(spin_result.rarity) if spin_result.rarity else None
+    if spin_result.win_type in ("card", "aspect") and not normalized_rarity:
+        # Defensive — should never happen since we persist normalized rarity.
+        raise HTTPException(status_code=500, detail="Stored rarity is invalid")
 
+    if spin_result.win_type == "card":
+        if not spin_result.display_name or not spin_result.source_type or spin_result.source_id is None:
+            raise HTTPException(status_code=500, detail="Stored card victory is incomplete")
         asyncio.create_task(
             process_slots_victory_background(
                 bot_token=TELEGRAM_TOKEN,
                 debug_mode=DEBUG_MODE,
                 username=username,
                 normalized_rarity=normalized_rarity,
-                display_name=display_name,
+                display_name=spin_result.display_name,
                 chat_id=chat_id,
-                source_type=source_type,
-                source_id=request.source_id,
+                source_type=spin_result.source_type,
+                source_id=spin_result.source_id,
                 user_id=request.user_id,
                 gemini_util_instance=gemini_util,
-                is_megaspin=request.is_megaspin,
+                is_megaspin=spin_result.is_megaspin,
             )
         )
         return SlotsVictoryResponse(status="processing", message="Card generation started")
 
-    elif request.win_type == "aspect":
+    if spin_result.win_type == "aspect":
+        if spin_result.set_id is None:
+            raise HTTPException(status_code=500, detail="Stored aspect victory is incomplete")
         asyncio.create_task(
             process_slot_aspect_victory_background(
                 bot_token=TELEGRAM_TOKEN,
@@ -622,14 +485,16 @@ async def slots_victory(
                 chat_id=chat_id,
                 user_id=request.user_id,
                 gemini_util_instance=gemini_util,
-                set_id=request.set_id,
-                is_megaspin=request.is_megaspin,
+                set_id=spin_result.set_id,
+                is_megaspin=spin_result.is_megaspin,
             )
         )
         return SlotsVictoryResponse(status="processing", message="Aspect generation started")
 
-    else:
-        raise HTTPException(status_code=400, detail="Invalid win_type; expected 'card' or 'aspect'")
+    raise HTTPException(
+        status_code=400,
+        detail=f"Stored win_type '{spin_result.win_type}' is not dispatchable",
+    )
 
 
 @router.post("/claim-win", response_model=SlotsClaimWinResponse)
