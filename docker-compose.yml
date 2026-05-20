@@ -12,6 +12,15 @@
 #   cd miniapp && npm run dev
 
 services:
+  # ── Redis (ephemeral state store) ──────────────────────────────────
+  # Used for short-lived, TTL-keyed data that doesn't belong in PostgreSQL
+  # (e.g. handshake tokens, rate-limit counters). No persistence configured —
+  # all data is treated as ephemeral and survives only as long as the process.
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    restart: unless-stopped
+
   # ── Telegram Bot API Server ────────────────────────────────────────
   # Local server for large file uploads (up to 2GB vs 50MB with api.telegram.org).
   # Both bot and api services connect to this instead of api.telegram.org.
@@ -36,8 +45,10 @@ services:
     env_file: .env
     environment:
       TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set in .env}
     depends_on:
       - tg-bot-api
+      - redis
     volumes:
       - bot_data:/app/bot/data
       - tg_api_data:/var/lib/telegram-bot-api
@@ -67,8 +78,10 @@ services:
     env_file: .env
     environment:
       TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
+      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set in .env}
     depends_on:
       - tg-bot-api
+      - redis
     ports:
       - "8000:8000"
     volumes:

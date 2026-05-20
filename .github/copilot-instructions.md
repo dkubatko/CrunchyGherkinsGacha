@@ -54,6 +54,7 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 ### Stack
 - **Backend** (`bot/`): Python with `python-telegram-bot` + FastAPI
 - **Database**: PostgreSQL with SQLAlchemy ORM + Alembic migrations (migrated from SQLite; uses psycopg v3 driver)
+- **Ephemeral store**: Redis 7 (async client via `redis.asyncio`) for TTL-keyed handshake tokens, rate-limit counters, and any short-lived state that shouldn't sit in PostgreSQL. No persistence configured (`--save ""` + AOF off) — data is treated as throwaway. Initialized via `bot/utils/redis_client.py` (`init_redis` / `get_redis` / `close_redis`); both the API server (`@app.on_event("startup"/"shutdown")`) and the bot process (PTB `post_init` / `post_shutdown`) wire the lifecycle. **`REDIS_URL` is required** — there is no default; the process refuses to start without it (native dev: `redis://localhost:6379/0`; Docker: `redis://redis:6379/0`).
 - **Frontend** (`miniapp/`): React + Vite + TypeScript, runs as Telegram Mini App
 - **Image Generation**: Google Gemini API
 - **Deployment**: Production uses a local Telegram Bot API server (`localhost:8081`); debug mode uses `api.telegram.org`

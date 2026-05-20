@@ -17,9 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 async def _post_init(application: Application) -> None:
-    """Recover pending roll notifications after bot startup."""
+    """Initialize shared resources and recover pending roll notifications."""
     from handlers.notifications import recover_pending_notifications
+    from utils.redis_client import init_redis
+
+    await init_redis()
     asyncio.create_task(recover_pending_notifications(application))
+
+
+async def _post_shutdown(application: Application) -> None:
+    """Release shared resources on bot shutdown."""
+    from utils.redis_client import close_redis
+
+    await close_redis()
 
 
 def create_application() -> Application:
@@ -41,6 +51,7 @@ def create_application() -> Application:
             .base_file_url("https://api.telegram.org/file/bot")
             .concurrent_updates(True)
             .post_init(_post_init)
+            .post_shutdown(_post_shutdown)
             .build()
         )
         # Override the bot's base_url to include /test/ for test environment
@@ -59,6 +70,7 @@ def create_application() -> Application:
             .local_mode(True)
             .concurrent_updates(True)
             .post_init(_post_init)
+            .post_shutdown(_post_shutdown)
             .build()
         )
         logger.info("🚀 Running in PRODUCTION mode with local Telegram Bot API server")

@@ -163,6 +163,7 @@ Bot Handlers ──────────►  FastAPI Endpoints  ◄───�
 - Python 3.11+
 - Node.js 18+
 - PostgreSQL 15+
+- Redis 7+ (e.g. `brew install redis && brew services start redis`)
 - A Telegram Bot token (from [@BotFather](https://t.me/BotFather))
 - A Google Gemini API key
 
@@ -211,6 +212,7 @@ See [`.env.example`](.env.example) for the full list. Key variables:
 | Variable | Description |
 |----------|-------------|
 | `DATABASE_URL` | PostgreSQL connection string |
+| `REDIS_URL` | **Required.** Redis connection string. Native dev: `redis://localhost:6379/0`. Docker: `redis://redis:6379/0`. |
 | `TELEGRAM_AUTH_TOKEN` | Production bot token |
 | `GOOGLE_API_KEY` | Gemini API key |
 | `IMAGE_GEN_MODEL` | Gemini model name |
@@ -229,6 +231,7 @@ See [`.env.example`](.env.example) for the full list. Key variables:
 | `api` | Custom (shared) | FastAPI server |
 | `frontend` | Nginx + SPA | Mini App + `/api/` proxy |
 | `tg-bot-api` | `aiogram/telegram-bot-api` | Local Telegram Bot API server |
+| `redis` | `redis:7-alpine` | Ephemeral state store (TTL-keyed handshake tokens, rate limits) — no persistence |
 | `cloud-sql-proxy` | Google Cloud SQL | Production DB proxy (profile: `prod`) |
 
 ### Database

@@ -106,6 +106,7 @@ async def startup_event():
     """Initialize services on API startup."""
     from utils.achievements import init_achievements, ensure_achievements_registered
     from utils.aspect_counts import init_aspect_count_listener
+    from utils.redis_client import init_redis
 
     init_achievements()
     ensure_achievements_registered()
@@ -113,6 +114,16 @@ async def startup_event():
 
     init_aspect_count_listener()
     logger.info("Aspect count listener initialized for API")
+
+    await init_redis()
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Release shared resources on API shutdown."""
+    from utils.redis_client import close_redis
+
+    await close_redis()
 
 
 def run_server():
