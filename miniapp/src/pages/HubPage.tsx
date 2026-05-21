@@ -142,6 +142,10 @@ export const HubPage = ({
       next.add(targetTab);
       return next;
     });
+    // Defer clearing so the target tab's useAutoOpenItem fires on this render
+    // with pendingOpenItem still set. Clearing afterwards prevents re-opening
+    // the modal when the user navigates away and back to this tab.
+    setTimeout(() => setPendingOpenItem(null), 0);
   }, [pendingOpenItem, ready, collection, aspects, allCards, allChatAspects]);
 
   return (
