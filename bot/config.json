@@ -20,11 +20,11 @@
   "COIN_DROP_PEG_ROWS": 8,
   "COIN_DROP_BUCKETS": [
     { "multiplier": 10, "probability": 0.02 },
-    { "multiplier": 2,  "probability": 0.05 },
-    { "multiplier": 1,  "probability": 0.15 },
-    { "multiplier": 0,  "probability": 0.56 },
-    { "multiplier": 1,  "probability": 0.15 },
-    { "multiplier": 2,  "probability": 0.05 },
+    { "multiplier": 2,  "probability": 0.04 },
+    { "multiplier": 1,  "probability": 0.12 },
+    { "multiplier": 0,  "probability": 0.64 },
+    { "multiplier": 1,  "probability": 0.12 },
+    { "multiplier": 2,  "probability": 0.04 },
     { "multiplier": 10, "probability": 0.02 }
   ],
   "CLAIM_UNLOCK_DELAY_LOW": 3,
