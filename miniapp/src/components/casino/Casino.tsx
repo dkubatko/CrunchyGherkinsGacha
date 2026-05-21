@@ -8,6 +8,8 @@ import { ApiService } from '@/services/api';
 import { TelegramUtils } from '@/utils/telegram';
 import slotsCover from '@/assets/casino/slots_cover.webp';
 import rtbCover from '@/assets/casino/rtb_cover.webp';
+import coindropCover from '@/assets/casino/coindrop_cover.webp';
+import CoinDrop from './coindrop';
 
 interface SlotSymbol {
   id: number;
@@ -51,7 +53,7 @@ interface CasinoProps {
   rtbUnavailableReason: string | null;
 }
 
-type GameView = 'catalog' | 'slots' | 'ridethebus';
+type GameView = 'catalog' | 'slots' | 'ridethebus' | 'coindrop';
 
 type GameInfo = {
   title: string;
@@ -59,7 +61,7 @@ type GameInfo = {
   rules: string[];
 };
 
-const GAME_INFO: Record<'slots' | 'ridethebus', GameInfo> = {
+const GAME_INFO: Record<'slots' | 'ridethebus' | 'coindrop', GameInfo> = {
   slots: {
     title: 'Slots',
     description: 'Spin the reels to win cards!',
@@ -77,6 +79,15 @@ const GAME_INFO: Record<'slots' | 'ridethebus', GameInfo> = {
       'Guess the next card\'s rarity',
       'Multiplier goes 2x → 3x → 5x → 10x',
       'Cash out anytime or ride to the end!'
+    ]
+  },
+  coindrop: {
+    title: 'Coin Drop',
+    description: 'Drop coins through pegs into multiplier buckets!',
+    rules: [
+      'Each drop costs 1 spin',
+      'Coins land in 10x, 2x, 1x, or 0x buckets',
+      'Jackpot (10x) wins are announced in chat 🎉'
     ]
   }
 };
@@ -96,7 +107,7 @@ export default function Casino({
   rtbUnavailableReason
 }: CasinoProps) {
   const [currentView, setCurrentView] = useState<GameView>('catalog');
-  const [showInfo, setShowInfo] = useState<'slots' | 'ridethebus' | null>(null);
+  const [showInfo, setShowInfo] = useState<'slots' | 'ridethebus' | 'coindrop' | null>(null);
 
   // Daily bonus state
   const [showDailyBonus, setShowDailyBonus] = useState(false);
@@ -152,12 +163,12 @@ export default function Casino({
     return cleanup;
   }, [currentView]);
 
-  const handleGameSelect = (game: 'slots' | 'ridethebus') => {
+  const handleGameSelect = (game: 'slots' | 'ridethebus' | 'coindrop') => {
     TelegramUtils.triggerHapticSelection();
     setCurrentView(game);
   };
 
-  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'ridethebus') => {
+  const handleInfoClick = (e: React.MouseEvent, game: 'slots' | 'ridethebus' | 'coindrop') => {
     e.stopPropagation(); // Prevent card click
     TelegramUtils.triggerHapticImpact('light');
     setShowInfo(game);
@@ -188,6 +199,18 @@ export default function Casino({
   if (currentView === 'ridethebus') {
     return (
       <RideTheBus
+        chatId={chatId}
+        initData={initData}
+        initialSpins={slotsSpins.count}
+        onSpinsUpdate={(count) => updateSpins(count)}
+      />
+    );
+  }
+
+  if (currentView === 'coindrop') {
+    return (
+      <CoinDrop
+        userId={userId}
         chatId={chatId}
         initData={initData}
         initialSpins={slotsSpins.count}
@@ -242,6 +265,24 @@ export default function Casino({
             <div className="casino-game-info">
               <div className="casino-game-name">Ride the Bus</div>
               <div className="casino-game-description">Guess & multiply</div>
+            </div>
+          </div>
+
+          <div
+            className="casino-game-card"
+            onClick={() => handleGameSelect('coindrop')}
+          >
+            <img src={coindropCover} alt="Coin Drop" className="casino-game-image" />
+            <button
+              className="casino-info-icon"
+              onClick={(e) => handleInfoClick(e, 'coindrop')}
+              aria-label="Coin Drop info"
+            >
+              i
+            </button>
+            <div className="casino-game-info">
+              <div className="casino-game-name">Coin Drop</div>
+              <div className="casino-game-description">Plinko-style!</div>
             </div>
           </div>
         </div>

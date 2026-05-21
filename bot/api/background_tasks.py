@@ -40,6 +40,7 @@ from settings.constants import (
     SLOTS_VICTORY_REFUND_MESSAGE,
     SLOTS_VICTORY_RESULT_MESSAGE,
     SLOTS_VIEW_IN_APP_LABEL,
+    COIN_DROP_JACKPOT_MESSAGE,
     get_spin_reward,
 )
 from utils import rolling
@@ -407,6 +408,47 @@ async def process_rtb_result_notification(
     except Exception as exc:
         logger.error(
             "Failed to send RTB result notification for user %s in chat %s: %s",
+            username,
+            chat_id,
+            exc,
+        )
+
+
+async def process_coin_drop_jackpot_notification(
+    username: str,
+    chat_id: str,
+    multiplier: int,
+):
+    """Announce a Coin Drop jackpot win in chat after responding to client."""
+    try:
+        bot = create_bot_instance()
+
+        message = COIN_DROP_JACKPOT_MESSAGE.format(
+            username=username,
+            multiplier=multiplier,
+        )
+
+        thread_id = await asyncio.to_thread(thread_repo.get_thread_id, chat_id)
+
+        send_params = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": ParseMode.HTML,
+        }
+        if thread_id is not None:
+            send_params["message_thread_id"] = thread_id
+
+        await bot.send_message(**send_params)
+
+        logger.info(
+            "Sent Coin Drop jackpot notification for user %s in chat %s (%sx)",
+            username,
+            chat_id,
+            multiplier,
+        )
+    except Exception as exc:
+        logger.error(
+            "Failed to send Coin Drop jackpot notification for user %s in chat %s: %s",
             username,
             chat_id,
             exc,

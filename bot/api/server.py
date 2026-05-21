@@ -21,6 +21,7 @@ from api.routers import (
     aspects_router,
     cards_router,
     chat_router,
+    coindrop_router,
     downloads_router,
     rtb_router,
     slots_router,
@@ -94,6 +95,7 @@ app.include_router(trade_router)
 app.include_router(user_router)
 app.include_router(slots_router)
 app.include_router(rtb_router)
+app.include_router(coindrop_router)
 app.include_router(chat_router)
 app.include_router(admin_auth_router)
 app.include_router(admin_sets_router)

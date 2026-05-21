@@ -7,6 +7,7 @@ This module exports all API routers for use in the main FastAPI application.
 from api.routers.aspects import router as aspects_router
 from api.routers.cards import router as cards_router
 from api.routers.chat import router as chat_router
+from api.routers.coindrop import router as coindrop_router
 from api.routers.downloads import router as downloads_router
 from api.routers.rtb import router as rtb_router
 from api.routers.slots import router as slots_router
@@ -21,6 +22,7 @@ __all__ = [
     "aspects_router",
     "cards_router",
     "chat_router",
+    "coindrop_router",
     "downloads_router",
     "rtb_router",
     "slots_router",

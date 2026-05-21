@@ -209,3 +209,20 @@ export interface RTBConfigResponse {
   available: boolean;
   unavailable_reason: string | null;
 }
+
+// Coin Drop (Plinko) types
+export interface CoinDropResult {
+  bucket_index: number;
+  multiplier: number;
+  payout: number;
+  spins_balance: number;
+}
+
+export interface CoinDropBucketInfo {
+  multiplier: number;
+}
+
+export interface CoinDropConfig {
+  peg_rows: number;
+  buckets: CoinDropBucketInfo[];
+}

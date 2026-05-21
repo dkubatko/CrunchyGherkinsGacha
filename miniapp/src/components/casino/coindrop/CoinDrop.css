@@ -1,0 +1,238 @@
+/* Coin Drop (Plinko) game styling. Mirrors Slots container pattern. */
+
+.coindrop-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 0.75rem 0.25rem 0.35rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+}
+
+.coindrop-container > h1 {
+  margin: 0;
+}
+
+.coindrop-board-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 340px;
+  aspect-ratio: 380 / 460;
+  background:
+    radial-gradient(ellipse at 50% 0%, rgba(255, 220, 120, 0.06), transparent 60%),
+    linear-gradient(180deg, #1c2030 0%, #0e1118 100%);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow:
+    inset 0 0 24px rgba(0, 0, 0, 0.5),
+    0 2px 10px rgba(0, 0, 0, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  margin: 0 auto;
+}
+
+.coindrop-stage {
+  position: absolute;
+  inset: 0;
+  /* Inner coordinate system is a fixed 320x460 box; children use percentage positions. */
+}
+
+.coindrop-peg {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #f3f6ff, #8d95b2 70%, #4a5170);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.6),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  transition: box-shadow 120ms ease, background 120ms ease;
+}
+
+.coindrop-peg.lit {
+  background: radial-gradient(circle at 30% 30%, #ffffff, #ffe27a 60%, #f5a200);
+  box-shadow:
+    0 0 6px rgba(255, 220, 100, 0.95),
+    0 0 14px rgba(255, 180, 40, 0.7),
+    inset 0 -1px 1px rgba(0, 0, 0, 0.3);
+}
+
+.coindrop-chute { display: none; }
+
+.coindrop-bucket-row {
+  position: absolute;
+  display: flex;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 11.3%;
+  padding: 3px 4px 4px;
+  gap: 3px;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+/* Bucket = an actual container shape: flat top, tapered/rounded bottom,
+   muted metallic finish so the multiplier text is the pop, not the bucket itself. */
+.coindrop-bucket {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 17px;
+  letter-spacing: 0.5px;
+  border-radius: 4px 4px 10px 10px;
+  background: linear-gradient(180deg, #2a2f3d 0%, #1a1e2a 60%, #11131c 100%);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+  color: #c7ccd9;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.coindrop-bucket[data-mult="0"] {
+  color: #5a6072;
+}
+
+/* 1x — break-even, subtle cool/neutral accent. */
+.coindrop-bucket[data-mult="1"] {
+  border-top-color: rgba(160, 200, 230, 0.4);
+  box-shadow:
+    inset 0 1px 0 rgba(180, 210, 240, 0.15),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  color: #aecde6;
+}
+
+/* 2x — subtle green tint accent on the same bucket form. */
+.coindrop-bucket[data-mult="2"] {
+  border-top-color: rgba(120, 220, 140, 0.45);
+  box-shadow:
+    inset 0 1px 0 rgba(140, 240, 160, 0.18),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  color: #7fe39a;
+}
+
+/* 10x — subtle gold tint accent on the same bucket form. */
+.coindrop-bucket[data-mult="10"] {
+  border-top-color: rgba(255, 200, 80, 0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 120, 0.25),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.45),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  color: #ffcf5c;
+}
+
+.coindrop-bucket.flash {
+  transform: translateY(-2px);
+  filter: brightness(1.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -6px 8px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(255, 220, 120, 0.55),
+    0 0 24px rgba(255, 170, 40, 0.3);
+}
+
+.coindrop-coin {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(circle at 30% 30%, #fff3a8, #f5c542 60%, #a17710);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.65),
+    0 0 8px rgba(255, 200, 60, 0.35),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.45),
+    inset 0 1px 2px rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  will-change: transform;
+}
+
+.coindrop-toast {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(220, 60, 60, 0.92);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  animation: coindrop-toast 1.6s ease-out forwards;
+}
+
+@keyframes coindrop-toast {
+  0%   { opacity: 0; transform: translate(-50%, -8px); }
+  20%  { opacity: 1; transform: translate(-50%, 0); }
+  80%  { opacity: 1; transform: translate(-50%, 0); }
+  100% { opacity: 0; transform: translate(-50%, -8px); }
+}
+
+.coindrop-float {
+  position: absolute;
+  color: #f5c542;
+  font-size: 14px;
+  font-weight: 800;
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  animation: coindrop-float 900ms ease-out forwards;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes coindrop-float {
+  0%   { opacity: 0; transform: translate(-50%, 0); }
+  20%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -36px); }
+}
+
+/* Drop button — mirrors .spin-button from SlotMachine.css for consistency. */
+.coindrop-container .spin-button {
+  width: 100%;
+  max-width: 300px;
+  height: 60px;
+  background: linear-gradient(145deg, #e74c3c 0%, #c0392b 100%);
+  border: none;
+  border-radius: 30px;
+  color: #fff;
+  font-size: 22px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 8px 20px rgba(231, 76, 60, 0.35);
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.coindrop-container .spin-button:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: 0 6px 18px rgba(231, 76, 60, 0.35);
+}
+
+.coindrop-container .spin-button:disabled {
+  background: linear-gradient(145deg, #7f8c8d 0%, #95a5a6 100%) !important;
+  cursor: not-allowed;
+  box-shadow: none !important;
+}
+
+.coindrop-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: var(--tg-theme-hint-color, #888);
+  font-size: 13px;
+}

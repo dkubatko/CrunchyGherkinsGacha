@@ -458,6 +458,40 @@ class RTBCashOutResponse(BaseModel):
 
 
 # =============================================================================
+# COIN DROP SCHEMAS
+# =============================================================================
+
+
+class CoinDropDropRequest(BaseModel):
+    """Request to drop a single coin in the Coin Drop game."""
+
+    user_id: int
+    chat_id: str
+
+
+class CoinDropResultResponse(BaseModel):
+    """Response after a single coin drop."""
+
+    bucket_index: int
+    multiplier: int
+    payout: int
+    spins_balance: int
+
+
+class CoinDropBucketInfo(BaseModel):
+    """Public info about a single bucket (multiplier only; probability is server-secret)."""
+
+    multiplier: int
+
+
+class CoinDropConfigResponse(BaseModel):
+    """Public config for the Coin Drop game."""
+
+    peg_rows: int
+    buckets: List[CoinDropBucketInfo]
+
+
+# =============================================================================
 # ADMIN SCHEMAS
 # =============================================================================
 

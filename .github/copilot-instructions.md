@@ -41,6 +41,7 @@ A **Telegram-based gacha card game** ("Crunchy Gherkins") where users collect AI
 - **Slots**: Spin 3 reels to win cards or aspects; symbols are user avatars, character icons, claim point icons, and **aspect set icons**. Each aspect set has a generated slot icon reflecting its theme. When an aspect is won, the server pre-picks the exact set + aspect definition and shows the set's icon on the winning reels. Megaspins (guaranteed win) occur every ~100 regular spins
 - **Minesweeper**: Bet a card, reveal tiles on a 3×3 grid without hitting mines to win an aspect
 - **Ride the Bus (RTB)**: Bet spins (10–50) and guess card rarities (higher/lower) through a progression of multipliers (2x → 3x → 5x → 10x); cash out anytime or risk it all. 9-hour cooldown after completion
+- **Coin Drop**: Plinko-style game; each tap drops a coin (costs 1 spin) through 8 rows of pegs into 6 buckets `10x | 2x | 0x | 0x | 2x | 10x` (EV 0.9). Stateless, supports concurrent drops, jackpot (10x) wins announced in chat. Server picks bucket via weighted RNG; frontend uses matter.js with offline seed-search (per-coin spawn-param scout) so the visible physics drop lands in the server-chosen bucket. Coins ignore each other (collision filter) so concurrent drops are independent
 
 ### Currency System
 - **Claim Points**: Spent to claim rolled cards/aspects; cost varies by rarity
@@ -127,6 +128,7 @@ bot/
 │       ├── aspects.py        # Aspect endpoints: list, detail, images, burn, lock
 │       ├── slots.py          # Slots game: spins, daily bonus, spin/verify/victory
 │       ├── rtb.py            # Ride the Bus: game state, start, guess, cashout
+│       ├── coindrop.py       # Coin Drop (Plinko): drop, config
 │       ├── minesweeper.py    # Minesweeper: game state, create, update
 │       ├── trade.py          # Trade endpoints: GET options (cards/aspects), POST execute
 │       ├── user.py           # User profile endpoint
@@ -168,7 +170,8 @@ bot/
 │   ├── auth_manager.py           # Admin JWT + bcrypt authentication
 │   ├── notification_manager.py   # Roll notification business logic (PTB-free)
 │   └── casino/
-│       └── rtb_manager.py        # Ride the Bus game state machine
+│       ├── rtb_manager.py        # Ride the Bus game state machine
+│       └── coin_drop_manager.py  # Coin Drop bucket roll + payout helpers
 ├── utils/
 │   ├── models.py             # All SQLAlchemy ORM models (~25 tables)
 │   ├── schemas.py            # Pydantic DTOs — all repo functions return these (Card, OwnedAspect, User, etc.)
@@ -213,7 +216,8 @@ miniapp/src/
 │   ├── casino/              # Casino catalog + game UIs
 │   │   ├── slots/           # 3-reel slot machine with rarity wheel
 │   │   ├── minesweeper/     # 3×3 grid game
-│   │   └── rtb/             # Ride the Bus card guessing game
+│   │   ├── rtb/             # Ride the Bus card guessing game
+│   │   └── coindrop/        # Coin Drop (Plinko) game with matter.js physics
 │   ├── tabs/                # ProfileTab, CollectionTab (Cards/Aspects sub-tabs with inline trade mode), CasinoTab, AllTab (Cards/Aspects sub-tabs)
 │   ├── profile/             # ProfileView, Achievement badge
 │   ├── common/              # BottomNav, ActionPanel, SubTabToggle, SwipeableSubTabs, PullToRefreshSpinner, AnimatedImage, badges, dialogs
@@ -325,7 +329,7 @@ The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
 - `/admin` path → Admin dashboard
 
 ### Event System (`bot/utils/events.py`, `bot/utils/achievements.py`)
-- **EventType** enum: ROLL, REROLL, CLAIM, TRADE, LOCK, BURN, REFRESH, RECYCLE, CREATE, SPIN, MEGASPIN, MINESWEEPER, RTB, DAILY_BONUS, EQUIP
+- **EventType** enum: ROLL, REROLL, CLAIM, TRADE, LOCK, BURN, REFRESH, RECYCLE, CREATE, SPIN, MEGASPIN, MINESWEEPER, RTB, COIN_DROP, DAILY_BONUS, EQUIP
 - Each event type has its own outcome enum (e.g., ClaimOutcome: SUCCESS, ALREADY_OWNED, TAKEN, INSUFFICIENT, ERROR)
 - **SpinOutcome**: CARD_WIN, ASPECT_WIN, CLAIM_WIN, LOSS, NO_SPINS, ERROR
 - **MegaspinOutcome**: SUCCESS (legacy), CARD_WIN, ASPECT_WIN, UNAVAILABLE, ERROR
@@ -411,6 +415,7 @@ All tunable game values including:
 - Slot win chances (card: 2.25%, aspect: 4%, claim: 3.5%)
 - Minesweeper mine count (2)
 - RTB bet range (10–50), multiplier progression, cooldown (9h)
+- Coin Drop peg rows + bucket multipliers/probabilities (`COIN_DROP_PEG_ROWS`, `COIN_DROP_BUCKETS`)
 - Daily bonus progression (10→15→20→25→30→35→40 spins over 7-day streak)
 - Megaspin threshold (100 spins)
 

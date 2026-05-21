@@ -9,6 +9,8 @@ import type {
   RTBGuessResponse,
   RTBCashOutResponse,
   RTBConfigResponse,
+  CoinDropResult,
+  CoinDropConfig,
   AspectData,
   AspectConfigResponse,
 } from '../types';
@@ -1026,6 +1028,50 @@ export class ApiService {
         }
       } catch {
         // ignore parse errors
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async dropCoin(
+    userId: number,
+    chatId: string,
+    initData: string
+  ): Promise<CoinDropResult> {
+    const response = await fetch(`${API_BASE_URL}/coindrop/drop`, {
+      method: 'POST',
+      headers: this.getHeaders(initData),
+      body: JSON.stringify({ user_id: userId, chat_id: chatId }),
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to drop coin (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) detail = payload.detail;
+      } catch {
+        // ignore
+      }
+      throw new Error(detail);
+    }
+
+    return response.json();
+  }
+
+  static async getCoinDropConfig(initData: string): Promise<CoinDropConfig> {
+    const response = await fetch(`${API_BASE_URL}/coindrop/config`, {
+      headers: this.getHeaders(initData),
+    });
+
+    if (!response.ok) {
+      let detail = `Failed to get Coin Drop config (Error ${response.status})`;
+      try {
+        const payload = await response.json();
+        if (payload?.detail) detail = payload.detail;
+      } catch {
+        // ignore
       }
       throw new Error(detail);
     }

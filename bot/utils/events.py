@@ -43,6 +43,7 @@ class EventType(str, Enum):
     MEGASPIN = "MEGASPIN"
     MINESWEEPER = "MINESWEEPER"
     RTB = "RTB"
+    COIN_DROP = "COIN_DROP"
     DAILY_BONUS = "DAILY_BONUS"
     EQUIP = "EQUIP"
 
@@ -173,6 +174,15 @@ class RtbOutcome(str, Enum):
     ERROR = "ERROR"
 
 
+class CoinDropOutcome(str, Enum):
+    """Outcomes for COIN_DROP (Plinko) events."""
+
+    WON = "WON"  # any positive multiplier
+    LOST = "LOST"  # 0x bucket
+    INSUFFICIENT = "INSUFFICIENT"  # not enough spins
+    ERROR = "ERROR"
+
+
 class DailyBonusOutcome(str, Enum):
     """Outcomes for DAILY_BONUS events."""
 
@@ -203,6 +213,7 @@ VALID_OUTCOMES: Dict[EventType, Type[Enum]] = {
     EventType.MEGASPIN: MegaspinOutcome,
     EventType.MINESWEEPER: MinesweeperOutcome,
     EventType.RTB: RtbOutcome,
+    EventType.COIN_DROP: CoinDropOutcome,
     EventType.DAILY_BONUS: DailyBonusOutcome,
     EventType.EQUIP: EquipOutcome,
 }

@@ -66,6 +66,35 @@ RTB_MULTIPLIER_PROGRESSION = {int(k): v for k, v in _rtb_mult.items()}
 RTB_COOLDOWN_SECONDS = config.get("RTB_COOLDOWN_SECONDS", 30 * 60)
 RTB_DEBUG_COOLDOWN_SECONDS = config.get("RTB_DEBUG_COOLDOWN_SECONDS", 30)
 
+# Coin Drop (Plinko) constants
+COIN_DROP_PEG_ROWS = config.get("COIN_DROP_PEG_ROWS", 8)
+_coin_drop_buckets_raw = config.get(
+    "COIN_DROP_BUCKETS",
+    [
+        {"multiplier": 10, "probability": 0.025},
+        {"multiplier": 2, "probability": 0.10},
+        {"multiplier": 0, "probability": 0.375},
+        {"multiplier": 0, "probability": 0.375},
+        {"multiplier": 2, "probability": 0.10},
+        {"multiplier": 10, "probability": 0.025},
+    ],
+)
+# Normalize to a tuple of (multiplier, probability) and validate.
+COIN_DROP_BUCKETS = [
+    (int(b["multiplier"]), float(b["probability"])) for b in _coin_drop_buckets_raw
+]
+if not COIN_DROP_BUCKETS:
+    raise ValueError("COIN_DROP_BUCKETS must not be empty")
+if any(p < 0 for _, p in COIN_DROP_BUCKETS):
+    raise ValueError(f"COIN_DROP_BUCKETS probabilities must be non-negative: {COIN_DROP_BUCKETS}")
+_coin_drop_total_p = sum(p for _, p in COIN_DROP_BUCKETS)
+if not (0.999 <= _coin_drop_total_p <= 1.001):
+    raise ValueError(
+        f"COIN_DROP_BUCKETS probabilities must sum to 1.0; got {_coin_drop_total_p}"
+    )
+if COIN_DROP_PEG_ROWS < 1:
+    raise ValueError(f"COIN_DROP_PEG_ROWS must be >= 1; got {COIN_DROP_PEG_ROWS}")
+
 # Daily bonus / megaspin constants (from config.json)
 DAILY_BONUS_RESET_HOUR_PDT = config.get("DAILY_BONUS_RESET_HOUR_PDT", 6)
 DAILY_BONUS_PROGRESSION = config.get("DAILY_BONUS_PROGRESSION", [10, 15, 20, 25, 30, 35, 40])
@@ -524,6 +553,10 @@ MINESWEEPER_LOSS_MESSAGE = "@{username} lost <b>{card_title}</b> in Minesweeper!
 MINESWEEPER_BET_MESSAGE = "@{username} bet <b>{card_title}</b> in Minesweeper!"
 
 RTB_RESULT_MESSAGE = "@{username} {action} <b>{amount} spins ({multiplier}x)</b> in Ride the Bus!"
+
+COIN_DROP_JACKPOT_MESSAGE = (
+    "⛳ @{username} landed in <b>{multiplier}x bucket</b> on Coin Drop!"
+)
 
 ACHIEVEMENT_NOTIFICATION_MESSAGE = (
     "@{username} received <b>{achievement_name}</b> achievement:\n\n<i>{achievement_desc}</i>"

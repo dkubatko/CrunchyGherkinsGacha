@@ -17,6 +17,16 @@
   "RTB_MULTIPLIER_PROGRESSION": {"1": 1, "2": 2, "3": 3, "4": 5, "5": 10},
   "RTB_COOLDOWN_SECONDS": 32400,
   "RTB_DEBUG_COOLDOWN_SECONDS": 30,
+  "COIN_DROP_PEG_ROWS": 8,
+  "COIN_DROP_BUCKETS": [
+    { "multiplier": 10, "probability": 0.02 },
+    { "multiplier": 2,  "probability": 0.05 },
+    { "multiplier": 1,  "probability": 0.15 },
+    { "multiplier": 0,  "probability": 0.56 },
+    { "multiplier": 1,  "probability": 0.15 },
+    { "multiplier": 2,  "probability": 0.05 },
+    { "multiplier": 10, "probability": 0.02 }
+  ],
   "CLAIM_UNLOCK_DELAY_LOW": 3,
   "CLAIM_UNLOCK_DELAY_HIGH": 10,
   "PRE_CLAIM_ROTATION_INTERVAL": 1.5,
