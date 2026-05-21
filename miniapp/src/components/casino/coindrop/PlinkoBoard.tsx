@@ -6,13 +6,16 @@
  *
  * Determinism strategy (server-authoritative bucket alignment):
  *   1. The server picks the target bucket (`bucket_index`) via weighted RNG.
- *   2. For each requested drop we run ONE offscreen Matter.js scout engine
- *      with the full peg / wall / divider layout, trying small variations of
- *      (spawnX, vx) until a simulated coin lands in the target bucket. While
- *      the winning attempt simulates, we record the full per-substep
- *      trajectory (x, y, angle) into a Float32Array plus a list of
- *      (peg_index, frame) collision events. The scout engine is then torn
- *      down — it never animates anything visible.
+ *   2. For each requested drop we ask a Web Worker (plinkoPath.worker.ts) to
+ *      run ONE offscreen Matter.js scout engine with the full peg / wall /
+ *      divider layout, trying small variations of (spawnX, vx) until a
+ *      simulated coin lands in the target bucket. While the winning attempt
+ *      simulates, the worker records the full per-substep trajectory
+ *      (x, y, angle) into a Float32Array plus a list of (peg_index, frame)
+ *      collision events, then transfers it back to the main thread
+ *      (zero-copy via the Transferable buffer). The scout never animates
+ *      anything visible and never blocks the main thread, so in-flight coins
+ *      keep rendering at 60fps while the next drop is being prepared.
  *   3. The on-screen coin is NOT driven by a live physics engine. It is
  *      animated via requestAnimationFrame by interpolating the recorded path
  *      based on real elapsed time, so the visible coin lands in exactly the
@@ -28,7 +31,6 @@
  * coins to appear to land in the wrong bucket near the edges. Playing back a
  * single deterministic simulation removes the failure mode entirely.
  */
-import Matter from 'matter-js';
 import {
   useEffect,
   useImperativeHandle,
@@ -37,40 +39,23 @@ import {
   forwardRef,
   useState,
 } from 'react';
+import {
+  BOARD_W,
+  BOARD_H,
+  PEG_RADIUS,
+  COIN_RADIUS,
+  SIM_DT,
+  buildPegLayout,
+  recordPath as recordPathInline,
+  type PegPos,
+  type RecordedPath,
+} from './plinkoPhysics';
+import type {
+  PlinkoRequestMsg,
+  PlinkoResponseMsg,
+} from './plinkoWorkerProtocol';
 
-const BOARD_W = 380;
-const BOARD_H = 460;
-const PEG_RADIUS = 5;
-const COIN_RADIUS = 12;
-const BUCKET_ROW_HEIGHT = 52;
-const TOP_MARGIN = 36;
-const SIDE_MARGIN = 26;
-const BOTTOM_PEG_MARGIN = BUCKET_ROW_HEIGHT + 30;
 const PEG_LIT_MS = 160;
-
-const COIN_NON_COLLIDING_GROUP = -1; // negative group = never collide with same group
-
-interface PegPos {
-  x: number;
-  y: number;
-}
-
-interface PegHit {
-  pegIndex: number;
-  /** Substep index (1-based; matches frames sampled AFTER Engine.update). */
-  frame: number;
-}
-
-/**
- * A recorded coin trajectory. `frames` packs [x, y, angle] per substep,
- * length = (landedFrame + 1) * 3 (frame 0 is the spawn snapshot).
- */
-interface RecordedPath {
-  frames: Float32Array;
-  landedFrame: number;
-  pegHits: PegHit[];
-  bucketIndex: number;
-}
 
 interface ActiveCoin {
   id: number;
@@ -94,275 +79,6 @@ interface PlinkoBoardProps {
   onLanding?: (bucketIndex: number) => void;
 }
 
-/* --------------------------- Peg layout ------------------------------ */
-
-/**
- * Pyramid (classic Plinko / Galton) layout: row r has r+1 pegs.
- * Top row = 1 peg (apex), bottom row = `rows` pegs spanning the playfield.
- * The horizontal peg spacing is constant across all rows so each peg sits
- * exactly between two pegs in the row below.
- *
- * Stalls on centered pegs are prevented by `findSpawnParams`, which always
- * spawns the coin off-axis by ≥ PEG_RADIUS + COIN_RADIUS px and rejects any
- * trajectory that stalls vertically for more than STALL_FRAMES.
- */
-function buildPegLayout(rows: number): PegPos[] {
-  const usableHeight = BOARD_H - TOP_MARGIN - BOTTOM_PEG_MARGIN;
-  const rowSpacing = usableHeight / Math.max(1, rows - 1);
-  const usableWidth = BOARD_W - SIDE_MARGIN * 2;
-  // Bottom row has `rows` pegs → `rows - 1` gaps span the usable width.
-  const colSpacing = usableWidth / Math.max(1, rows - 1);
-  const centerX = BOARD_W / 2;
-  const pegs: PegPos[] = [];
-  for (let r = 0; r < rows; r++) {
-    const cols = r + 1;
-    const rowWidth = (cols - 1) * colSpacing;
-    const xStart = centerX - rowWidth / 2;
-    const y = TOP_MARGIN + r * rowSpacing;
-    for (let c = 0; c < cols; c++) {
-      pegs.push({ x: xStart + c * colSpacing, y });
-    }
-  }
-  return pegs;
-}
-
-/* ------------------------ Engine construction ------------------------ */
-
-function buildEngine(pegs: PegPos[], bucketCount: number): Matter.Engine {
-  const engine = Matter.Engine.create({
-    gravity: { x: 0, y: 1, scale: 0.0014 },
-  });
-
-  // Side walls + floor (top is open). Low restitution dampens edge bouncing.
-  const wallOpts = { isStatic: true, restitution: 0.05, friction: 0.4 };
-  const walls = [
-    Matter.Bodies.rectangle(-10, BOARD_H / 2, 20, BOARD_H, wallOpts),
-    Matter.Bodies.rectangle(BOARD_W + 10, BOARD_H / 2, 20, BOARD_H, wallOpts),
-    Matter.Bodies.rectangle(BOARD_W / 2, BOARD_H + 10, BOARD_W, 20, wallOpts),
-  ];
-  Matter.Composite.add(engine.world, walls);
-
-  // Pegs. Higher restitution + a touch of friction keep coins bouncing off
-  // cleanly instead of resting on top of a peg.
-  const pegBodies = pegs.map((p, i) =>
-    Matter.Bodies.circle(p.x, p.y, PEG_RADIUS, {
-      isStatic: true,
-      restitution: 0.65,
-      friction: 0.05,
-      label: `peg:${i}`,
-    })
-  );
-  Matter.Composite.add(engine.world, pegBodies);
-
-  // Bucket dividers — thin vertical walls between buckets so a coin lands
-  // cleanly in one bucket instead of skipping along the row of separators.
-  const dividerThickness = 2;
-  const dividerTop = BOARD_H - BUCKET_ROW_HEIGHT;
-  const dividerHeight = BUCKET_ROW_HEIGHT;
-  for (let i = 1; i < bucketCount; i++) {
-    const x = (BOARD_W / bucketCount) * i;
-    const divider = Matter.Bodies.rectangle(
-      x,
-      dividerTop + dividerHeight / 2,
-      dividerThickness,
-      dividerHeight,
-      { isStatic: true, restitution: 0.05, friction: 0.5, label: 'divider' }
-    );
-    Matter.Composite.add(engine.world, divider);
-  }
-
-  return engine;
-}
-
-/** Spawn coin above the visible top edge so it falls into view. */
-const SPAWN_Y = -COIN_RADIUS * 2;
-
-function makeCoinBody(x: number, vx: number): Matter.Body {
-  return Matter.Bodies.circle(x, SPAWN_Y, COIN_RADIUS, {
-    restitution: 0.45,
-    friction: 0.01,
-    frictionAir: 0.012,
-    density: 0.004,
-    collisionFilter: { group: COIN_NON_COLLIDING_GROUP },
-    label: 'coin',
-    velocity: { x: vx, y: 0 },
-  });
-}
-
-/** Map landing x → bucket index (0..bucketCount-1). */
-function landingBucket(x: number, bucketCount: number): number {
-  const idx = Math.floor((x / BOARD_W) * bucketCount);
-  return Math.max(0, Math.min(bucketCount - 1, idx));
-}
-
-/* --------------- Offline path recording (deterministic) -------------- */
-
-const MAX_SEARCH_ATTEMPTS = 200;
-const SIM_STEPS = 600;
-const SIM_DT = 1000 / 60;
-// Reject any scout attempt where the coin's max-Y doesn't advance by at least
-// MIN_PROGRESS px within STALL_FRAMES consecutive frames. Filters out hangy
-// paths so the visible coin always drops fluidly.
-const STALL_FRAMES = 18; // 0.3s at 60fps — reject only long hangs
-const MIN_PROGRESS = 1.5; // virtual px
-// Minimum horizontal offset from center axis so the coin never spawns directly
-// above a centered peg (avoids vertical-stack stalls on any row with a center peg).
-// A small minimum offset (~2 px) plus jitter keeps it just off dead-center so
-// any hang is short and asymmetric. The scout's stall rejection filters out
-// trajectories where the hang is too long.
-const SPAWN_MIN_OFFSET = 2; // virtual px
-const SPAWN_MAX_OFFSET = 8; // virtual px
-
-/**
- * Build a fresh scout engine, search for (spawnX, vx) that lands a coin in
- * `targetBucket`, and return the full recorded trajectory of the winning
- * attempt — which the on-screen animation then replays.
- *
- * The scout engine is reused across attempts within this call (cheap and
- * matches the engine's intended usage); residual state across attempts does
- * NOT cause bucket mismatch anymore because there is no separate "live"
- * engine to diverge from — the recorded path IS the visible animation.
- */
-function recordPath(
-  pegs: PegPos[],
-  bucketCount: number,
-  targetBucket: number
-): RecordedPath {
-  const scout = buildEngine(pegs, bucketCount);
-
-  let currentFrame = 0;
-  let recordingPegHits: PegHit[] = [];
-  const onCollide = (event: Matter.IEventCollision<Matter.Engine>) => {
-    for (const pair of event.pairs) {
-      const pegBody =
-        pair.bodyA.label?.startsWith('peg:') ? pair.bodyA :
-        pair.bodyB.label?.startsWith('peg:') ? pair.bodyB : null;
-      if (!pegBody) continue;
-      const idx = Number(pegBody.label.slice(4));
-      recordingPegHits.push({ pegIndex: idx, frame: currentFrame });
-    }
-  };
-  Matter.Events.on(scout, 'collisionStart', onCollide);
-
-  const cleanup = () => {
-    Matter.Events.off(scout, 'collisionStart', onCollide);
-    Matter.World.clear(scout.world, false);
-    Matter.Engine.clear(scout);
-  };
-
-  // Reused across attempts to avoid allocating a fresh 7KB typed array per
-  // try (worst-case ~200 tries/drop). We only slice into a right-sized
-  // buffer when we actually return a winning path.
-  const scratchBuffer = new Float32Array((SIM_STEPS + 1) * 3);
-
-  /**
-   * Run one attempt. Returns the recorded path iff the coin settled in the
-   * target bucket with a non-degenerate (non-exploded, non-stalled) trajectory;
-   * returns null otherwise. Caller just retries until non-null or exhaustion.
-   */
-  const tryAttempt = (spawnX: number, vx: number): RecordedPath | null => {
-    recordingPegHits = [];
-    currentFrame = 0;
-
-    const coin = makeCoinBody(spawnX, vx);
-    Matter.Composite.add(scout.world, coin);
-
-    let bufIdx = 0;
-    scratchBuffer[bufIdx++] = coin.position.x;
-    scratchBuffer[bufIdx++] = coin.position.y;
-    scratchBuffer[bufIdx++] = coin.angle;
-
-    let landedFrame = -1;
-    let maxY = coin.position.y;
-    let lastProgressStep = 0;
-
-    for (let step = 0; step < SIM_STEPS; step++) {
-      currentFrame = step + 1;
-      Matter.Engine.update(scout, SIM_DT);
-      const px = coin.position.x;
-      const py = coin.position.y;
-      const pa = coin.angle;
-      scratchBuffer[bufIdx++] = px;
-      scratchBuffer[bufIdx++] = py;
-      scratchBuffer[bufIdx++] = pa;
-
-      // Matter can produce NaN / Infinity when an over-constrained collision
-      // resolves badly (e.g., a coin pinched between the leftmost peg and the
-      // side wall — the gap is narrower than a coin's diameter, so the solver
-      // can explode). Reject those — a NaN frame in playback would render as
-      // a half-coin stuck in the upper-left corner (CSS `left: NaN%` →
-      // `auto` → 0,0). Also reject anything that escapes the playfield.
-      if (
-        !Number.isFinite(px) || !Number.isFinite(py) || !Number.isFinite(pa) ||
-        px < -50 || px > BOARD_W + 50 ||
-        py < -200 || py > BOARD_H + 200
-      ) {
-        Matter.Composite.remove(scout.world, coin);
-        return null;
-      }
-
-      if (py > maxY + MIN_PROGRESS) {
-        maxY = py;
-        lastProgressStep = step;
-      } else if (step - lastProgressStep > STALL_FRAMES) {
-        Matter.Composite.remove(scout.world, coin);
-        return null;
-      }
-      if (py > BOARD_H - BUCKET_ROW_HEIGHT) {
-        landedFrame = step + 1;
-        break;
-      }
-    }
-
-    const finalX = coin.position.x;
-    Matter.Composite.remove(scout.world, coin);
-
-    if (landedFrame < 0) return null; // ran out of sim steps without settling
-    if (landingBucket(finalX, bucketCount) !== targetBucket) return null;
-
-    return {
-      frames: scratchBuffer.slice(0, bufIdx),
-      landedFrame,
-      pegHits: recordingPegHits.slice(),
-      bucketIndex: targetBucket,
-    };
-  };
-
-  for (let attempt = 0; attempt < MAX_SEARCH_ATTEMPTS; attempt++) {
-    const offsetSign = Math.random() < 0.5 ? -1 : 1;
-    const spawnX =
-      BOARD_W / 2 +
-      offsetSign * (SPAWN_MIN_OFFSET + Math.random() * (SPAWN_MAX_OFFSET - SPAWN_MIN_OFFSET));
-    const vxSign = Math.random() < 0.5 ? -1 : 1;
-    const vx = vxSign * (0.4 + Math.random() * 1.6); // |vx| ∈ [0.4, 2.0]
-
-    const path = tryAttempt(spawnX, vx);
-    if (path) {
-      cleanup();
-      return path;
-    }
-  }
-
-  // Exhaustion fallback: biased spawn aimed at target side. With dividers in
-  // place this usually lands in the target bucket too.
-  const bucketCenter = (BOARD_W / bucketCount) * (targetBucket + 0.5);
-  const direction = bucketCenter < BOARD_W / 2 ? -1 : 1;
-  const biased = tryAttempt(BOARD_W / 2 + direction * SPAWN_MIN_OFFSET, direction * 1.2);
-  cleanup();
-  if (biased) return biased;
-
-  // Synthetic last-resort path so playback never crashes and ALWAYS lands in
-  // the target bucket. Should be effectively unreachable in practice (search
-  // + biased attempt both missing is astronomically unlikely with dividers).
-  const cx = (BOARD_W / bucketCount) * (targetBucket + 0.5);
-  const cy = BOARD_H - BUCKET_ROW_HEIGHT;
-  return {
-    frames: new Float32Array([cx, cy - 30, 0, cx, cy + 1, 0]),
-    landedFrame: 1,
-    pegHits: [],
-    bucketIndex: targetBucket,
-  };
-}
 
 /* ---------------------------- Component ------------------------------ */
 
@@ -374,15 +90,22 @@ const PlinkoBoard = forwardRef<PlinkoBoardHandle, PlinkoBoardProps>(function Pli
   const activeCoinsRef = useRef<Map<number, ActiveCoin>>(new Map());
   const nextCoinIdRef = useRef(1);
   const rafRef = useRef<number | null>(null);
-  /** Last rAF tick timestamp; used to detect long main-thread blocks (e.g.
-   *  the synchronous scout simulation inside dropCoin) and avoid jumping
-   *  in-flight coins forward by the block's full duration. */
+  /** Last rAF tick timestamp; used to detect long main-thread blocks
+   *  (background tab, OS throttling, GC pause) and avoid jumping in-flight
+   *  coins forward by the block's full duration. */
   const lastTickMsRef = useRef<number | null>(null);
   /** pegIndex → timestamp (ms) at which the lit state expires. */
   const litPegsRef = useRef<Map<number, number>>(new Map());
   /** DOM refs for direct (non-React) style writes from the rAF tick. */
   const coinElsRef = useRef<Map<number, HTMLDivElement>>(new Map());
   const pegElsRef = useRef<(HTMLDivElement | null)[]>([]);
+  /** Web Worker that runs the Matter.js scout off the main thread. */
+  const workerRef = useRef<Worker | null>(null);
+  /** Pending compute requests: correlator id → resolver. */
+  const pendingPathsRef = useRef<
+    Map<number, { resolve: (p: RecordedPath) => void; reject: (e: unknown) => void }>
+  >(new Map());
+  const nextRequestIdRef = useRef(1);
 
   // React state holds ONLY identifiers (rarely changing): coin add/remove and
   // bucket flashes. Positions, rotations, and peg lit state are written
@@ -418,15 +141,69 @@ const PlinkoBoard = forwardRef<PlinkoBoardHandle, PlinkoBoardProps>(function Pli
     el.style.transform = `translate(-50%, -50%) rotate(${angle}rad)`;
   };
 
-  // Animation loop only. Peg layout is computed via useMemo above; pegsRef is
-  // synced inline so the imperative dropCoin handle always sees the latest.
+  /**
+   * Worker lifecycle. The worker runs Matter.js scout simulations (recordPath)
+   * off the main thread so a drop click never blocks animation of in-flight
+   * coins. On worker failure, we reject all pending requests; dropCoin's
+   * caller falls back to an inline (main-thread) recordPath for that one
+   * request, and a fresh worker is started for subsequent drops.
+   */
+  useEffect(() => {
+    let cancelled = false;
+
+    const spawnWorker = () => {
+      const w = new Worker(
+        new URL('./plinkoPath.worker.ts', import.meta.url),
+        { type: 'module' }
+      );
+      w.onmessage = (e: MessageEvent<PlinkoResponseMsg>) => {
+        const msg = e.data;
+        if (!msg || msg.type !== 'result') return;
+        const pending = pendingPathsRef.current.get(msg.id);
+        if (!pending) return;
+        pendingPathsRef.current.delete(msg.id);
+        pending.resolve({
+          frames: msg.frames,
+          landedFrame: msg.landedFrame,
+          pegHits: msg.pegHits,
+          bucketIndex: msg.bucketIndex,
+        });
+      };
+      w.onerror = (err) => {
+        // Reject all pending; caller falls back to inline compute.
+        // eslint-disable-next-line no-console
+        console.error('[PlinkoBoard] worker error, falling back to main-thread compute', err);
+        const pending = pendingPathsRef.current;
+        pendingPathsRef.current = new Map();
+        pending.forEach((p) => p.reject(err));
+        try { w.terminate(); } catch { /* noop */ }
+        if (!cancelled) {
+          workerRef.current = spawnWorker();
+        }
+      };
+      return w;
+    };
+
+    workerRef.current = spawnWorker();
+
+    return () => {
+      cancelled = true;
+      try { workerRef.current?.terminate(); } catch { /* noop */ }
+      workerRef.current = null;
+      const pending = pendingPathsRef.current;
+      pendingPathsRef.current = new Map();
+      pending.forEach((p) => p.reject(new Error('PlinkoBoard unmounted')));
+    };
+  }, []);
+
+  // Animation loop only. Peg layout is computed via useMemo above.
   useEffect(() => {
     // Cap how much wall-clock time any single rAF tick can advance playback
-    // by. dropCoin's recordPath runs synchronously and can block for tens of
-    // ms; without this cap the next tick would jump every in-flight coin
-    // forward by the full block duration, potentially snapping a near-landing
-    // coin straight into its bucket. Setting the cap to ~2 frames keeps motion
-    // smooth across short blocks and tab-resume events.
+    // by. With the worker, drops no longer block the main thread, but other
+    // sources (tab switch, OS throttling, GC, Telegram WebView background
+    // throttling) can still stall rAF for tens of ms; without this cap the
+    // next tick would jump every in-flight coin forward by the full stall
+    // duration. Capping at ~2 frames keeps motion smooth across short blocks.
     const MAX_TICK_DELTA_MS = 1000 / 30;
 
     const tick = (nowMs: number) => {
@@ -538,23 +315,65 @@ const PlinkoBoard = forwardRef<PlinkoBoardHandle, PlinkoBoardProps>(function Pli
     };
   }, [pegRows, bucketCount, onLanding]);
 
+  /**
+   * Send a scout-path request to the worker; resolves with the RecordedPath
+   * once the worker responds. Rejects if the worker crashes or unmounts
+   * before responding — callers should fall back to inline compute.
+   */
+  const requestPath = (
+    pegList: PegPos[],
+    bucketCount: number,
+    targetBucket: number
+  ): Promise<RecordedPath> => {
+    return new Promise<RecordedPath>((resolve, reject) => {
+      const w = workerRef.current;
+      if (!w) {
+        reject(new Error('worker unavailable'));
+        return;
+      }
+      const id = nextRequestIdRef.current++;
+      pendingPathsRef.current.set(id, { resolve, reject });
+      const req: PlinkoRequestMsg = {
+        type: 'compute',
+        id,
+        pegs: pegList,
+        bucketCount,
+        targetBucket,
+      };
+      try {
+        w.postMessage(req);
+      } catch (err) {
+        pendingPathsRef.current.delete(id);
+        reject(err);
+      }
+    });
+  };
+
   useImperativeHandle(
     ref,
     () => ({
-      dropCoin: (bucketIndex: number) => {
+      dropCoin: async (bucketIndex: number) => {
+        if (!pegs.length) return;
+        const safeBucket = Math.max(0, Math.min(bucketCount - 1, Math.floor(bucketIndex)));
+
+        // Request the scout path from the worker. On worker failure or
+        // unmount, fall back to inline (main-thread) recordPath for this
+        // single request so the user still gets their coin.
+        let path: RecordedPath;
+        try {
+          path = await requestPath(pegs, bucketCount, safeBucket);
+        } catch {
+          path = recordPathInline(pegs, bucketCount, safeBucket);
+        }
+
+        // Component may have unmounted while we awaited the worker.
+        if (workerRef.current === null && pendingPathsRef.current.size === 0) {
+          // best-effort: still mount the coin only if the rAF loop is alive
+          // (rafRef is cleared on unmount); otherwise just bail silently.
+          if (rafRef.current == null) return;
+        }
+
         return new Promise<void>((resolve) => {
-          if (!pegs.length) {
-            resolve();
-            return;
-          }
-          // Guard against out-of-range bucket indices (e.g., if the server
-          // ever returns an unexpected value); recordPath would otherwise
-          // loop without ever matching, then fall through to synthetic.
-          const safeBucket = Math.max(0, Math.min(bucketCount - 1, Math.floor(bucketIndex)));
-          // Single scout simulation (with full recording) per drop. The scout
-          // engine is built fresh and torn down inside recordPath() so no
-          // state leaks between drops.
-          const path = recordPath(pegs, bucketCount, safeBucket);
           const id = nextCoinIdRef.current++;
           activeCoinsRef.current.set(id, {
             id,
