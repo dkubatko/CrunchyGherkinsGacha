@@ -13,7 +13,7 @@ import time
 import urllib.parse
 from typing import Dict, Any, Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Cookie, Header, HTTPException
 
 from api.config import TELEGRAM_TOKEN
 from utils.models import ChatModel
@@ -201,25 +201,28 @@ async def validate_user_in_chat(user_id: int, chat_id: str) -> None:
 
 async def get_admin_user(
     authorization: Optional[str] = Header(None, alias="Authorization"),
+    admin_session: Optional[str] = Cookie(None),
 ) -> Dict[str, Any]:
-    """FastAPI dependency that validates an admin JWT from ``Authorization: Bearer <token>``.
+    """FastAPI dependency that validates an admin session.
+
+    Looks up the JWT from the ``admin_session`` HttpOnly cookie first, then
+    falls back to ``Authorization: Bearer <token>`` for backward compatibility.
 
     Returns the decoded JWT payload (contains ``sub``, ``username``, ``iat``, ``exp``).
-    Raises 401 if the header is missing, malformed, or the token is invalid/expired.
+    Raises 401 if no valid session is found.
     """
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Authorization header required")
+    token: Optional[str] = None
 
-    # Accept "Bearer <token>" format
-    if authorization.startswith("Bearer "):
+    if admin_session:
+        token = admin_session
+    elif authorization and authorization.startswith("Bearer "):
         token = authorization[7:]
-    else:
-        raise HTTPException(
-            status_code=401, detail="Invalid authorization format — expected 'Bearer <token>'"
-        )
+
+    if not token:
+        raise HTTPException(status_code=401, detail="Authentication required")
 
     payload = auth_manager.decode_jwt(token)
     if payload is None:
-        raise HTTPException(status_code=401, detail="Invalid or expired admin token")
+        raise HTTPException(status_code=401, detail="Invalid or expired admin session")
 
     return payload

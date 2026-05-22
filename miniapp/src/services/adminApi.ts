@@ -21,29 +21,14 @@ interface BulkAspectDefItem {
   rarity: string;
 }
 
+/** Event name fired when the API rejects a request with 401. */
+export const ADMIN_SESSION_EXPIRED_EVENT = 'admin:session-expired';
+
 export class AdminApiService {
-  private static getToken(): string | null {
-    return localStorage.getItem('admin_token');
-  }
-
-  private static getHeaders(): HeadersInit {
-    const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    const token = this.getToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-    return headers;
-  }
-
-  private static handleUnauthorized(): void {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_username');
-    window.location.href = '/admin';
-  }
-
   private static async handleResponse<T>(response: Response): Promise<T> {
-    if (response.status === 401 && this.getToken()) {
-      this.handleUnauthorized();
+    if (response.status === 401) {
+      // Notify the app shell so it can route to login without a full reload.
+      window.dispatchEvent(new CustomEvent(ADMIN_SESSION_EXPIRED_EVENT));
       throw new Error('Session expired. Please log in again.');
     }
     if (!response.ok) {
@@ -56,188 +41,152 @@ export class AdminApiService {
       }
       throw new Error(detail);
     }
-    // Some endpoints return 204 or empty bodies; tolerate.
     if (response.status === 204) return undefined as T;
     const text = await response.text();
     if (!text) return undefined as T;
     return JSON.parse(text) as T;
   }
 
+  private static request<T>(path: string, init?: RequestInit): Promise<T> {
+    return fetch(`${API_BASE_URL}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(init?.headers || {}),
+      },
+    }).then((r) => this.handleResponse<T>(r));
+  }
+
   // ── Auth ──────────────────────────────────────────────────────────────
 
-  static async login(username: string, password: string): Promise<{ message: string }> {
-    const res = await fetch(`${API_BASE_URL}/admin/auth/login`, {
+  static login(username: string, password: string): Promise<{ status: string }> {
+    return this.request('/admin/auth/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
     });
-    return this.handleResponse(res);
   }
 
-  static async verifyOtp(username: string, code: string): Promise<{ token: string }> {
-    const res = await fetch(`${API_BASE_URL}/admin/auth/verify-otp`, {
+  static verifyOtp(
+    username: string,
+    code: string,
+    remember = false,
+  ): Promise<{ ok: boolean; expires_at: string }> {
+    return this.request('/admin/auth/verify-otp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, code }),
+      body: JSON.stringify({ username, code, remember }),
     });
-    return this.handleResponse(res);
   }
 
-  static async getMe(): Promise<AdminMe> {
-    const res = await fetch(`${API_BASE_URL}/admin/auth/me`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static logout(): Promise<{ ok: boolean }> {
+    return this.request('/admin/auth/logout', { method: 'POST' });
+  }
+
+  static getMe(): Promise<AdminMe> {
+    return this.request('/admin/auth/me');
   }
 
   // ── Seasons & Sets ────────────────────────────────────────────────────
 
-  static async getSeasons(): Promise<number[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getSeasons(): Promise<number[]> {
+    return this.request('/admin/sets/seasons');
   }
 
-  static async getSetsBySeason(seasonId: number): Promise<AdminSet[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getSetsBySeason(seasonId: number): Promise<AdminSet[]> {
+    return this.request(`/admin/sets/seasons/${seasonId}`);
   }
 
-  static async createSet(seasonId: number, data: AdminSetCreate): Promise<AdminSet> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}`, {
+  static createSet(seasonId: number, data: AdminSetCreate): Promise<AdminSet> {
+    return this.request(`/admin/sets/seasons/${seasonId}`, {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async updateSet(seasonId: number, setId: number, data: AdminSetUpdate): Promise<AdminSet> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}/${setId}`, {
+  static updateSet(seasonId: number, setId: number, data: AdminSetUpdate): Promise<AdminSet> {
+    return this.request(`/admin/sets/seasons/${seasonId}/${setId}`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async regenerateSetIcon(seasonId: number, setId: number): Promise<AdminSet> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}/${setId}/regenerate-icon`, {
+  static regenerateSetIcon(seasonId: number, setId: number): Promise<AdminSet> {
+    return this.request(`/admin/sets/seasons/${seasonId}/${setId}/regenerate-icon`, {
       method: 'POST',
-      headers: this.getHeaders(),
     });
-    return this.handleResponse(res);
   }
 
-  static async deleteSet(seasonId: number, setId: number): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/admin/sets/seasons/${seasonId}/${setId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    await this.handleResponse<void>(res);
+  static deleteSet(seasonId: number, setId: number): Promise<void> {
+    return this.request(`/admin/sets/seasons/${seasonId}/${setId}`, { method: 'DELETE' });
   }
 
   // ── Aspect Definitions ────────────────────────────────────────────────
 
-  static async getAspectDefs(setId: number, seasonId: number): Promise<AdminAspectDef[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects/sets/${setId}/season/${seasonId}`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getAspectDefs(setId: number, seasonId: number): Promise<AdminAspectDef[]> {
+    return this.request(`/admin/aspects/sets/${setId}/season/${seasonId}`);
   }
 
-  static async createAspectDef(data: AdminAspectDefCreate): Promise<AdminAspectDef> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects`, {
+  static createAspectDef(data: AdminAspectDefCreate): Promise<AdminAspectDef> {
+    return this.request('/admin/aspects', {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async updateAspectDef(defId: number, data: AdminAspectDefUpdate): Promise<AdminAspectDef> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}`, {
+  static updateAspectDef(defId: number, data: AdminAspectDefUpdate): Promise<AdminAspectDef> {
+    return this.request(`/admin/aspects/${defId}`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async deleteAspectDef(defId: number): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    await this.handleResponse<void>(res);
+  static deleteAspectDef(defId: number): Promise<void> {
+    return this.request(`/admin/aspects/${defId}`, { method: 'DELETE' });
   }
 
   /** Bulk-upsert aspect defs by (name + set_id + season_id). Returns upserted count. */
-  static async bulkUpsertAspectDefs(
+  static bulkUpsertAspectDefs(
     seasonId: number,
     items: BulkAspectDefItem[],
   ): Promise<{ upserted: number }> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects/bulk`, {
+    return this.request('/admin/aspects/bulk', {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify({
         season_id: seasonId,
-        // Endpoint accepts only set_id, name, rarity per item; strip extras.
         definitions: items.map((i) => ({ set_id: i.set_id, name: i.name, rarity: i.rarity })),
       }),
     });
-    return this.handleResponse(res);
   }
 
-  static async getAspectDefStats(defId: number): Promise<{ owned_count: number }> {
-    const res = await fetch(`${API_BASE_URL}/admin/aspects/${defId}/stats`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getAspectDefStats(defId: number): Promise<{ owned_count: number }> {
+    return this.request(`/admin/aspects/${defId}/stats`);
   }
 
   // ── Aspect Types ──────────────────────────────────────────────────────
 
-  static async getTypes(): Promise<AdminAspectType[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/types`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getTypes(): Promise<AdminAspectType[]> {
+    return this.request('/admin/types');
   }
 
-  static async getAspectsByType(typeId: number): Promise<AdminAspectByType[]> {
-    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}/aspects`, {
-      headers: this.getHeaders(),
-    });
-    return this.handleResponse(res);
+  static getAspectsByType(typeId: number): Promise<AdminAspectByType[]> {
+    return this.request(`/admin/types/${typeId}/aspects`);
   }
 
-  static async createType(data: AdminAspectTypeCreate): Promise<AdminAspectType> {
-    const res = await fetch(`${API_BASE_URL}/admin/types`, {
+  static createType(data: AdminAspectTypeCreate): Promise<AdminAspectType> {
+    return this.request('/admin/types', {
       method: 'POST',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async updateType(typeId: number, data: AdminAspectTypeUpdate): Promise<AdminAspectType> {
-    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}`, {
+  static updateType(typeId: number, data: AdminAspectTypeUpdate): Promise<AdminAspectType> {
+    return this.request(`/admin/types/${typeId}`, {
       method: 'PUT',
-      headers: this.getHeaders(),
       body: JSON.stringify(data),
     });
-    return this.handleResponse(res);
   }
 
-  static async deleteType(typeId: number): Promise<void> {
-    const res = await fetch(`${API_BASE_URL}/admin/types/${typeId}`, {
-      method: 'DELETE',
-      headers: this.getHeaders(),
-    });
-    await this.handleResponse<void>(res);
+  static deleteType(typeId: number): Promise<void> {
+    return this.request(`/admin/types/${typeId}`, { method: 'DELETE' });
   }
 }

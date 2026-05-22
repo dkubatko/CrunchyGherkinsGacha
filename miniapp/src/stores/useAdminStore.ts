@@ -1,36 +1,49 @@
 import { create } from 'zustand';
+import { AdminApiService } from '../services/adminApi';
 
 interface AdminAuthState {
-  token: string | null;
   username: string | null;
   isAuthenticated: boolean;
-  setAuth: (token: string, username: string) => void;
-  logout: () => void;
-  initialize: () => void;
+  setAuth: (username: string) => void;
+  logout: () => Promise<void>;
+  clearAuth: () => void;
 }
 
 export const useAdminStore = create<AdminAuthState>((set) => ({
-  token: null,
   username: null,
   isAuthenticated: false,
 
-  setAuth: (token, username) => {
-    localStorage.setItem('admin_token', token);
-    localStorage.setItem('admin_username', username);
-    set({ token, username, isAuthenticated: true });
-  },
-
-  logout: () => {
-    localStorage.removeItem('admin_token');
-    localStorage.removeItem('admin_username');
-    set({ token: null, username: null, isAuthenticated: false });
-  },
-
-  initialize: () => {
-    const token = localStorage.getItem('admin_token');
-    const username = localStorage.getItem('admin_username');
-    if (token && username) {
-      set({ token, username, isAuthenticated: true });
+  setAuth: (username) => {
+    // Username is non-sensitive and survives reloads via /me; we cache it in
+    // localStorage purely so the header shows the right name before /me returns.
+    try {
+      localStorage.setItem('admin_username', username);
+    } catch {
+      /* ignore storage errors (private mode, etc.) */
     }
+    set({ username, isAuthenticated: true });
+  },
+
+  logout: async () => {
+    try {
+      await AdminApiService.logout();
+    } catch {
+      // Best-effort: even if the server call fails, clear local state.
+    }
+    try {
+      localStorage.removeItem('admin_username');
+    } catch {
+      /* ignore */
+    }
+    set({ username: null, isAuthenticated: false });
+  },
+
+  clearAuth: () => {
+    try {
+      localStorage.removeItem('admin_username');
+    } catch {
+      /* ignore */
+    }
+    set({ username: null, isAuthenticated: false });
   },
 }));

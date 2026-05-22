@@ -2,23 +2,31 @@
 
 Implements a two-step login flow:
 1. ``POST /admin/auth/login`` — validate username + password, send OTP via Telegram.
-2. ``POST /admin/auth/verify-otp`` — validate OTP, return JWT session token.
-3. ``GET  /admin/auth/me`` — return current admin info (requires JWT).
+2. ``POST /admin/auth/verify-otp`` — validate OTP, set HttpOnly session cookie.
+3. ``POST /admin/auth/logout`` — clear the session cookie.
+4. ``GET  /admin/auth/me`` — return current admin info (requires session).
 """
 
 import asyncio
+import datetime
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from api.config import create_bot_instance
+from api.cookies import (
+    SESSION_HOURS_DEFAULT,
+    SESSION_HOURS_REMEMBER,
+    clear_session_cookie,
+    set_session_cookie,
+)
 from api.dependencies import get_admin_user
 from api.schemas import (
     AdminLoginRequest,
     AdminMeResponse,
     AdminOTPRequest,
-    AdminTokenResponse,
+    AdminVerifyResponse,
 )
 from repos import admin_auth_repo
 from managers import auth_manager
@@ -60,9 +68,9 @@ async def admin_login(body: AdminLoginRequest):
     return {"status": "otp_sent"}
 
 
-@router.post("/verify-otp", response_model=AdminTokenResponse)
-async def admin_verify_otp(body: AdminOTPRequest):
-    """Step 2: Verify the OTP and return a JWT session token."""
+@router.post("/verify-otp", response_model=AdminVerifyResponse)
+async def admin_verify_otp(body: AdminOTPRequest, response: Response):
+    """Step 2: Verify the OTP and issue a session cookie."""
     admin_row = await asyncio.to_thread(admin_auth_repo.get_admin_by_username, body.username)
     if admin_row is None:
         raise HTTPException(status_code=401, detail="Invalid username")
@@ -71,13 +79,23 @@ async def admin_verify_otp(body: AdminOTPRequest):
     if not ok:
         raise HTTPException(status_code=401, detail="Invalid or expired OTP")
 
-    token = auth_manager.create_jwt(admin_row.id, admin_row.username)
-    return AdminTokenResponse(token=token)
+    hours = SESSION_HOURS_REMEMBER if body.remember else SESSION_HOURS_DEFAULT
+    token = auth_manager.create_jwt(admin_row.id, admin_row.username, expiry_hours=hours)
+    set_session_cookie(response, token, max_age_seconds=hours * 3600)
+    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=hours)
+    return AdminVerifyResponse(ok=True, expires_at=expires_at)
+
+
+@router.post("/logout")
+async def admin_logout(response: Response):
+    """Clear the admin session cookie. Idempotent."""
+    clear_session_cookie(response)
+    return {"ok": True}
 
 
 @router.get("/me", response_model=AdminMeResponse)
 async def admin_me(payload: Dict[str, Any] = Depends(get_admin_user)):
-    """Return the authenticated admin's info from the JWT."""
+    """Return the authenticated admin's info from the session."""
     return AdminMeResponse(
         admin_id=payload["sub"],
         username=payload["username"],

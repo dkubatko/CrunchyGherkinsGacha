@@ -317,7 +317,7 @@ Claim/lock/reroll callbacks on the same roll share a per-`roll_key` (`f"{roll_ty
 
 ### API Authentication
 - **Mini App**: `Authorization: tma <initData>` header validated via Telegram's HMAC-SHA256 WebApp spec
-- **Admin Dashboard**: JWT tokens issued after OTP verification via `admin_auth_service`
+- **Admin Dashboard**: JWT issued after OTP verification, delivered as an **HttpOnly session cookie** (`admin_session`). Frontend uses `credentials: 'include'`; never sees the token. Logout calls `POST /admin/auth/logout` to clear the cookie. "Remember me" extends both cookie Max-Age and JWT exp from 24h → 30d.
 
 ### Mini App Routing
 The Mini App is launched with a `start_param` payload parsed by `useAppRouter`:
@@ -466,7 +466,7 @@ docker compose down
 
 ### Admin Dashboard
 - Accessible at `/admin` path in the Mini App
-- Login via OTP sent to admin's Telegram, exchanged for JWT
+- Login via OTP sent to admin's Telegram; on success the server sets an HttpOnly session cookie. "Remember me" extends the session to 30 days. Logout clears the cookie server-side.
 - Manages: seasons, sets, aspect definitions (CRUD + bulk operations), aspect types (CRUD)
 - Aspect types section on dashboard page: create/edit/delete types inline
 - Set detail page: type selector on aspect create/edit, move-to-set dropdown in edit mode, type badge on aspect rows

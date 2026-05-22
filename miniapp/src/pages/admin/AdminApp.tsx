@@ -1,7 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useAdminStore } from '../../stores/useAdminStore';
 import { useAdminDataStore } from '../../stores/useAdminDataStore';
-import { AdminApiService } from '../../services/adminApi';
+import {
+  ADMIN_SESSION_EXPIRED_EVENT,
+  AdminApiService,
+} from '../../services/adminApi';
 import { useAdminRouter } from '../../hooks/useAdminRouter';
 import AdminLoginPage from './AdminLoginPage';
 import AdminDashboardPage from './AdminDashboardPage';
@@ -17,27 +20,39 @@ const PAGE_TITLES: Record<'sets' | 'types' | 'setDetail', string> = {
 };
 
 const AdminApp: React.FC = () => {
-  const { isAuthenticated, initialize, logout } = useAdminStore();
+  const { isAuthenticated, setAuth, clearAuth, logout } = useAdminStore();
   const resetData = useAdminDataStore((s) => s.resetData);
   const { route, navigate } = useAdminRouter();
   const [validating, setValidating] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  // Probe /me on mount to see if the browser already has a valid session cookie.
   useEffect(() => {
-    initialize();
-    const token = localStorage.getItem('admin_token');
-    if (token) {
-      AdminApiService.getMe()
-        .then(() => setValidating(false))
-        .catch(() => {
-          logout();
-          setValidating(false);
-        });
-    } else {
-      setValidating(false);
-    }
+    AdminApiService.getMe()
+      .then((me) => {
+        setAuth(me.username);
+        setValidating(false);
+      })
+      .catch(() => {
+        clearAuth();
+        setValidating(false);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // React to 401s from anywhere in the app — switch to login without a reload.
+  useEffect(() => {
+    const onExpired = () => {
+      resetData();
+      clearAuth();
+      // Reset the hash so the back button has a clean landing point after re-auth.
+      if (window.location.hash && window.location.hash !== '#/') {
+        history.replaceState(null, '', '#/');
+      }
+    };
+    window.addEventListener(ADMIN_SESSION_EXPIRED_EVENT, onExpired);
+    return () => window.removeEventListener(ADMIN_SESSION_EXPIRED_EVENT, onExpired);
+  }, [resetData, clearAuth]);
 
   // Lock viewport zoom while admin is mounted.
   useEffect(() => {
@@ -80,9 +95,9 @@ const AdminApp: React.FC = () => {
     return <AdminLoginPage />;
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     resetData();
-    logout();
+    await logout();
     navigate({ kind: 'sets' }, { replace: true });
   };
 

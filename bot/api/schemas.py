@@ -508,12 +508,18 @@ class AdminOTPRequest(BaseModel):
 
     username: str
     code: str
+    remember: bool = False
 
 
-class AdminTokenResponse(BaseModel):
-    """JWT token returned after successful 2FA."""
+class AdminVerifyResponse(BaseModel):
+    """Result of a successful OTP verification.
 
-    token: str
+    The session JWT is delivered as an HttpOnly cookie on the response,
+    not in the body — keeping JS from ever seeing it.
+    """
+
+    ok: bool = True
+    expires_at: datetime.datetime
 
 
 class AdminMeResponse(BaseModel):

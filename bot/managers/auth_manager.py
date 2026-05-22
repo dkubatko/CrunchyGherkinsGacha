@@ -64,22 +64,28 @@ def verify_credentials(username: str, password: str) -> Optional[AdminUser]:
 # ── JWT management ───────────────────────────────────────────────────────────
 
 
-def create_jwt(admin_user_id: int, username: str) -> str:
+def create_jwt(
+    admin_user_id: int,
+    username: str,
+    expiry_hours: Optional[int] = None,
+) -> str:
     """Create a signed JWT for a verified admin session.
 
     The token contains ``sub`` (admin user ID), ``username``, ``iat``, and
-    ``exp`` claims.
+    ``exp`` claims. ``expiry_hours`` controls the lifetime (defaults to
+    ``_JWT_EXPIRY_HOURS`` for a standard 24h session).
     """
     secret = _get_server_secret()
     if not secret:
         raise RuntimeError("SERVER_SECRET is not configured — cannot issue JWT")
 
+    hours = expiry_hours if expiry_hours is not None else _JWT_EXPIRY_HOURS
     now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": str(admin_user_id),
         "username": username,
         "iat": now,
-        "exp": now + datetime.timedelta(hours=_JWT_EXPIRY_HOURS),
+        "exp": now + datetime.timedelta(hours=hours),
     }
     token = jwt.encode(payload, secret, algorithm=_JWT_ALGORITHM)
     logger.info("JWT issued for admin_user_id=%s username=%s", admin_user_id, username)
