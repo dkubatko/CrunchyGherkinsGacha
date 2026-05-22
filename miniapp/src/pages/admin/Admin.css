@@ -2380,9 +2380,9 @@
 /* ── Inline-edit name: reserve box for the border so input doesn't shift ─ */
 .admin-container .admin-mod-col-name {
   display: inline-block;
-  padding: 0.15rem 0.35rem;
+  padding: 0.15rem 0;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: 3px;
   line-height: 1.2;
   font-size: 0.82rem;
   font-weight: 500;
@@ -2393,9 +2393,10 @@
 
 .admin-container .admin-inline-input {
   display: inline-block;
-  padding: 0.15rem 0.35rem;
+  padding: 0.15rem 0.2rem;
+  margin-left: -0.2rem;
   border: 1px solid var(--tg-theme-button-color, #007aff);
-  border-radius: 4px;
+  border-radius: 3px;
   line-height: 1.2;
   font-size: 0.82rem;
   font-weight: 500;
