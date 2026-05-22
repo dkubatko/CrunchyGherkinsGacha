@@ -17,6 +17,7 @@ const AdminPopover: React.FC<AdminPopoverProps> = ({
   matchAnchorWidth = false,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
+  const didScrollToSelectedRef = useRef(false);
   const [pos, setPos] = useState<{
     top: number;
     left: number;
@@ -78,7 +79,19 @@ const AdminPopover: React.FC<AdminPopoverProps> = ({
   if (!pos) return null;
   return createPortal(
     <div
-      ref={ref}
+      ref={(node) => {
+        ref.current = node;
+        if (node && !didScrollToSelectedRef.current) {
+          const selected = node.querySelector('.admin-popover-item--selected') as HTMLElement | null;
+          if (selected) {
+            const itemTop = selected.offsetTop;
+            const itemHeight = selected.offsetHeight;
+            const listHeight = node.clientHeight;
+            node.scrollTop = Math.max(0, itemTop - (listHeight - itemHeight) / 2);
+          }
+          didScrollToSelectedRef.current = true;
+        }
+      }}
       className={`admin-popover ${className}`}
       style={{
         position: 'fixed',
