@@ -1,22 +1,31 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { AdminApiService } from '../../services/adminApi';
+import { useAdminDataStore } from '../../stores/useAdminDataStore';
+import AdminPopover from './AdminPopover';
 import type { AdminSet, AdminSetCreate } from '../../types/admin';
 import './Admin.css';
 
 interface Props {
   onSelectSet: (set: AdminSet) => void;
-  selectedSeason: number | null;
-  onSeasonChange: (season: number) => void;
 }
 
-const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: parentSeason, onSeasonChange }) => {
-  const [seasons, setSeasons] = useState<number[]>([]);
-  const [selectedSeason, setSelectedSeason] = useState<number | null>(parentSeason);
-  const [sets, setSets] = useState<AdminSet[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+const SCROLL_KEY_PREFIX = 'admin:sets:';
 
-  // Create-set form state
+const AdminDashboardPage: React.FC<Props> = ({ onSelectSet }) => {
+  const seasons = useAdminDataStore((s) => s.seasons);
+  const selectedSeason = useAdminDataStore((s) => s.selectedSeason);
+  const setSelectedSeason = useAdminDataStore((s) => s.setSelectedSeason);
+  const setsBySeason = useAdminDataStore((s) => s.setsBySeason);
+  const loadingSeasons = useAdminDataStore((s) => s.loadingSeasons);
+  const loadingSets = useAdminDataStore((s) => s.loadingSets);
+  const ensureSeasons = useAdminDataStore((s) => s.ensureSeasons);
+  const ensureSets = useAdminDataStore((s) => s.ensureSets);
+  const applySetUpdate = useAdminDataStore((s) => s.applySetUpdate);
+  const applySetInsert = useAdminDataStore((s) => s.applySetInsert);
+  const setScroll = useAdminDataStore((s) => s.setScroll);
+  const getScroll = useAdminDataStore((s) => s.getScroll);
+
+  const [error, setError] = useState('');
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newSet, setNewSet] = useState<AdminSetCreate>({
     name: '',
@@ -25,47 +34,69 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
     active: true,
   });
   const [creating, setCreating] = useState(false);
+  const [seasonAnchor, setSeasonAnchor] = useState<HTMLElement | null>(null);
+  const [sourceAnchor, setSourceAnchor] = useState<HTMLElement | null>(null);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Hydrate seasons once.
   useEffect(() => {
-    AdminApiService.getSeasons()
-      .then((s) => {
-        setSeasons(s);
-        if (selectedSeason == null && s.length > 0) {
-          const initial = s[s.length - 1];
-          setSelectedSeason(initial);
-          onSeasonChange(initial);
-        }
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    ensureSeasons().catch((err) =>
+      setError(err instanceof Error ? err.message : 'Failed to load seasons'),
+    );
+  }, [ensureSeasons]);
 
-  const loadSets = useCallback(async () => {
+  // Hydrate sets whenever the selected season changes.
+  useEffect(() => {
     if (selectedSeason == null) return;
-    setLoading(true);
-    setError('');
-    try {
-      const data = await AdminApiService.getSetsBySeason(selectedSeason);
-      setSets(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sets');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedSeason]);
+    ensureSets(selectedSeason).catch((err) =>
+      setError(err instanceof Error ? err.message : 'Failed to load sets'),
+    );
+  }, [selectedSeason, ensureSets]);
 
+  const sets: AdminSet[] | undefined =
+    selectedSeason == null ? undefined : setsBySeason[selectedSeason];
+  const loading =
+    loadingSeasons ||
+    (selectedSeason != null && (loadingSets[selectedSeason] ?? false)) ||
+    (selectedSeason != null && sets === undefined);
+
+  // Restore scroll position after sets render.
   useEffect(() => {
-    loadSets();
-  }, [loadSets]);
+    if (!sets || !scrollRef.current) return;
+    const key = `${SCROLL_KEY_PREFIX}${selectedSeason}`;
+    const saved = getScroll(key);
+    if (saved > 0) {
+      scrollRef.current.scrollTop = saved;
+    }
+  }, [sets, selectedSeason, getScroll]);
+
+  // Persist scroll position on unmount + on scroll (throttled by RAF).
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || selectedSeason == null) return;
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        setScroll(`${SCROLL_KEY_PREFIX}${selectedSeason}`, el.scrollTop);
+      });
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      if (raf) cancelAnimationFrame(raf);
+      setScroll(`${SCROLL_KEY_PREFIX}${selectedSeason}`, el.scrollTop);
+    };
+  }, [selectedSeason, sets, setScroll]);
 
   const handleToggleActive = async (set: AdminSet) => {
+    const rollback = applySetUpdate(set.season_id, set.id, { active: !set.active });
     try {
       await AdminApiService.updateSet(set.season_id, set.id, { active: !set.active });
-      setSets((prev) =>
-        prev.map((s) => (s.id === set.id ? { ...s, active: !s.active } : s)),
-      );
     } catch (err) {
+      rollback();
       setError(err instanceof Error ? err.message : 'Failed to update set');
     }
   };
@@ -74,11 +105,12 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
     e.preventDefault();
     if (!selectedSeason || !newSet.name.trim()) return;
     setCreating(true);
+    setError('');
     try {
-      await AdminApiService.createSet(selectedSeason, newSet);
+      const created = await AdminApiService.createSet(selectedSeason, newSet);
+      applySetInsert(created);
       setNewSet({ name: '', source: 'all', description: '', active: true });
       setShowCreateForm(false);
-      await loadSets();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create set');
     } finally {
@@ -88,23 +120,38 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
 
   return (
     <div className="admin-content">
-      {/* Toolbar: season selector + new-set button */}
       <div className="admin-toolbar">
-        <select
-          className="admin-season-select"
-          value={selectedSeason ?? ''}
-          onChange={(e) => {
-            const s = Number(e.target.value);
-            setSelectedSeason(s);
-            onSeasonChange(s);
-          }}
+        <button
+          type="button"
+          className="admin-dropdown-trigger"
+          onClick={(e) => setSeasonAnchor(seasonAnchor ? null : e.currentTarget)}
+          aria-haspopup="listbox"
+          aria-expanded={!!seasonAnchor}
         >
-          {seasons.map((s) => (
-            <option key={s} value={s}>
-              Season {s}
-            </option>
-          ))}
-        </select>
+          <span>Season {selectedSeason ?? '—'}</span>
+          <span className="admin-dropdown-caret" aria-hidden="true">▾</span>
+        </button>
+        {seasonAnchor && (
+          <AdminPopover
+            anchor={seasonAnchor}
+            onClose={() => setSeasonAnchor(null)}
+            matchAnchorWidth
+          >
+            {(seasons ?? []).map((s) => (
+              <button
+                key={s}
+                type="button"
+                className={`admin-popover-item ${s === selectedSeason ? 'admin-popover-item--selected' : ''}`}
+                onClick={() => {
+                  setSelectedSeason(s);
+                  setSeasonAnchor(null);
+                }}
+              >
+                Season {s}
+              </button>
+            ))}
+          </AdminPopover>
+        )}
         <button
           className="admin-btn admin-btn-secondary admin-btn-sm"
           onClick={() => setShowCreateForm(!showCreateForm)}
@@ -113,7 +160,6 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
         </button>
       </div>
 
-      {/* Create-set form */}
       {showCreateForm && (
         <form onSubmit={handleCreateSet} className="admin-create-form">
           <div className="admin-create-form-row">
@@ -124,13 +170,40 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
               onChange={(e) => setNewSet({ ...newSet, name: e.target.value })}
               required
             />
-            <select
-              value={newSet.source}
-              onChange={(e) => setNewSet({ ...newSet, source: e.target.value })}
+            <button
+              type="button"
+              className="admin-dropdown-trigger"
+              onClick={(e) => setSourceAnchor(sourceAnchor ? null : e.currentTarget)}
+              aria-haspopup="listbox"
+              aria-expanded={!!sourceAnchor}
             >
-              <option value="all">All</option>
-              <option value="roll">Roll Only</option>
-            </select>
+              <span>{newSet.source === 'roll' ? 'Roll Only' : 'All'}</span>
+              <span className="admin-dropdown-caret" aria-hidden="true">▾</span>
+            </button>
+            {sourceAnchor && (
+              <AdminPopover
+                anchor={sourceAnchor}
+                onClose={() => setSourceAnchor(null)}
+                matchAnchorWidth
+              >
+                {[
+                  { value: 'all', label: 'All' },
+                  { value: 'roll', label: 'Roll Only' },
+                ].map((opt) => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    className={`admin-popover-item ${newSet.source === opt.value ? 'admin-popover-item--selected' : ''}`}
+                    onClick={() => {
+                      setNewSet({ ...newSet, source: opt.value });
+                      setSourceAnchor(null);
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </AdminPopover>
+            )}
             <button
               type="submit"
               className="admin-btn admin-btn-primary admin-btn-sm"
@@ -152,10 +225,10 @@ const AdminDashboardPage: React.FC<Props> = ({ onSelectSet, selectedSeason: pare
       {error && <div className="admin-error">{error}</div>}
       {loading ? (
         <div className="admin-loading">Loading sets…</div>
-      ) : sets.length === 0 ? (
+      ) : !sets || sets.length === 0 ? (
         <div className="admin-empty">No sets found for this season.</div>
       ) : (
-        <div className="admin-set-grid-scroll">
+        <div className="admin-set-grid-scroll" ref={scrollRef}>
           <div className="admin-set-grid">
             {sets.map((set) => (
               <div

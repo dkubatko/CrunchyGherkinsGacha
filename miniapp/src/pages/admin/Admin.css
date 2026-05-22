@@ -2052,3 +2052,366 @@
   flex-shrink: 0;
 }
 
+/* =========================================================================
+   UX Polish Pass — focus rings, native selects, control consistency,
+   inline-edit stability, icon-only back button
+   ========================================================================= */
+
+/* ── Native <select> option styling (fixes white-on-white) ───────────── */
+.admin-container select option,
+.admin-container select optgroup {
+  background-color: var(--tg-theme-bg-color, #1a1a2e);
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.9));
+}
+
+/* ── Focus rings: kill mouse-click outline, keep keyboard a11y ───────── */
+.admin-container button,
+.admin-container [role="button"],
+.admin-container input,
+.admin-container select,
+.admin-container textarea {
+  outline: none;
+}
+
+.admin-container button:focus-visible,
+.admin-container [role="button"]:focus-visible,
+.admin-container input:focus-visible,
+.admin-container select:focus-visible,
+.admin-container textarea:focus-visible {
+  outline: 2px solid var(--tg-theme-button-color, #007aff);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+
+/* Tap highlight on mobile — disable persistent grey/white flash */
+.admin-container button,
+.admin-container [role="button"],
+.admin-container .admin-filter-chip,
+.admin-container .admin-type-chip,
+.admin-container .admin-type-chip-option,
+.admin-container .admin-popover-item,
+.admin-container .admin-sidebar-item,
+.admin-container .admin-type-card-toggle,
+.admin-container .admin-type-aspect-chip,
+.admin-container .admin-mod-col-name {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* ── Back button: icon-only chevron ──────────────────────────────────── */
+.admin-back-btn {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.85));
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (hover: hover) {
+  .admin-back-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.admin-back-btn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+/* ── Toolbar control consistency (season select + buttons) ───────────── */
+.admin-toolbar .admin-season-select,
+.admin-toolbar .admin-btn-sm {
+  height: 2rem;
+  padding: 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.admin-toolbar .admin-season-select {
+  padding-right: 1.6rem; /* room for chevron */
+}
+
+/* ── Inline edit: don't grow the row when entering edit mode ─────────── */
+.admin-inline-input {
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--tg-theme-button-color, #007aff);
+  border-radius: 0;
+  width: 100%;
+  box-sizing: border-box;
+  color: inherit;
+  font-family: inherit;
+  outline: none;
+}
+
+.admin-inline-input:focus,
+.admin-inline-input:focus-visible {
+  outline: none;
+  border-bottom-color: var(--tg-theme-button-color, #007aff);
+}
+
+.admin-mod-col-name {
+  cursor: text;
+  line-height: 1.2;
+}
+
+/* ── Filter chips & selectable chips: no sticky highlight after click ── */
+.admin-filter-chip,
+.admin-type-chip,
+.admin-type-chip-option,
+.admin-popover-item,
+.admin-type-aspect-chip,
+.admin-type-card-toggle {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.admin-filter-chip:focus,
+.admin-filter-chip:focus-visible,
+.admin-type-chip:focus,
+.admin-type-chip:focus-visible,
+.admin-type-chip-option:focus,
+.admin-type-chip-option:focus-visible,
+.admin-popover-item:focus,
+.admin-popover-item:focus-visible,
+.admin-type-aspect-chip:focus,
+.admin-type-aspect-chip:focus-visible,
+.admin-type-card-toggle:focus,
+.admin-type-card-toggle:focus-visible {
+  outline: none;
+}
+
+.admin-filter-chip:active,
+.admin-type-chip:active,
+.admin-type-chip-option:active,
+.admin-popover-item:active {
+  filter: brightness(1.1);
+}
+
+/* ── Inline type chip on aspect rows: don't bump row height ──────────── */
+.admin-type-chip-inline {
+  line-height: 1.15;
+  vertical-align: middle;
+}
+
+/* =========================================================================
+   UX Polish Pass v2 — header stability, dropdown unification,
+   touch hover suppression, consistent selected states
+   ========================================================================= */
+
+/* ── Header: fixed height regardless of route ────────────────────────── */
+.admin-header {
+  min-height: 3.5rem;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.admin-header-left {
+  min-height: 3.5rem;
+}
+
+.admin-title {
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* ── Suppress sticky :hover on touch devices ─────────────────────────── */
+@media not (hover: hover) {
+  .admin-container .admin-logout-btn:hover,
+  .admin-container .admin-btn-primary:hover:not(:disabled),
+  .admin-container .admin-btn-secondary:hover:not(:disabled),
+  .admin-container .admin-btn-danger:hover:not(:disabled),
+  .admin-container .admin-season-select:hover,
+  .admin-container .admin-sidebar-close:hover,
+  .admin-container .admin-sidebar-item:hover,
+  .admin-container .admin-type-aspect-chip:hover,
+  .admin-container .admin-popover-item:hover:not(:disabled),
+  .admin-container .admin-filter-chip:hover,
+  .admin-container .admin-type-chip-inline:hover:not(:disabled),
+  .admin-container .admin-action-icon--move:hover,
+  .admin-container .admin-set-hero-icon:hover,
+  .admin-container .admin-set-hero-regen:hover:not(:disabled),
+  .admin-container .admin-set-description-edit:hover,
+  .admin-container .admin-back-btn:hover {
+    background: inherit;
+    border-color: inherit;
+    color: inherit;
+    opacity: inherit;
+    filter: none;
+  }
+}
+
+/* ── Unified "selected/active" visual language ──────────────────────────
+   Every selected pill/item uses the same blue tint + same link-color text.
+   The purple variant (type chips) is kept *only* on per-row type chips,
+   since type-coding is meaningful elsewhere too. */
+.admin-container .admin-filter-chip--active,
+.admin-container .admin-popover-item--selected,
+.admin-container .admin-sidebar-item--active {
+  background: rgba(100, 180, 255, 0.15);
+  border-color: rgba(100, 180, 255, 0.4);
+  color: var(--tg-theme-link-color, #64b5f6);
+  font-weight: 600;
+}
+
+/* Popover items have no border by default — restore none */
+.admin-container .admin-popover-item--selected {
+  border-color: transparent;
+}
+
+/* Sidebar items already have no border */
+.admin-container .admin-sidebar-item--active {
+  border-color: transparent;
+}
+
+/* ── Unified dropdown trigger style ──────────────────────────────────── */
+.admin-container .admin-default-type-trigger {
+  height: 2rem;
+  padding: 0 1.6rem 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--tg-theme-hint-color, rgba(255, 255, 255, 0.6));
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s, color 0.15s;
+  /* Hide built-in caret span — we use background chevron like season select */
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='rgba(255,255,255,0.35)' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+}
+
+.admin-container .admin-default-type-trigger .admin-default-type-caret {
+  display: none;
+}
+
+@media (hover: hover) {
+  .admin-container .admin-default-type-trigger:hover {
+    border-color: rgba(255, 255, 255, 0.15);
+    color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
+  }
+}
+
+/* ── Hover inside admin-header (back button is icon-only, keep subtle) ─ */
+@media (hover: hover) {
+  .admin-container .admin-back-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}
+
+/* ── Unified popover-style dropdown trigger (used everywhere) ────────── */
+.admin-container .admin-dropdown-trigger {
+  height: 2rem;
+  padding: 0 0.6rem 0 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--tg-theme-text-color, rgba(255, 255, 255, 0.87));
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.admin-container .admin-dropdown-trigger:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+@media (hover: hover) {
+  .admin-container .admin-dropdown-trigger:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+}
+
+.admin-container .admin-dropdown-caret {
+  font-size: 0;
+  opacity: 0.7;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 100%;
+  color: transparent;
+}
+
+.admin-container .admin-dropdown-caret::before {
+  content: "";
+  display: block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  color: inherit;
+}
+
+.admin-container .admin-dropdown-trigger .admin-dropdown-caret::before {
+  border-top-color: rgba(226, 232, 240, 0.85);
+}
+
+/* ── Inline-edit name: reserve box for the border so input doesn't shift ─ */
+.admin-container .admin-mod-col-name {
+  display: inline-block;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  font-weight: 500;
+  box-sizing: border-box;
+  /* Constrain width so editing in-place doesn't push other elements */
+  max-width: 100%;
+}
+
+.admin-container .admin-inline-input {
+  display: inline-block;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--tg-theme-button-color, #007aff);
+  border-radius: 4px;
+  line-height: 1.2;
+  font-size: 0.82rem;
+  font-weight: 500;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  width: auto;
+  min-width: 4rem;
+  max-width: 100%;
+}
+
+.admin-container .admin-inline-input:focus,
+.admin-container .admin-inline-input:focus-visible {
+  outline: none;
+  border-color: var(--tg-theme-button-color, #007aff);
+}
+

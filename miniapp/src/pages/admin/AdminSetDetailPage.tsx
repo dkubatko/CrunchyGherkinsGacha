@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { createPortal } from 'react-dom';
 import { AdminApiService } from '../../services/adminApi';
+import { useAdminDataStore } from '../../stores/useAdminDataStore';
+import { useAdminUnsavedGuard } from '../../hooks/useAdminUnsavedGuard';
+import AdminPopover from './AdminPopover';
 import type {
   AdminSet,
   AdminAspectDef,
   AdminAspectDefCreate,
   AdminAspectDefUpdate,
-  AdminAspectType,
 } from '../../types/admin';
 import './Admin.css';
 
@@ -35,12 +36,10 @@ const MoveIcon = () => (
 );
 
 interface Props {
-  set: AdminSet;
-  onSetUpdated: (set: AdminSet) => void;
+  setId: number;
+  seasonId: number;
   onSetDeleted?: () => void;
 }
-
-// In-memory new-aspect record (negative ids for staging).
 interface DraftNewAspect {
   tempId: number;
   set_id: number;
@@ -50,166 +49,106 @@ interface DraftNewAspect {
   type_id: number | null;
 }
 
-// Field-level draft of edits to an existing aspect. Only fields the user changed are present.
+// Field-level draft of edits to an existing aspect.
 interface DraftEdit {
   name?: string;
   rarity?: string;
   set_id?: number;
-  // For type_id, presence in the partial means "user changed it":
-  //  - undefined: not staged
-  //  - null: cleared
-  //  - number: set
   type_id?: number | null;
 }
 
-// Portal-rendered popover anchored to a DOM element. Renders at fixed coords
-// so it escapes any `overflow: auto` ancestors and scrolls independently.
-interface PopoverProps {
-  anchor: HTMLElement | null;
-  onClose: () => void;
-  className?: string;
-  children: React.ReactNode;
-}
+const AdminSetDetailPage: React.FC<Props> = ({ setId, seasonId, onSetDeleted }) => {
+  // ── Store-backed data ──
+  const setsBySeason = useAdminDataStore((s) => s.setsBySeason);
+  const types = useAdminDataStore((s) => s.types);
+  const ensureSets = useAdminDataStore((s) => s.ensureSets);
+  const ensureTypes = useAdminDataStore((s) => s.ensureTypes);
+  const applySetReplace = useAdminDataStore((s) => s.applySetReplace);
+  const applySetRemove = useAdminDataStore((s) => s.applySetRemove);
+  const adjustSetAspectCount = useAdminDataStore((s) => s.adjustSetAspectCount);
 
-const Popover: React.FC<PopoverProps> = ({ anchor, onClose, className = '', children }) => {
-  const ref = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+  const siblingSets = setsBySeason[seasonId] ?? [];
+  const set: AdminSet | undefined = siblingSets.find((s) => s.id === setId);
 
-  useEffect(() => {
-    if (!anchor) return;
-    const update = () => {
-      const rect = anchor.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom - 8;
-      const spaceAbove = rect.top - 8;
-      const PREFERRED_MAX = 260;
-      let top: number;
-      let maxHeight: number;
-      if (spaceBelow >= Math.min(PREFERRED_MAX, 120) || spaceBelow >= spaceAbove) {
-        top = rect.bottom + 4;
-        maxHeight = Math.max(120, Math.min(PREFERRED_MAX, spaceBelow));
-      } else {
-        // Flip above
-        maxHeight = Math.max(120, Math.min(PREFERRED_MAX, spaceAbove));
-        top = rect.top - 4 - maxHeight;
-      }
-      setPos({ top, left: rect.left, maxHeight });
-    };
-    update();
-    window.addEventListener('scroll', update, true);
-    window.addEventListener('resize', update);
-    return () => {
-      window.removeEventListener('scroll', update, true);
-      window.removeEventListener('resize', update);
-    };
-  }, [anchor]);
+  // ── Hydration ──
+  const [hydrating, setHydrating] = useState(set === undefined || types === null);
+  const [hydrateError, setHydrateError] = useState('');
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (ref.current && ref.current.contains(target)) return;
-      if (anchor && anchor.contains(target)) return;
-      onClose();
-    };
-    const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    // Defer attaching click handler so the opening click doesn't immediately close it.
-    const t = setTimeout(() => document.addEventListener('mousedown', handler), 0);
-    document.addEventListener('keydown', keyHandler);
+    let cancelled = false;
+    Promise.all([ensureSets(seasonId), ensureTypes()])
+      .then(() => {
+        if (!cancelled) setHydrating(false);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setHydrateError(err instanceof Error ? err.message : 'Failed to load set');
+          setHydrating(false);
+        }
+      });
     return () => {
-      clearTimeout(t);
-      document.removeEventListener('mousedown', handler);
-      document.removeEventListener('keydown', keyHandler);
+      cancelled = true;
     };
-  }, [onClose, anchor]);
+  }, [seasonId, ensureSets, ensureTypes]);
 
-  if (!pos) return null;
-  return createPortal(
-    <div
-      ref={ref}
-      className={`admin-popover ${className}`}
-      style={{ position: 'fixed', top: pos.top, left: pos.left, maxHeight: pos.maxHeight }}
-    >
-      {children}
-    </div>,
-    document.body,
-  );
-};
-
-const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }) => {
-  // Loaded data
+  // ── Aspect defs (local; not in store because high-churn) ──
   const [originalDefs, setOriginalDefs] = useState<AdminAspectDef[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Staged edits
+  // ── Staged edits ──
   const [draftEdits, setDraftEdits] = useState<Record<number, DraftEdit>>({});
   const [deletedIds, setDeletedIds] = useState<Set<number>>(new Set());
   const [newDefs, setNewDefs] = useState<DraftNewAspect[]>([]);
 
-  // UI: search / filter / inline edit / popovers
+  // ── UI ──
   const [search, setSearch] = useState('');
-  const [filterTypeId, setFilterTypeId] = useState<number | 'none' | null>(null); // null=all
-  const [editingId, setEditingId] = useState<number | null>(null); // for inline name edit
+  const [filterTypeId, setFilterTypeId] = useState<number | 'none' | null>(null);
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [openTypeForId, setOpenTypeForId] = useState<number | null>(null);
   const [openMoveForId, setOpenMoveForId] = useState<number | null>(null);
   const [typeAnchor, setTypeAnchor] = useState<HTMLElement | null>(null);
   const [moveAnchor, setMoveAnchor] = useState<HTMLElement | null>(null);
 
-  // New-aspect input per rarity
   const [newByRarity, setNewByRarity] = useState<Record<string, string>>({
     Common: '', Rare: '', Epic: '', Legendary: '',
   });
 
-  // Description editing
+  // ── Description / icon ──
   const [editingDescription, setEditingDescription] = useState(false);
-  const [descriptionDraft, setDescriptionDraft] = useState(set.description ?? '');
+  const [descriptionDraft, setDescriptionDraft] = useState(set?.description ?? '');
   const [savingDescription, setSavingDescription] = useState(false);
   const [regeneratingIcon, setRegeneratingIcon] = useState(false);
   const [showIconPreview, setShowIconPreview] = useState(false);
 
-  // DnD
+  // ── DnD ──
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dragOverRarity, setDragOverRarity] = useState<string | null>(null);
 
-  // Reference data
-  const [types, setTypes] = useState<AdminAspectType[]>([]);
-  const [siblingSets, setSiblingSets] = useState<AdminSet[]>([]);
-
-  // Save flow
   const [saving, setSaving] = useState(false);
+  const [deletingSet, setDeletingSet] = useState(false);
 
-  // Counter for negative tempIds
   const tempIdCounter = useRef(-1);
 
   const loadAspectDefs = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     setError('');
     try {
-      const data = await AdminApiService.getAspectDefs(set.id, set.season_id);
+      const data = await AdminApiService.getAspectDefs(setId, seasonId);
       setOriginalDefs(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load aspects');
     } finally {
       setLoading(false);
     }
-  }, [set.id, set.season_id]);
+  }, [setId, seasonId]);
 
   useEffect(() => {
     loadAspectDefs();
   }, [loadAspectDefs]);
 
-  useEffect(() => {
-    AdminApiService.getTypes().then(setTypes).catch(() => {});
-    AdminApiService.getSetsBySeason(set.season_id).then(setSiblingSets).catch(() => {});
-  }, [set.season_id]);
-
-  useEffect(() => {
-    setDescriptionDraft(set.description ?? '');
-  }, [set.description]);
-
-  // Reset stage when switching to a different set
+  // Reset stage on set switch.
   useEffect(() => {
     setDraftEdits({});
     setDeletedIds(new Set());
@@ -219,43 +158,46 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     setOpenMoveForId(null);
     setTypeAnchor(null);
     setMoveAnchor(null);
-  }, [set.id]);
+  }, [setId]);
 
-  // ── Derived effective view of each aspect (original + draft overlay) ──
+  // Sync description draft when the store's set changes.
+  useEffect(() => {
+    setDescriptionDraft(set?.description ?? '');
+  }, [set?.description]);
+
+  // ── Derived rows / filtering / grouping ──
   type EffectiveRow =
     | { kind: 'existing'; id: number; original: AdminAspectDef; effective: { name: string; rarity: string; set_id: number; type_id: number | null }; isDirty: boolean; isMoved: boolean; isDeleted: boolean; }
     | { kind: 'new'; id: number; draft: DraftNewAspect };
 
   const rows = useMemo<EffectiveRow[]>(() => {
-    const existing: EffectiveRow[] = originalDefs
-      .map((d) => {
-        const draft = draftEdits[d.id] ?? {};
-        const effective = {
-          name: draft.name ?? d.name,
-          rarity: draft.rarity ?? d.rarity,
-          set_id: draft.set_id ?? d.set_id,
-          type_id: draft.type_id !== undefined ? draft.type_id : (d.type_id ?? null),
-        };
-        const isDirty =
-          (draft.name !== undefined && draft.name !== d.name) ||
-          (draft.rarity !== undefined && draft.rarity !== d.rarity) ||
-          (draft.set_id !== undefined && draft.set_id !== d.set_id) ||
-          (draft.type_id !== undefined && draft.type_id !== (d.type_id ?? null));
-        return {
-          kind: 'existing' as const,
-          id: d.id,
-          original: d,
-          effective,
-          isDirty,
-          isMoved: effective.set_id !== d.set_id,
-          isDeleted: deletedIds.has(d.id),
-        };
-      });
+    const existing: EffectiveRow[] = originalDefs.map((d) => {
+      const draft = draftEdits[d.id] ?? {};
+      const effective = {
+        name: draft.name ?? d.name,
+        rarity: draft.rarity ?? d.rarity,
+        set_id: draft.set_id ?? d.set_id,
+        type_id: draft.type_id !== undefined ? draft.type_id : (d.type_id ?? null),
+      };
+      const isDirty =
+        (draft.name !== undefined && draft.name !== d.name) ||
+        (draft.rarity !== undefined && draft.rarity !== d.rarity) ||
+        (draft.set_id !== undefined && draft.set_id !== d.set_id) ||
+        (draft.type_id !== undefined && draft.type_id !== (d.type_id ?? null));
+      return {
+        kind: 'existing' as const,
+        id: d.id,
+        original: d,
+        effective,
+        isDirty,
+        isMoved: effective.set_id !== d.set_id,
+        isDeleted: deletedIds.has(d.id),
+      };
+    });
     const news: EffectiveRow[] = newDefs.map((n) => ({ kind: 'new' as const, id: n.tempId, draft: n }));
     return [...existing, ...news];
   }, [originalDefs, draftEdits, deletedIds, newDefs]);
 
-  // Apply search + type filter
   const visibleRows = useMemo(() => {
     return rows.filter((r) => {
       const name = r.kind === 'existing' ? r.effective.name : r.draft.name;
@@ -272,7 +214,6 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     });
   }, [rows, search, filterTypeId]);
 
-  // Group by rarity
   const grouped = useMemo(() => {
     const out: Record<string, EffectiveRow[]> = { Common: [], Rare: [], Epic: [], Legendary: [] };
     for (const r of visibleRows) {
@@ -293,7 +234,6 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
   const stageEdit = (id: number, patch: DraftEdit) => {
     setDraftEdits((prev) => {
       const merged = { ...(prev[id] ?? {}), ...patch };
-      // Clean up keys that revert to original
       const orig = originalDefs.find((d) => d.id === id);
       if (orig) {
         if (merged.name !== undefined && merged.name === orig.name) delete merged.name;
@@ -318,19 +258,14 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
 
   const stageDelete = (id: number) => {
     if (id < 0) {
-      // Drop from newDefs
       setNewDefs((prev) => prev.filter((n) => n.tempId !== id));
     } else {
       setDeletedIds((prev) => {
         const next = new Set(prev);
-        if (next.has(id)) {
-          next.delete(id); // toggle: un-delete
-        } else {
-          next.add(id);
-        }
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
         return next;
       });
-      // Cancel any inline edit on this row
       setEditingId((cur) => (cur === id ? null : cur));
     }
   };
@@ -338,7 +273,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
   const handleAddAspect = (rarity: string, e: React.FormEvent) => {
     e.preventDefault();
     const name = (newByRarity[rarity] ?? '').trim();
-    if (!name) return;
+    if (!name || !set) return;
     const tempId = tempIdCounter.current--;
     setNewDefs((prev) => [
       ...prev,
@@ -361,6 +296,9 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     creates: newDefs.length,
   };
 
+  // Warn before navigating away with unsaved changes.
+  useAdminUnsavedGuard(dirty);
+
   const handleCancelAll = () => {
     setDraftEdits({});
     setDeletedIds(new Set());
@@ -372,70 +310,91 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     setMoveAnchor(null);
   };
 
+  // ── Parallelized save ──
   const handleSaveAll = async () => {
-    if (!dirty) return;
+    if (!dirty || !set) return;
     setSaving(true);
     setError('');
     let succeeded = 0;
     let failed = 0;
+
+    // Snapshot net aspect count change so we can bump the set card.
+    const createdCount = newDefs.length;
+    const deletedCount = deletedIds.size;
+
     try {
-      // 1. Deletes
-      for (const id of deletedIds) {
-        try {
-          await AdminApiService.deleteAspectDef(id);
-          succeeded++;
-        } catch {
-          failed++;
-        }
+      // Run deletes and updates concurrently. Group operations by kind to keep failure aggregation tidy.
+      const deletePromises = Array.from(deletedIds).map((id) =>
+        AdminApiService.deleteAspectDef(id),
+      );
+
+      const updatePromises = Object.entries(draftEdits)
+        .filter(([idStr]) => !deletedIds.has(Number(idStr)))
+        .map(([idStr, draft]) => {
+          const id = Number(idStr);
+          const payload: AdminAspectDefUpdate = {};
+          if (draft.name !== undefined) payload.name = draft.name;
+          if (draft.rarity !== undefined) payload.rarity = draft.rarity;
+          if (draft.set_id !== undefined) payload.set_id = draft.set_id;
+          if (draft.type_id !== undefined) {
+            payload.type_id = draft.type_id === null ? 0 : draft.type_id;
+          }
+          return AdminApiService.updateAspectDef(id, payload);
+        });
+
+      // Creates: try /bulk first (no type_id support there). Fall back to per-item if any new def carries a type_id.
+      let createPromises: Promise<unknown>[] = [];
+      const bulkEligible = newDefs.filter((n) => n.type_id == null);
+      const perItemNeeded = newDefs.filter((n) => n.type_id != null);
+      if (bulkEligible.length > 0) {
+        createPromises.push(
+          AdminApiService.bulkUpsertAspectDefs(
+            seasonId,
+            bulkEligible.map((n) => ({
+              set_id: n.set_id,
+              season_id: n.season_id,
+              name: n.name,
+              rarity: n.rarity,
+            })),
+          ),
+        );
       }
-      // 2. Updates (diff payload only)
-      for (const [idStr, draft] of Object.entries(draftEdits)) {
-        const id = Number(idStr);
-        if (deletedIds.has(id)) continue;
-        const payload: AdminAspectDefUpdate = {};
-        if (draft.name !== undefined) payload.name = draft.name;
-        if (draft.rarity !== undefined) payload.rarity = draft.rarity;
-        if (draft.set_id !== undefined) payload.set_id = draft.set_id;
-        if (draft.type_id !== undefined) {
-          // type_id=0 is the clear convention
-          payload.type_id = draft.type_id === null ? 0 : draft.type_id;
-        }
-        try {
-          await AdminApiService.updateAspectDef(id, payload);
-          succeeded++;
-        } catch {
-          failed++;
-        }
-      }
-      // 3. Creates
-      for (const n of newDefs) {
+      for (const n of perItemNeeded) {
         const payload: AdminAspectDefCreate = {
           set_id: n.set_id,
           season_id: n.season_id,
           name: n.name,
           rarity: n.rarity,
+          type_id: n.type_id ?? undefined,
         };
-        if (n.type_id != null) payload.type_id = n.type_id;
-        try {
-          await AdminApiService.createAspectDef(payload);
+        createPromises.push(AdminApiService.createAspectDef(payload));
+      }
+
+      const [delResults, updResults, crResults] = await Promise.all([
+        Promise.allSettled(deletePromises),
+        Promise.allSettled(updatePromises),
+        Promise.allSettled(createPromises),
+      ]);
+
+      for (const r of delResults) r.status === 'fulfilled' ? succeeded++ : failed++;
+      for (const r of updResults) r.status === 'fulfilled' ? succeeded++ : failed++;
+      for (const r of crResults) {
+        if (r.status === 'fulfilled') {
+          // Bulk endpoint returns a count; per-item returns one def. Either way: success.
           succeeded++;
-        } catch {
+        } else {
           failed++;
         }
       }
-      // 4. Refetch + reset
+
+      // Reload aspect defs (single fetch — covers all created/updated/deleted state).
       await loadAspectDefs(true);
       handleCancelAll();
-      // 5. Tell parent the count likely changed
-      // (we'll let it pick up via refetch; also bump count optimistically)
-      try {
-        const fresh = await AdminApiService.getSetsBySeason(set.season_id);
-        const updated = fresh.find((s) => s.id === set.id);
-        if (updated) onSetUpdated(updated);
-        setSiblingSets(fresh);
-      } catch {
-        /* ignore */
-      }
+
+      // Optimistically adjust the set's aspect_count in the store.
+      const delta = createdCount - deletedCount;
+      if (delta !== 0) adjustSetAspectCount(seasonId, setId, delta);
+
       if (failed > 0) {
         setError(`${succeeded} change(s) saved, ${failed} failed.`);
       }
@@ -444,8 +403,9 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     }
   };
 
-  // ── Description / icon (unchanged behavior — they're set-level, not aspect-level) ──
+  // ── Set-level mutations ──
   const handleSaveDescription = async () => {
+    if (!set) return;
     const nextDescription = descriptionDraft.trim();
     if (nextDescription === (set.description ?? '').trim()) {
       setEditingDescription(false);
@@ -455,7 +415,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     setError('');
     try {
       const updated = await AdminApiService.updateSet(set.season_id, set.id, { description: nextDescription });
-      onSetUpdated(updated);
+      applySetReplace(updated);
       setEditingDescription(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update description');
@@ -465,11 +425,12 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
   };
 
   const handleRegenerateIcon = async () => {
+    if (!set) return;
     setRegeneratingIcon(true);
     setError('');
     try {
       const updated = await AdminApiService.regenerateSetIcon(set.season_id, set.id);
-      onSetUpdated(updated);
+      applySetReplace(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to regenerate icon');
     } finally {
@@ -477,13 +438,14 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     }
   };
 
-  const [deletingSet, setDeletingSet] = useState(false);
   const handleDeleteSet = async () => {
+    if (!set) return;
     if (!window.confirm(`Delete set "${set.name}"? This cannot be undone.`)) return;
     setDeletingSet(true);
     setError('');
     try {
       await AdminApiService.deleteSet(set.season_id, set.id);
+      applySetRemove(set.season_id, set.id);
       onSetDeleted?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete set');
@@ -491,7 +453,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
     }
   };
 
-  // ── DnD: stage rarity changes ──
+  // ── DnD ──
   const handleDragStart = (id: number) => setDraggedId(id);
   const handleDragEnd = () => { setDraggedId(null); setDragOverRarity(null); };
   const handleDropRarity = (targetRarity: string) => {
@@ -512,15 +474,33 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
 
   const typeName = (id: number | null) => {
     if (id == null) return null;
-    return types.find((t) => t.id === id)?.name ?? null;
+    return (types ?? []).find((t) => t.id === id)?.name ?? null;
   };
 
-  // Cancel inline name edit when row goes away (e.g. on delete)
   useEffect(() => {
     if (editingId != null && deletedIds.has(editingId)) {
       setEditingId(null);
     }
   }, [deletedIds, editingId]);
+
+  // ── Early returns ──
+  if (hydrating) {
+    return (
+      <div className="admin-content">
+        <div className="admin-loading">Loading set…</div>
+      </div>
+    );
+  }
+
+  if (!set) {
+    return (
+      <div className="admin-content">
+        <div className="admin-error">
+          {hydrateError || 'Set not found.'}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="admin-content">
@@ -561,7 +541,12 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
               <span className="admin-set-meta-sep">·</span>
               <span>Season {set.season_id}</span>
               <span className="admin-set-meta-sep">·</span>
-              <span>{originalDefs.length - deletedIds.size + newDefs.length} aspects</span>
+              <span>
+                {loading && originalDefs.length === 0 && newDefs.length === 0 && deletedIds.size === 0
+                  ? set.aspect_count
+                  : originalDefs.length - deletedIds.size + newDefs.length}{' '}
+                aspects
+              </span>
               <span className="admin-set-meta-sep">·</span>
               <span>{set.source}</span>
             </div>
@@ -623,7 +608,6 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
         </div>
       </div>
 
-      {/* Search + filter row */}
       <div className="admin-toolbar admin-toolbar--wrap">
         <input
           type="text"
@@ -634,8 +618,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
         />
       </div>
 
-      {/* Type filter chips */}
-      {types.length > 0 && (
+      {types && types.length > 0 && (
         <div className="admin-filter-row">
           <span className="admin-filter-label">Filter:</span>
           <button
@@ -770,7 +753,6 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
                               {isExisting && (
                                 <span className="admin-mini-badge admin-mini-badge-cards">📇 {ownedCount}</span>
                               )}
-                              {/* Type chip — opens popover */}
                               <button
                                 className={`admin-type-chip-inline ${tId == null ? 'admin-type-chip-inline--empty' : ''}`}
                                 onClick={(e) => {
@@ -853,7 +835,6 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
         </div>
       )}
 
-      {/* Portal-rendered type popover (fixed to trigger, escapes overflow clipping) */}
       {openTypeForId != null && typeAnchor && (() => {
         const row = rows.find((r) => r.id === openTypeForId);
         if (!row) return null;
@@ -862,7 +843,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
         const rowId = row.id;
         const close = () => { setOpenTypeForId(null); setTypeAnchor(null); };
         return (
-          <Popover anchor={typeAnchor} onClose={close} className="admin-popover--type">
+          <AdminPopover anchor={typeAnchor} onClose={close} className="admin-popover--type">
             <button
               className={`admin-popover-item ${curType == null ? 'admin-popover-item--selected' : ''}`}
               onClick={() => {
@@ -873,7 +854,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
             >
               None
             </button>
-            {types.map((t) => (
+            {(types ?? []).map((t) => (
               <button
                 key={t.id}
                 className={`admin-popover-item ${curType === t.id ? 'admin-popover-item--selected' : ''}`}
@@ -886,11 +867,10 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
                 {t.name}
               </button>
             ))}
-          </Popover>
+          </AdminPopover>
         );
       })()}
 
-      {/* Portal-rendered move popover */}
       {openMoveForId != null && moveAnchor && (() => {
         const row = rows.find((r) => r.id === openMoveForId);
         if (!row || row.kind !== 'existing') return null;
@@ -898,7 +878,7 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
         const rowId = row.id;
         const close = () => { setOpenMoveForId(null); setMoveAnchor(null); };
         return (
-          <Popover anchor={moveAnchor} onClose={close} className="admin-popover--move">
+          <AdminPopover anchor={moveAnchor} onClose={close} className="admin-popover--move">
             {siblingSets.length === 0 ? (
               <div className="admin-popover-empty">No other sets</div>
             ) : (
@@ -915,11 +895,10 @@ const AdminSetDetailPage: React.FC<Props> = ({ set, onSetUpdated, onSetDeleted }
                 </button>
               ))
             )}
-          </Popover>
+          </AdminPopover>
         );
       })()}
 
-      {/* Sticky save bar */}
       {dirty && (
         <div className="admin-save-bar">
           <div className="admin-save-bar-summary">

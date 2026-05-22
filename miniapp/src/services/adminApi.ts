@@ -14,6 +14,13 @@ import type {
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
+interface BulkAspectDefItem {
+  set_id: number;
+  season_id: number;
+  name: string;
+  rarity: string;
+}
+
 export class AdminApiService {
   private static getToken(): string | null {
     return localStorage.getItem('admin_token');
@@ -28,12 +35,15 @@ export class AdminApiService {
     return headers;
   }
 
+  private static handleUnauthorized(): void {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_username');
+    window.location.href = '/admin';
+  }
+
   private static async handleResponse<T>(response: Response): Promise<T> {
     if (response.status === 401 && this.getToken()) {
-      // Session expired — clear token and redirect to login
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_username');
-      window.location.href = '/admin';
+      this.handleUnauthorized();
       throw new Error('Session expired. Please log in again.');
     }
     if (!response.ok) {
@@ -46,7 +56,11 @@ export class AdminApiService {
       }
       throw new Error(detail);
     }
-    return response.json();
+    // Some endpoints return 204 or empty bodies; tolerate.
+    if (response.status === 204) return undefined as T;
+    const text = await response.text();
+    if (!text) return undefined as T;
+    return JSON.parse(text) as T;
   }
 
   // ── Auth ──────────────────────────────────────────────────────────────
@@ -123,20 +137,7 @@ export class AdminApiService {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    if (res.status === 401 && this.getToken()) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_username');
-      window.location.href = '/admin';
-      throw new Error('Session expired. Please log in again.');
-    }
-    if (!res.ok) {
-      let detail = `Request failed (${res.status})`;
-      try {
-        const body = await res.json();
-        if (body?.detail) detail = body.detail;
-      } catch { /* ignore */ }
-      throw new Error(detail);
-    }
+    await this.handleResponse<void>(res);
   }
 
   // ── Aspect Definitions ────────────────────────────────────────────────
@@ -171,22 +172,24 @@ export class AdminApiService {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    if (res.status === 401) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_username');
-      window.location.href = '/admin';
-      throw new Error('Session expired.');
-    }
-    if (!res.ok) {
-      let detail = `Delete failed (${res.status})`;
-      try {
-        const body = await res.json();
-        if (body?.detail) detail = body.detail;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(detail);
-    }
+    await this.handleResponse<void>(res);
+  }
+
+  /** Bulk-upsert aspect defs by (name + set_id + season_id). Returns upserted count. */
+  static async bulkUpsertAspectDefs(
+    seasonId: number,
+    items: BulkAspectDefItem[],
+  ): Promise<{ upserted: number }> {
+    const res = await fetch(`${API_BASE_URL}/admin/aspects/bulk`, {
+      method: 'POST',
+      headers: this.getHeaders(),
+      body: JSON.stringify({
+        season_id: seasonId,
+        // Endpoint accepts only set_id, name, rarity per item; strip extras.
+        definitions: items.map((i) => ({ set_id: i.set_id, name: i.name, rarity: i.rarity })),
+      }),
+    });
+    return this.handleResponse(res);
   }
 
   static async getAspectDefStats(defId: number): Promise<{ owned_count: number }> {
@@ -235,21 +238,6 @@ export class AdminApiService {
       method: 'DELETE',
       headers: this.getHeaders(),
     });
-    if (res.status === 401 && this.getToken()) {
-      localStorage.removeItem('admin_token');
-      localStorage.removeItem('admin_username');
-      window.location.href = '/admin';
-      throw new Error('Session expired.');
-    }
-    if (!res.ok) {
-      let detail = `Delete failed (${res.status})`;
-      try {
-        const body = await res.json();
-        if (body?.detail) detail = body.detail;
-      } catch {
-        /* ignore */
-      }
-      throw new Error(detail);
-    }
+    await this.handleResponse<void>(res);
   }
 }
