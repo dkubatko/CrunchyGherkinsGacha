@@ -1,15 +1,23 @@
-# Crunchy Gherkins TCG — Docker Compose
+# Crunchy Gherkins TCG — Docker Compose (base)
 #
-# Usage:
-#   Local test:  docker compose up --build        (all services, local PostgreSQL)
-#   Production:  docker compose --profile prod up -d --build  (adds cloud-sql-proxy)
-#   Stop:        docker compose down
-#   Logs:        docker compose logs -f bot api
+# This is the shared base configuration. Use an environment overlay to
+# bring in deployment-specific services and networking. The overlay is
+# selected by setting COMPOSE_FILE in .env on the target server:
+#
+#   GCP:    COMPOSE_FILE=compose.yaml:compose.gcp.yaml
+#   Self-hosted: COMPOSE_FILE=compose.yaml:compose.selfhosted.yaml
+#
+# Alternatively, pass -f flags explicitly:
+#
+#   GCP:    docker compose -f compose.yaml -f compose.gcp.yaml up -d --build
+#   Self-hosted: docker compose -f compose.yaml -f compose.selfhosted.yaml up -d --build
 #
 # For local development WITHOUT Docker, run directly:
 #   python bot/bot.py --debug
 #   uvicorn bot.api.server:app --reload
 #   cd miniapp && npm run dev
+
+name: crunchy-gherkins-tcg
 
 services:
   # ── Redis (ephemeral state store) ──────────────────────────────────
@@ -19,6 +27,11 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   # ── Telegram Bot API Server ────────────────────────────────────────
@@ -28,11 +41,9 @@ services:
     image: aiogram/telegram-bot-api:latest
     env_file: .env
     environment:
-      TELEGRAM_LOCAL: 1
+      TELEGRAM_LOCAL: "1"
     volumes:
       - tg_api_data:/var/lib/telegram-bot-api
-    ports:
-      - "8081:8081"
     restart: unless-stopped
 
   # ── Bot (Telegram polling) ─────────────────────────────────────────
@@ -45,10 +56,12 @@ services:
     env_file: .env
     environment:
       TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
-      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set in .env}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
-      - tg-bot-api
-      - redis
+      tg-bot-api:
+        condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - bot_data:/app/bot/data
       - tg_api_data:/var/lib/telegram-bot-api
@@ -78,12 +91,12 @@ services:
     env_file: .env
     environment:
       TELEGRAM_BOT_API_URL: http://tg-bot-api:8081
-      REDIS_URL: ${REDIS_URL:?REDIS_URL must be set in .env}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
     depends_on:
-      - tg-bot-api
-      - redis
-    ports:
-      - "8000:8000"
+      tg-bot-api:
+        condition: service_started
+      redis:
+        condition: service_healthy
     volumes:
       - bot_data:/app/bot/data
       - tg_api_data:/var/lib/telegram-bot-api
@@ -91,6 +104,7 @@ services:
 
   # ── Frontend (Nginx serving built React SPA) ───────────────────────
   # Multi-stage build; Nginx reverse-proxies /api/ to the api service.
+  # Port bindings and nginx config are provided by the environment overlay.
   frontend:
     build:
       context: ./miniapp
@@ -98,34 +112,10 @@ services:
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
     depends_on:
-      - api
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - /etc/letsencrypt:/etc/letsencrypt:ro
-    restart: unless-stopped
-
-  # ── Cloud SQL Auth Proxy (production only) ─────────────────────────
-  # Encrypted tunnel to Cloud SQL. Only runs with: --profile prod
-  cloud-sql-proxy:
-    image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2
-    command:
-      - ${CLOUD_SQL_CONNECTION_NAME:-placeholder}
-      - --address=0.0.0.0
-      - --port=5432
-    volumes:
-      - ./service-account.json:/credentials.json:ro
-    environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /credentials.json
-    ports:
-      - "5433:5432"
-    profiles:
-      - prod
+      api:
+        condition: service_started
     restart: unless-stopped
 
 volumes:
   bot_data:
-    driver: local
   tg_api_data:
-    driver: local

@@ -1,0 +1,65 @@
+# Crunchy Gherkins TCG — self-hosted overlay
+#
+# Adds a local PostgreSQL container and attaches the frontend to the external
+# Cloudflare tunnel network. No ports are published on the host — the
+# cloudflared container handles ingress.
+#
+# Preferred: set COMPOSE_FILE=compose.yaml:compose.selfhosted.yaml in .env, then:
+#   docker compose up -d --build
+#
+# Or pass -f flags explicitly:
+#   docker compose -f compose.yaml -f compose.selfhosted.yaml up -d --build
+#   docker compose -f compose.yaml -f compose.selfhosted.yaml down
+#   docker compose -f compose.yaml -f compose.selfhosted.yaml logs -f bot api
+#
+# Prerequisites:
+#   - POSTGRES_PASSWORD set in .env
+#   - A running cloudflared container attached to the "cloudflare" network
+#   - /mnt/data/databases/crunchy-gherkins-tcg exists on the host
+
+services:
+  # ── PostgreSQL (local database) ───────────────────────────────────
+  postgres:
+    image: postgres:18.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-gacha}
+      POSTGRES_USER: ${POSTGRES_USER:-gacha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - /mnt/data/databases/crunchy-gherkins-tcg:/var/lib/postgresql
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  # ── Bot & API — wait for PostgreSQL ──────────────────────────────
+  bot:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # ── Frontend — Cloudflare tunnel ingress ──────────────────────────
+  # No host ports published. The external cloudflare network lets the
+  # separately managed cloudflared container reach this service by alias.
+  frontend:
+    networks:
+      default:
+      cloudflare:
+        aliases:
+          - crunchy-gherkins-tcg
+
+networks:
+  # External network managed by a standalone cloudflared container.
+  # Create with: docker network create cloudflare
+  cloudflare:
+    name: cloudflare
+    external: true

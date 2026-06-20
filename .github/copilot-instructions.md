@@ -235,7 +235,9 @@ miniapp/src/
 
 ### Top-Level Directories
 ```
-├── docker-compose.yml               # Docker Compose (prod profiles for Cloud SQL proxy)
+├── compose.yaml                     # Docker Compose base (shared by all environments)
+├── compose.gcp.yaml                 # GCP overlay (Cloud SQL proxy + Let's Encrypt TLS)
+├── compose.selfhosted.yaml          # Self-hosted overlay (local postgres + Cloudflare tunnel)
 ├── deploy.sh                        # One-command deploy to GCP VM
 ├── .env.example              # Docker env var template (copy to .env)
 ├── tools/
@@ -436,12 +438,11 @@ cd miniapp && npm run dev
 ```
 
 ### Running with Docker
-```bash
-# Build and run entire stack (test locally before deploying)
-docker compose up --build
+The overlay is selected via `COMPOSE_FILE` in `.env` on the target server. With `COMPOSE_FILE` set, plain `docker compose` picks up the right files automatically.
 
-# Production with Cloud SQL proxy
-docker compose --profile prod up -d --build
+```bash
+# Bring up (overlay determined by COMPOSE_FILE in .env)
+docker compose up -d --build
 
 # View logs
 docker compose logs -f bot api
@@ -450,11 +451,21 @@ docker compose logs -f bot api
 docker compose down
 ```
 
+Explicit `-f` flags can be used when `COMPOSE_FILE` is not set in the environment:
+```bash
+# GCP
+docker compose -f compose.yaml -f compose.gcp.yaml up -d --build
+
+# Self-hosted
+docker compose -f compose.yaml -f compose.selfhosted.yaml up -d --build
+```
+
 ### Docker Architecture
 - **bot + api** share one Docker image (`bot/Dockerfile`), different `CMD`
-- **frontend**: multi-stage build (Node → Nginx) via `miniapp/Dockerfile`, serves SPA and proxies `/api/` to api service
+- **frontend**: multi-stage build (Node → Nginx) via `miniapp/Dockerfile`, serves SPA and proxies `/api/` to api service; `nginx.conf` is a generic HTTP config (Cloudflare terminates TLS for self-hosted); `nginx.gcp.conf` is the Let's Encrypt/TLS variant mounted by the GCP overlay
 - **tg-bot-api** uses the official `aiogram/telegram-bot-api` image
-- **cloud-sql-proxy** only runs with `--profile prod` (production Cloud SQL)
+- **cloud-sql-proxy** is defined in `compose.gcp.yaml` (GCP overlay)
+- **postgres** is defined in `compose.selfhosted.yaml` (self-hosted overlay)
 - Config: `.env` (from `.env.example`)
 - Docker is for deployment/testing only; local dev runs natively without Docker
 

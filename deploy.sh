@@ -9,6 +9,7 @@
 #   - gcloud CLI configured with the correct project
 #   - SSH access to the VM (gcloud compute ssh works)
 #   - .env and service-account.json on the VM
+#   - .env on the VM must set COMPOSE_FILE=compose.yaml:compose.gcp.yaml
 
 set -euo pipefail
 
@@ -16,7 +17,6 @@ set -euo pipefail
 VM_NAME="${GCP_VM_NAME:?Set GCP_VM_NAME}"
 VM_ZONE="${GCP_VM_ZONE:?Set GCP_VM_ZONE}"
 PROJECT_DIR="${GCP_PROJECT_DIR:-/home/$(gcloud config get-value account 2>/dev/null | cut -d@ -f1)/CrunchyGherkinsGachaBot}"
-COMPOSE_CMD="docker compose --profile prod"
 
 BUILD_FLAG=""
 if [[ "${1:-}" == "--build" ]]; then
@@ -36,11 +36,11 @@ gcloud compute ssh "${VM_NAME}" --zone="${VM_ZONE}" --command="
     git pull --ff-only
 
     echo '🐳 Starting services...'
-    ${COMPOSE_CMD} up -d ${BUILD_FLAG}
+    docker compose up -d ${BUILD_FLAG}
 
     echo ''
     echo '📊 Service status:'
-    ${COMPOSE_CMD} ps
+    docker compose ps
 
     echo ''
     echo '✅ Deployment complete!'
