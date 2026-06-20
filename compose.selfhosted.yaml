@@ -47,6 +47,34 @@ services:
       postgres:
         condition: service_healthy
 
+  # ── PostgreSQL backup ─────────────────────────────────────────────
+  # Scheduled dumps with rotating daily/weekly/monthly retention.
+  # Tag 18 uses PostgreSQL 18 client tools to match the postgres service.
+  postgres-backup:
+    image: prodrigestivill/postgres-backup-local:18
+    user: "999:999"
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-gacha}
+      POSTGRES_USER: ${POSTGRES_USER:-gacha}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+
+      SCHEDULE: "0 3 * * *"
+      TZ: America/Los_Angeles
+      BACKUP_ON_START: "FALSE"
+
+      BACKUP_KEEP_DAYS: "14"
+      BACKUP_KEEP_WEEKS: "8"
+      BACKUP_KEEP_MONTHS: "12"
+
+      HEALTHCHECK_PORT: "8080"
+    volumes:
+      - ${POSTGRES_BACKUP_PATH:-/mnt/user/backups/crunchy-gherkins-tcg/automatic}:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Frontend — Cloudflare tunnel ingress ──────────────────────────
   # No host ports published. The external cloudflare network lets the
   # separately managed cloudflared container reach this service by alias.
